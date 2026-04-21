@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BidPick</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+  <link href="https://cdn.jsdelivr.net/gh/sunn-us/SUIT@latest/fonts/static/woff2/SUIT.css" rel="stylesheet" />
+  <script>
+    // CSS를 fetch 후 <style> 태그로 인라인 주입 (캐시 무효화 + 환경 호환)
+    (async function() {
+      try {
+        const v = Date.now();
+        const r = await fetch('/static/style.css?v=' + v);
+        const css = await r.text();
+        const el = document.createElement('style');
+        el.id = 'main-style';
+        el.textContent = css;
+        document.head.appendChild(el);
+      } catch(e) {
+        // fallback: link tag
+        const l = document.createElement('link');
+        l.rel = 'stylesheet';
+        l.href = '/static/style.css';
+        document.head.appendChild(l);
+      }
+    })();
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module">
+    // 캐시 무효화: 매번 새 버전 로드
+    const v = Date.now();
+    const s = document.createElement('script');
+    s.type = 'module';
+    s.src = `/static/app.js?v=${v}`;
+    document.head.appendChild(s);
+  </script>
+</body>
+</html>

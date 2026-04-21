@@ -221,7 +221,12 @@ REF_ANALYSIS_PROMPT = """당신은 제안서 전략 전문가입니다.
 4. 전략적 활용 방안
 분석 결과를 간결하고 실용적으로 작성하세요."""
 
-LAYOUT_CSS = """/* A4 Layout — BidPick (흑백 전용) */
+LAYOUT_CSS = """/* ═══════════════════════════════════════════════
+   A4 Layout — BidPick (흑백 전용)
+   페이지마다 다양한 중단 레이아웃 지원
+   ═══════════════════════════════════════════════ */
+
+/* ── 기본 리셋 & 흑백 강제 ── */
 *, *::before, *::after {{
   box-sizing: border-box;
   color: inherit;
@@ -231,14 +236,23 @@ body {{
   font-family: 'SUIT', 'Apple SD Gothic Neo', sans-serif;
   background: #fff;
   color: #111;
+  font-size: 10pt;
 }}
 a {{ color: #333; }}
+ul, ol {{ margin: 0; padding-left: 5mm; }}
+li {{ margin-bottom: 1mm; line-height: 1.5; }}
+p {{ margin: 0 0 2mm; line-height: 1.6; }}
+strong, b {{ font-weight: 700; color: #000; }}
+
 /* 컬러 강제 흑백 오버라이드 */
+[style*="color: #"] {{ color: inherit !important; }}
 [style*="color:#"] {{ color: inherit !important; }}
-[style*="background:#0"] {{ background: #f5f5f5 !important; }}
-[style*="background:#1"] {{ background: #111 !important; }}
-[style*="background:#7"] {{ background: #555 !important; }}
-[style*="background:rgb"] {{ background: #f5f5f5 !important; }}
+[style*="background-color:#0"],[style*="background:#0"] {{ background:#f5f5f5 !important; }}
+[style*="background-color:#1"],[style*="background:#1"] {{ background:#111 !important; }}
+[style*="background-color:#f"],[style*="background:#f"] {{ background:#f8f8f8 !important; }}
+[style*="background:rgb"] {{ background:#f5f5f5 !important; }}
+
+/* ── A4 페이지 기본 틀 ── */
 .a4-page {{
   width: {width}mm;
   min-height: {height}mm;
@@ -251,76 +265,621 @@ a {{ color: #333; }}
   flex-direction: column;
   color: #111;
 }}
+
+/* ── 고정 영역 1: 좌상단 섹션명 ── */
 .section-label {{
   position: absolute;
-  top: 8mm;
+  top: 5mm;
   left: {pad_lr}mm;
-  font-size: 9pt;
-  color: #999;
+  right: {pad_lr}mm;
+  font-size: 8pt;
+  color: #aaa;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-weight: 600;
-  border-bottom: 1px solid #ddd;
-  padding-bottom: 1mm;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 2mm;
 }}
+.section-label::after {{
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e0e0e0;
+}}
+
+/* ── 고정 영역 2: 상단 소제목 + 거버닝 메시지 ── */
 .page-heading {{
-  margin-top: 10mm;
-  margin-bottom: 6mm;
+  margin-top: 9mm;
+  margin-bottom: 5mm;
+  flex-shrink: 0;
 }}
 .page-subtitle {{
-  font-size: 10pt;
-  color: #666;
-  margin-bottom: 2mm;
-  font-weight: 500;
+  font-size: 9pt;
+  color: #888;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin-bottom: 1.5mm;
+  text-transform: uppercase;
 }}
 .governing-msg {{
-  font-size: 22pt;
-  font-weight: 800;
-  line-height: 1.2;
+  font-size: 20pt;
+  font-weight: 900;
+  line-height: 1.15;
   color: #000;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
 }}
+.governing-msg em {{
+  font-style: normal;
+  border-bottom: 3px solid #333;
+  padding-bottom: 0.5mm;
+}}
+
+/* ── 고정 영역 3: 중단 콘텐츠 컨테이너 ── */
 .page-content {{
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 4mm;
+  gap: 3.5mm;
   color: #222;
+  min-height: 0;
 }}
-/* 공통 콘텐츠 요소 흑백 */
-.page-content h1,.page-content h2,.page-content h3 {{ color: #111; }}
-.page-content p,.page-content li,.page-content td {{ color: #333; }}
-.page-content table {{ border-collapse: collapse; width: 100%; }}
-.page-content th {{ background: #f0f0f0; color: #111; font-weight:700; padding:3mm 4mm; border:1px solid #ddd; }}
-.page-content td {{ padding:2.5mm 4mm; border:1px solid #e5e5e5; }}
-.page-content tr:nth-child(even) {{ background: #fafafa; }}
-.page-content .highlight, .page-content .accent, .page-content .color {{ color: #111 !important; background: #f5f5f5 !important; }}
-.page-content .badge, .page-content .tag, .page-content .chip {{ background: #ebebeb !important; color: #333 !important; border:1px solid #ddd !important; }}
-.page-content .card, .page-content .box {{ background: #fafafa !important; border:1px solid #e0e0e0 !important; }}
-/* 진행률/수치 시각화 흑백 */
-.bar-fill {{ background: #333 !important; }}
-.progress-bar {{ background: #e5e5e5 !important; }}
-.icon-circle {{ background: #ebebeb !important; color: #333 !important; }}
+
+/* ── 고정 영역 4: 하단 요약 바 (블리드) ── */
 .summary-bar {{
+  flex-shrink: 0;
   margin-left: -{pad_lr}mm;
   margin-right: -{pad_lr}mm;
   margin-bottom: -{pad_tb}mm;
-  padding: 5mm {pad_lr}mm;
+  padding: 4mm {pad_lr}mm;
   background: #111111;
   color: #ffffff;
-  font-size: 9pt;
-  line-height: 1.6;
+  font-size: 9.5pt;
+  font-weight: 700;
+  line-height: 1.5;
   display: flex;
-  gap: 8mm;
-  align-items: flex-start;
+  gap: 6mm;
+  align-items: center;
+  letter-spacing: -0.01em;
 }}
 .summary-bar * {{ color: #fff !important; }}
-.img-hint {{
+.summary-bar .sum-label {{
   font-size: 8pt;
+  font-weight: 400;
+  opacity: 0.6;
+  margin-right: -2mm;
+}}
+.summary-bar .sum-divider {{
+  width: 1px;
+  height: 12px;
+  background: rgba(255,255,255,0.25);
+  flex-shrink: 0;
+}}
+
+/* ── 이미지 검색 힌트 ── */
+.img-hint {{
+  font-size: 7.5pt;
   color: #bbb;
   font-style: italic;
-  margin-top: 2mm;
-}}"""
+  margin-top: 1.5mm;
+  flex-shrink: 0;
+}}
+
+/* ══════════════════════════════════════════════
+   중단 레이아웃 변형 클래스들
+   각 페이지 성격에 따라 골라 사용
+   ══════════════════════════════════════════════ */
+
+/* ── [변형 A] 2단 균등 분할 ── */
+.cols-2 {{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5mm;
+  flex: 1;
+}}
+/* ── [변형 B] 3단 균등 분할 ── */
+.cols-3 {{
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4mm;
+  flex: 1;
+}}
+/* ── [변형 C] 비대칭 6:4 분할 ── */
+.cols-6-4 {{
+  display: grid;
+  grid-template-columns: 6fr 4fr;
+  gap: 5mm;
+  flex: 1;
+}}
+/* ── [변형 D] 비대칭 4:6 분할 ── */
+.cols-4-6 {{
+  display: grid;
+  grid-template-columns: 4fr 6fr;
+  gap: 5mm;
+  flex: 1;
+}}
+
+/* 컬럼 박스 (컬럼 내부 카드) */
+.col-box {{
+  background: #f8f8f8;
+  border: 1px solid #e2e2e2;
+  border-radius: 2.5mm;
+  padding: 4.5mm 5mm;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5mm;
+}}
+.col-box-title {{
+  font-size: 9pt;
+  font-weight: 800;
+  color: #111;
+  padding-bottom: 2mm;
+  border-bottom: 2px solid #111;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}}
+.col-box-dark {{
+  background: #111;
+  color: #fff;
+  border-color: #111;
+}}
+.col-box-dark .col-box-title {{ color:#fff; border-color:rgba(255,255,255,0.3); }}
+.col-box-dark * {{ color:#fff !important; }}
+
+/* ── [변형 E] 수치/KPI 그리드 ── */
+.stat-grid {{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(35mm, 1fr));
+  gap: 4mm;
+  flex: 1;
+  align-content: start;
+}}
+.stat-box {{
+  background: #f8f8f8;
+  border: 1px solid #e2e2e2;
+  border-radius: 2.5mm;
+  padding: 5mm 4mm;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5mm;
+}}
+.stat-box-dark {{
+  background: #111;
+  border-color: #111;
+}}
+.stat-box-dark .stat-num, .stat-box-dark .stat-unit, .stat-box-dark .stat-label {{
+  color: #fff !important;
+}}
+.stat-num {{
+  font-size: 30pt;
+  font-weight: 900;
+  color: #000;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}}
+.stat-unit {{
+  font-size: 13pt;
+  font-weight: 700;
+  color: #444;
+  letter-spacing: -0.02em;
+}}
+.stat-label {{
+  font-size: 8.5pt;
+  color: #777;
+  line-height: 1.4;
+  text-align: center;
+}}
+.stat-sub {{
+  font-size: 7.5pt;
+  color: #aaa;
+}}
+
+/* ── [변형 F] 프로세스 스텝 (가로) ── */
+.step-flow {{
+  display: flex;
+  gap: 0;
+  align-items: stretch;
+  flex: 1;
+}}
+.step-item {{
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4mm 3mm;
+  background: #f8f8f8;
+  border: 1px solid #e2e2e2;
+  border-radius: 2mm;
+  position: relative;
+  text-align: center;
+}}
+.step-item + .step-item {{
+  margin-left: 5mm;
+}}
+.step-item + .step-item::before {{
+  content: '→';
+  position: absolute;
+  left: -4mm;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11pt;
+  font-weight: 700;
+  color: #333;
+  z-index: 2;
+  background: #fff;
+  padding: 0 0.5mm;
+}}
+.step-num {{
+  width: 8mm;
+  height: 8mm;
+  background: #111;
+  color: #fff !important;
+  border-radius: 50%;
+  font-size: 9pt;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 2.5mm;
+  flex-shrink: 0;
+}}
+.step-title {{
+  font-size: 9pt;
+  font-weight: 800;
+  color: #111;
+  margin-bottom: 1.5mm;
+  line-height: 1.3;
+}}
+.step-desc {{
+  font-size: 8pt;
+  color: #666;
+  line-height: 1.5;
+}}
+
+/* ── [변형 G] 번호형 리스트 ── */
+.num-list {{
+  display: flex;
+  flex-direction: column;
+  gap: 3mm;
+  flex: 1;
+}}
+.num-item {{
+  display: flex;
+  align-items: flex-start;
+  gap: 4mm;
+  padding: 3.5mm 4mm;
+  background: #f8f8f8;
+  border-radius: 2mm;
+  border-left: 3px solid #111;
+}}
+.num-badge {{
+  flex-shrink: 0;
+  width: 6.5mm;
+  height: 6.5mm;
+  background: #111;
+  color: #fff !important;
+  border-radius: 50%;
+  font-size: 8.5pt;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.5mm;
+}}
+.num-body {{
+  flex: 1;
+  min-width: 0;
+}}
+.num-body-title {{
+  font-size: 10pt;
+  font-weight: 800;
+  color: #111;
+  margin-bottom: 1mm;
+}}
+.num-body-text {{
+  font-size: 8.5pt;
+  color: #555;
+  line-height: 1.55;
+}}
+
+/* ── [변형 H] 강조 콜아웃 박스 ── */
+.callout {{
+  background: #f5f5f5;
+  border-left: 3.5mm solid #111;
+  border-radius: 0 2.5mm 2.5mm 0;
+  padding: 4mm 5mm;
+}}
+.callout-strong {{
+  background: #111;
+  border-radius: 2.5mm;
+  padding: 4.5mm 5.5mm;
+}}
+.callout-strong * {{ color: #fff !important; }}
+.callout-title {{
+  font-size: 9.5pt;
+  font-weight: 800;
+  margin-bottom: 1.5mm;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}}
+.callout-text {{
+  font-size: 9pt;
+  line-height: 1.6;
+  color: #333;
+}}
+
+/* ── [변형 I] 풀쿼트 (전면 메시지) ── */
+.pull-quote {{
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-top: 2.5px solid #111;
+  border-bottom: 2.5px solid #111;
+  padding: 6mm 0;
+  text-align: center;
+}}
+.pull-quote-text {{
+  font-size: 17pt;
+  font-weight: 900;
+  color: #000;
+  line-height: 1.3;
+  letter-spacing: -0.025em;
+  max-width: 85%;
+}}
+.pull-quote-source {{
+  font-size: 8.5pt;
+  color: #888;
+  margin-top: 2.5mm;
+}}
+
+/* ── [변형 J] 이미지 플레이스홀더 ── */
+.img-block {{
+  background: #f0f0f0;
+  border: 1.5px dashed #bbb;
+  border-radius: 2.5mm;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 2mm;
+  color: #aaa;
+  font-size: 8.5pt;
+  min-height: 28mm;
+}}
+.img-block-icon {{
+  font-size: 18pt;
+  opacity: 0.5;
+}}
+.img-block-caption {{
+  font-size: 8pt;
+  color: #999;
+  text-align: center;
+}}
+
+/* ── [변형 K] 표지 페이지 (cover) ── */
+.cover-area {{
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 5mm;
+  padding-top: 4mm;
+}}
+.cover-eyebrow {{
+  display: inline-block;
+  background: #111;
+  color: #fff !important;
+  font-size: 8.5pt;
+  font-weight: 700;
+  padding: 1.5mm 4mm;
+  border-radius: 1.5mm;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}}
+.cover-title {{
+  font-size: 30pt;
+  font-weight: 900;
+  color: #000;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+}}
+.cover-desc {{
+  font-size: 11pt;
+  color: #555;
+  line-height: 1.65;
+  max-width: 75%;
+}}
+.cover-meta {{
+  display: flex;
+  gap: 7mm;
+  font-size: 8.5pt;
+  color: #999;
+  border-top: 1px solid #ddd;
+  padding-top: 4mm;
+  width: 100%;
+  margin-top: 3mm;
+}}
+.cover-meta-item {{ display: flex; flex-direction: column; gap: 0.5mm; }}
+.cover-meta-label {{ font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.06em; color: #bbb; }}
+.cover-meta-val {{ font-size: 9pt; font-weight: 700; color: #333; }}
+
+/* ── [변형 L] 비교 테이블 ── */
+.page-content table {{
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 9pt;
+}}
+.page-content th {{
+  background: #111;
+  color: #fff !important;
+  font-weight: 700;
+  padding: 3mm 4mm;
+  border: 1px solid #000;
+  text-align: left;
+  font-size: 8.5pt;
+  letter-spacing: 0.02em;
+}}
+.page-content td {{
+  padding: 2.5mm 4mm;
+  border: 1px solid #e0e0e0;
+  color: #333;
+  line-height: 1.5;
+}}
+.page-content tr:nth-child(even) td {{ background: #f8f8f8; }}
+.page-content tr:hover td {{ background: #f2f2f2; }}
+.td-strong {{ font-weight: 700; color: #111 !important; }}
+.td-muted {{ color: #999 !important; font-size: 8pt; }}
+
+/* ── [변형 M] KV 리스트 (항목-값) ── */
+.kv-list {{
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  flex: 1;
+}}
+.kv-item {{
+  display: flex;
+  gap: 4mm;
+  align-items: baseline;
+  border-bottom: 1px solid #f0f0f0;
+  padding: 2.5mm 0;
+}}
+.kv-item:last-child {{ border-bottom: none; }}
+.kv-key {{
+  font-size: 8.5pt;
+  font-weight: 700;
+  color: #444;
+  min-width: 22mm;
+  flex-shrink: 0;
+}}
+.kv-val {{
+  font-size: 9pt;
+  color: #222;
+  line-height: 1.55;
+  flex: 1;
+}}
+
+/* ── [변형 N] 진행률 바 (수치 시각화) ── */
+.bar-list {{
+  display: flex;
+  flex-direction: column;
+  gap: 3.5mm;
+  flex: 1;
+}}
+.bar-item {{}}
+.bar-header {{
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1.5mm;
+  font-size: 9pt;
+}}
+.bar-name {{ font-weight: 700; color: #111; }}
+.bar-pct {{ font-weight: 700; color: #333; }}
+.bar-track {{
+  height: 3mm;
+  background: #ebebeb;
+  border-radius: 1.5mm;
+  overflow: hidden;
+}}
+.bar-fill {{
+  height: 100%;
+  background: #111 !important;
+  border-radius: 1.5mm;
+}}
+.bar-fill-gray {{ background: #555 !important; }}
+.bar-fill-light {{ background: #bbb !important; }}
+
+/* ── [변형 O] 타임라인 (세로) ── */
+.timeline {{
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  flex: 1;
+  padding-left: 5mm;
+  border-left: 2px solid #111;
+  margin-left: 3mm;
+}}
+.tl-item {{
+  position: relative;
+  padding: 0 0 4mm 5mm;
+}}
+.tl-item:last-child {{ padding-bottom: 0; }}
+.tl-dot {{
+  position: absolute;
+  left: -8.5mm;
+  top: 0.5mm;
+  width: 5mm;
+  height: 5mm;
+  background: #111;
+  border-radius: 50%;
+  border: 1.5px solid #fff;
+  outline: 1.5px solid #111;
+}}
+.tl-date {{
+  font-size: 8pt;
+  color: #888;
+  font-weight: 600;
+  margin-bottom: 1mm;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}}
+.tl-title {{
+  font-size: 10pt;
+  font-weight: 800;
+  color: #111;
+  margin-bottom: 1mm;
+}}
+.tl-desc {{
+  font-size: 8.5pt;
+  color: #666;
+  line-height: 1.55;
+}}
+
+/* ── 공통 유틸 ── */
+.divider {{
+  border: none;
+  border-top: 1px solid #e0e0e0;
+  margin: 2mm 0;
+  flex-shrink: 0;
+}}
+.divider-bold {{
+  border: none;
+  border-top: 2px solid #111;
+  margin: 2.5mm 0;
+  flex-shrink: 0;
+}}
+.badge-dark {{
+  display: inline-block;
+  background: #111;
+  color: #fff !important;
+  font-size: 7.5pt;
+  font-weight: 700;
+  padding: 0.8mm 2.5mm;
+  border-radius: 1mm;
+  letter-spacing: 0.04em;
+}}
+.badge-light {{
+  display: inline-block;
+  background: #ebebeb;
+  color: #333 !important;
+  font-size: 7.5pt;
+  font-weight: 600;
+  padding: 0.8mm 2.5mm;
+  border-radius: 1mm;
+  border: 1px solid #ddd;
+}}
+.text-sm {{ font-size: 8.5pt; }}
+.text-xs {{ font-size: 7.5pt; color: #888; }}
+.text-muted {{ color: #888; }}
+.font-bold {{ font-weight: 800; }}
+.mt-1 {{ margin-top: 1.5mm; }}
+.mt-2 {{ margin-top: 3mm; }}
+.mt-3 {{ margin-top: 5mm; }}"""
 
 
 def build_system_prompt(client: dict, refs: Optional[list] = None) -> str:
@@ -423,28 +982,242 @@ def build_system_prompt(client: dict, refs: Optional[list] = None) -> str:
 - inline style에서 color, background-color 지정 시 반드시 흑백 계열만 사용
 
 ## HTML 출력 형식
-제안서는 반드시 ```html 코드블록 안에 작성하세요.
-각 슬라이드는 <div class="a4-page"> 구조를 사용하세요.
+제안서는 반드시 ```html 코드블록 하나에 모든 페이지를 담아 작성하세요.
+각 페이지는 <div class="a4-page"> 구조를 사용하며, 아래 4개 고정 영역을 반드시 포함합니다.
 
-### 슬라이드 구조 (각 .a4-page 내부):
-```
+---
+
+### 📐 페이지 고정 구조 (모든 페이지 공통)
+
+```html
 <div class="a4-page">
+
+  <!-- ❶ 좌상단: 섹션명 (작고 연한, 라인 포함) -->
   <div class="section-label">섹션명</div>
+
+  <!-- ❷ 상단: 소제목 + 거버닝 메시지 -->
   <div class="page-heading">
-    <div class="page-subtitle">부제목</div>
-    <div class="governing-msg">핵심 메시지 (크고 굵게)</div>
+    <div class="page-subtitle">소제목 — 이 페이지가 말하는 것</div>
+    <div class="governing-msg">독자의 뇌리에 박히는 <em>핵심 한 줄</em></div>
   </div>
+
+  <!-- ❸ 중단: 내용 성격에 맞는 레이아웃 (아래 변형 중 선택) -->
   <div class="page-content">
-    <!-- 본문 내용 (유연한 중간 영역) -->
+    <!-- 레이아웃 변형 적용 -->
   </div>
+
+  <!-- ❹ 하단: 핵심 요약 (다크 블리드 바) -->
   <div class="summary-bar">
-    <!-- 전체 폭 다크 하단 바 (블리드) — 핵심 요약 -->
+    ▶ 이 페이지의 단 한 줄 결론 — 독자가 기억해야 할 것
   </div>
-  <div class="img-hint">이미지 검색 키워드: ...</div>
+
+  <!-- 이미지 키워드 (선택) -->
+  <div class="img-hint">이미지 검색 키워드: 키워드1, 키워드2</div>
 </div>
 ```
 
-### 레이아웃 CSS (이미 제공됨):
+---
+
+### 🎨 중단 레이아웃 변형 — 페이지마다 다르게 선택하세요
+
+**[변형 A] 2단 분할** — 비교, 대조, 좌우 논리 전개 시
+```html
+<div class="cols-2">
+  <div class="col-box">
+    <div class="col-box-title">항목 A</div>
+    <p>내용...</p>
+  </div>
+  <div class="col-box">
+    <div class="col-box-title">항목 B</div>
+    <p>내용...</p>
+  </div>
+</div>
+```
+
+**[변형 B] 3단 분할** — 3가지 전략/접근법/강점 나열 시
+```html
+<div class="cols-3">
+  <div class="col-box"><div class="col-box-title">전략 1</div><p>...</p></div>
+  <div class="col-box"><div class="col-box-title">전략 2</div><p>...</p></div>
+  <div class="col-box col-box-dark"><div class="col-box-title">핵심 전략 3</div><p>...</p></div>
+</div>
+```
+
+**[변형 C] 비대칭 6:4** — 주요 논거 + 보조 정보 시
+```html
+<div class="cols-6-4">
+  <div class="col-box">메인 콘텐츠</div>
+  <div class="col-box">사이드 정보</div>
+</div>
+```
+
+**[변형 E] 수치/KPI 강조** — 임팩트 있는 숫자 부각 시
+```html
+<div class="stat-grid">
+  <div class="stat-box">
+    <div class="stat-num">98</div><div class="stat-unit">%</div>
+    <div class="stat-label">고객 만족도</div>
+  </div>
+  <div class="stat-box stat-box-dark">
+    <div class="stat-num">3.2</div><div class="stat-unit">배</div>
+    <div class="stat-label">ROI 증가</div>
+  </div>
+  <div class="stat-box">
+    <div class="stat-num">127</div><div class="stat-unit">억</div>
+    <div class="stat-label">누적 절감액</div>
+  </div>
+</div>
+```
+
+**[변형 F] 프로세스 스텝** — 단계별 흐름, 추진 방법론 시
+```html
+<div class="step-flow">
+  <div class="step-item">
+    <div class="step-num">1</div>
+    <div class="step-title">현황 진단</div>
+    <div class="step-desc">AS-IS 분석 및 문제 구조화</div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">2</div>
+    <div class="step-title">전략 수립</div>
+    <div class="step-desc">차별화 방향성 정의</div>
+  </div>
+  <div class="step-item">
+    <div class="step-num">3</div>
+    <div class="step-title">실행 계획</div>
+    <div class="step-desc">단계별 마일스톤 설계</div>
+  </div>
+</div>
+```
+
+**[변형 G] 번호형 리스트** — 근거, 이유, 제안 포인트 나열 시
+```html
+<div class="num-list">
+  <div class="num-item">
+    <div class="num-badge">1</div>
+    <div class="num-body">
+      <div class="num-body-title">첫 번째 이유</div>
+      <div class="num-body-text">상세 설명...</div>
+    </div>
+  </div>
+  <div class="num-item">
+    <div class="num-badge">2</div>
+    <div class="num-body">
+      <div class="num-body-title">두 번째 이유</div>
+      <div class="num-body-text">상세 설명...</div>
+    </div>
+  </div>
+</div>
+```
+
+**[변형 H] 콜아웃 박스** — 핵심 인사이트, 경고, 강조 시
+```html
+<div class="callout">
+  <div class="callout-title">핵심 인사이트</div>
+  <div class="callout-text">강조할 내용...</div>
+</div>
+<div class="callout-strong">
+  <div class="callout-title">결정적 차별점</div>
+  <div class="callout-text">더 강하게 강조할 내용...</div>
+</div>
+```
+
+**[변형 I] 풀쿼트** — 임팩트 있는 메시지 하나로 전체 페이지 채울 때
+```html
+<div class="pull-quote">
+  <div>
+    <div class="pull-quote-text">"우리가 제안하는 것은 솔루션이 아닙니다.<br>당신의 성공입니다."</div>
+    <div class="pull-quote-source">— 제안 핵심 가치</div>
+  </div>
+</div>
+```
+
+**[변형 J] 이미지 + 텍스트** — 시각 자료 위치 지정 시
+```html
+<div class="cols-6-4">
+  <div class="num-list"><!-- 텍스트 내용 --></div>
+  <div class="img-block">
+    <div class="img-block-icon">📊</div>
+    <div class="img-block-caption">삽입할 이미지 설명</div>
+  </div>
+</div>
+```
+
+**[변형 K] 표지 페이지**
+```html
+<div class="cover-area">
+  <div class="cover-eyebrow">제안서 · 2025</div>
+  <div class="cover-title">제안서<br>타이틀</div>
+  <div class="cover-desc">한두 줄의 부제목 또는 핵심 가치 문장</div>
+  <div class="cover-meta">
+    <div class="cover-meta-item">
+      <span class="cover-meta-label">제출처</span>
+      <span class="cover-meta-val">발주기관명</span>
+    </div>
+    <div class="cover-meta-item">
+      <span class="cover-meta-label">제출일</span>
+      <span class="cover-meta-val">2025년 X월</span>
+    </div>
+  </div>
+</div>
+```
+
+**[변형 L] 비교 테이블** — 기능/항목 비교 시
+```html
+<table>
+  <thead><tr><th>구분</th><th>경쟁사 A</th><th>경쟁사 B</th><th>우리</th></tr></thead>
+  <tbody>
+    <tr><td>항목 1</td><td>△</td><td>○</td><td class="td-strong">◎ 최우수</td></tr>
+  </tbody>
+</table>
+```
+
+**[변형 N] 진행률 바** — 비중, 점유율, 달성률 시각화 시
+```html
+<div class="bar-list">
+  <div class="bar-item">
+    <div class="bar-header"><span class="bar-name">항목 A</span><span class="bar-pct">85%</span></div>
+    <div class="bar-track"><div class="bar-fill" style="width:85%"></div></div>
+  </div>
+  <div class="bar-item">
+    <div class="bar-header"><span class="bar-name">항목 B</span><span class="bar-pct">62%</span></div>
+    <div class="bar-track"><div class="bar-fill bar-fill-gray" style="width:62%"></div></div>
+  </div>
+</div>
+```
+
+**[변형 O] 타임라인** — 추진 일정, 로드맵 시
+```html
+<div class="timeline">
+  <div class="tl-item">
+    <div class="tl-dot"></div>
+    <div class="tl-date">1단계 · 1~2개월</div>
+    <div class="tl-title">준비 및 착수</div>
+    <div class="tl-desc">세부 내용...</div>
+  </div>
+  <div class="tl-item">
+    <div class="tl-dot"></div>
+    <div class="tl-date">2단계 · 3~5개월</div>
+    <div class="tl-title">본 구축</div>
+    <div class="tl-desc">세부 내용...</div>
+  </div>
+</div>
+```
+
+---
+
+### ⚡ 레이아웃 다양화 원칙
+
+1. **표지(1p)** → 반드시 변형 K (cover-area) 사용
+2. **연속된 2페이지에 동일 레이아웃 금지** — 반드시 다른 변형 선택
+3. **수치가 있으면** → 변형 E (stat-grid) 우선 검토
+4. **단계적 흐름이면** → 변형 F (step-flow) 또는 O (timeline)
+5. **비교/나열이면** → 변형 A/B/C (cols) + col-box
+6. **근거 제시면** → 변형 G (num-list)
+7. **임팩트 강조면** → 변형 I (pull-quote) 또는 H (callout-strong)
+8. **summary-bar는 매 페이지 반드시 포함** — 단 한 줄, 가장 중요한 takeaway
+
+### 레이아웃 CSS (이미 적용됨):
 ```css
 {layout_css}
 ```

@@ -115,7 +115,8 @@
       "Bash(python -m pip install -r requirements.txt)",
       "Skill(update-config)",
       "Skill(update-config:*)",
-      "Bash(bash -c 'cd \"$PWD\" && git add -A >/dev/null 2>&1 && \\(git diff --cached --quiet && echo \"SKIP: no changes\" || echo \"WOULD COMMIT: chore: auto-commit $\\(date \"+%Y-%m-%d %H:%M\"\\)\"\\)')"
+      "Bash(bash -c 'cd \"$PWD\" && git add -A >/dev/null 2>&1 && \\(git diff --cached --quiet && echo \"SKIP: no changes\" || echo \"WOULD COMMIT: chore: auto-commit $\\(date \"+%Y-%m-%d %H:%M\"\\)\"\\)')",
+      "Bash(python -c \"import json; d=json.load\\(open\\('.claude/settings.json'\\)\\); cmd=d['hooks']['Stop'][0]['hooks'][0]['command']; print\\('OK:', cmd[:80]\\)\")"
     ]
   }
 }

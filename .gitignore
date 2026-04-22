@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+uploads/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+.DS_Store
+server.log

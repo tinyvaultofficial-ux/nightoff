@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "proposal-agent",
+      "name": "bidpick",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["main.py"],
+      "runtimeArgs": ["-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"],
       "port": 8000
     }
   ]

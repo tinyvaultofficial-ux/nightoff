@@ -3,39 +3,57 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BidPick</title>
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" />
-  <link href="https://cdn.jsdelivr.net/gh/sunn-us/SUIT@latest/fonts/static/woff2/SUIT.css" rel="stylesheet" />
-  <script>
-    // CSS를 fetch 후 <style> 태그로 인라인 주입 (캐시 무효화 + 환경 호환)
-    (async function() {
-      try {
-        const v = Date.now();
-        const r = await fetch('/static/style.css?v=' + v);
-        const css = await r.text();
-        const el = document.createElement('style');
-        el.id = 'main-style';
-        el.textContent = css;
-        document.head.appendChild(el);
-      } catch(e) {
-        // fallback: link tag
-        const l = document.createElement('link');
-        l.rel = 'stylesheet';
-        l.href = '/static/style.css';
-        document.head.appendChild(l);
-      }
-    })();
-  </script>
+  <title>BidPick — 제안서 작성 AI 어시스턴트</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link rel="stylesheet" as="style" crossorigin
+    href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <div id="app"></div>
-  <script type="module">
-    // 캐시 무효화: 매번 새 버전 로드
-    const v = Date.now();
-    const s = document.createElement('script');
-    s.type = 'module';
-    s.src = `/static/app.js?v=${v}`;
-    document.head.appendChild(s);
-  </script>
+  <div id="app-root" class="app-shell"></div>
+
+  <!-- 설정 아이콘 (좌하단 고정) -->
+  <button id="settings-btn" class="settings-fab" aria-label="설정" title="설정">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>
+  </button>
+
+  <!-- 토스트 -->
+  <div id="toast-root" class="toast-root"></div>
+
+  <!-- 설정 모달 -->
+  <div id="settings-modal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>설정</h3>
+        <button class="icon-btn" data-close-modal aria-label="닫기">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>Anthropic API Key</label>
+          <input id="api-key-input" type="password" placeholder="sk-ant-api03-..." />
+          <p id="api-key-status" class="field-hint">설정된 키 없음</p>
+        </div>
+        <div class="field">
+          <label>모델</label>
+          <select id="model-select">
+            <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5 (권장)</option>
+            <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (빠름)</option>
+            <option value="claude-opus-4-5-20250929">Claude Opus 4.5 (고품질)</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close-modal>취소</button>
+        <button id="save-settings" class="btn btn-primary">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js" type="module"></script>
 </body>
 </html>

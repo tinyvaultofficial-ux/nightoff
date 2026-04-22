@@ -104,7 +104,18 @@
       "Bash(git init *)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(git config *)"
+      "Bash(git config *)",
+      "Bash(mkdir -p /tmp/bidpick_v0)",
+      "Read(//tmp/**)",
+      "Bash(unzip -o \"C:/Users/00/Downloads/b_ilDiQwEiFoe.zip\")",
+      "Bash(grep -v \"^\\\\.git$\")",
+      "Bash(grep -v \"^\\\\.claude$\")",
+      "Bash(grep -v \"^\\\\.$\")",
+      "Bash(grep -v \"^\\\\.\\\\.$\")",
+      "Bash(python -m pip install -r requirements.txt)",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Bash(bash -c 'cd \"$PWD\" && git add -A >/dev/null 2>&1 && \\(git diff --cached --quiet && echo \"SKIP: no changes\" || echo \"WOULD COMMIT: chore: auto-commit $\\(date \"+%Y-%m-%d %H:%M\"\\)\"\\)')"
     ]
   }
 }

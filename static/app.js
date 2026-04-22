@@ -1,1492 +1,1194 @@
-/**
- * BidPick Frontend — Preact + htm (no build step)
- * Model: claude-sonnet-4-5 | Backend: FastAPI + SQLite
- */
-import { h, render } from 'https://esm.sh/preact@10.22.0';
-import { useState, useEffect, useRef, useCallback } from 'https://esm.sh/preact@10.22.0/hooks';
-import { html } from 'https://esm.sh/htm@3.1.1/preact';
+// BidPick — SPA client
+// Router + views + streaming chat + proposal renderer
 
-// ─────────────────────────────────────────────
-// API Layer
-// ─────────────────────────────────────────────
-const api = {
-  // Settings
-  getSettings: () => fetch('/api/settings').then(r => r.json()),
-  saveSettings: (data) => fetch('/api/settings', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ data }),
-  }).then(r => r.json()),
-
-  // Dashboard
-  getDashboard: () => fetch('/api/dashboard').then(r => r.json()),
-
-  // Clients
-  getClients: () => fetch('/api/clients').then(r => r.json()),
-  createClient: (body) => fetch('/api/clients', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  }).then(r => r.json()),
-  getClient: (id) => fetch(`/api/clients/${id}`).then(r => r.json()),
-  updateClient: (id, body) => fetch(`/api/clients/${id}`, {
-    method: 'PUT', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  }).then(r => r.json()),
-  deleteClient: (id) => fetch(`/api/clients/${id}`, { method: 'DELETE' }).then(r => r.json()),
-
-  // Conversations
-  getConversations: (clientId) => fetch(`/api/clients/${clientId}/conversations`).then(r => r.json()),
-  createConversation: (clientId, body) => fetch(`/api/clients/${clientId}/conversations`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  }).then(r => r.json()),
-  getConversation: (convId) => fetch(`/api/conversations/${convId}`).then(r => r.json()),
-  deleteConversation: (convId) => fetch(`/api/conversations/${convId}`, { method: 'DELETE' }).then(r => r.json()),
-  endConversation: (convId) => fetch(`/api/conversations/${convId}/end`, { method: 'POST' }).then(r => r.json()),
-
-  // Messages (returns raw Response for SSE)
-  sendMessage: (convId, body) => fetch(`/api/conversations/${convId}/messages`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  }),
-
-  // References
-  getReferences: (clientId) => fetch(`/api/clients/${clientId}/references`).then(r => r.json()),
-  uploadReference: (clientId, file, memo = '') => {
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('memo', memo);
-    return fetch(`/api/clients/${clientId}/references`, { method: 'POST', body: fd }).then(r => r.json());
-  },
-  analyzeReference: (refId) => fetch(`/api/references/${refId}/analyze`, { method: 'POST' }),
-  deleteReference: (refId) => fetch(`/api/references/${refId}`, { method: 'DELETE' }).then(r => r.json()),
-
-  // RFP
-  uploadRfp: (clientId, file) => {
-    const fd = new FormData();
-    fd.append('file', file);
-    return fetch(`/api/clients/${clientId}/rfp`, { method: 'POST', body: fd }).then(r => r.json());
-  },
-  deleteRfp: (clientId) => fetch(`/api/clients/${clientId}/rfp`, { method: 'DELETE' }).then(r => r.json()),
-
-  // Competitor
-  analyzeCompetitor: (clientId, companies) => fetch(`/api/clients/${clientId}/competitor/analyze`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ companies }),
-  }),
-  updateCompetitor: (clientId, competitor_analysis) => fetch(`/api/clients/${clientId}/competitor`, {
-    method: 'PUT', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ competitor_analysis }),
-  }).then(r => r.json()),
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const h = (tag, attrs = {}, children = []) => {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") el.className = v;
+    else if (k === "html") el.innerHTML = v;
+    else if (k.startsWith("on") && typeof v === "function") el.addEventListener(k.slice(2), v);
+    else if (v != null) el.setAttribute(k, v);
+  }
+  for (const c of [].concat(children)) {
+    if (c == null || c === false) continue;
+    el.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+  }
+  return el;
 };
 
-// ─────────────────────────────────────────────
-// SSE stream reader
-// Reads Server-Sent Events from a fetch Response, calls onEvent per parsed event
-// ─────────────────────────────────────────────
-async function readSSE(response, onEvent) {
-  const reader = response.body.getReader();
-  const dec = new TextDecoder();
-  let buf = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const lines = buf.split('\n');
-    buf = lines.pop();
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      const raw = line.slice(6).trim();
-      if (raw === '[DONE]') return;
-      try { onEvent(JSON.parse(raw)); } catch { /* ignore malformed */ }
+// ---------- Icons (lucide SVG paths) ----------
+const ICO = {
+  users: `<path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M15 3.13a4 4 0 0 1 0 7.75"/>`,
+  folder: `<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>`,
+  clock: `<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>`,
+  plus: `<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>`,
+  msg: `<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>`,
+  activity: `<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>`,
+  trending: `<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>`,
+  file: `<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>`,
+  fileSearch: `<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><circle cx="10.5" cy="14.5" r="2.5"/><line x1="12.5" y1="16.5" x2="14.5" y2="18.5"/>`,
+  upload: `<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>`,
+  building: `<path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/>`,
+  calendar: `<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>`,
+  chevronR: `<polyline points="9 18 15 12 9 6"/>`,
+  chevronD: `<polyline points="6 9 12 15 18 9"/>`,
+  arrowL: `<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>`,
+  edit: `<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>`,
+  trash: `<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>`,
+  brain: `<path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/>`,
+  send: `<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>`,
+  paperclip: `<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>`,
+  x: `<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>`,
+  search: `<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>`,
+  check: `<polyline points="20 6 9 17 4 12"/>`,
+  alert: `<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>`,
+  printer: `<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>`,
+  save: `<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>`,
+  eye: `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`,
+};
+function icon(name, size = 18) {
+  const svg = `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICO[name] || ""}</svg>`;
+  const span = document.createElement("span");
+  span.style.display = "inline-flex";
+  span.innerHTML = svg;
+  return span;
+}
+
+// ---------- API ----------
+const api = {
+  async get(path) {
+    const r = await fetch(path);
+    if (!r.ok) throw new Error((await r.text()) || r.statusText);
+    return r.json();
+  },
+  async post(path, body) {
+    const r = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : null,
+    });
+    if (!r.ok) throw new Error((await r.text()) || r.statusText);
+    return r.json();
+  },
+  async patch(path, body) {
+    const r = await fetch(path, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error((await r.text()) || r.statusText);
+    return r.json();
+  },
+  async del(path) {
+    const r = await fetch(path, { method: "DELETE" });
+    if (!r.ok) throw new Error((await r.text()) || r.statusText);
+    return r.json();
+  },
+  async upload(path, file) {
+    const fd = new FormData();
+    fd.append("file", file);
+    const r = await fetch(path, { method: "POST", body: fd });
+    if (!r.ok) throw new Error((await r.text()) || r.statusText);
+    return r.json();
+  },
+};
+
+// ---------- Toast ----------
+function toast(msg, kind = "") {
+  const el = h("div", { class: `toast ${kind}` }, msg);
+  $("#toast-root").appendChild(el);
+  setTimeout(() => el.remove(), 2800);
+}
+
+// ---------- Router ----------
+const routes = [
+  { re: /^\/$/, handler: renderDashboard },
+  { re: /^\/client\/new$/, handler: () => renderClientForm("create") },
+  { re: /^\/client\/([^/]+)\/edit$/, handler: (m) => renderClientForm("edit", m[1]) },
+  { re: /^\/client\/([^/]+)\/chat\/([^/]+)$/, handler: (m) => renderChat(m[1], m[2]) },
+  { re: /^\/client\/([^/]+)$/, handler: (m) => renderClientDetail(m[1]) },
+];
+
+function navigate(path) {
+  history.pushState({}, "", path);
+  route();
+}
+function route() {
+  const path = location.pathname;
+  for (const r of routes) {
+    const m = path.match(r.re);
+    if (m) {
+      r.handler(m);
+      return;
     }
   }
+  renderDashboard();
 }
-
-// ─────────────────────────────────────────────
-// Router (hash-based)
-// ─────────────────────────────────────────────
-function parseRoute(hash) {
-  const path = (hash || '').replace(/^#/, '') || '/';
-  let m;
-  m = path.match(/^\/clients\/([^/]+)\/conversations\/([^/]+)$/);
-  if (m) return { page: 'conversation', clientId: m[1], convId: m[2] };
-  m = path.match(/^\/clients\/([^/]+)$/);
-  if (m) return { page: 'client', clientId: m[1] };
-  if (path === '/settings') return { page: 'settings' };
-  return { page: 'clients' };
-}
-
-function useRoute() {
-  const [route, setRoute] = useState(() => parseRoute(location.hash));
-  useEffect(() => {
-    const h = () => setRoute(parseRoute(location.hash));
-    window.addEventListener('hashchange', h);
-    return () => window.removeEventListener('hashchange', h);
-  }, []);
-  return route;
-}
-
-function navigate(path) { location.hash = path; }
-
-// ─────────────────────────────────────────────
-// Utilities
-// ─────────────────────────────────────────────
-function fmtDate(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  const diff = Date.now() - d;
-  if (diff < 60000) return '방금 전';
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}분 전`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}시간 전`;
-  if (diff < 86400000 * 7) return `${Math.floor(diff / 86400000)}일 전`;
-  return `${d.getMonth() + 1}/${d.getDate()}`;
-}
-
-function avatarLetter(name) { return name ? name[0] : '?'; }
-
-const PALETTE = ['#7c3aed', '#2563eb', '#0891b2', '#059669', '#d97706', '#dc2626', '#db2777'];
-function avatarColor(name) {
-  if (!name) return PALETTE[0];
-  return PALETTE[name.charCodeAt(0) % PALETTE.length];
-}
-
-function extractHtmlBlock(text) {
-  if (!text) return null;
-  const m = text.match(/```html\s*([\s\S]*?)(?:```|$)/i);
-  return m ? m[1] : null;
-}
-
-function extractImgKeywords(htmlStr) {
-  if (!htmlStr) return [];
-  const matches = htmlStr.match(/이미지 검색 키워드[：:]\s*([^\n<]+)/g);
-  if (!matches) return [];
-  const all = [];
-  for (const line of matches) {
-    const kws = line
-      .replace(/이미지 검색 키워드[：:]\s*/, '')
-      .split(/[,，、]/)
-      .map(k => k.trim())
-      .filter(Boolean);
-    all.push(...kws);
+window.addEventListener("popstate", route);
+document.addEventListener("click", (e) => {
+  const a = e.target.closest("a[data-link]");
+  if (a) {
+    e.preventDefault();
+    navigate(a.getAttribute("href"));
   }
-  return [...new Set(all)];
+});
+
+// ---------- Sidebar ----------
+async function renderSidebar(active = "clients") {
+  let recent = [];
+  try { recent = (await api.get("/api/clients")).slice(0, 6); } catch {}
+  const side = h("aside", { class: "sidebar" }, [
+    h("div", { class: "sidebar-logo" }, [
+      h("div", { class: "sidebar-logo-mark" }, "B"),
+      h("span", { class: "sidebar-logo-name" }, "BidPick"),
+    ]),
+    h("nav", { class: "sidebar-nav" }, [
+      h("button", {
+        class: "sidebar-item" + (active === "clients" ? " active" : ""),
+        onclick: () => navigate("/"),
+        html: `${iconHtml("users")}<span>클라이언트 목록</span>`,
+      }),
+      h("div", { class: "sidebar-section-title" }, "최근 클라이언트"),
+      ...recent.map((c) =>
+        h("button", {
+          class: "sidebar-recent-item",
+          onclick: () => navigate(`/client/${c.id}`),
+          html: `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.name)}</span>${iconHtml("chevronR", 14)}`,
+        })
+      ),
+      recent.length === 0
+        ? h("div", { class: "muted small", style: "padding: 8px 12px;" }, "등록된 클라이언트가 없습니다")
+        : null,
+    ]),
+  ]);
+  return side;
+}
+function iconHtml(name, size = 18) {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICO[name] || ""}</svg>`;
 }
 
-function extractProgressivePages(accum) {
-  const cm = accum.match(/```html\s*/i);
-  if (!cm) return null;
-  const content = accum.slice(cm.index + cm[0].length).replace(/```\s*$/, '');
-  const starts = [];
-  const re = /<div[^>]+class="a4-page"/g;
-  let m;
-  while ((m = re.exec(content)) !== null) starts.push(m.index);
-  if (starts.length === 0) return { preamble: content, completed: [], inProgress: '', count: 0 };
-  const preamble = content.slice(0, starts[0]);
-  const completed = [];
-  for (let i = 0; i < starts.length - 1; i++) completed.push(content.slice(starts[i], starts[i + 1]));
-  return { preamble, completed, inProgress: content.slice(starts[starts.length - 1]), count: starts.length };
+// ---------- Utilities ----------
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function fmtDate(s) {
+  if (!s) return "-";
+  return s.replace("T", " ").split(".")[0].replace(/-/g, ".");
+}
+function fmtSize(bytes) {
+  const u = ["B","KB","MB","GB"]; let i = 0;
+  while (bytes >= 1024 && i < 3) { bytes /= 1024; i++; }
+  return `${bytes.toFixed(i ? 1 : 0)}${u[i]}`;
 }
 
-function buildPreviewDoc(preamble, completed, inProgress) {
-  const body = preamble + completed.join('') + (inProgress || '');
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:#f0f0f0;padding:20px;font-family:'SUIT',sans-serif}
-.a4-page{background:#fff;margin:0 auto 16px;box-shadow:0 2px 8px rgba(0,0,0,.15)}
-</style></head><body>${body}</body></html>`;
+// ---------- Dashboard ----------
+async function renderDashboard() {
+  const root = $("#app-root");
+  root.innerHTML = "";
+  root.appendChild(await renderSidebar("clients"));
+
+  const main = h("main", { class: "main" });
+  root.appendChild(main);
+
+  const stats = await api.get("/api/stats").catch(() => ({}));
+  const clients = await api.get("/api/clients").catch(() => []);
+
+  main.appendChild(h("header", { class: "main-header" }, [
+    h("div", {}, [
+      h("h1", {}, "클라이언트"),
+      h("p", {}, `총 ${clients.length}개의 클라이언트를 관리하고 있습니다`),
+    ]),
+    h("button", {
+      class: "btn btn-primary btn-lg",
+      onclick: () => navigate("/client/new"),
+      html: `${iconHtml("plus", 18)}<span>클라이언트 추가</span>`,
+    }),
+  ]));
+
+  const content = h("div", { class: "main-content" });
+  main.appendChild(content);
+
+  // Stats
+  const statItems = [
+    { label: "진행 중인 대화", value: stats.active_conversations ?? 0, unit: "건", icon: "file", tint: "var(--primary-soft)", fg: "var(--primary)" },
+    { label: "등록 클라이언트", value: stats.total_clients ?? 0, unit: "건", icon: "users", tint: "var(--warning-soft)", fg: "var(--warning)" },
+    { label: "누적 메시지", value: stats.total_messages ?? 0, unit: "건", icon: "activity", tint: "var(--accent)", fg: "var(--accent-fg)" },
+    { label: "RFP 분석", value: stats.rfp_count ?? 0, unit: "건", icon: "trending", tint: "var(--success-soft)", fg: "var(--success)" },
+  ];
+  const statsGrid = h("div", { class: "stats-grid" });
+  statItems.forEach((s) => {
+    statsGrid.appendChild(h("div", { class: "card stat-card" }, [
+      h("div", { class: "flex-between", style: "align-items: flex-start;" }, [
+        h("div", {}, [
+          h("p", { class: "stat-label" }, s.label),
+          h("p", { class: "stat-value", style: "margin: 0;" }, [
+            document.createTextNode(String(s.value)),
+            h("span", { class: "stat-unit" }, s.unit),
+          ]),
+        ]),
+        h("div", { class: "stat-icon-wrap", style: `background: ${s.tint}; color: ${s.fg};`, html: iconHtml(s.icon, 22) }),
+      ]),
+    ]));
+  });
+  content.appendChild(h("section", { style: "margin-bottom: 28px;" }, statsGrid));
+
+  // Clients section
+  const clientsHeader = h("div", { class: "flex-between", style: "margin-bottom: 18px;" }, [
+    h("h2", { style: "margin: 0; font-size: 18px; font-weight: 600;" }, "클라이언트 목록"),
+  ]);
+  content.appendChild(clientsHeader);
+
+  if (clients.length === 0) {
+    content.appendChild(h("div", { class: "card empty-state" }, [
+      h("p", {}, "등록된 클라이언트가 없습니다."),
+      h("div", { style: "margin-top: 12px;" }, [
+        h("button", { class: "btn btn-primary", onclick: () => navigate("/client/new") }, "첫 클라이언트 추가"),
+      ]),
+    ]));
+  } else {
+    const grid = h("div", { class: "client-grid" });
+    clients.forEach((c) => grid.appendChild(clientCard(c)));
+    content.appendChild(grid);
+  }
 }
 
-// ─────────────────────────────────────────────
-// Spinner
-// ─────────────────────────────────────────────
-function Spinner({ size = 20 }) {
-  const s = size + 'px';
-  const b = Math.max(2, Math.round(size / 8)) + 'px';
-  return html`<div class="spinner" style=${{ width: s, height: s, borderWidth: b }}></div>`;
+function clientCard(c) {
+  const initials = (c.name || "?").trim().slice(0, 1);
+  const badges = [];
+  if (c.has_rfp > 0) badges.push({ cls: "badge-primary", label: "RFP" });
+  if (c.memory_count > 0) badges.push({ cls: "badge-success", label: `대화기억 ${c.memory_count}` });
+  if (c.conv_count > 0) badges.push({ cls: "badge-muted", label: `제안서 ${c.conv_count}` });
+
+  return h("div", {
+    class: "card client-card",
+    onclick: () => navigate(`/client/${c.id}`),
+  }, [
+    h("div", { class: "flex-row" }, [
+      h("div", { class: "client-logo" }, initials),
+      h("div", {}, [
+        h("h3", {}, c.name),
+        h("p", { class: "client-sub" }, c.industry || "업종 미지정"),
+      ]),
+    ]),
+    badges.length
+      ? h("div", { class: "flex-row", style: "flex-wrap: wrap; margin-top: 14px; gap: 6px;" },
+          badges.map((b) => h("span", { class: `badge ${b.cls}` }, b.label)))
+      : null,
+    h("div", { class: "client-meta" }, [
+      h("span", { class: "flex-row", html: `${iconHtml("calendar", 14)}<span>${fmtDate(c.last_conv || c.updated_at)}</span>` }),
+      h("span", { class: "flex-row", html: `${iconHtml("msg", 14)}<span>대화 ${c.conv_count}건</span>` }),
+    ]),
+  ]);
 }
 
-// ─────────────────────────────────────────────
-// Dashboard Stat Card
-// ─────────────────────────────────────────────
-function DashCard({ icon, value, label, sub }) {
-  return html`
-    <div class="dash-card">
-      <div class="dash-icon">${icon}</div>
-      <div class="dash-value">${value}</div>
-      <div class="dash-label">${label}</div>
-      ${sub && html`<div class="dash-sub">${sub}</div>`}
-    </div>
-  `;
+// ---------- Client Form ----------
+const INDUSTRIES = [
+  "IT/플랫폼", "IT서비스", "금융/보험", "제조업", "유통/소매",
+  "의료/헬스케어", "교육", "건설/부동산", "미디어/엔터테인먼트",
+  "물류/운송", "에너지/환경", "공공기관", "전자/반도체", "자동차/모빌리티", "이커머스", "기타",
+];
+
+async function renderClientForm(mode, id = null) {
+  const root = $("#app-root");
+  root.innerHTML = "";
+  root.appendChild(await renderSidebar());
+  const main = h("main", { class: "main" });
+  root.appendChild(main);
+  main.appendChild(h("header", { class: "main-header" }, [
+    h("div", {}, [
+      h("h1", {}, mode === "create" ? "새 클라이언트 추가" : "클라이언트 수정"),
+      h("p", {}, "클라이언트 기본 정보를 입력하세요"),
+    ]),
+  ]));
+
+  let data = { name: "", industry: "", manager: "", memo: "" };
+  if (mode === "edit" && id) {
+    try { data = await api.get(`/api/clients/${id}`); } catch (e) { toast("클라이언트를 불러올 수 없습니다", "error"); return; }
+  }
+
+  const form = h("form", {}, [
+    h("div", { class: "card", style: "padding: 28px; max-width: 720px;" }, [
+      h("div", { class: "row-gap-18" }, [
+        h("div", { class: "field" }, [
+          h("label", {}, [document.createTextNode("클라이언트명 "), h("span", { style: "color: var(--danger);" }, "*")]),
+          h("input", { class: "input", id: "fld-name", value: data.name, placeholder: "예: 삼성전자" }),
+        ]),
+        h("div", { class: "field" }, [
+          h("label", {}, [document.createTextNode("업종 "), h("span", { style: "color: var(--danger);" }, "*")]),
+          (() => {
+            const sel = h("select", { class: "select", id: "fld-industry" }, [
+              h("option", { value: "" }, "선택하세요"),
+              ...INDUSTRIES.map((i) => h("option", { value: i, ...(i === data.industry ? { selected: "" } : {}) }, i)),
+            ]);
+            return sel;
+          })(),
+        ]),
+        h("div", { class: "field" }, [
+          h("label", {}, "담당자"),
+          h("input", { class: "input", id: "fld-manager", value: data.manager, placeholder: "예: 김상무" }),
+        ]),
+        h("div", { class: "field" }, [
+          h("label", {}, "메모"),
+          h("textarea", { class: "textarea", id: "fld-memo", placeholder: "추가 메모" }, data.memo),
+        ]),
+      ]),
+      h("div", { class: "flex-row", style: "justify-content: flex-end; gap: 8px; margin-top: 24px;" }, [
+        h("button", { type: "button", class: "btn btn-ghost", onclick: () => history.back() }, "취소"),
+        h("button", {
+          type: "button", class: "btn btn-primary",
+          onclick: async () => {
+            const body = {
+              name: $("#fld-name").value.trim(),
+              industry: $("#fld-industry").value,
+              manager: $("#fld-manager").value.trim(),
+              memo: $("#fld-memo").value.trim(),
+            };
+            if (!body.name) { toast("클라이언트명을 입력하세요", "error"); return; }
+            if (!body.industry) { toast("업종을 선택하세요", "error"); return; }
+            try {
+              if (mode === "create") {
+                const r = await api.post("/api/clients", body);
+                toast("클라이언트가 추가되었습니다", "success");
+                navigate(`/client/${r.id}`);
+              } else {
+                await api.patch(`/api/clients/${id}`, body);
+                toast("수정되었습니다", "success");
+                navigate(`/client/${id}`);
+              }
+            } catch (e) { toast(String(e.message || e), "error"); }
+          },
+        }, mode === "create" ? "추가" : "저장"),
+      ]),
+    ]),
+  ]);
+
+  const content = h("div", { class: "main-content" }, form);
+  main.appendChild(content);
 }
 
-// ─────────────────────────────────────────────
-// ProgressiveIframe — updates srcdoc in-place (no recreation, no flicker)
-// ─────────────────────────────────────────────
-function ProgressiveIframe({ doc }) {
-  const iRef = useRef(null);
-  useEffect(() => {
-    if (!iRef.current || !doc) return;
-    iRef.current.srcdoc = doc;
-  }, [doc]);
-  return html`<iframe
-    ref=${iRef}
-    class="html-preview-iframe a4"
-    srcdoc=${doc || ''}
-    sandbox="allow-same-origin"
-    style="width:100%;border:none;"
-  />`;
+// ---------- Client Detail ----------
+async function renderClientDetail(cid) {
+  const root = $("#app-root");
+  root.innerHTML = "";
+  root.appendChild(await renderSidebar());
+  const main = h("main", { class: "main" });
+  root.appendChild(main);
+
+  const client = await api.get(`/api/clients/${cid}`).catch(() => null);
+  if (!client) { toast("클라이언트를 찾을 수 없습니다", "error"); navigate("/"); return; }
+
+  main.appendChild(h("header", { class: "main-header" }, [
+    h("div", {}, [
+      h("h1", {}, client.name),
+      h("p", {}, client.industry || "업종 미지정"),
+    ]),
+    h("div", { class: "flex-row", style: "gap: 8px;" }, [
+      h("button", { class: "btn btn-outline", onclick: () => navigate(`/client/${cid}/edit`), html: `${iconHtml("edit", 16)}<span>수정</span>` }),
+      h("button", {
+        class: "btn btn-danger", html: `${iconHtml("trash", 16)}<span>삭제</span>`,
+        onclick: async () => {
+          if (!confirm(`${client.name}을(를) 삭제하시겠습니까?\n모든 대화, RFP, 레퍼런스가 함께 삭제됩니다.`)) return;
+          await api.del(`/api/clients/${cid}`);
+          toast("삭제되었습니다", "success");
+          navigate("/");
+        },
+      }),
+    ]),
+  ]));
+
+  const content = h("div", { class: "main-content", style: "max-width: 1100px;" });
+  main.appendChild(content);
+
+  content.appendChild(h("a", { class: "back-link", href: "/", "data-link": "" }, [
+    icon("arrowL", 14), document.createTextNode("클라이언트 목록으로"),
+  ]));
+
+  const stack = h("div", { class: "row-gap-18" });
+  content.appendChild(stack);
+
+  // Order per spec: History → References → RFP → Competitors → Memory
+  stack.appendChild(await renderConvHistorySection(cid));
+  stack.appendChild(await renderReferenceSection(cid));
+  stack.appendChild(await renderRfpSection(cid));
+  stack.appendChild(await renderCompetitorSection(cid));
+  stack.appendChild(await renderMemorySection(cid));
 }
 
-// ─────────────────────────────────────────────
-// Sidebar
-// ─────────────────────────────────────────────
-function Sidebar({ route, recentClients }) {
-  return html`
-    <aside class="sidebar">
-      <div class="sidebar-header">
-        <div class="sidebar-logo">
-          <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-            <rect width="22" height="22" rx="6" fill="#7c3aed"/>
-            <path d="M6 7h10M6 11h7M6 15h9" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
-          </svg>
-          <span>BidPick</span>
-        </div>
-      </div>
+// ---------- Conversation History ----------
+async function renderConvHistorySection(cid) {
+  const convs = await api.get(`/api/clients/${cid}/conversations`).catch(() => []);
+  const card = h("div", { class: "card" });
 
-      <nav class="sidebar-nav">
-        <a class=${'sidebar-link' + (route.page === 'clients' ? ' active' : '')}
-          href="#/"
-          onclick=${e => { e.preventDefault(); navigate('/'); }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
-            <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
-          </svg>
-          클라이언트
-        </a>
-      </nav>
+  card.appendChild(h("div", { class: "card-head" }, [
+    h("div", { class: "card-title-row" }, [
+      h("div", { class: "card-title-icon", html: iconHtml("msg", 18) }),
+      h("div", {}, [
+        h("h3", { class: "card-title" }, "대화 히스토리"),
+        h("p", { class: "card-subtitle" }, `총 ${convs.length}개의 대화`),
+      ]),
+    ]),
+    h("button", {
+      class: "btn btn-primary", html: `${iconHtml("plus", 16)}<span>새 대화 시작</span>`,
+      onclick: async () => {
+        try {
+          const r = await api.post(`/api/clients/${cid}/conversations`);
+          navigate(`/client/${cid}/chat/${r.id}`);
+        } catch (e) { toast(String(e.message || e), "error"); }
+      },
+    }),
+  ]));
 
-      ${recentClients && recentClients.length > 0 && html`
-        <div class="sidebar-recent">
-          <div class="sidebar-section-label">최근 클라이언트</div>
-          ${recentClients.slice(0, 5).map(c => html`
-            <a key=${c.id}
-              class=${'sidebar-link' + (route.clientId === c.id ? ' active' : '')}
-              href=${'#/clients/' + c.id}
-              onclick=${e => { e.preventDefault(); navigate('/clients/' + c.id); }}>
-              <span class="sidebar-dot" style=${{ background: avatarColor(c.name) }}></span>
-              ${c.name}
-            </a>
-          `)}
-        </div>
-      `}
+  const body = h("div", { class: "card-body" });
+  card.appendChild(body);
 
-      <div class="sidebar-footer">
-        <div class="sidebar-user">
-          <div class="sidebar-avatar">B</div>
-          <div class="sidebar-user-info">
-            <span class="sidebar-user-name">BidPick</span>
-            <span class="sidebar-user-role">제안 전문가</span>
-          </div>
-          <button class="sidebar-settings-btn" title="설정"
-            onclick=${() => navigate('/settings')}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"/>
-            </svg>
-          </button>
-        </div>
-      </div>
-    </aside>
-  `;
+  if (!convs.length) {
+    body.appendChild(h("div", { class: "empty-state" }, "대화가 없습니다. 새 대화를 시작해보세요."));
+    return card;
+  }
+
+  convs.forEach((cv) => {
+    const item = h("div", { class: "conv-item" }, [
+      h("div", { class: "conv-main", onclick: () => navigate(`/client/${cid}/chat/${cv.id}`) }, [
+        h("h4", {}, cv.title),
+        cv.preview ? h("p", { class: "conv-preview" }, cv.preview) : null,
+        h("div", { class: "conv-meta" }, [
+          h("span", { class: "flex-row", html: `${iconHtml("calendar", 12)}<span>${fmtDate(cv.created_at)}</span>` }),
+          h("span", { class: "flex-row", html: `${iconHtml("msg", 12)}<span>${cv.msg_count || 0}개 메시지</span>` }),
+          cv.ended ? h("span", { class: "badge badge-muted" }, "종료됨") : null,
+        ]),
+      ]),
+      h("div", { class: "conv-actions" }, [
+        h("button", {
+          class: "icon-btn", title: "삭제", html: iconHtml("trash", 16),
+          onclick: async (e) => {
+            e.stopPropagation();
+            if (!confirm("이 대화를 삭제하시겠습니까?")) return;
+            await api.del(`/api/conversations/${cv.id}`);
+            toast("삭제되었습니다", "success");
+            renderClientDetail(cid);
+          },
+        }),
+      ]),
+    ]);
+    body.appendChild(item);
+  });
+
+  return card;
 }
 
-// ─────────────────────────────────────────────
-// Settings Page
-// ─────────────────────────────────────────────
-function SettingsPage() {
-  const [apiKey, setApiKey] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [err, setErr] = useState('');
+// ---------- Reference Library ----------
+async function renderReferenceSection(cid) {
+  const refs = await api.get(`/api/clients/${cid}/references`).catch(() => []);
+  const card = h("div", { class: "card" });
+  card.appendChild(h("div", { class: "card-head" }, [
+    h("div", { class: "card-title-row" }, [
+      h("div", { class: "card-title-icon", html: iconHtml("folder", 18) }),
+      h("div", {}, [
+        h("h3", { class: "card-title" }, "레퍼런스 라이브러리"),
+        h("p", { class: "card-subtitle" }, "올려두면 AI가 알아서 참고해요"),
+      ]),
+    ]),
+  ]));
 
-  useEffect(() => {
-    let alive = true;
-    api.getSettings()
-      .then(d => alive && setApiKey(d.api_key || ''))
-      .catch(() => {})
-      .finally(() => alive && setLoading(false));
-    return () => { alive = false; };
-  }, []);
+  const body = h("div", { class: "card-body row-gap-14" });
+  card.appendChild(body);
 
-  const save = async () => {
-    if (!apiKey.trim()) { setErr('API 키를 입력하세요'); return; }
-    setErr(''); setSaving(true);
+  // Drop area
+  const input = h("input", { type: "file", style: "display: none;", multiple: "" });
+  input.addEventListener("change", async () => {
+    for (const f of input.files) await uploadRef(f);
+    input.value = "";
+  });
+  body.appendChild(input);
+
+  const drop = h("div", {
+    class: "drop-area",
+    onclick: () => input.click(),
+  }, [
+    h("div", { class: "drop-icon", html: iconHtml("upload", 22) }),
+    h("p", { class: "drop-title" }, "파일을 드래그하거나 클릭하여 업로드"),
+    h("p", { class: "drop-hint" }, "PDF, Word, TXT 지원 · AI가 자동 분석"),
+  ]);
+  ["dragenter","dragover"].forEach(t => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("dragover"); }));
+  ["dragleave","drop"].forEach(t => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("dragover"); }));
+  drop.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    for (const f of e.dataTransfer.files) await uploadRef(f);
+  });
+  body.appendChild(drop);
+
+  const list = h("div", { class: "row-gap-10" });
+  body.appendChild(list);
+  refs.forEach((f) => list.appendChild(refRow(f, cid)));
+  if (!refs.length) list.appendChild(h("div", { class: "muted small", style: "padding: 4px 0;" }, "아직 업로드된 레퍼런스가 없습니다."));
+
+  async function uploadRef(file) {
+    const row = h("div", { class: "file-row" }, [
+      h("div", { class: "left" }, [
+        h("div", { class: "file-icon", html: iconHtml("file", 18) }),
+        h("div", {}, [
+          h("p", { class: "file-name" }, file.name),
+          h("p", { class: "file-sub" }, [
+            h("span", { class: "loading-dots", html: "<span></span><span></span><span></span>" }),
+            document.createTextNode(" AI 분석 중…"),
+          ]),
+        ]),
+      ]),
+    ]);
+    list.prepend(row);
     try {
-      await api.saveSettings({ api_key: apiKey.trim() });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
-    } catch { setErr('저장 실패'); }
-    setSaving(false);
-  };
+      await api.upload(`/api/clients/${cid}/references`, file);
+      toast("레퍼런스 등록 완료", "success");
+      renderClientDetail(cid);
+    } catch (e) {
+      row.remove();
+      toast("업로드 실패: " + (e.message || e), "error");
+    }
+  }
 
-  return html`
-    <div class="page-container">
-      <div class="page-header">
-        <h1 class="page-title">설정</h1>
-      </div>
-      <div class="card" style="max-width:520px">
-        <div class="card-body">
-          <div class="section-title" style="margin-bottom:6px">Anthropic API 키</div>
-          <div style="font-size:13px;color:#888;margin-bottom:16px">
-            Claude API 키를 입력하세요. 환경변수 ANTHROPIC_API_KEY가 설정된 경우 생략 가능합니다.
-          </div>
-          ${err && html`<div class="alert alert-danger" style="margin-bottom:12px">${err}</div>`}
-          ${loading
-            ? html`<${Spinner}/>`
-            : html`
-              <input class="form-input" type="password" placeholder="sk-ant-..." value=${apiKey}
-                onInput=${e => setApiKey(e.target.value)}
-                onKeydown=${e => e.key === 'Enter' && save()}
-                style="width:100%;margin-bottom:12px" />
-              <div style="display:flex;justify-content:flex-end;gap:8px;align-items:center">
-                ${saved && html`<span style="font-size:13px;color:#059669;font-weight:500">✓ 저장됨</span>`}
-                <button class="btn btn-primary" onclick=${save} disabled=${saving}>
-                  ${saving ? html`<${Spinner} size=${16}/>` : '저장'}
-                </button>
-              </div>
-            `}
-        </div>
-      </div>
-    </div>
-  `;
+  return card;
 }
 
-// ─────────────────────────────────────────────
-// Client List Page
-// ─────────────────────────────────────────────
-function ClientListPage() {
-  const [clients, setClients] = useState([]);
-  const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [showNew, setShowNew] = useState(false);
-  const [form, setForm] = useState({ name: '', company: '', description: '' });
-  const [creating, setCreating] = useState(false);
-  const [err, setErr] = useState('');
-
-  useEffect(() => {
-    let alive = true;
-    Promise.all([api.getClients(), api.getDashboard()])
-      .then(([cl, st]) => { if (!alive) return; setClients(cl); setStats(st); })
-      .catch(() => {})
-      .finally(() => alive && setLoading(false));
-    return () => { alive = false; };
-  }, []);
-
-  const createClient = async () => {
-    if (!form.name.trim()) { setErr('클라이언트명을 입력하세요'); return; }
-    setErr(''); setCreating(true);
-    try {
-      const c = await api.createClient({
-        name: form.name.trim(),
-        company: form.company.trim(),
-        description: form.description.trim(),
-      });
-      setClients(prev => [c, ...prev]);
-      setForm({ name: '', company: '', description: '' });
-      setShowNew(false);
-    } catch { setErr('생성 실패'); }
-    setCreating(false);
-  };
-
-  const deleteClient = async (id, e) => {
-    e.stopPropagation();
-    if (!confirm('클라이언트를 삭제하시겠습니까?\n모든 대화, 레퍼런스, RFP가 함께 삭제됩니다.')) return;
-    await api.deleteClient(id).catch(() => {});
-    setClients(prev => prev.filter(c => c.id !== id));
-  };
-
-  return html`
-    <div class="page-container">
-      <div class="page-header">
-        <div>
-          <h1 class="page-title">클라이언트</h1>
-          <p class="page-sub">AI 기반 제안서 작성 전문 플랫폼</p>
-        </div>
-        <button class="btn btn-primary" onclick=${() => setShowNew(true)}>
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          </svg>
-          새 클라이언트
-        </button>
-      </div>
-
-      <!-- 대시보드 통계 카드 -->
-      <div class="dashboard-stats">
-        <${DashCard} icon="📋" value=${stats ? stats.active_proposals : '—'} label="진행중인 제안" sub="활성 대화 기준"/>
-        <${DashCard} icon="👥" value=${stats ? stats.total_clients : '—'} label="전체 클라이언트" sub="관리 중인 고객사"/>
-        <${DashCard} icon="💬" value=${stats ? stats.this_month_conversations : '—'} label="이달 대화" sub="이번 달 기준"/>
-        <${DashCard} icon="🤖" value="AI" label="자동 제안 생성" sub="claude-sonnet-4-5"/>
-      </div>
-
-      ${showNew && html`
-        <div class="card" style="margin-bottom:24px">
-          <div class="card-body">
-            <div class="section-title" style="margin-bottom:14px">새 클라이언트</div>
-            ${err && html`<div class="alert alert-danger" style="margin-bottom:12px">${err}</div>`}
-            <div style="display:flex;flex-direction:column;gap:10px">
-              <input class="form-input" placeholder="클라이언트명 *" value=${form.name}
-                onInput=${e => setForm(f => ({ ...f, name: e.target.value }))}
-                onKeydown=${e => e.key === 'Enter' && createClient()} autofocus />
-              <input class="form-input" placeholder="회사명 (선택)" value=${form.company}
-                onInput=${e => setForm(f => ({ ...f, company: e.target.value }))} />
-              <textarea class="form-input" placeholder="메모 (선택)" value=${form.description}
-                onInput=${e => setForm(f => ({ ...f, description: e.target.value }))}
-                style="min-height:64px;resize:vertical"></textarea>
-            </div>
-            <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
-              <button class="btn btn-ghost" onclick=${() => { setShowNew(false); setErr(''); }}>취소</button>
-              <button class="btn btn-primary" onclick=${createClient} disabled=${creating}>
-                ${creating ? html`<${Spinner} size=${16}/>` : '추가'}
-              </button>
-            </div>
-          </div>
-        </div>
-      `}
-
-      ${loading
-        ? html`<div style="text-align:center;padding:80px"><${Spinner} size=${32}/></div>`
-        : clients.length === 0
-          ? html`
-            <div class="empty-state">
-              <div class="empty-icon">🏢</div>
-              <div class="empty-title">클라이언트가 없습니다</div>
-              <div class="empty-sub">새 클라이언트를 추가하여 제안 업무를 시작하세요</div>
-              <button class="btn btn-primary" style="margin-top:20px" onclick=${() => setShowNew(true)}>
-                첫 클라이언트 추가
-              </button>
-            </div>`
-          : html`
-            <div class="client-grid">
-              ${clients.map(c => html`
-                <div class="client-card" key=${c.id} onclick=${() => navigate('/clients/' + c.id)}>
-                  <div class="client-card-top">
-                    <div class="client-avatar" style=${{ background: avatarColor(c.name) }}>
-                      ${avatarLetter(c.name)}
-                    </div>
-                    <button class="conv-delete-btn" onclick=${e => deleteClient(c.id, e)} title="삭제">✕</button>
-                  </div>
-                  <div class="client-name">${c.name}</div>
-                  ${c.company && html`<div class="client-company">${c.company}</div>`}
-                  <div class="client-meta">
-                    <span>${c.conversation_count || 0}개 대화</span>
-                    <span>${fmtDate(c.last_conversation_at || c.updated_at)}</span>
-                  </div>
-                </div>
-              `)}
-            </div>
-          `}
-    </div>
-  `;
+function refRow(f, cid) {
+  return h("div", { class: "file-row" }, [
+    h("div", { class: "left" }, [
+      h("div", { class: "file-icon", html: iconHtml("file", 18) }),
+      h("div", { style: "min-width: 0; flex: 1;" }, [
+        h("p", { class: "file-name" }, f.filename),
+        h("p", { class: "file-sub" }, `${f.filetype || "FILE"} · ${fmtSize(f.filesize)} · ${fmtDate(f.created_at)}`),
+        f.summary ? h("p", { class: "file-sub", style: "margin-top: 6px; color: var(--fg-2);" }, f.summary) : null,
+      ]),
+    ]),
+    h("button", {
+      class: "icon-btn", title: "삭제", html: iconHtml("x", 16),
+      onclick: async () => {
+        if (!confirm("이 레퍼런스를 삭제하시겠습니까?")) return;
+        await api.del(`/api/references/${f.id}`);
+        toast("삭제되었습니다", "success");
+        renderClientDetail(cid);
+      },
+    }),
+  ]);
 }
 
-// ─────────────────────────────────────────────
-// Conversation List Tab
-// ─────────────────────────────────────────────
-function ConvListTab({ clientId }) {
-  const [convs, setConvs] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showNew, setShowNew] = useState(false);
-  const [title, setTitle] = useState('');
-  const [creating, setCreating] = useState(false);
+// ---------- RFP Analysis ----------
+async function renderRfpSection(cid) {
+  const rfp = await api.get(`/api/clients/${cid}/rfp`).catch(() => ({ has_rfp: false }));
+  const card = h("div", { class: "card" });
+  card.appendChild(h("div", { class: "card-head" }, [
+    h("div", { class: "card-title-row" }, [
+      h("div", { class: "card-title-icon", html: iconHtml("fileSearch", 18) }),
+      h("div", {}, [
+        h("h3", { class: "card-title" }, "RFP 분석"),
+        h("p", { class: "card-subtitle" }, "RFP 문서를 업로드하면 핵심 요구사항·마감일·형식을 자동 파악합니다"),
+      ]),
+    ]),
+  ]));
 
-  useEffect(() => {
-    let alive = true;
-    api.getConversations(clientId)
-      .then(r => alive && setConvs(r))
-      .catch(() => {})
-      .finally(() => alive && setLoading(false));
-    return () => { alive = false; };
-  }, [clientId]);
+  const body = h("div", { class: "card-body row-gap-14" });
+  card.appendChild(body);
 
-  const create = async () => {
-    setCreating(true);
+  const input = h("input", { type: "file", style: "display: none;", accept: ".pdf,.doc,.docx,.txt" });
+  input.addEventListener("change", async () => {
+    if (input.files[0]) await doUpload(input.files[0]);
+    input.value = "";
+  });
+  body.appendChild(input);
+
+  const drop = h("div", { class: "drop-area", onclick: () => input.click() }, [
+    h("div", { class: "drop-icon", html: iconHtml("upload", 22) }),
+    h("p", { class: "drop-title" }, rfp.has_rfp ? "새 RFP로 교체 업로드" : "RFP 파일 업로드"),
+    h("p", { class: "drop-hint" }, "PDF / Word 지원"),
+  ]);
+  ["dragenter","dragover"].forEach(t => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("dragover"); }));
+  ["dragleave","drop"].forEach(t => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("dragover"); }));
+  drop.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    if (e.dataTransfer.files[0]) await doUpload(e.dataTransfer.files[0]);
+  });
+  body.appendChild(drop);
+
+  async function doUpload(file) {
+    toast("RFP 업로드 & 분석 중…", "");
     try {
-      const c = await api.createConversation(clientId, { title: title.trim() || '새 대화' });
-      navigate(`/clients/${clientId}/conversations/${c.id}`);
-    } catch { setCreating(false); }
-  };
+      await api.upload(`/api/clients/${cid}/rfp`, file);
+      toast("RFP 분석 완료", "success");
+      renderClientDetail(cid);
+    } catch (e) { toast("업로드 실패: " + (e.message || e), "error"); }
+  }
 
-  const del = async (id, e) => {
-    e.stopPropagation();
-    if (!confirm('이 대화를 삭제하시겠습니까?')) return;
-    await api.deleteConversation(id).catch(() => {});
-    setConvs(prev => prev.filter(c => c.id !== id));
-  };
+  if (rfp.has_rfp && rfp.analysis) {
+    const a = rfp.analysis;
+    const result = h("div", { class: "card", style: "padding: 20px; border: 1px solid var(--border); box-shadow: none;" });
+    body.appendChild(result);
 
-  return html`
-    <div>
-      <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
-        <button class="btn btn-primary" onclick=${() => setShowNew(true)}>
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          </svg>
-          새 대화
-        </button>
-      </div>
+    result.appendChild(h("div", { class: "flex-between" }, [
+      h("div", {}, [
+        h("h4", { style: "margin: 0 0 4px; font-size: 16px; font-weight: 600;" }, a.title || rfp.filename),
+        h("p", { class: "small muted", style: "margin: 0;" }, rfp.filename),
+      ]),
+      h("div", { class: "flex-row", style: "gap: 6px;" }, [
+        h("span", { class: "badge badge-success", html: `${iconHtml("check", 12)}<span>분석 완료</span>` }),
+        h("button", {
+          class: "icon-btn", title: "삭제", html: iconHtml("trash", 16),
+          onclick: async () => {
+            if (!confirm("RFP를 삭제하시겠습니까?")) return;
+            await api.del(`/api/clients/${cid}/rfp`);
+            toast("삭제되었습니다", "success");
+            renderClientDetail(cid);
+          },
+        }),
+      ]),
+    ]));
 
-      ${showNew && html`
-        <div class="card" style="margin-bottom:16px">
-          <div class="card-body">
-            <input class="form-input" placeholder="대화 제목 (선택)" value=${title}
-              onInput=${e => setTitle(e.target.value)}
-              onKeydown=${e => e.key === 'Enter' && !creating && create()}
-              autofocus style="width:100%;margin-bottom:10px" />
-            <div style="display:flex;gap:8px;justify-content:flex-end">
-              <button class="btn btn-ghost" onclick=${() => setShowNew(false)}>취소</button>
-              <button class="btn btn-primary" onclick=${create} disabled=${creating}>
-                ${creating ? html`<${Spinner} size=${16}/>` : '시작'}
-              </button>
-            </div>
-          </div>
-        </div>
-      `}
+    // Key info grid
+    const infoGrid = h("div", { style: "display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 16px;" });
+    const infoItems = [
+      { icon: "clock", label: "마감일", value: a.deadline || "미명시" },
+      { icon: "trending", label: "예상 예산", value: a.budget || "미명시" },
+      { icon: "file", label: "제안서 형식", value: (a.orientation === "portrait" ? "A4 세로" : "A4 가로") + (a.page_limit ? ` · ${a.page_limit}p` : "") },
+      { icon: "building", label: "발주처 성격", value: a.client_type || "미분류" },
+    ];
+    infoItems.forEach((i) => {
+      infoGrid.appendChild(h("div", { style: "display: flex; align-items: center; gap: 10px; padding: 12px; background: var(--bg-2); border-radius: 10px;" }, [
+        h("div", { class: "card-title-icon", style: "width: 36px; height: 36px;", html: iconHtml(i.icon, 16) }),
+        h("div", {}, [
+          h("p", { class: "small muted", style: "margin: 0;" }, i.label),
+          h("p", { style: "margin: 2px 0 0; font-weight: 600; font-size: 14px;" }, i.value),
+        ]),
+      ]));
+    });
+    result.appendChild(infoGrid);
 
-      ${loading
-        ? html`<${Spinner}/>`
-        : convs.length === 0
-          ? html`<div class="empty-state" style="padding:32px">대화가 없습니다</div>`
-          : html`
-            <div class="conv-list">
-              ${convs.map(c => html`
-                <div class="conv-item" key=${c.id}
-                  onclick=${() => navigate(`/clients/${clientId}/conversations/${c.id}`)}>
-                  <div class="conv-item-body">
-                    <div class="conv-item-title">${c.title}</div>
-                    <div class="conv-item-meta">
-                      메시지 ${c.message_count || 0}개 · ${fmtDate(c.created_at)}
-                      ${c.ended_at ? html`<span class="badge" style="margin-left:6px;background:#e5e7eb;color:#6b7280;font-size:10px;padding:1px 6px;border-radius:4px">종료</span>` : ''}
-                    </div>
-                  </div>
-                  <button class="conv-delete-btn" onclick=${e => del(c.id, e)} title="삭제">✕</button>
-                </div>
-              `)}
-            </div>
-          `}
-    </div>
-  `;
+    // Requirements
+    if (a.key_requirements?.length) {
+      result.appendChild(h("div", { style: "margin-top: 18px;" }, [
+        h("p", { class: "small muted", style: "margin: 0 0 8px; font-weight: 500;" }, "주요 요구사항"),
+        h("div", { class: "flex-row", style: "flex-wrap: wrap; gap: 6px;" },
+          a.key_requirements.map((r) => h("span", { class: "badge badge-outline" }, r))),
+      ]));
+    }
+
+    // Evaluation criteria
+    if (a.evaluation_criteria?.length) {
+      result.appendChild(h("div", { style: "margin-top: 18px;" }, [
+        h("p", { class: "small muted", style: "margin: 0 0 8px; font-weight: 500;" }, "평가 기준"),
+        ...a.evaluation_criteria.map((ec) => h("div", { style: "display: flex; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 14px;" }, [
+          h("span", {}, ec.item || ""),
+          h("span", { class: "muted" }, ec.weight || ""),
+        ])),
+      ]));
+    }
+
+    // Risk points
+    if (a.risk_points?.length) {
+      result.appendChild(h("div", { style: "margin-top: 18px;" }, [
+        h("p", { class: "small muted", style: "margin: 0 0 8px; font-weight: 500;" }, "리스크/주의사항"),
+        h("ul", { style: "list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px;" },
+          a.risk_points.map((p) => h("li", { class: "flex-row", style: "align-items: flex-start; font-size: 14px;" }, [
+            h("span", { style: "color: var(--warning); flex-shrink: 0; margin-top: 3px;", html: iconHtml("alert", 14) }),
+            h("span", {}, p),
+          ]))),
+      ]));
+    }
+
+    if (a.summary) {
+      result.appendChild(h("div", { style: "margin-top: 18px; padding: 12px 14px; background: var(--primary-soft); border-radius: 10px; font-size: 14px; color: var(--primary);" }, a.summary));
+    }
+  }
+
+  return card;
 }
 
-// ─────────────────────────────────────────────
-// Reference Library Tab
-// ─────────────────────────────────────────────
-function RefLibTab({ clientId }) {
-  const [refs, setRefs] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [analyzing, setAnalyzing] = useState({});
-  const [streamTexts, setStreamTexts] = useState({});
-  const fileRef = useRef(null);
+// ---------- Competitor Analysis ----------
+async function renderCompetitorSection(cid) {
+  const comps = await api.get(`/api/clients/${cid}/competitors`).catch(() => []);
+  const card = h("div", { class: "card" });
+  card.appendChild(h("div", { class: "card-head" }, [
+    h("div", { class: "card-title-row" }, [
+      h("div", { class: "card-title-icon", html: iconHtml("building", 18) }),
+      h("div", {}, [
+        h("h3", { class: "card-title" }, "경쟁사 분석"),
+        h("p", { class: "card-subtitle" }, "기업명만 입력하면 AI가 강점·약점·차별화 포인트를 분석합니다"),
+      ]),
+    ]),
+  ]));
 
-  useEffect(() => {
-    let alive = true;
-    api.getReferences(clientId)
-      .then(r => alive && setRefs(r))
-      .catch(() => {})
-      .finally(() => alive && setLoading(false));
-    return () => { alive = false; };
-  }, [clientId]);
+  const body = h("div", { class: "card-body row-gap-14" });
+  card.appendChild(body);
 
-  const upload = async (file) => {
-    if (!file) return;
-    setUploading(true);
-    try {
-      const ref = await api.uploadReference(clientId, file);
-      setRefs(prev => [ref, ...prev]);
-      analyze(ref.id);
-    } catch { alert('업로드 실패'); }
-    setUploading(false);
-    if (fileRef.current) fileRef.current.value = '';
-  };
+  // Input row
+  const inp = h("input", { class: "input", placeholder: "경쟁사 기업명을 입력하세요 (예: LG CNS)" });
+  const ctx = h("input", { class: "input", placeholder: "추가 컨텍스트 (선택, 예: 동일 사업 수주 이력)" });
+  body.appendChild(h("div", { style: "display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px;" }, [
+    inp, ctx,
+    h("button", {
+      class: "btn btn-primary", html: `${iconHtml("plus", 16)}<span>분석 추가</span>`,
+      onclick: async () => {
+        const name = inp.value.trim();
+        if (!name) { toast("경쟁사명을 입력하세요", "error"); return; }
+        toast("경쟁사 분석 중…", "");
+        try {
+          await api.post(`/api/clients/${cid}/competitors`, { name, context: ctx.value.trim() });
+          toast("분석 완료", "success");
+          renderClientDetail(cid);
+        } catch (e) { toast(String(e.message || e), "error"); }
+      },
+    }),
+  ]));
 
-  const analyze = async (refId) => {
-    setAnalyzing(prev => ({ ...prev, [refId]: true }));
-    setStreamTexts(prev => ({ ...prev, [refId]: '' }));
-    let acc = '';
-    try {
-      const res = await api.analyzeReference(refId);
-      if (!res.body) throw new Error();
-      await readSSE(res, ev => {
-        if (ev.type === 'text') {
-          acc += ev.text;
-          setStreamTexts(prev => ({ ...prev, [refId]: acc }));
-        }
-        if (ev.type === 'done') {
-          setRefs(prev => prev.map(r => r.id === refId ? { ...r, analysis: acc } : r));
-        }
-      });
-    } catch { /* ignore */ }
-    setAnalyzing(prev => ({ ...prev, [refId]: false }));
-  };
+  if (!comps.length) {
+    body.appendChild(h("div", { class: "muted small", style: "padding: 4px 0;" }, "등록된 경쟁사가 없습니다."));
+    return card;
+  }
 
-  const del = async (id) => {
-    if (!confirm('이 레퍼런스를 삭제하시겠습니까?')) return;
-    await api.deleteReference(id).catch(() => {});
-    setRefs(prev => prev.filter(r => r.id !== id));
-  };
-
-  return html`
-    <div>
-      <!-- 레퍼런스 라이브러리 설명 -->
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:14px 18px;background:var(--primary-dim);border-radius:var(--r);border:1px solid rgba(124,58,237,0.15)">
-        <span style="font-size:22px">✨</span>
-        <div>
-          <div style="font-size:15px;font-weight:700;color:var(--primary)">올려두면 AI가 알아서 참고해요</div>
-          <div style="font-size:13px;color:var(--text-muted);margin-top:2px">파일을 업로드하면 AI가 자동 분석하고, 새 대화 시 컨텍스트로 자동 포함됩니다</div>
-        </div>
-      </div>
-
-      <div class="rfp-dropzone"
-        onclick=${() => fileRef.current?.click()}
-        ondragover=${e => { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }}
-        ondragleave=${e => e.currentTarget.classList.remove('drag-over')}
-        ondrop=${e => {
-          e.preventDefault();
-          e.currentTarget.classList.remove('drag-over');
-          upload(e.dataTransfer.files[0]);
-        }}>
-        ${uploading
-          ? html`<${Spinner} size=${28}/>`
-          : html`
-            <div class="rfp-dropzone-icon">📄</div>
-            <div class="rfp-dropzone-text">클릭하거나 파일을 드래그하여 업로드</div>
-            <div class="rfp-dropzone-sub">PDF, DOCX, TXT, PPTX 지원 · AI가 자동으로 분석합니다</div>
-          `}
-      </div>
-      <input ref=${fileRef} type="file" accept=".pdf,.docx,.doc,.txt,.md,.pptx"
-        style="display:none" onchange=${e => upload(e.target.files[0])} />
-
-      ${loading
-        ? html`<${Spinner}/>`
-        : refs.length === 0
-          ? html`<div class="empty-state" style="padding:32px">레퍼런스가 없습니다</div>`
-          : html`
-            <div class="ref-list">
-              ${refs.map(ref => {
-                const isAnalyzing = !!analyzing[ref.id];
-                const streamTxt = streamTexts[ref.id] || '';
-                const analysis = isAnalyzing ? streamTxt : (ref.analysis || '');
-                return html`
-                  <div class="ref-item" key=${ref.id}>
-                    <div class="ref-item-header">
-                      <div style="display:flex;align-items:center;gap:10px">
-                        <span style="font-size:22px">📄</span>
-                        <div>
-                          <div style="font-weight:600;font-size:14px">${ref.filename}</div>
-                          <div style="font-size:12px;color:#888">${fmtDate(ref.created_at)}</div>
-                        </div>
-                      </div>
-                      <div style="display:flex;gap:6px">
-                        ${!ref.analysis && !isAnalyzing && html`
-                          <button class="btn btn-ghost btn-sm" onclick=${() => analyze(ref.id)}>AI 분석</button>
-                        `}
-                        <button class="btn btn-ghost btn-sm" onclick=${() => del(ref.id)}>삭제</button>
-                      </div>
-                    </div>
-                    ${(isAnalyzing || analysis) && html`
-                      <div class="ref-analysis">
-                        <div style="font-size:11px;font-weight:700;color:#7c3aed;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">
-                          ${isAnalyzing ? 'AI 분석 중...' : 'AI 분석'}
-                        </div>
-                        <div style="font-size:13px;line-height:1.6;white-space:pre-wrap">
-                          ${analysis}${isAnalyzing ? html`<span class="typing-dot"/>` : ''}
-                        </div>
-                      </div>
-                    `}
-                  </div>
-                `;
-              })}
-            </div>
-          `}
-    </div>
-  `;
+  const grid = h("div", { style: "display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;" });
+  body.appendChild(grid);
+  comps.forEach((c) => grid.appendChild(compCard(c, cid)));
+  return card;
 }
 
-// ─────────────────────────────────────────────
-// RFP Tab
-// ─────────────────────────────────────────────
-function RfpTab({ client, onClientUpdate }) {
-  const [uploading, setUploading] = useState(false);
-  const [err, setErr] = useState('');
-  const fileRef = useRef(null);
-
-  const rfpRaw = client.rfp_analysis || '';
-  let rfp = null;
-  try { rfp = rfpRaw ? JSON.parse(rfpRaw) : null; } catch {}
-
-  const upload = async (file) => {
-    if (!file) return;
-    setUploading(true); setErr('');
-    try {
-      const updated = await api.uploadRfp(client.id, file);
-      onClientUpdate(updated);
-    } catch { setErr('RFP 업로드/분석 실패'); }
-    setUploading(false);
-    if (fileRef.current) fileRef.current.value = '';
-  };
-
-  const del = async () => {
-    if (!confirm('RFP를 삭제하시겠습니까?')) return;
-    await api.deleteRfp(client.id).catch(() => {});
-    onClientUpdate({ ...client, rfp_analysis: '', rfp_filename: '', rfp_uploaded_at: null });
-  };
-
-  return html`
-    <div>
-      <div class="rfp-dropzone"
-        onclick=${() => fileRef.current?.click()}
-        ondragover=${e => { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }}
-        ondragleave=${e => e.currentTarget.classList.remove('drag-over')}
-        ondrop=${e => {
-          e.preventDefault();
-          e.currentTarget.classList.remove('drag-over');
-          upload(e.dataTransfer.files[0]);
-        }}>
-        ${uploading
-          ? html`
-            <div style="text-align:center">
-              <${Spinner} size=${28}/>
-              <div style="margin-top:10px;font-size:13px;color:#888">RFP 분석 중...</div>
-            </div>`
-          : html`
-            <div class="rfp-dropzone-icon">📋</div>
-            <div class="rfp-dropzone-text">${rfp ? 'RFP 재업로드' : 'RFP 파일 업로드'}</div>
-            <div class="rfp-dropzone-sub">PDF, DOCX, TXT 지원 · AI가 자동으로 분석합니다</div>
-          `}
-      </div>
-      <input ref=${fileRef} type="file" accept=".pdf,.docx,.doc,.txt"
-        style="display:none" onchange=${e => upload(e.target.files[0])} />
-
-      ${err && html`<div class="alert alert-danger" style="margin-top:12px">${err}</div>`}
-
-      ${rfp && html`
-        <div class="rfp-analysis-box">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
-            <div>
-              <div style="font-weight:700;font-size:16px">${rfp.name || '(제목 없음)'}</div>
-              ${rfp.client && html`<div style="font-size:13px;color:#888;margin-top:2px">발주처: ${rfp.client}</div>`}
-            </div>
-            <button class="btn btn-ghost btn-sm" onclick=${del}>삭제</button>
-          </div>
-
-          ${rfp.purpose && html`
-            <div class="rfp-field"><span class="rfp-label">목적</span><span>${rfp.purpose}</span></div>
-          `}
-          ${rfp.budget && html`
-            <div class="rfp-field"><span class="rfp-label">예산</span><span>${rfp.budget}</span></div>
-          `}
-          ${rfp.deadline && html`
-            <div class="rfp-field"><span class="rfp-label">기한</span><span>${rfp.deadline}</span></div>
-          `}
-          ${rfp.duration && html`
-            <div class="rfp-field"><span class="rfp-label">기간</span><span>${rfp.duration}</span></div>
-          `}
-          ${rfp.requirements?.length > 0 && html`
-            <div class="rfp-field">
-              <span class="rfp-label">요구사항</span>
-              <ul style="margin:0;padding-left:16px">
-                ${rfp.requirements.map((r, i) => html`<li key=${i} style="font-size:13px;margin-bottom:3px">${r}</li>`)}
-              </ul>
-            </div>
-          `}
-          ${rfp.evaluation?.length > 0 && html`
-            <div class="rfp-field">
-              <span class="rfp-label">평가기준</span>
-              <ul style="margin:0;padding-left:16px">
-                ${rfp.evaluation.map((e, i) => html`<li key=${i} style="font-size:13px;margin-bottom:3px">${e}</li>`)}
-              </ul>
-            </div>
-          `}
-          ${rfp.warnings?.length > 0 && html`
-            <div class="rfp-field">
-              <span class="rfp-label">주의사항</span>
-              <ul style="margin:0;padding-left:16px">
-                ${rfp.warnings.map((w, i) => html`<li key=${i} style="font-size:13px;margin-bottom:3px;color:#dc2626">${w}</li>`)}
-              </ul>
-            </div>
-          `}
-          ${rfp.strategy && html`
-            <div style="margin-top:14px;padding:12px;background:#f5f3ff;border-radius:8px">
-              <div style="font-size:11px;font-weight:700;color:#7c3aed;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">수주 전략</div>
-              <div style="font-size:13px;line-height:1.6">${rfp.strategy}</div>
-            </div>
-          `}
-          ${rfp.format && html`
-            <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0;font-size:12px;color:#aaa">
-              방향: ${rfp.format.orientation === 'landscape' ? '가로형 (A4)' : '세로형 (A4)'}
-              ${rfp.format.page_limit ? ` · 최대 ${rfp.format.page_limit}페이지` : ''}
-            </div>
-          `}
-        </div>
-      `}
-    </div>
-  `;
+function compCard(c, cid) {
+  return h("div", { class: "comp-card" }, [
+    h("div", { class: "flex-between", style: "margin-bottom: 8px;" }, [
+      h("h4", {}, c.name),
+      h("button", {
+        class: "icon-btn", title: "삭제", html: iconHtml("x", 14),
+        onclick: async () => {
+          if (!confirm(`${c.name} 분석을 삭제하시겠습니까?`)) return;
+          await api.del(`/api/competitors/${c.id}`);
+          toast("삭제되었습니다", "success");
+          renderClientDetail(cid);
+        },
+      }),
+    ]),
+    c.analysis ? h("p", { class: "comp-summary" }, c.analysis) : null,
+    (c.strengths?.length ? h("div", {}, [
+      h("p", { class: "small muted", style: "margin: 8px 0 4px; font-weight: 500;" }, "강점"),
+      h("div", { class: "comp-tags-row" }, c.strengths.map((s) => h("span", { class: "badge strength-badge" }, s))),
+    ]) : null),
+    (c.weaknesses?.length ? h("div", {}, [
+      h("p", { class: "small muted", style: "margin: 8px 0 4px; font-weight: 500;" }, "약점"),
+      h("div", { class: "comp-tags-row" }, c.weaknesses.map((s) => h("span", { class: "badge weakness-badge" }, s))),
+    ]) : null),
+    c.differentiator ? h("div", { class: "comp-diff" }, "우리의 승부수 · " + c.differentiator) : null,
+  ]);
 }
 
-// ─────────────────────────────────────────────
-// Competitor Tab
-// ─────────────────────────────────────────────
-function CompetitorTab({ client, onClientUpdate }) {
-  const [companies, setCompanies] = useState('');
-  const [streaming, setStreaming] = useState(false);
-  const [streamText, setStreamText] = useState('');
-  const [err, setErr] = useState('');
+// ---------- Memory ----------
+async function renderMemorySection(cid) {
+  const mems = await api.get(`/api/clients/${cid}/memories`).catch(() => []);
+  const card = h("div", { class: "card" });
 
-  const rawAnalysis = client.competitor_analysis || '';
-  let competitors = [];
+  let expanded = false;
+  const headBtn = h("div", { class: "card-head", style: "cursor: pointer; user-select: none;" }, [
+    h("div", { class: "card-title-row" }, [
+      h("div", { class: "card-title-icon", html: iconHtml("brain", 18) }),
+      h("div", {}, [
+        h("h3", { class: "card-title" }, "대화 기억"),
+        h("p", { class: "card-subtitle" }, `AI가 학습한 클라이언트 정보 ${mems.length}개 · 새 대화에 자동 주입됩니다`),
+      ]),
+    ]),
+    h("button", { class: "icon-btn", id: "mem-toggle", html: iconHtml("chevronD", 18) }),
+  ]);
+  card.appendChild(headBtn);
+
+  const body = h("div", { class: "card-body row-gap-10", style: "display: none;" });
+  card.appendChild(body);
+
+  if (mems.length === 0) {
+    body.appendChild(h("div", { class: "muted small", style: "padding: 4px 0;" }, "대화 종료 시 자동으로 뉘앙스가 축적됩니다."));
+  }
+
+  mems.forEach((m) => {
+    body.appendChild(h("div", { class: "file-row", style: "align-items: flex-start;" }, [
+      h("div", { class: "left" }, [
+        h("div", { style: "min-width: 0; flex: 1;" }, [
+          h("div", { class: "flex-row", style: "gap: 8px; margin-bottom: 6px;" }, [
+            h("span", { class: "badge badge-primary" }, m.category),
+            h("span", { class: "small muted" }, fmtDate(m.created_at)),
+          ]),
+          h("p", { class: "file-name", style: "font-weight: 400; font-size: 14px;" }, m.content),
+          m.tags?.length ? h("div", { style: "margin-top: 8px; display: flex; flex-wrap: wrap; gap: 5px;" },
+            m.tags.map((t) => h("span", { class: "tag-chip" }, "#" + t))) : null,
+        ]),
+      ]),
+      h("button", {
+        class: "icon-btn", title: "삭제", html: iconHtml("x", 14),
+        onclick: async () => {
+          if (!confirm("이 기억을 삭제하시겠습니까?")) return;
+          await api.del(`/api/memories/${m.id}`);
+          toast("삭제되었습니다", "success");
+          renderClientDetail(cid);
+        },
+      }),
+    ]));
+  });
+
+  headBtn.addEventListener("click", () => {
+    expanded = !expanded;
+    body.style.display = expanded ? "flex" : "none";
+    $("#mem-toggle", card).innerHTML = iconHtml(expanded ? "chevronD" : "chevronD", 18);
+    $("#mem-toggle", card).style.transform = expanded ? "rotate(180deg)" : "";
+  });
+
+  return card;
+}
+
+// ---------- Chat Screen ----------
+async function renderChat(cid, convId) {
+  const root = $("#app-root");
+  root.innerHTML = "";
+
+  const data = await api.get(`/api/conversations/${convId}`).catch(() => null);
+  if (!data) { toast("대화를 불러올 수 없습니다", "error"); navigate(`/client/${cid}`); return; }
+
+  const shell = h("main", { class: "chat-shell" });
+  root.appendChild(shell);
+
+  // Detect context injection flags
+  const injected = {
+    rfp: !!data.rfp_analysis,
+    memory: false,
+    refs: false,
+  };
   try {
-    const parsed = rawAnalysis ? JSON.parse(rawAnalysis) : [];
-    competitors = Array.isArray(parsed) ? parsed : [];
+    const m = await api.get(`/api/clients/${cid}/memories`); injected.memory = m.length > 0;
+  } catch {}
+  try {
+    const r = await api.get(`/api/clients/${cid}/references`); injected.refs = r.length > 0;
   } catch {}
 
-  const analyze = async () => {
-    const list = companies
-      .split(/[,，、\n]/)
-      .map(s => s.trim())
-      .filter(Boolean);
-    if (list.length === 0) { setErr('경쟁사를 입력하세요'); return; }
-    setErr(''); setStreaming(true); setStreamText('');
-    try {
-      const res = await api.analyzeCompetitor(client.id, list);
-      if (!res.body) throw new Error();
-      await readSSE(res, ev => {
-        if (ev.type === 'text') setStreamText(prev => prev + ev.text);
-        if (ev.type === 'done') {
-          setCompanies('');
-          // Reload client to get updated competitor_analysis
-          api.getClient(client.id).then(onClientUpdate).catch(() => {});
-        }
-        if (ev.type === 'error') setErr(ev.message || '분석 실패');
-      });
-    } catch { setErr('분석 실패'); }
-    setStreaming(false); setStreamText('');
-  };
+  const pageLimit = data.rfp_analysis?.page_limit;
 
-  const clearAll = async () => {
-    if (!confirm('경쟁사 분석 전체를 삭제하시겠습니까?')) return;
-    await api.updateCompetitor(client.id, '').catch(() => {});
-    onClientUpdate({ ...client, competitor_analysis: '' });
-  };
+  // Header
+  const header = h("header", { class: "chat-header" }, [
+    h("div", { class: "left" }, [
+      h("button", {
+        class: "icon-btn", html: iconHtml("arrowL", 20),
+        onclick: () => navigate(`/client/${cid}`),
+      }),
+      h("div", { style: "height: 24px; width: 1px; background: var(--border);" }),
+      h("div", {}, [
+        h("p", { class: "client-name" }, data.client.name),
+        h("h1", { class: "chat-title" }, data.conversation.title),
+      ]),
+    ]),
+    h("div", { class: "flex-row", style: "gap: 12px;" }, [
+      pageLimit ? h("span", { class: "page-limit-badge" }, `최대 ${pageLimit}페이지`) : null,
+      h("div", { class: "context-badges" }, [
+        h("span", { class: "small muted" }, "주입됨:"),
+        injected.rfp ? h("span", { class: "badge badge-primary" }, "RFP") : null,
+        injected.refs ? h("span", { class: "badge badge-primary" }, "레퍼런스") : null,
+        injected.memory ? h("span", { class: "badge badge-primary" }, "대화기억") : null,
+        (!injected.rfp && !injected.refs && !injected.memory) ? h("span", { class: "small muted" }, "없음") : null,
+      ]),
+      h("button", {
+        class: "btn btn-outline", html: `${iconHtml("save", 14)}<span>대화 종료 & 기억 저장</span>`,
+        onclick: async () => {
+          if (!confirm("대화를 종료하고 기억을 저장하시겠습니까? AI가 대화에서 뉘앙스를 추출해 클라이언트에 저장합니다.")) return;
+          toast("대화 기억 저장 중…", "");
+          try {
+            const r = await api.post(`/api/conversations/${convId}/end`);
+            toast(`${r.memories_added}개 기억이 저장되었습니다`, "success");
+            navigate(`/client/${cid}`);
+          } catch (e) { toast(String(e.message || e), "error"); }
+        },
+      }),
+    ]),
+  ]);
+  shell.appendChild(header);
 
-  return html`
-    <div>
-      <div class="card" style="margin-bottom:20px">
-        <div class="card-body">
-          <div class="section-title" style="margin-bottom:12px">경쟁사 분석</div>
-          <div style="display:flex;gap:10px;align-items:flex-end">
-            <input class="form-input" style="flex:1"
-              placeholder="경쟁사명 입력 (쉼표로 구분, 예: A사, B사)"
-              value=${companies}
-              onInput=${e => setCompanies(e.target.value)}
-              onKeydown=${e => e.key === 'Enter' && !streaming && analyze()}
-              disabled=${streaming} />
-            <button class="btn btn-primary" onclick=${analyze}
-              disabled=${streaming || !companies.trim()}>
-              ${streaming ? html`<${Spinner} size=${16}/>` : 'AI 분석'}
-            </button>
-          </div>
-          ${err && html`<div class="alert alert-danger" style="margin-top:10px">${err}</div>`}
-          ${streaming && streamText && html`
-            <div style="margin-top:12px;padding:12px;background:#f9f9f9;border-radius:8px;font-size:12px;color:#666;white-space:pre-wrap;max-height:120px;overflow:auto">
-              ${streamText}▋
-            </div>
-          `}
-        </div>
-      </div>
+  const body = h("div", { class: "chat-body" });
+  const msgs = h("div", { class: "chat-messages", id: "chat-messages" });
+  body.appendChild(msgs);
+  shell.appendChild(body);
 
-      ${competitors.length > 0 && html`
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-          <div style="font-size:14px;color:var(--text-muted)">${competitors.length}개 경쟁사 분석 완료</div>
-          <button class="btn btn-ghost btn-sm" onclick=${clearAll}>전체 삭제</button>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:16px">
-          ${competitors.map((c, i) => html`
-            <div class="ci-card" key=${i}>
-              <!-- 헤더: 회사명 + 아바타 -->
-              <div class="ci-card-header">
-                <div style="display:flex;align-items:center;gap:12px">
-                  <div class="client-avatar"
-                    style=${{ background: avatarColor(c.name), width: '36px', height: '36px', fontSize: '15px' }}>
-                    ${avatarLetter(c.name)}
-                  </div>
-                  <div>
-                    <div style="font-weight:700;font-size:16px">${c.name}</div>
-                    <div style="font-size:13px;color:var(--text-muted)">경쟁사 분석</div>
-                  </div>
-                </div>
-              </div>
-              <!-- 강점/약점 인포그래픽 (5줄 이내) -->
-              <div class="ci-grid">
-                <div class="ci-col">
-                  <div style="font-size:12px;font-weight:700;color:var(--success);margin-bottom:8px;display:flex;align-items:center;gap:5px">
-                    <span style="width:18px;height:18px;background:var(--success);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:10px">✓</span>
-                    강점
-                  </div>
-                  ${(c.strengths || []).slice(0, 5).map((s, j) => html`
-                    <div key=${j} class="ci-diff strength" style="display:flex;align-items:flex-start;gap:6px;margin-bottom:5px;font-size:13px;line-height:1.4">
-                      <span style="flex-shrink:0;margin-top:2px">•</span>
-                      <span>${s}</span>
-                    </div>
-                  `)}
-                </div>
-                <div class="ci-col">
-                  <div style="font-size:12px;font-weight:700;color:var(--danger);margin-bottom:8px;display:flex;align-items:center;gap:5px">
-                    <span style="width:18px;height:18px;background:var(--danger);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:10px">✗</span>
-                    약점
-                  </div>
-                  ${(c.weaknesses || []).slice(0, 5).map((w, j) => html`
-                    <div key=${j} class="ci-diff weakness" style="display:flex;align-items:flex-start;gap:6px;margin-bottom:5px;font-size:13px;line-height:1.4">
-                      <span style="flex-shrink:0;margin-top:2px">•</span>
-                      <span>${w}</span>
-                    </div>
-                  `)}
-                </div>
-              </div>
-              <!-- 차별화 전략 -->
-              ${c.diff && html`
-                <div style="margin:0;padding:14px 20px;background:var(--primary-dim);border-top:1px solid rgba(124,58,237,0.12)">
-                  <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.05em">💡 우리의 차별화 전략</div>
-                  <div style="font-size:14px;color:var(--text);line-height:1.6">${c.diff}</div>
-                </div>
-              `}
-            </div>
-          `)}
-        </div>
-      `}
-      ${competitors.length === 0 && !streaming && html`
-        <div class="empty-state" style="padding:40px">
-          <div class="empty-icon">🏆</div>
-          <div class="empty-title">경쟁사 분석이 없습니다</div>
-          <div class="empty-sub">경쟁사 회사명을 입력하면 AI가 자동으로 강점·약점·차별화 전략을 분석합니다</div>
-        </div>
-      `}
-    </div>
-  `;
-}
+  // Render existing messages
+  data.messages.forEach((m) => msgs.appendChild(msgElement(m.role, m.content, m.created_at)));
 
-// ─────────────────────────────────────────────
-// Memory Tab
-// ─────────────────────────────────────────────
-function MemoryTab({ client }) {
-  const nuance = client.nuance_summary || '';
-  return html`
-    <div>
-      <div class="alert alert-info" style="margin-bottom:16px">
-        대화 종료 시 Claude가 클라이언트 성향과 주요 인사이트를 자동 요약·축적합니다.
-        이후 제안서 작성 시 자동으로 참조됩니다.
-      </div>
-      ${nuance
-        ? html`
-          <div class="memory-content">
-            <div style="white-space:pre-wrap;font-size:13px;line-height:1.7">${nuance}</div>
-          </div>
-          ${client.nuance_updated_at && html`
-            <div style="margin-top:8px;font-size:12px;color:#aaa">
-              최종 업데이트: ${fmtDate(client.nuance_updated_at)}
-            </div>
-          `}`
-        : html`<div class="empty-state" style="padding:32px">아직 누적된 대화 기억이 없습니다</div>`}
-    </div>
-  `;
-}
+  // Input
+  const ta = h("textarea", { placeholder: "메시지를 입력하세요… (Shift+Enter 줄바꿈, Enter 전송)", rows: 1 });
+  const sendBtn = h("button", { class: "send-btn", html: iconHtml("send", 20), disabled: true });
 
-// ─────────────────────────────────────────────
-// Client Detail Page
-// ─────────────────────────────────────────────
-function ClientDetailPage({ clientId }) {
-  const [client, setClient] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState('conversations');
+  ta.addEventListener("input", () => {
+    ta.style.height = "auto";
+    ta.style.height = Math.min(ta.scrollHeight, 160) + "px";
+    sendBtn.disabled = !ta.value.trim();
+  });
+  ta.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendBtn.click(); }
+  });
 
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    api.getClient(clientId)
-      .then(c => alive && setClient(c))
-      .catch(() => {})
-      .finally(() => alive && setLoading(false));
-    return () => { alive = false; };
-  }, [clientId]);
-
-  const TABS = [
-    { id: 'conversations', label: '대화히스토리' },
-    { id: 'refs', label: '레퍼런스라이브러리' },
-    { id: 'rfp', label: 'RFP분석' },
-    { id: 'competitors', label: '경쟁사분석' },
-    { id: 'memory', label: '대화기억' },
-  ];
-
-  if (loading) return html`<div style="padding:80px;text-align:center"><${Spinner} size=${32}/></div>`;
-  if (!client) return html`<div style="padding:40px;text-align:center;color:#888">클라이언트를 찾을 수 없습니다</div>`;
-
-  return html`
-    <div class="page-container">
-      <div class="page-header">
-        <div style="display:flex;align-items:center;gap:12px">
-          <button class="btn btn-ghost btn-sm" onclick=${() => navigate('/')}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
-          <div class="client-avatar"
-            style=${{ background: avatarColor(client.name), width: '40px', height: '40px', fontSize: '18px' }}>
-            ${avatarLetter(client.name)}
-          </div>
-          <div>
-            <h1 class="page-title" style="margin:0">${client.name}</h1>
-            ${client.company && html`<div style="font-size:13px;color:#888">${client.company}</div>`}
-          </div>
-        </div>
-      </div>
-
-      <div class="tab-bar">
-        ${TABS.map(t => html`
-          <button key=${t.id}
-            class=${'tab-btn' + (tab === t.id ? ' active' : '')}
-            onclick=${() => setTab(t.id)}>
-            ${t.label}
-          </button>
-        `)}
-      </div>
-
-      <div class="tab-content">
-        ${tab === 'conversations' && html`<${ConvListTab} clientId=${client.id}/>`}
-        ${tab === 'refs' && html`<${RefLibTab} clientId=${client.id}/>`}
-        ${tab === 'rfp' && html`<${RfpTab} client=${client} onClientUpdate=${setClient}/>`}
-        ${tab === 'competitors' && html`<${CompetitorTab} client=${client} onClientUpdate=${setClient}/>`}
-        ${tab === 'memory' && html`<${MemoryTab} client=${client}/>`}
-      </div>
-    </div>
-  `;
-}
-
-// ─────────────────────────────────────────────
-// Message Bubble
-// ─────────────────────────────────────────────
-function MessageBubble({ msg }) {
-  const isUser = msg.role === 'user';
-  const htmlContent = !isUser ? extractHtmlBlock(msg.content) : null;
-  const hasProposal = !!htmlContent;
-  const [showPreview, setShowPreview] = useState(false);
-  const [showKw, setShowKw] = useState(false);
-  const keywords = hasProposal ? extractImgKeywords(htmlContent) : [];
-
-  const plainText = hasProposal
-    ? msg.content.replace(/```html[\s\S]*?(?:```|$)/i, '').trim()
-    : msg.content;
-
-  const openNew = () => {
-    const w = window.open('', '_blank');
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>${htmlContent}</body></html>`);
-    w.document.close();
-  };
-
-  const doPrint = () => {
-    const w = window.open('', '_blank');
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>${htmlContent}</body></html>`);
-    w.document.close();
-    setTimeout(() => w.print(), 600);
-  };
-
-  return html`
-    <div class=${'msg-row' + (isUser ? ' user' : '')}>
-      ${!isUser && html`<div class="msg-avatar">B</div>`}
-      <div style=${{ flex: 1, maxWidth: isUser ? '72%' : '100%' }}>
-        <div class=${'msg-bubble' + (isUser ? ' user' : ' assistant')}>
-          ${isUser
-            ? html`<div style="white-space:pre-wrap;line-height:1.6">${msg.content}</div>`
-            : html`
-              ${plainText && html`
-                <div style=${{ whiteSpace: 'pre-wrap', lineHeight: '1.6', marginBottom: hasProposal ? '12px' : '0' }}>
-                  ${plainText}
-                </div>`}
-              ${hasProposal && html`
-                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:${showPreview ? '14px' : '0'}">
-                  <button class="btn btn-primary btn-sm" onclick=${() => setShowPreview(v => !v)}>
-                    📄 ${showPreview ? '미리보기 닫기' : '제안서 미리보기'}
-                  </button>
-                  <button class="btn btn-ghost btn-sm" onclick=${openNew}>새 탭</button>
-                  <button class="btn btn-ghost btn-sm" onclick=${doPrint}>🖨️ 인쇄/PDF</button>
-                  ${keywords.length > 0 && html`
-                    <button class="btn btn-ghost btn-sm" onclick=${() => setShowKw(v => !v)}>
-                      🔍 이미지 키워드
-                    </button>
-                  `}
-                </div>
-                ${showKw && keywords.length > 0 && html`
-                  <div class="img-keywords-panel">
-                    <div style="font-size:11px;font-weight:600;color:#888;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">
-                      Google 이미지 검색
-                    </div>
-                    <div style="display:flex;flex-wrap:wrap;gap:6px">
-                      ${keywords.map(kw => html`
-                        <a key=${kw} class="img-keyword-chip"
-                          href=${'https://www.google.com/search?q=' + encodeURIComponent(kw) + '&tbm=isch'}
-                          target="_blank" rel="noopener">
-                          ${kw}
-                        </a>
-                      `)}
-                    </div>
-                  </div>
-                `}
-                ${showPreview && html`
-                  <${ProgressiveIframe}
-                    doc=${`<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>${htmlContent}</body></html>`}
-                  />
-                `}
-              `}
-            `}
-        </div>
-        <div class="msg-time">${fmtDate(msg.created_at)}</div>
-      </div>
-    </div>
-  `;
-}
-
-// ─────────────────────────────────────────────
-// Stream Bubble (live generation)
-// ─────────────────────────────────────────────
-function StreamBubble({ text }) {
-  const pages = extractProgressivePages(text);
-  const hasPages = pages && pages.count > 0;
-
-  return html`
-    <div class="msg-row">
-      <div class="msg-avatar">B</div>
-      <div style="flex:1">
-        <div class="msg-bubble assistant">
-          ${!pages
-            ? html`<div style="white-space:pre-wrap;line-height:1.6">${text || ''}<span class="typing-dot"/></div>`
-            : html`
-              <div style="font-size:13px;color:#888;margin-bottom:${hasPages ? '12px' : '4px'}">
-                제안서 생성 중${pages.count > 0 ? ` — ${pages.count}페이지 완성` : ''}...
-                <span class="typing-dot"/>
-              </div>
-              ${hasPages && html`
-                <${ProgressiveIframe} doc=${buildPreviewDoc(pages.preamble, pages.completed, pages.inProgress)}/>
-              `}
-            `}
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-// ─────────────────────────────────────────────
-// Conversation Page (full-screen, no sidebar)
-// ─────────────────────────────────────────────
-function ConversationPage({ clientId, convId }) {
-  const [conv, setConv] = useState(null);
-  const [client, setClient] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [refs, setRefs] = useState([]);
-  const [selectedRefs, setSelectedRefs] = useState([]);
-  const [input, setInput] = useState('');
-  const [streaming, setStreaming] = useState(false);
-  const [streamText, setStreamText] = useState('');
-  const [showMemory, setShowMemory] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const taRef = useRef(null);
-  const endRef = useRef(null);
-  const userScrolledUp = useRef(false);
-
-  // Natural page scroll mode
-  useEffect(() => {
-    document.documentElement.classList.add('in-chat');
-    return () => document.documentElement.classList.remove('in-chat');
-  }, []);
-
-  // Track manual scroll up
-  useEffect(() => {
-    const onScroll = () => {
-      const atBottom = window.scrollY + window.innerHeight >= document.body.scrollHeight - 160;
-      userScrolledUp.current = !atBottom;
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
-
-  const scrollToBottom = useCallback(() => {
-    if (!userScrolledUp.current) endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, []);
-
-  // Load data
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    Promise.all([
-      api.getConversation(convId),
-      api.getReferences(clientId),
-    ]).then(([convData, refsData]) => {
-      if (!alive) return;
-      setConv(convData);
-      setClient(convData.client || null);
-      setMessages(convData.messages || []);
-      setRefs(refsData);
-    }).catch(() => {}).finally(() => alive && setLoading(false));
-    return () => { alive = false; };
-  }, [clientId, convId]);
-
-  useEffect(() => { scrollToBottom(); }, [messages.length, streamText]);
-
-  const adjustTa = () => {
-    const ta = taRef.current;
-    if (!ta) return;
-    ta.style.height = '48px';
-    ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
-  };
-
-  const toggleRef = (id) => {
-    setSelectedRefs(prev => prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]);
-  };
-
-  const endConv = async () => {
-    if (!confirm('대화를 종료하고 인사이트를 저장하시겠습니까?')) return;
-    try {
-      const result = await api.endConversation(convId);
-      setConv(prev => ({ ...prev, ended_at: result.ended_at || new Date().toISOString() }));
-      alert('대화가 종료되었으며 클라이언트 인사이트가 업데이트되었습니다.');
-    } catch { alert('종료 처리 중 오류가 발생했습니다.'); }
-  };
-
-  const send = async () => {
-    const text = input.trim();
+  let streaming = false;
+  sendBtn.addEventListener("click", async () => {
+    const text = ta.value.trim();
     if (!text || streaming) return;
-    userScrolledUp.current = false;
-    setInput('');
-    if (taRef.current) taRef.current.style.height = '48px';
+    streaming = true; sendBtn.disabled = true; ta.disabled = true;
 
-    const tmpUserMsg = {
-      id: 'tmp-u-' + Date.now(),
-      role: 'user',
-      content: text,
-      created_at: new Date().toISOString(),
-    };
-    setMessages(prev => [...prev, tmpUserMsg]);
-    setStreaming(true);
-    setStreamText('');
+    // Optimistic user bubble
+    msgs.appendChild(msgElement("user", text, new Date().toISOString()));
+    ta.value = ""; ta.style.height = "auto";
+    body.scrollTop = body.scrollHeight;
 
-    let fullText = '';
+    // Assistant placeholder
+    const asstEl = msgElement("assistant", "", new Date().toISOString());
+    msgs.appendChild(asstEl);
+    const bubble = asstEl.querySelector(".msg-bubble");
+    bubble.innerHTML = '<span class="loading-dots"><span></span><span></span><span></span></span>';
+    body.scrollTop = body.scrollHeight;
+
+    let fullText = "";
     try {
-      const res = await api.sendMessage(convId, { content: text, reference_ids: selectedRefs });
-      if (!res.body) throw new Error('No stream body');
-
-      await readSSE(res, ev => {
-        if (ev.type === 'text') {
-          fullText += ev.text;
-          setStreamText(fullText);
-        }
-        if (ev.type === 'done') {
-          setMessages(prev => [...prev, {
-            id: ev.message_id || ('tmp-a-' + Date.now()),
-            role: 'assistant',
-            content: fullText,
-            created_at: new Date().toISOString(),
-          }]);
-          setStreaming(false);
-          setStreamText('');
-        }
-        if (ev.type === 'error') {
-          setMessages(prev => [...prev, {
-            id: 'err-' + Date.now(),
-            role: 'assistant',
-            content: `⚠️ 오류: ${ev.message || '알 수 없는 오류'}`,
-            created_at: new Date().toISOString(),
-          }]);
-          setStreaming(false);
-          setStreamText('');
-        }
+      const resp = await fetch(`/api/conversations/${convId}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text }),
       });
+      if (!resp.ok) throw new Error(await resp.text());
+
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n\n");
+        buf = lines.pop();
+        for (const line of lines) {
+          const m = line.match(/^data: (.*)$/s);
+          if (!m) continue;
+          let ev;
+          try { ev = JSON.parse(m[1]); } catch { continue; }
+          if (ev.type === "delta") {
+            fullText += ev.text;
+            renderAssistant(bubble, fullText);
+            body.scrollTop = body.scrollHeight;
+          } else if (ev.type === "error") {
+            bubble.innerHTML = `<span style="color:var(--danger);">❌ ${escapeHtml(ev.error)}</span>`;
+          } else if (ev.type === "done") {
+            renderAssistant(bubble, fullText, true);
+          }
+        }
+      }
     } catch (e) {
-      setMessages(prev => [...prev, {
-        id: 'err-' + Date.now(),
-        role: 'assistant',
-        content: '⚠️ 오류가 발생했습니다. 다시 시도해주세요.',
-        created_at: new Date().toISOString(),
-      }]);
-      setStreaming(false);
-      setStreamText('');
+      bubble.innerHTML = `<span style="color:var(--danger);">❌ ${escapeHtml(e.message || String(e))}</span>`;
+    } finally {
+      streaming = false; sendBtn.disabled = false; ta.disabled = false; ta.focus();
     }
-  };
+  });
 
-  const nuance = client?.nuance_summary || '';
-  const isEnded = !!conv?.ended_at;
+  shell.appendChild(h("div", { class: "chat-input-wrap" }, [
+    h("div", { class: "chat-input-container" }, [ta, sendBtn]),
+    h("p", { class: "chat-hint" }, "RFP 분석 · 레퍼런스 · 대화 기억이 자동으로 컨텍스트에 포함됩니다"),
+  ]));
 
-  if (loading) return html`<div style="padding:100px;text-align:center"><${Spinner} size=${32}/></div>`;
+  // On load, re-render assistant messages to parse any embedded proposal markup
+  msgs.querySelectorAll(".msg-row.assistant .msg-bubble").forEach((b) => {
+    renderAssistant(b, b.dataset.raw || b.textContent, true);
+  });
 
-  return html`
-    <div class="chat-layout">
-
-      <!-- Sticky Header -->
-      <div class="chat-header">
-        <div style="display:flex;align-items:center;gap:10px">
-          <button class="btn btn-ghost btn-sm"
-            onclick=${() => navigate('/clients/' + clientId)}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
-          ${client && html`
-            <div class="client-avatar"
-              style=${{ background: avatarColor(client.name), width: '28px', height: '28px', fontSize: '12px' }}>
-              ${avatarLetter(client.name)}
-            </div>
-            <div>
-              <div style="font-weight:600;font-size:14px">${client.name}</div>
-              <div style="font-size:11px;color:#aaa">${conv?.title || '대화'}</div>
-            </div>
-          `}
-        </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <span class=${'status-dot' + (isEnded ? ' ended' : ' active')}></span>
-          <span style="font-size:12px;color:#aaa">
-            ${isEnded ? '종료됨' : streaming ? '생성 중' : '대기'}
-          </span>
-          ${!isEnded && !streaming && html`
-            <button class="btn btn-ghost btn-sm" onclick=${endConv}>대화 종료</button>
-          `}
-        </div>
-      </div>
-
-      <!-- Context Bar (refs + memory) -->
-      ${(refs.length > 0 || nuance) && html`
-        <div class="chat-context-bar">
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            ${nuance && html`
-              <button class="btn btn-ghost btn-sm"
-                onclick=${() => setShowMemory(v => !v)}
-                style="font-size:12px">
-                💭 대화기억 ${showMemory ? '▲' : '▼'}
-              </button>
-            `}
-            ${refs.length > 0 && html`
-              <span style="font-size:12px;color:#aaa">참고자료:</span>
-              <div class="ref-picker">
-                ${refs.map(r => html`
-                  <button key=${r.id}
-                    class=${'attach-chip' + (selectedRefs.includes(r.id) ? ' selected' : '')}
-                    onclick=${() => toggleRef(r.id)}>
-                    📄 ${r.filename.length > 14 ? r.filename.slice(0, 14) + '…' : r.filename}
-                  </button>
-                `)}
-              </div>
-            `}
-          </div>
-          ${showMemory && nuance && html`
-            <div class="memory-content" style="margin-top:8px">${nuance}</div>
-          `}
-        </div>
-      `}
-
-      <!-- Messages -->
-      <div class="chat-messages">
-        ${messages.length === 0 && !streaming && html`
-          <div class="empty-state" style="padding:80px 40px">
-            <div class="empty-icon">✍️</div>
-            <div class="empty-title">대화를 시작하세요</div>
-            <div class="empty-sub">제안서 작성, 전략 수립, 경쟁사 분석 등을 도와드립니다</div>
-          </div>
-        `}
-        ${messages.map(msg => html`<${MessageBubble} key=${msg.id} msg=${msg}/>`)}
-        ${streaming && html`<${StreamBubble} text=${streamText}/>`}
-        <div ref=${endRef}></div>
-      </div>
-
-      <!-- Sticky Input -->
-      <div class="chat-input-area">
-        ${selectedRefs.length > 0 && html`
-          <div class="attach-chips">
-            ${selectedRefs.map(id => {
-              const r = refs.find(r => r.id === id);
-              return r ? html`
-                <span key=${id} class="attach-chip selected">
-                  📄 ${r.filename.slice(0, 16)}
-                  <button
-                    onclick=${() => toggleRef(id)}
-                    style="margin-left:4px;border:none;background:none;color:inherit;cursor:pointer;padding:0;font-size:11px;line-height:1">
-                    ✕
-                  </button>
-                </span>
-              ` : null;
-            })}
-          </div>
-        `}
-        <div class="chat-input-row">
-          <textarea
-            ref=${taRef}
-            class="chat-textarea"
-            value=${input}
-            placeholder=${isEnded ? '이 대화는 종료되었습니다' : '메시지를 입력하세요... (Shift+Enter: 줄바꿈)'}
-            onInput=${e => { setInput(e.target.value); adjustTa(); }}
-            onKeydown=${e => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                send();
-              }
-            }}
-            disabled=${streaming || isEnded}
-            rows="1"
-          />
-          <button class="chat-send-btn" onclick=${send}
-            disabled=${streaming || isEnded || !input.trim()}>
-            ${streaming
-              ? html`<${Spinner} size=${18}/>`
-              : html`
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                  <path d="M3 9h12M10 4l5 5-5 5" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              `}
-          </button>
-        </div>
-      </div>
-    </div>
-  `;
+  ta.focus();
 }
 
-// ─────────────────────────────────────────────
-// App Root
-// ─────────────────────────────────────────────
-function App() {
-  const route = useRoute();
-  const [recentClients, setRecentClients] = useState([]);
+function msgElement(role, content, ts) {
+  const iconName = role === "user" ? "users" : "brain";
+  const row = h("div", { class: `msg-row ${role}` }, [
+    h("div", { class: "msg-avatar", html: iconHtml(iconName, 18) }),
+    h("div", { class: "msg-body" }, [
+      h("div", { class: "msg-bubble" }, content),
+      h("div", { class: "msg-time" }, fmtTime(ts)),
+    ]),
+  ]);
+  const bubble = row.querySelector(".msg-bubble");
+  bubble.dataset.raw = content;
+  if (role === "assistant" && content) renderAssistant(bubble, content, true);
+  return row;
+}
+function fmtTime(ts) {
+  try {
+    const d = new Date(ts.includes("T") ? ts : ts.replace(" ", "T"));
+    return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+  } catch { return ""; }
+}
 
-  // Refresh recent clients whenever we navigate to a non-conversation page
-  useEffect(() => {
-    if (route.page !== 'conversation') {
-      api.getClients().then(setRecentClients).catch(() => {});
-    }
-  }, [route.page, route.clientId]);
-
-  // Full-screen pages skip the sidebar layout
-  if (route.page === 'conversation') {
-    return html`<${ConversationPage} clientId=${route.clientId} convId=${route.convId}/>`;
+// ---------- Render assistant content (detects & renders proposal HTML) ----------
+function renderAssistant(bubble, text, final = false) {
+  bubble.dataset.raw = text;
+  // Detect proposal block
+  const idx = text.indexOf('<div class="proposal"');
+  if (idx === -1) {
+    bubble.textContent = text;
+    return;
   }
 
-  return html`
-    <div class="app-layout">
-      <${Sidebar} route=${route} recentClients=${recentClients}/>
-      <main class="main-area">
-        ${route.page === 'clients' && html`<${ClientListPage}/>`}
-        ${route.page === 'client' && html`<${ClientDetailPage} clientId=${route.clientId}/>`}
-        ${route.page === 'settings' && html`<${SettingsPage}/>`}
-      </main>
-    </div>
-  `;
+  // Split: pre-text and proposal content
+  const pre = text.slice(0, idx).trim();
+  const rest = text.slice(idx);
+  const endIdx = findProposalEnd(rest);
+  let propHtml = endIdx > 0 ? rest.slice(0, endIdx) : rest;
+  const post = endIdx > 0 ? rest.slice(endIdx).trim() : "";
+
+  bubble.innerHTML = "";
+  if (pre) bubble.appendChild(h("div", { style: "white-space: pre-wrap; margin-bottom: 10px;" }, pre));
+
+  // Sanitize and render proposal
+  const wrapper = h("div", { class: "proposal-wrapper" });
+  const safe = sanitizeProposalHtml(propHtml);
+  wrapper.innerHTML = safe;
+
+  const propEl = wrapper.querySelector(".proposal");
+  if (propEl) {
+    // Apply accent color as CSS var
+    const accent = propEl.getAttribute("data-accent") || "#111827";
+    propEl.style.setProperty("--proposal-accent", accent);
+
+    // Add toolbar (only when final or has at least 1 page)
+    const title = propEl.getAttribute("data-title") || "제안서";
+    const toolbar = h("div", { class: "proposal-toolbar" }, [
+      h("div", { class: "title" }, title),
+      h("div", { class: "actions" }, [
+        h("button", {
+          class: "btn btn-outline", html: `${iconHtml("printer", 14)}<span>인쇄 / PDF</span>`,
+          onclick: () => printProposal(propEl),
+        }),
+        h("button", {
+          class: "btn btn-outline", html: `${iconHtml("eye", 14)}<span>전체보기</span>`,
+          onclick: () => openProposalFullscreen(propEl),
+        }),
+      ]),
+    ]);
+
+    // Add keyword row under each page
+    propEl.querySelectorAll(".proposal-page").forEach((page) => {
+      const kw = page.getAttribute("data-keyword");
+      if (kw && !page.nextElementSibling?.classList.contains("keyword-row")) {
+        const kwRow = h("div", { class: "keyword-row" }, [
+          h("span", { class: "muted" }, `이미지 검색 · ${kw}`),
+          h("a", {
+            href: `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(kw)}`,
+            target: "_blank", rel: "noopener",
+          }, "구글에서 이미지 보기 →"),
+        ]);
+        page.insertAdjacentElement("afterend", kwRow);
+      }
+    });
+
+    propEl.parentElement.insertBefore(toolbar, propEl);
+  }
+
+  bubble.appendChild(wrapper);
+  if (post) bubble.appendChild(h("div", { style: "white-space: pre-wrap; margin-top: 10px;" }, post));
 }
 
-// ─────────────────────────────────────────────
-// Mount
-// ─────────────────────────────────────────────
-render(html`<${App}/>`, document.getElementById('app'));
+function findProposalEnd(s) {
+  // Finds matching closing </div> for .proposal outer div by depth counting
+  // Start from opening <div class="proposal"
+  const openRe = /<div\b/gi;
+  const closeRe = /<\/div>/gi;
+  let depth = 0, i = 0;
+  // Skip first opening tag
+  const firstOpen = s.indexOf(">");
+  if (firstOpen < 0) return -1;
+  i = firstOpen + 1; depth = 1;
+  while (i < s.length && depth > 0) {
+    openRe.lastIndex = i; closeRe.lastIndex = i;
+    const o = openRe.exec(s); const c = closeRe.exec(s);
+    if (!c) return -1;
+    if (o && o.index < c.index) { depth++; i = o.index + 1; }
+    else { depth--; i = c.index + "</div>".length; if (depth === 0) return i; }
+  }
+  return -1;
+}
+
+function sanitizeProposalHtml(html) {
+  // Very permissive sanitizer: removes script, iframe, on* attrs, javascript: URLs.
+  const tpl = document.createElement("template");
+  tpl.innerHTML = html;
+  tpl.content.querySelectorAll("script, iframe, object, embed, link, meta").forEach((el) => el.remove());
+  tpl.content.querySelectorAll("*").forEach((el) => {
+    for (const attr of Array.from(el.attributes)) {
+      if (/^on/i.test(attr.name)) el.removeAttribute(attr.name);
+      if (attr.name === "href" && /^javascript:/i.test(attr.value)) el.removeAttribute(attr.name);
+    }
+  });
+  return tpl.innerHTML;
+}
+
+// ---------- Proposal: print + fullscreen ----------
+function printProposal(propEl) {
+  const clone = propEl.cloneNode(true);
+  let mount = document.getElementById("print-mount");
+  if (!mount) {
+    mount = h("div", { id: "print-mount" });
+    document.body.appendChild(mount);
+  }
+  mount.innerHTML = "";
+  // Copy accent CSS var
+  const accent = propEl.style.getPropertyValue("--proposal-accent") || propEl.getAttribute("data-accent") || "#111827";
+  clone.style.setProperty("--proposal-accent", accent);
+  // Remove keyword rows in print
+  clone.querySelectorAll(".keyword-row").forEach(e => e.remove());
+  mount.appendChild(clone);
+  mount.style.display = "block";
+  setTimeout(() => {
+    window.print();
+    setTimeout(() => { mount.style.display = "none"; }, 500);
+  }, 100);
+}
+
+function openProposalFullscreen(propEl) {
+  const backdrop = h("div", {
+    class: "modal-backdrop",
+    onclick: (e) => { if (e.target === backdrop) backdrop.remove(); },
+  });
+  const modal = h("div", {
+    class: "modal",
+    style: "max-width: 95vw; max-height: 95vh; overflow: auto; padding: 24px;",
+  });
+  modal.appendChild(h("div", { class: "flex-between", style: "margin-bottom: 14px;" }, [
+    h("h3", { style: "margin: 0;" }, propEl.getAttribute("data-title") || "제안서 미리보기"),
+    h("button", { class: "icon-btn", onclick: () => backdrop.remove(), html: iconHtml("x", 20) }),
+  ]));
+  const clone = propEl.cloneNode(true);
+  const accent = propEl.style.getPropertyValue("--proposal-accent") || propEl.getAttribute("data-accent") || "#111827";
+  clone.style.setProperty("--proposal-accent", accent);
+  modal.appendChild(clone);
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
+}
+
+// ---------- Settings modal ----------
+async function openSettings() {
+  const modal = $("#settings-modal");
+  const s = await api.get("/api/settings");
+  $("#api-key-input").value = "";
+  $("#api-key-input").placeholder = s.has_key ? s.masked_key : "sk-ant-api03-...";
+  $("#api-key-status").textContent = s.has_key ? `설정된 키: ${s.masked_key}` : "설정된 키 없음";
+  $("#model-select").value = s.model || "claude-sonnet-4-5-20250929";
+  modal.classList.remove("hidden");
+}
+function closeSettings() { $("#settings-modal").classList.add("hidden"); }
+
+$("#settings-btn").addEventListener("click", openSettings);
+$$("[data-close-modal]").forEach((el) => el.addEventListener("click", closeSettings));
+$("#settings-modal").addEventListener("click", (e) => {
+  if (e.target.id === "settings-modal") closeSettings();
+});
+$("#save-settings").addEventListener("click", async () => {
+  const body = {};
+  const k = $("#api-key-input").value.trim();
+  if (k) body.api_key = k;
+  body.model = $("#model-select").value;
+  try {
+    await api.post("/api/settings", body);
+    toast("설정이 저장되었습니다", "success");
+    closeSettings();
+  } catch (e) { toast(String(e.message || e), "error"); }
+});
+
+// ---------- Boot ----------
+route();

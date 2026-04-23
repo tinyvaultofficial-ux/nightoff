@@ -283,6 +283,109 @@ function fmtSize(bytes) {
 }
 
 // ---------- Dashboard ----------
+function renderSmartLearningBanner(dna, stats) {
+  const banner = h("section", { class: "smart-banner" });
+  banner.appendChild(h("div", { class: "smart-header" }, [
+    h("span", { class: "sm-emoji" }, "✨"),
+    h("div", {}, [
+      h("h2", {}, "BidPick은 쓸수록 똑똑해져요"),
+      h("p", {}, "RFP와 대화·과거 제안서·승패 기록이 쌓일수록 더 정확한 제안서가 나옵니다"),
+    ]),
+  ]));
+  const feats = [
+    {
+      icon: "brain",
+      title: "발주처 프로파일",
+      desc: "RFP와 대화마다 발주처 선호 키워드, 높은 배점 항목을 자동 축적해요.",
+    },
+    {
+      icon: "folder",
+      title: "우리 회사 DNA",
+      desc: dna.exists
+        ? `레퍼런스 ${dna.ref_count}건에서 회사 고유 스타일·전략을 학습 중이에요.`
+        : "과거 제안서를 올릴수록 회사 문체·강점·전략 패턴을 학습해요.",
+    },
+    {
+      icon: "trending",
+      title: "승패 학습",
+      desc: (stats.wins || stats.losses)
+        ? `${stats.wins}승 ${stats.losses}패 기록 — 승률 ${stats.win_rate ?? "—"}% 로 전략에 반영 중`
+        : "낙찰/탈락 결과를 기록하면 승률 높은 전략을 우선 반영해요.",
+    },
+  ];
+  const grid = h("div", { class: "smart-grid" });
+  feats.forEach((f) => {
+    grid.appendChild(h("div", { class: "smart-feat" }, [
+      h("div", { class: "sm-feat-icon", html: iconHtml(f.icon, 18) }),
+      h("div", {}, [
+        h("h4", {}, f.title),
+        h("p", {}, f.desc),
+      ]),
+    ]));
+  });
+  banner.appendChild(grid);
+  return banner;
+}
+
+async function openCompanyDnaModal() {
+  const dna = await api.get("/api/company-dna").catch(() => ({ exists: false, ref_count: 0 }));
+
+  const backdrop = h("div", { class: "modal-backdrop", onclick: (e) => { if (e.target === backdrop) backdrop.remove(); } });
+  const modal = h("div", { class: "modal", style: "max-width: 640px;" });
+  modal.appendChild(h("div", { class: "modal-header" }, [
+    h("h3", {}, "우리 회사 DNA"),
+    h("button", { class: "icon-btn", onclick: () => backdrop.remove(), html: iconHtml("x", 18) }),
+  ]));
+
+  const body = h("div", { class: "modal-body" });
+  if (!dna.exists) {
+    body.appendChild(h("div", { class: "onboarding-hint" }, [
+      h("span", { class: "ob-emoji" }, "📂"),
+      h("div", {}, [
+        h("p", { class: "ob-title" }, "과거 제안서를 올려두면 회사 스타일을 학습해요"),
+        h("p", { class: "ob-desc" }, "발주처 상세의 ‘레퍼런스 라이브러리’에 이전 제안서·회사 소개서·성공 사례를 업로드하면, BidPick이 자주 쓰는 표현·강점 키워드·전략 구조를 추출합니다. 올리면 올릴수록 새 제안서가 우리 회사답게 나와요."),
+      ]),
+    ]));
+  } else {
+    const kwGroup = (label, items, cls) => items && items.length ? h("div", { style: "margin-top: 14px;" }, [
+      h("p", { class: "small muted", style: "margin: 0 0 6px; font-weight: 500;" }, label),
+      h("div", { class: "flex-row", style: "flex-wrap: wrap; gap: 6px;" },
+        items.map((x) => h("span", { class: "badge " + cls }, x))),
+    ]) : null;
+
+    body.appendChild(h("div", { class: "small muted" }, `레퍼런스 ${dna.sample_count || dna.ref_count}건 기반 · ${relativeTime(dna.updated_at)} 업데이트`));
+    if (dna.tone_style) body.appendChild(h("div", { style: "margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: var(--primary-soft); color: var(--primary); font-size: 14px; line-height: 1.5;" },
+      [h("strong", {}, "톤앤매너 · "), document.createTextNode(dna.tone_style)]));
+    [
+      kwGroup("자주 쓰는 표현", dna.signature_phrases, "badge-primary"),
+      kwGroup("강점 키워드", dna.strength_keywords, "badge-success"),
+    ].filter(Boolean).forEach((el) => body.appendChild(el));
+    if (dna.strategy_patterns?.length) {
+      body.appendChild(h("div", { style: "margin-top: 14px;" }, [
+        h("p", { class: "small muted", style: "margin: 0 0 8px; font-weight: 500;" }, "주로 쓰는 전략 구조"),
+        h("ul", { style: "list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px;" },
+          dna.strategy_patterns.map((sp) => h("li", { style: "padding: 10px 12px; background: var(--bg-2); border-radius: 8px; font-size: 13px;" }, sp))),
+      ]));
+    }
+  }
+  modal.appendChild(body);
+  modal.appendChild(h("div", { class: "modal-footer" }, [
+    h("button", { class: "btn btn-ghost", onclick: () => backdrop.remove() }, "닫기"),
+    h("button", { class: "btn btn-primary", onclick: async () => {
+      const loader = createSoftLoader(LOADER_STEPS.reference, { block: true });
+      body.innerHTML = "";
+      body.appendChild(h("div", { style: "display: flex; justify-content: center; padding: 14px 0;" }, loader.el));
+      try {
+        await api.post("/api/company-dna/rebuild");
+        loader.finish("✅", "재학습 완료!");
+        setTimeout(() => { backdrop.remove(); openCompanyDnaModal(); }, 600);
+      } catch (e) { loader.stop(); toast(e.message || "재학습 실패", "error"); }
+    } }, "지금 재학습"),
+  ]));
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
+}
+
 function relativeTime(ts) {
   if (!ts) return "";
   try {
@@ -304,10 +407,11 @@ async function renderDashboard() {
   const main = h("main", { class: "main" });
   root.appendChild(main);
 
-  const [stats, clients, activity] = await Promise.all([
+  const [stats, clients, activity, dna] = await Promise.all([
     api.get("/api/stats").catch(() => ({})),
     api.get("/api/clients").catch(() => []),
     api.get("/api/activity").catch(() => []),
+    api.get("/api/company-dna").catch(() => ({ exists: false, ref_count: 0 })),
   ]);
 
   main.appendChild(h("header", { class: "main-header" }, [
@@ -328,13 +432,19 @@ async function renderDashboard() {
   const content = h("div", { class: "main-content" });
   main.appendChild(content);
 
-  // ── 3개 핵심 스탯
+  // ── "BidPick은 쓸수록 똑똑해져요" 배너
+  content.appendChild(renderSmartLearningBanner(dna, stats));
+
+  // ── 핵심 스탯 4개 (승률 포함)
+  const winRateDisplay = stats.win_rate === null || stats.win_rate === undefined ? "—" : `${stats.win_rate}`;
+  const winRateUnit = stats.win_rate === null || stats.win_rate === undefined ? "" : "%";
   const statItems = [
     { label: "등록된 발주처", value: stats.total_clients ?? 0, unit: "곳", icon: "users", tint: "var(--primary-soft)", fg: "var(--primary)" },
     { label: "작성한 제안서", value: stats.total_proposals ?? 0, unit: "건", icon: "file", tint: "var(--success-soft)", fg: "var(--success)" },
     { label: "이번 달 활동", value: stats.month_activity ?? 0, unit: "회", icon: "activity", tint: "var(--warning-soft)", fg: "var(--warning)" },
+    { label: `낙찰률 (${stats.wins ?? 0}승 ${stats.losses ?? 0}패)`, value: winRateDisplay, unit: winRateUnit, icon: "trending", tint: "var(--accent)", fg: "var(--accent-fg)" },
   ];
-  const statsGrid = h("div", { class: "stats-grid stats-grid-3" });
+  const statsGrid = h("div", { class: "stats-grid stats-grid-4" });
   statItems.forEach((s) => {
     statsGrid.appendChild(h("div", { class: "card stat-card" }, [
       h("div", { class: "flex-between", style: "align-items: flex-start;" }, [
@@ -371,11 +481,11 @@ async function renderDashboard() {
         h("p", {}, "최근 발주처로 이동해 문서를 업로드하세요"),
       ]),
     ]),
-    h("div", { class: "quick-card", onclick: () => { $("#settings-btn").click(); } }, [
+    h("div", { class: "quick-card", onclick: () => openCompanyDnaModal() }, [
       h("div", { class: "quick-icon", html: iconHtml("brain", 22) }),
       h("div", {}, [
-        h("h4", {}, "AI 설정"),
-        h("p", {}, "Anthropic 키와 모델을 확인/변경하세요"),
+        h("h4", {}, "우리 회사 DNA"),
+        h("p", {}, dna.exists ? `레퍼런스 ${dna.ref_count}건 학습 중` : "과거 제안서 올리면 회사 스타일 학습"),
       ]),
     ]),
   ]));
@@ -592,12 +702,51 @@ async function renderClientDetail(cid) {
   const stack = h("div", { class: "row-gap-18" });
   content.appendChild(stack);
 
-  // Order: History → RFP → References → Competitors
-  // (대화 기억 섹션은 제거 — 채팅 헤더에서 배지로만 표시)
+  // Order: History → Profile → RFP → References → Competitors
   stack.appendChild(await renderConvHistorySection(cid));
+  stack.appendChild(await renderProfileSection(cid));
   stack.appendChild(await renderRfpSection(cid));
   stack.appendChild(await renderReferenceSection(cid));
   stack.appendChild(await renderCompetitorSection(cid));
+}
+
+// ---------- 낙찰/탈락 Outcome ----------
+const OUTCOME_META = {
+  "":            { label: "상태 설정", cls: "outcome-none" },
+  "in_progress": { label: "진행 중",   cls: "outcome-inprogress" },
+  "won":         { label: "낙찰 🏆",   cls: "outcome-won" },
+  "lost":        { label: "탈락",      cls: "outcome-lost" },
+};
+const OUTCOME_OPTIONS = ["", "in_progress", "won", "lost"];
+
+function outcomeChip(cv, cid) {
+  const current = cv.outcome || "";
+  const meta = OUTCOME_META[current] || OUTCOME_META[""];
+  const wrap = h("div", { class: "outcome-wrap" });
+  const chip = h("button", {
+    class: `outcome-chip ${meta.cls}`,
+    onclick: (e) => { e.stopPropagation(); menu.classList.toggle("open"); },
+  }, meta.label);
+  const menu = h("div", { class: "outcome-menu" });
+  OUTCOME_OPTIONS.forEach((op) => {
+    const m = OUTCOME_META[op];
+    menu.appendChild(h("button", {
+      class: `outcome-menu-item ${m.cls}`,
+      onclick: async (e) => {
+        e.stopPropagation();
+        menu.classList.remove("open");
+        try {
+          await api.patch(`/api/conversations/${cv.id}/outcome`, { outcome: op });
+          toast(op ? `상태: ${m.label.replace(" 🏆","")}` : "상태 해제됨", "success");
+          renderClientDetail(cid);
+        } catch (e) { toast(e.message || "상태 변경 실패", "error"); }
+      },
+    }, op ? m.label : "상태 해제"));
+  });
+  wrap.appendChild(chip);
+  wrap.appendChild(menu);
+  document.addEventListener("click", () => menu.classList.remove("open"), { once: true });
+  return wrap;
 }
 
 // ---------- Conversation History ----------
@@ -641,6 +790,7 @@ async function renderConvHistorySection(cid) {
           h("span", { class: "flex-row", html: `${iconHtml("calendar", 12)}<span>${fmtDate(cv.created_at)}</span>` }),
           h("span", { class: "flex-row", html: `${iconHtml("msg", 12)}<span>${cv.msg_count || 0}개 메시지</span>` }),
           cv.ended ? h("span", { class: "badge badge-muted" }, "종료됨") : null,
+          outcomeChip(cv, cid),
         ]),
       ]),
       h("div", { class: "conv-actions" }, [
@@ -1178,6 +1328,68 @@ function compCard(c, cid) {
     ]) : null),
     c.differentiator ? h("div", { class: "comp-diff" }, "우리의 승부수 · " + c.differentiator) : null,
   ]);
+}
+
+// ---------- 발주처 프로파일 ----------
+async function renderProfileSection(cid) {
+  const p = await api.get(`/api/clients/${cid}/profile`).catch(() => ({ exists: false }));
+  const card = h("div", { class: "card" });
+
+  card.appendChild(h("div", { class: "card-head" }, [
+    h("div", { class: "card-title-row" }, [
+      h("div", { class: "card-title-icon", style: "background: var(--primary-soft); color: var(--primary);", html: iconHtml("brain", 18) }),
+      h("div", {}, [
+        h("h3", { class: "card-title" }, "발주처 프로파일"),
+        h("p", { class: "card-subtitle" }, p.exists ? `${p.sample_count || 1}회 축적 · RFP와 대화에서 자동 학습` : "RFP를 넣고 대화할수록 BidPick이 이 발주처를 더 깊이 이해해요"),
+      ]),
+    ]),
+    p.exists ? h("span", {
+      class: "win-rate-badge " + (p.win_rate === null ? "muted" : (p.win_rate >= 50 ? "good" : "warn")),
+      title: `낙찰 ${p.win}건 / 탈락 ${p.lose}건`,
+    }, p.win_rate === null ? "기록 없음" : `승률 ${p.win_rate}%`) : null,
+  ]));
+
+  const body = h("div", { class: "card-body row-gap-14" });
+  card.appendChild(body);
+
+  if (!p.exists) {
+    body.appendChild(h("div", { class: "onboarding-hint" }, [
+      h("span", { class: "ob-emoji" }, "✨"),
+      h("div", {}, [
+        h("p", { class: "ob-title" }, "다음 입찰엔 더 정확한 제안서가 나와요"),
+        h("p", { class: "ob-desc" }, "RFP를 분석하고 대화를 나눌수록 이 발주처의 선호 키워드·높은 배점 항목·반복 요구사항을 자동으로 축적해요. 쌓인 프로파일은 모든 새 제안서에 자동으로 반영됩니다."),
+      ]),
+    ]));
+    return card;
+  }
+
+  const kwBox = (label, items, cls = "badge-outline") => {
+    if (!items || !items.length) return null;
+    return h("div", {}, [
+      h("p", { class: "small muted", style: "margin: 0 0 6px; font-weight: 500;" }, label),
+      h("div", { class: "flex-row", style: "flex-wrap: wrap; gap: 6px;" },
+        items.map((x) => h("span", { class: "badge " + cls }, x))),
+    ]);
+  };
+  const blocks = [
+    kwBox("선호 키워드", p.keywords, "badge-primary"),
+    kwBox("높은 배점 항목", p.high_weight_items, "badge-success"),
+    kwBox("반복 요구사항", p.recurring_reqs, "badge-warning"),
+  ].filter(Boolean);
+  if (blocks.length) body.appendChild(h("div", { class: "row-gap-14" }, blocks));
+
+  if (p.insights?.length) {
+    body.appendChild(h("div", {}, [
+      h("p", { class: "small muted", style: "margin: 0 0 8px; font-weight: 500;" }, "축적된 인사이트"),
+      h("ul", { style: "list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px;" },
+        p.insights.map((ins) => h("li", { class: "flex-row", style: "align-items: flex-start; font-size: 14px;" }, [
+          h("span", { style: "color: var(--primary); flex-shrink: 0; margin-top: 3px;" }, "•"),
+          h("span", {}, ins),
+        ]))),
+    ]));
+  }
+
+  return card;
 }
 
 // ---------- Memory ----------

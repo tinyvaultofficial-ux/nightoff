@@ -900,7 +900,24 @@ input, select, textarea { font-family: inherit; color: inherit; }
 .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--border); }
 .modal-header h3 { margin: 0; font-size: 17px; font-weight: 600; }
 .modal-body { padding: 22px; display: flex; flex-direction: column; gap: 20px; }
-.modal-footer { padding: 14px 22px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+.modal-footer { padding: 14px 22px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+
+/* API 키 진단 결과 박스 */
+.settings-diagnostic {
+  margin: 0 22px 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--bg-2);
+  font-size: 13px; line-height: 1.55;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  white-space: normal;
+}
+.settings-diagnostic.hidden { display: none; }
+.settings-diagnostic.ok  { background: var(--success-soft); border-color: var(--success); color: var(--success); }
+.settings-diagnostic.err { background: var(--danger-soft);  border-color: var(--danger);  color: var(--danger); }
+.settings-diagnostic strong { display: block; margin-bottom: 4px; font-size: 13.5px; }
+.settings-diagnostic .small { display: inline-block; margin-top: 4px; }
 
 /* ===== Settings FAB ===== */
 .settings-fab {

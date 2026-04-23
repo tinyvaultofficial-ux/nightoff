@@ -1069,6 +1069,71 @@ def api_settings_set(body: SettingsIn):
     return api_settings_get()
 
 
+@app.post("/api/settings/test")
+def api_settings_test():
+    """현재 저장된 API 키로 최소 요청을 보내 유효성·크레딧 상태를 진단."""
+    key = get_api_key()
+    if not key:
+        return {"ok": False, "stage": "no_key", "message": "API 키가 설정되지 않았어요. 저장 후 다시 시도해 주세요."}
+
+    # 키 마스킹된 끝 4자리 + 모델
+    tail = key[-4:] if len(key) >= 4 else "****"
+    model = get_setting("model", MODEL_DEFAULT)
+    try:
+        client = anthropic.Anthropic(api_key=key, timeout=15.0, max_retries=0)
+        resp = client.messages.create(
+            model=model,
+            max_tokens=16,
+            messages=[{"role": "user", "content": "ping"}],
+        )
+        usage = getattr(resp, "usage", None)
+        return {
+            "ok": True,
+            "stage": "success",
+            "message": f"정상 연결 ✅ — 모델 {model} · 키 끝자리 ···{tail}",
+            "model": model,
+            "input_tokens": getattr(usage, "input_tokens", None),
+            "output_tokens": getattr(usage, "output_tokens", None),
+        }
+    except anthropic.AuthenticationError as e:
+        log.warning("API 키 테스트 — AuthenticationError: %s", e)
+        return {
+            "ok": False, "stage": "auth", "key_tail": tail,
+            "message": "API 키가 유효하지 않아요. console.anthropic.com에서 키를 재생성한 뒤 저장해 주세요.",
+        }
+    except anthropic.BadRequestError as e:
+        msg = str(e)
+        low = msg.lower()
+        if "credit balance" in low or "insufficient" in low:
+            return {
+                "ok": False, "stage": "credit", "key_tail": tail, "model": model,
+                "message": (
+                    "이 API 키에 연결된 Organization에 잔액이 없어요. 자주 헷갈리는 점:\n"
+                    "• Claude.ai Pro/Max 구독은 API 크레딧을 포함하지 않습니다.\n"
+                    "• 여러 Organization이 있다면, 크레딧 충전은 **API 키가 속한 조직**에서 해야 합니다.\n"
+                    "확인: console.anthropic.com → 우측 상단 조직 전환 드롭다운에서 해당 조직 선택 → Plans & Billing → Auto reload 설정 권장."
+                ),
+                "raw": msg[:240],
+            }
+        if "disabled" in low or "suspended" in low:
+            return {"ok": False, "stage": "disabled", "key_tail": tail,
+                    "message": "이 API 키가 속한 조직이 비활성화된 상태예요. Anthropic 콘솔에서 상태를 확인해 주세요.",
+                    "raw": msg[:240]}
+        return {"ok": False, "stage": "bad_request", "key_tail": tail,
+                "message": "요청이 거부됐어요. 원본 메시지를 확인해 주세요.", "raw": msg[:240]}
+    except anthropic.APIConnectionError:
+        return {"ok": False, "stage": "network",
+                "message": "Anthropic 서버에 접속할 수 없어요. 네트워크를 확인해 주세요."}
+    except anthropic.APIStatusError as e:
+        return {"ok": False, "stage": "status", "key_tail": tail,
+                "message": f"API가 {getattr(e, 'status_code', '')} 를 반환했어요.",
+                "raw": str(e)[:240]}
+    except Exception as e:
+        log.exception("API 키 테스트 실패")
+        return {"ok": False, "stage": "unknown", "key_tail": tail,
+                "message": "진단 중 알 수 없는 오류", "raw": str(e)[:240]}
+
+
 # ---------- Stats ----------
 @app.get("/api/stats")
 def api_stats():

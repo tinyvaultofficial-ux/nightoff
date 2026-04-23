@@ -1988,6 +1988,8 @@ async function openSettings() {
   $("#api-key-input").placeholder = s.has_key ? s.masked_key : "sk-ant-api03-...";
   $("#api-key-status").textContent = s.has_key ? `설정된 키: ${s.masked_key}` : "설정된 키 없음";
   $("#model-select").value = s.model || "claude-sonnet-4-5-20250929";
+  const dx = $("#settings-diagnostic");
+  if (dx) { dx.classList.add("hidden"); dx.classList.remove("ok", "err"); dx.innerHTML = ""; }
   modal.classList.remove("hidden");
 }
 function closeSettings() { $("#settings-modal").classList.add("hidden"); }
@@ -2007,6 +2009,39 @@ $("#save-settings").addEventListener("click", async () => {
     toast("설정이 저장되었습니다", "success");
     closeSettings();
   } catch (e) { toast(String(e.message || e), "error"); }
+});
+
+$("#test-key").addEventListener("click", async () => {
+  // 저장 안 된 새 키가 입력창에 있다면 먼저 저장
+  const newKey = $("#api-key-input").value.trim();
+  const box = $("#settings-diagnostic");
+  const btn = $("#test-key");
+  btn.disabled = true; btn.textContent = "테스트 중…";
+  box.classList.remove("hidden", "ok", "err");
+  box.textContent = "API 연결 확인 중…";
+  try {
+    if (newKey) {
+      await api.post("/api/settings", { api_key: newKey, model: $("#model-select").value });
+    } else if ($("#model-select").value) {
+      await api.post("/api/settings", { model: $("#model-select").value });
+    }
+    const r = await api.post("/api/settings/test");
+    box.classList.add(r.ok ? "ok" : "err");
+    if (r.ok) {
+      box.innerHTML = `<strong>✅ 정상 연결</strong><br>${escapeHtml(r.message)}${r.output_tokens != null ? `<br><span class="small muted">응답 ${r.output_tokens} tokens · 입력 ${r.input_tokens ?? 0}</span>` : ""}`;
+    } else {
+      const stageLabel = { auth: "🔑 인증", credit: "💳 크레딧/빌링", disabled: "🚫 조직 비활성", network: "🌐 네트워크", bad_request: "⚠️ 요청", status: "⚠️ API 상태", no_key: "❓ 키 없음" }[r.stage] || "⚠️ 진단";
+      let html = `<strong>${stageLabel}</strong><br>${escapeHtml(r.message).replace(/\n/g, "<br>")}`;
+      if (r.key_tail) html += `<br><span class="small muted">키 끝자리 ···${r.key_tail}${r.model ? ` · 모델 ${r.model}` : ""}</span>`;
+      if (r.raw) html += `<br><span class="small muted">원본: ${escapeHtml(r.raw)}</span>`;
+      box.innerHTML = html;
+    }
+  } catch (e) {
+    box.classList.add("err");
+    box.textContent = "진단 실패: " + (e.message || e);
+  } finally {
+    btn.disabled = false; btn.textContent = "연결 테스트";
+  }
 });
 
 // ---------- Boot ----------

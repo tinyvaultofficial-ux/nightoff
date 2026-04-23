@@ -273,6 +273,83 @@ BidPick의 AI 엔진으로, 발주처를 설득하는 제안서를 한국어로 
    - "우리만이 제공할 수 있는" 고유 자산/IP/특허/방법론/인력을 최소 1개 이상 명시.
    - "시장에서 유일한", "국내 최초의", "자체 개발한" 등 희소성 표현을 근거와 함께 사용.
 
+[Feature → Benefit → Proof 체인 — 모든 문단/카드/박스의 필수 서술 순서]
+모든 단위 콘텐츠(문단, 카드, 박스, 스텝, 전략 블록 등)는 반드시 아래 순서로 서술한다.
+생략 금지. 순서 바꿈 금지.
+
+  1) Feature  = 우리가 제공하는 구체적 기능/솔루션/방법론  (what)
+  2) Benefit  = 발주처가 실제로 얻는 혜택 — BLUF로 선제시 (so-what for the customer)
+  3) Proof    = 수치·사례·레퍼런스·인증·특허로 뒷받침     (prove it)
+
+출력 순서는 BLUF 원칙에 따라 'Benefit 한 문장을 맨 앞에 → Feature 설명 → Proof로 마무리'
+로 자연스럽게 엮어 쓴다. 즉 독자는 혜택을 먼저 보고, 기능·근거는 그 뒤에서 확인한다.
+
+  예) 나쁨: "Kubernetes 기반 컨테이너 오케스트레이션을 적용합니다."
+     좋음(BLUF + F·B·P):
+       "발주처는 피크 트래픽 10배 급증에도 무중단 서비스를 확보합니다(Benefit).
+        Kubernetes 기반 오토스케일링 컨테이너 오케스트레이션을 적용했기 때문입니다(Feature).
+        유사 공공 7개 기관 운영에서 연 99.97% 가동률을 기록했습니다(Proof)."
+
+[Action Caption — 모든 시각화에 반드시 부착]
+표, 다이어그램, 차트, 인포그래픽, 벤다이어그램, 진행바, 도넛, 카드 그리드, 스텝 플로우,
+타임라인 등 "시각화 요소"가 있는 모든 블록에는 바로 위 또는 아래에
+<p class="action-caption">...</p> 을 반드시 부착한다.
+
+  - Action Caption은 단순 그래픽 설명이 아니다.
+  - "이 비주얼이 증명하는 결론 + 발주처가 얻는 혜택" 을 한 문장에 담는 설득적 캡션이어야 한다.
+  - Feature→Benefit→Proof 중 'Benefit'을 맨 앞에, 근거는 뒷부분에.
+
+  예) 나쁨: "아래는 프로젝트 단계 도식입니다."
+     좋음: "3단계 Blue-Green 배포로 발주처는 서비스 중단 없이 전환을 완료합니다 —
+           동일 구조로 7개 공공기관 무중단 전환을 달성했습니다."
+
+시각화 블록이 있는데 action-caption이 없으면 해당 페이지는 미완성으로 간주된다.
+
+[배점 기반 분량 배분 — RFP의 evaluation_criteria weight를 반영]
+RFP 분석 결과의 evaluation_criteria(배점표)를 읽고, 배점 비중에 비례해 섹션 분량·시각화 밀도를
+자동 조정한다. 배점 없는 항목은 균등 가중으로 간주.
+
+  - 배점 ≥ 30점(또는 전체의 25% 이상): 2~3페이지 할애, 시각화 2개 이상(표+차트 등), 깊은 근거.
+  - 배점 15~29점(전체의 10~24%): 1~2페이지, 시각화 1~2개.
+  - 배점 < 15점(전체의 10% 미만): 1페이지 또는 반 페이지, 핵심 포인트만 간결히.
+
+  규칙:
+  - 배점 높은 항목일수록 근거(Proof)의 수치·레퍼런스·인증을 더 촘촘히.
+  - 배점 낮은 항목을 과도하게 늘리지 않는다 (불필요한 페이지 팽창 금지).
+  - RFP에 배점이 전혀 없을 경우 균등 배분하되, 차별화 포인트가 큰 섹션에 더 투자한다.
+
+[컴플라이언스 자동 체크 — 제안서 말미에 반드시 포함]
+제안서의 마지막 페이지 뒤에 반드시 "컴플라이언스 체크" 페이지를 추가한다.
+RFP 분석 결과의 key_requirements를 하나씩 읽고, 각 요구사항이 제안서 내 어느 섹션에서
+다뤄졌는지 매핑해 표로 출력한다.
+
+<div class="proposal-page" data-section="COMPLIANCE" data-keyword="requirements checklist">
+  <div class="page-section-name">COMPLIANCE CHECK</div>
+  <div class="page-governing">발주처 요구사항 100% 반영 확인</div>
+  <div class="page-content">
+    <p class="action-caption">모든 핵심 요구사항이 제안서 내에서 구체적으로 답변되었습니다.</p>
+    <table class="compare-table">
+      <thead><tr><th>#</th><th>RFP 요구사항</th><th>반영 섹션</th><th>상태</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>요구사항 내용</td><td>제3장 실행 방안</td><td>✅ 반영</td></tr>
+        ...
+      </tbody>
+    </table>
+
+    <!-- 누락 항목이 단 하나라도 있으면 반드시 아래 블록을 추가로 출력 -->
+    <div class="missing-alert">
+      <h4>⚠️ 누락 항목</h4>
+      <ul>
+        <li>누락된 요구사항 (보완 제안)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="page-summary">RFP 전 요구사항에 대한 명시적 대응 — 평가 리스크 제로</div>
+</div>
+
+  - 누락이 없으면 <div class="missing-alert"> 블록은 출력하지 않는다.
+  - RFP 분석 결과가 없거나 key_requirements가 빈 경우에만 이 페이지 자체를 생략한다.
+
 [출력 모드 판별]
 사용자가 "제안서 작성", "초안 만들어", "페이지 구성해", "전체 제안서", "1페이지", "구성안" 등
 제안서 생성을 명확히 요청하면 ▣제안서 모드로, 그 외에는 일반 대화(plain text)로 응답한다.
@@ -496,14 +573,32 @@ async def no_cache_static(request, call_next):
     return response
 
 
+from fastapi.responses import HTMLResponse
+
+
+def _render_index() -> str:
+    """index.html을 읽어 static 자원 URL에 시작 시점 타임스탬프 쿼리를 박아 반환 — 캐시 회피."""
+    v = str(int(datetime.now().timestamp()))
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    html = html.replace('href="/static/style.css"', f'href="/static/style.css?v={v}"')
+    html = html.replace('src="/static/app.js"', f'src="/static/app.js?v={v}"')
+    return html
+
+
 @app.get("/")
 def index():
-    return FileResponse(str(STATIC_DIR / "index.html"))
+    return HTMLResponse(_render_index())
 
 
 @app.get("/favicon.ico")
 def favicon():
     return JSONResponse({}, status_code=204)
+
+
+@app.get("/client/{rest:path}")
+def spa_fallback_client(rest: str):
+    """SPA routing fallback — 발주처 상세/수정/채팅 URL 직접 접근 허용."""
+    return HTMLResponse(_render_index())
 
 
 # ---------- Models ----------

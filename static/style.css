@@ -444,6 +444,26 @@ input, select, textarea { font-family: inherit; color: inherit; }
   padding-left: 10px; border-left: 3px solid #111827;
 }
 
+/* === Compliance missing-alert (B&W, 강한 시각적 경고) === */
+.proposal-page .missing-alert {
+  margin-top: 18px; padding: 14px 18px;
+  border: 2px solid #111827; border-radius: 10px; background: #fff;
+  position: relative;
+}
+.proposal-page .missing-alert::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0;
+  width: 6px; background:
+    repeating-linear-gradient(45deg, #111827 0 6px, #fff 6px 12px);
+}
+.proposal-page .missing-alert h4 {
+  margin: 0 0 8px; font-size: 14px; font-weight: 700; color: #111827;
+  padding-left: 6px;
+}
+.proposal-page .missing-alert ul {
+  margin: 0; padding-left: 24px; font-size: 13px; color: #374151; line-height: 1.6;
+}
+.proposal-page .missing-alert li { margin: 2px 0; }
+
 /* === B&W visualization primitives — all monochrome, no color === */
 
 /* Arrow flow (process / change) */

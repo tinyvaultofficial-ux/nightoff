@@ -408,10 +408,10 @@ async function renderClientDetail(cid) {
   const stack = h("div", { class: "row-gap-18" });
   content.appendChild(stack);
 
-  // Order per spec: History → References → RFP → Competitors → Memory
+  // Order per spec: History → RFP → References → Competitors → Memory
   stack.appendChild(await renderConvHistorySection(cid));
-  stack.appendChild(await renderReferenceSection(cid));
   stack.appendChild(await renderRfpSection(cid));
+  stack.appendChild(await renderReferenceSection(cid));
   stack.appendChild(await renderCompetitorSection(cid));
   stack.appendChild(await renderMemorySection(cid));
 }

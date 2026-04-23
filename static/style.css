@@ -28,7 +28,7 @@
   --shadow: 0 1px 3px 0 rgba(0,0,0,.08), 0 1px 2px -1px rgba(0,0,0,.04);
   --shadow-md: 0 4px 10px -2px rgba(0,0,0,.08), 0 2px 4px -2px rgba(0,0,0,.04);
   --shadow-lg: 0 20px 40px -12px rgba(0,0,0,.15);
-  --sidebar-w: 260px;
+  --sidebar-w: 280px;
   --sans: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }
 
@@ -52,19 +52,21 @@ input, select, textarea { font-family: inherit; color: inherit; }
 }
 .sidebar-logo {
   display: flex; align-items: center; justify-content: center;
-  height: 140px; padding: 14px 18px; border-bottom: 1px solid var(--border);
+  min-height: 110px; padding: 22px 20px; border-bottom: 1px solid var(--border);
   cursor: pointer; user-select: none; transition: opacity .15s;
   background: #fff;
 }
 .sidebar-logo:hover { opacity: 0.78; }
 .sidebar-logo:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .sidebar-logo-img {
-  max-height: 112px; max-width: 220px;
+  width: 100%;
+  max-width: 240px;
+  max-height: 80px;
   object-fit: contain; display: block;
 }
-/* Main header logo (dashboard) */
+/* Main header logo (dashboard) — 가로형 로고에 맞게 비율 유지 */
 .header-logo {
-  width: 56px; height: 56px; object-fit: contain;
+  width: auto; height: 40px; object-fit: contain;
   cursor: pointer; transition: opacity .15s;
 }
 .header-logo:hover { opacity: 0.78; }

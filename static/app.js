@@ -284,14 +284,31 @@ function fmtSize(bytes) {
 
 // ---------- Dashboard ----------
 function renderSmartLearningBanner(dna, stats) {
-  const banner = h("section", { class: "smart-banner" });
-  banner.appendChild(h("div", { class: "smart-header" }, [
+  const stored = localStorage.getItem("bidpick.smartBannerOpen");
+  // 기본: 접힘. 사용자가 한 번 열었던 적이 있다면 그 상태 유지.
+  let expanded = stored === "1";
+
+  const banner = h("section", { class: "smart-banner" + (expanded ? " expanded" : " collapsed") });
+
+  const toggleBtn = h("button", {
+    class: "smart-toggle", "aria-label": "소개 열기/닫기",
+    html: iconHtml(expanded ? "chevronD" : "chevronR", 18),
+  });
+  const header = h("div", { class: "smart-header clickable", onclick: () => {
+    expanded = !expanded;
+    banner.classList.toggle("expanded", expanded);
+    banner.classList.toggle("collapsed", !expanded);
+    toggleBtn.innerHTML = iconHtml(expanded ? "chevronD" : "chevronR", 18);
+    localStorage.setItem("bidpick.smartBannerOpen", expanded ? "1" : "0");
+  } }, [
     h("span", { class: "sm-emoji" }, "✨"),
-    h("div", {}, [
+    h("div", { style: "flex: 1;" }, [
       h("h2", {}, "BidPick은 쓸수록 똑똑해져요"),
       h("p", {}, "RFP와 대화·과거 제안서·승패 기록이 쌓일수록 더 정확한 제안서가 나옵니다"),
     ]),
-  ]));
+    toggleBtn,
+  ]);
+  banner.appendChild(header);
   const feats = [
     {
       icon: "brain",
@@ -432,9 +449,6 @@ async function renderDashboard() {
   const content = h("div", { class: "main-content" });
   main.appendChild(content);
 
-  // ── "BidPick은 쓸수록 똑똑해져요" 배너
-  content.appendChild(renderSmartLearningBanner(dna, stats));
-
   // ── 핵심 스탯 4개 (승률 포함)
   const winRateDisplay = stats.win_rate === null || stats.win_rate === undefined ? "—" : `${stats.win_rate}`;
   const winRateUnit = stats.win_rate === null || stats.win_rate === undefined ? "" : "%";
@@ -541,6 +555,9 @@ async function renderDashboard() {
     rightCol.appendChild(feed);
   }
   twoCol.appendChild(rightCol);
+
+  // ── BidPick 소개 배너 (하단, 기본 접힌 상태) ──
+  content.appendChild(renderSmartLearningBanner(dna, stats));
 
   // ── 푸터
   content.appendChild(h("footer", { class: "dashboard-footer" },
@@ -907,7 +924,7 @@ function refRow(f, cid) {
 }
 
 // ---------- RFP Analysis ----------
-const ROLE_LABELS = ["과업지시서", "제안요청서", "기타"];
+const ROLE_LABELS = ["공고문", "과업지시서", "제안요청서", "기타"];
 
 async function renderRfpSection(cid) {
   const rfp = await api.get(`/api/clients/${cid}/rfp`).catch(() => ({ has_rfp: false, files: [], analysis: {} }));
@@ -917,7 +934,7 @@ async function renderRfpSection(cid) {
       h("div", { class: "card-title-icon", html: iconHtml("fileSearch", 18) }),
       h("div", {}, [
         h("h3", { class: "card-title" }, "RFP 분석"),
-        h("p", { class: "card-subtitle" }, "과업지시서 + 제안요청서 여러 파일을 한꺼번에 올릴 수 있어요 (나라장터 분리 입찰 대응)"),
+        h("p", { class: "card-subtitle" }, "공고문 · 과업지시서 · 제안요청서를 한꺼번에 올릴 수 있어요 (나라장터 분리 입찰 대응)"),
       ]),
     ]),
   ]));
@@ -994,8 +1011,9 @@ async function renderRfpSection(cid) {
 
   function guessRole(name) {
     const n = (name || "").toLowerCase();
+    if (/공고문|공고|announcement|notice|입찰공고/.test(n)) return "공고문";
     if (/과업|task|사업계획|지시서/.test(n)) return "과업지시서";
-    if (/제안요청|제안서|rfp|공고|입찰/.test(n)) return "제안요청서";
+    if (/제안요청|제안서|rfp/.test(n)) return "제안요청서";
     return "기타";
   }
 

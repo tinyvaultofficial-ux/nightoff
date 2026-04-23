@@ -753,14 +753,17 @@ data-orientation 은 아래 규칙만 따른다. 내용 맥락이나 "세로가 
 """
 
 
-RFP_ANALYSIS_PROMPT = """당신은 공공/민간 입찰 RFP·과업지시서 분석 전문가입니다.
-아래 1개 이상의 문서가 제공됩니다. 각 문서 앞에 [ROLE: 과업지시서|제안요청서|기타] 표기가 있습니다.
+RFP_ANALYSIS_PROMPT = """당신은 공공/민간 입찰 RFP·과업지시서·공고문 분석 전문가입니다.
+아래 1개 이상의 문서가 제공됩니다. 각 문서 앞에 [ROLE: 공고문|과업지시서|제안요청서|기타] 표기가 있습니다.
 
-역할별 핵심 정보(두 문서가 모두 있으면 통합):
-- 과업지시서 → 사업 내용 / 수행 범위 / 주요 과업 / 산출물 / 제약사항
+역할별 핵심 정보(여러 문서가 모두 있으면 통합 판단):
+- 공고문     → 사업 개요 / 예산(추정가) / 전체 일정 / 입찰 자격 요건 / 참가 방법 / 공고기관
+- 과업지시서 → 사업 내용 / 수행 범위 / 주요 과업 / 산출물 / 제약사항 / 요구 기술
 - 제안요청서 → 제안서 형태(가로/세로) / 배점 기준 / 페이지 수 제한 / 제출 형식 /
              PT 일정 / 평가 방식 / 마감일
 - 기타 → 보조 자료로 활용
+
+역할이 중복 제공하는 정보(예: 예산·마감일)는 제안요청서 > 공고문 > 과업지시서 순으로 우선.
 
 orientation 엄격 규칙:
 - 본문에 "가로", "landscape", "A4 가로" 명시 → "landscape"
@@ -1522,7 +1525,7 @@ def api_chat(conv_id: str, body: ChatIn):
 
 
 # ---------- RFP (multi-file, role-aware) ----------
-VALID_ROLES = {"과업지시서", "제안요청서", "기타"}
+VALID_ROLES = {"공고문", "과업지시서", "제안요청서", "기타"}
 
 
 def _run_rfp_aggregate(cid: str) -> dict:
@@ -1537,9 +1540,9 @@ def _run_rfp_aggregate(cid: str) -> dict:
             db.execute("DELETE FROM rfp_aggregated WHERE client_id=?", (cid,))
         return {}
 
-    # 역할별 텍스트 조합 (과업지시서 → 제안요청서 → 기타 순서)
-    role_order = {"과업지시서": 0, "제안요청서": 1, "기타": 2}
-    sorted_files = sorted(files, key=lambda f: role_order.get(f["role"], 3))
+    # 역할별 텍스트 조합 (공고문 → 과업지시서 → 제안요청서 → 기타 순서)
+    role_order = {"공고문": 0, "과업지시서": 1, "제안요청서": 2, "기타": 3}
+    sorted_files = sorted(files, key=lambda f: role_order.get(f["role"], 4))
     parts = []
     total_len = 0
     LIMIT = 45000  # 안전 토큰 버짓

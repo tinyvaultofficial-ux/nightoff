@@ -173,6 +173,91 @@ function createSoftLoader(steps, opts = {}) {
   };
 }
 
+const WITTY_LINES = [
+  "밤새지 말자고 만들었습니다",
+  "RFP 복붙이 너무 많다…",
+  "개찰결과 뜨면 대표자 이름부터 확인하시죠?",
+  "애매하게 썼으면 전화는 잘 받아주세요, 공뭔님들",
+];
+
+// 풀스크린 로딩 오버레이 — 딤처리 + 인터랙션 차단 + 스피너 + 단계 메시지 + 위트
+function showFullscreenLoader(steps) {
+  // 기존 오버레이 있으면 제거 (중첩 방지)
+  document.querySelectorAll(".fs-loader-backdrop").forEach((el) => el.remove());
+
+  const safeSteps = (steps && steps.length) ? steps : [{ emoji: "✨", text: "잠시만요…" }];
+  const backdrop = h("div", { class: "fs-loader-backdrop" });
+  const progressText = h("div", { class: "fs-progress-text" }, `${safeSteps[0].emoji} ${safeSteps[0].text}`);
+  const wittyText = h("div", { class: "fs-witty-text" }, WITTY_LINES[Math.floor(Math.random() * WITTY_LINES.length)]);
+  const content = h("div", { class: "fs-loader-content" }, [
+    h("div", { class: "fs-spinner" }),
+    progressText,
+    wittyText,
+  ]);
+  backdrop.appendChild(content);
+  // 인터랙션 완전 차단
+  backdrop.addEventListener("click", (e) => e.stopPropagation());
+  backdrop.addEventListener("mousedown", (e) => e.preventDefault());
+  document.body.appendChild(backdrop);
+  document.body.classList.add("fs-loader-active");
+
+  let stepIdx = 0;
+  const stepTimer = setInterval(() => {
+    if (safeSteps.length < 2) return;
+    progressText.classList.add("fade-out");
+    setTimeout(() => {
+      stepIdx = (stepIdx + 1) % safeSteps.length;
+      progressText.textContent = `${safeSteps[stepIdx].emoji} ${safeSteps[stepIdx].text}`;
+      progressText.classList.remove("fade-out");
+    }, 320);
+  }, 1900);
+
+  // 위트 문구 순환 (랜덤 시작점, 3.5초마다)
+  let wittyIdx = WITTY_LINES.indexOf(wittyText.textContent);
+  const wittyTimer = setInterval(() => {
+    wittyText.classList.add("fade-out");
+    setTimeout(() => {
+      wittyIdx = (wittyIdx + 1) % WITTY_LINES.length;
+      wittyText.textContent = WITTY_LINES[wittyIdx];
+      wittyText.classList.remove("fade-out");
+    }, 400);
+  }, 3500);
+
+  let closed = false;
+  const handle = {
+    setStep(emoji, text) {
+      progressText.classList.add("fade-out");
+      setTimeout(() => {
+        progressText.textContent = `${emoji} ${text}`;
+        progressText.classList.remove("fade-out");
+      }, 250);
+    },
+    finish(emoji = "✅", text = "완료!", delayMs = 700) {
+      if (closed) return;
+      clearInterval(stepTimer);
+      clearInterval(wittyTimer);
+      progressText.classList.remove("fade-out");
+      progressText.textContent = `${emoji} ${text}`;
+      wittyText.style.opacity = "0";
+      setTimeout(() => handle.stop(), delayMs);
+    },
+    stop() {
+      if (closed) return;
+      closed = true;
+      clearInterval(stepTimer);
+      clearInterval(wittyTimer);
+      backdrop.classList.add("closing");
+      setTimeout(() => {
+        backdrop.remove();
+        if (!document.querySelector(".fs-loader-backdrop")) {
+          document.body.classList.remove("fs-loader-active");
+        }
+      }, 260);
+    },
+  };
+  return handle;
+}
+
 const LOADER_STEPS = {
   rfp: [
     { emoji: "📄", text: "RFP를 읽고 있어요…" },
@@ -389,13 +474,11 @@ async function openCompanyDnaModal() {
   modal.appendChild(h("div", { class: "modal-footer" }, [
     h("button", { class: "btn btn-ghost", onclick: () => backdrop.remove() }, "닫기"),
     h("button", { class: "btn btn-primary", onclick: async () => {
-      const loader = createSoftLoader(LOADER_STEPS.reference, { block: true });
-      body.innerHTML = "";
-      body.appendChild(h("div", { style: "display: flex; justify-content: center; padding: 14px 0;" }, loader.el));
+      const loader = showFullscreenLoader(LOADER_STEPS.reference);
       try {
         await api.post("/api/company-dna/rebuild");
-        loader.finish("✅", "재학습 완료!");
-        setTimeout(() => { backdrop.remove(); openCompanyDnaModal(); }, 600);
+        loader.finish("✅", "재학습 완료!", 600);
+        setTimeout(() => { backdrop.remove(); openCompanyDnaModal(); }, 800);
       } catch (e) { loader.stop(); toast(e.message || "재학습 실패", "error"); }
     } }, "지금 재학습"),
   ]));
@@ -876,24 +959,13 @@ async function renderReferenceSection(cid) {
   if (!refs.length) list.appendChild(h("div", { class: "muted small", style: "padding: 4px 0;" }, "아직 업로드된 레퍼런스가 없습니다."));
 
   async function uploadRef(file) {
-    const loader = createSoftLoader(LOADER_STEPS.reference, { block: true });
-    const row = h("div", { class: "file-row", style: "padding: 6px 10px;" }, [
-      h("div", { class: "left", style: "flex: 1;" }, [
-        h("div", { class: "file-icon", html: iconHtml("file", 18) }),
-        h("div", { style: "flex: 1;" }, [
-          h("p", { class: "file-name" }, file.name),
-          h("p", { class: "file-sub", style: "margin-top: 4px;" }),
-        ]),
-      ]),
-    ]);
-    row.querySelector(".file-sub").appendChild(loader.el);
-    list.prepend(row);
+    const loader = showFullscreenLoader(LOADER_STEPS.reference);
     try {
       await api.upload(`/api/clients/${cid}/references`, file);
-      loader.finish("✅", "저장 완료!");
-      setTimeout(() => renderClientDetail(cid), 600);
+      loader.finish("✅", "저장 완료!", 600);
+      setTimeout(() => renderClientDetail(cid), 700);
     } catch (e) {
-      row.remove();
+      loader.stop();
       toast("업로드 실패: " + (e.message || e), "error");
     }
   }
@@ -1018,9 +1090,7 @@ async function renderRfpSection(cid) {
   }
 
   async function doMultiUpload(files, roles) {
-    const loader = createSoftLoader(LOADER_STEPS.rfp, { block: true });
-    const loaderWrap = h("div", { style: "margin: 12px 0 4px; display: flex; justify-content: center;" }, loader.el);
-    body.insertBefore(loaderWrap, drop.nextSibling);
+    const loader = showFullscreenLoader(LOADER_STEPS.rfp);
     try {
       const fd = new FormData();
       for (const f of files) fd.append("files", f);
@@ -1031,16 +1101,15 @@ async function renderRfpSection(cid) {
         throw new Error(err.error || "업로드 실패");
       }
       const result = await r.json();
-      // 파일은 저장됐지만 분석이 실패한 경우 — 사용자에게 즉시 알림
       if (result?.analysis?.error) {
-        loader.finish("⚠️", "업로드 완료 · 분석 실패");
+        loader.finish("⚠️", "업로드 완료 · 분석 실패", 900);
         toast(result.analysis.error, "error");
       } else {
-        loader.finish("✅", "분석 완료!");
+        loader.finish("✅", "분석 완료!", 700);
       }
-      setTimeout(() => renderClientDetail(cid), 900);
+      setTimeout(() => renderClientDetail(cid), 1100);
     } catch (e) {
-      loaderWrap.remove();
+      loader.stop();
       toast(e.message || "업로드 실패", "error");
     }
   }
@@ -1058,15 +1127,13 @@ async function renderRfpSection(cid) {
         ROLE_LABELS.map((r) => h("option", { value: r, ...(r === f.role ? { selected: "" } : {}) }, r))
       );
       roleSel.addEventListener("change", async () => {
-        const loader = createSoftLoader(LOADER_STEPS.rfp, { block: true });
-        const loaderWrap = h("div", { style: "margin: 6px 0; display: flex; justify-content: center;" }, loader.el);
-        fileListCard.appendChild(loaderWrap);
+        const loader = showFullscreenLoader(LOADER_STEPS.rfp);
         try {
           await api.patch(`/api/clients/${cid}/rfp/files/${f.id}`, { role: roleSel.value });
-          loader.finish("✅", "재분석 완료!");
-          setTimeout(() => renderClientDetail(cid), 600);
+          loader.finish("✅", "재분석 완료!", 600);
+          setTimeout(() => renderClientDetail(cid), 700);
         } catch (e) {
-          loaderWrap.remove();
+          loader.stop();
           toast(e.message || "역할 변경 실패", "error");
         }
       });
@@ -1117,17 +1184,14 @@ async function renderRfpSection(cid) {
             class: "btn btn-outline",
             style: "flex-shrink: 0;",
             onclick: async () => {
-              const loader = createSoftLoader(LOADER_STEPS.rfp, { block: true });
-              const wrap = h("div", { style: "margin: 10px 0; display: flex; justify-content: center;" }, loader.el);
-              errBanner.after(wrap);
+              const loader = showFullscreenLoader(LOADER_STEPS.rfp);
               try {
-                // Trigger re-analysis by touching role (noop update)
                 const firstFile = rfp.files[0];
                 await api.patch(`/api/clients/${cid}/rfp/files/${firstFile.id}`, { role: firstFile.role });
-                loader.finish("✅", "재분석 완료!");
-                setTimeout(() => renderClientDetail(cid), 600);
+                loader.finish("✅", "재분석 완료!", 600);
+                setTimeout(() => renderClientDetail(cid), 700);
               } catch (e) {
-                wrap.remove();
+                loader.stop();
                 toast(e.message || "재분석 실패", "error");
               }
             },
@@ -1327,23 +1391,15 @@ async function renderCompetitorSection(cid) {
 
   async function runAnalysis(name, context) {
     if (!name) return;
-    // 쉼표로 분리하면 여러 기업을 순차 분석
     const names = name.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
     if (!names.length) return;
 
-    analysisArea.innerHTML = "";
-    const loader = createSoftLoader(LOADER_STEPS.competitor, { block: true });
-    const wrap = h("div", { style: "display: flex; justify-content: center; padding: 10px 0;" }, loader.el);
-    analysisArea.appendChild(wrap);
-
+    const loader = showFullscreenLoader(LOADER_STEPS.competitor);
     let success = 0;
     for (const [i, n] of names.entries()) {
       try {
         if (names.length > 1) {
-          wrap.firstChild?.replaceWith(createSoftLoader([
-            { emoji: "🔎", text: `${i + 1}/${names.length} — ${n} 정보 수집 중…` },
-            { emoji: "⚡", text: `${i + 1}/${names.length} — ${n} 강약점 분석 중…` },
-          ], { block: true }).el);
+          loader.setStep("🔎", `${i + 1}/${names.length} — ${n} 분석 중…`);
         }
         await api.post(`/api/clients/${cid}/competitors`, { name: n, context });
         success++;
@@ -1352,8 +1408,8 @@ async function renderCompetitorSection(cid) {
       }
     }
     if (success > 0) {
-      loader.finish("✅", names.length > 1 ? `${success}/${names.length}개 분석 완료!` : "분석 완료!");
-      setTimeout(() => renderClientDetail(cid), 700);
+      loader.finish("✅", names.length > 1 ? `${success}/${names.length}개 완료!` : "분석 완료!", 700);
+      setTimeout(() => renderClientDetail(cid), 900);
     } else {
       loader.stop();
     }
@@ -1625,17 +1681,21 @@ async function renderChat(cid, convId) {
     ta.value = ""; ta.style.height = "auto";
     body.scrollTop = body.scrollHeight;
 
-    // Detect proposal intent to show richer loader
+    // Detect proposal intent — show richer loader steps
     const isProposal = /제안서|초안|구성안|페이지\s*구성|목차/.test(text);
-    const loaderSteps = isProposal ? LOADER_STEPS.proposal : [{ emoji: "💭", text: "생각하고 있어요…" }];
-    const loader = createSoftLoader(loaderSteps, { block: true });
+    const loaderSteps = isProposal ? LOADER_STEPS.proposal : [
+      { emoji: "💭", text: "생각하고 있어요…" },
+      { emoji: "📚", text: "맥락을 살피고 있어요…" },
+      { emoji: "✍️", text: "답변을 준비하고 있어요…" },
+    ];
+    // 풀스크린 오버레이 (첫 delta 도착 시 닫힘)
+    const overlayLoader = showFullscreenLoader(loaderSteps);
 
-    // Assistant placeholder with soft loader
+    // Assistant placeholder
     const asstEl = msgElement("assistant", "", new Date().toISOString());
     msgs.appendChild(asstEl);
     const bubble = asstEl.querySelector(".msg-bubble");
-    bubble.innerHTML = "";
-    bubble.appendChild(loader.el);
+    bubble.innerHTML = '<span class="loading-dots"><span></span><span></span><span></span></span>';
     body.scrollTop = body.scrollHeight;
 
     aborter = new AbortController();
@@ -1688,17 +1748,17 @@ async function renderChat(cid, convId) {
           let ev;
           try { ev = JSON.parse(m[1]); } catch { continue; }
           if (ev.type === "delta") {
-            if (firstDelta) { loader.stop(); bubble.innerHTML = ""; firstDelta = false; }
+            if (firstDelta) { overlayLoader.stop(); bubble.innerHTML = ""; firstDelta = false; }
             targetText += ev.text;
             kickTyper();
           } else if (ev.type === "error") {
-            loader.stop();
+            overlayLoader.stop();
             bubble.innerHTML = `<span style="color:var(--danger);">❌ ${escapeHtml(ev.error)}</span>`;
             streamDone = true;
           } else if (ev.type === "done") {
-            loader.stop();
+            overlayLoader.stop();
             streamDone = true;
-            displayedText = targetText;  // 즉시 전체 출력
+            displayedText = targetText;
             renderAssistant(bubble, targetText, true);
           }
         }
@@ -1711,7 +1771,7 @@ async function renderChat(cid, convId) {
       // rafActive가 진행 중이면 streamDone을 보고 알아서 마감
       streamDone = true;
     } catch (e) {
-      loader.stop();
+      overlayLoader.stop();
       if (e.name === "AbortError") {
         if (targetText) renderAssistant(bubble, targetText + "\n\n⏸ (중단됨)", true);
         else bubble.innerHTML = `<span class="muted small">⏸ 생성이 중단되었습니다.</span>`;

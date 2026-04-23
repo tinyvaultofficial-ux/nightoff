@@ -280,10 +280,20 @@ def translate_anthropic_error(exc: Exception) -> str:
     if isinstance(exc, anthropic.APIConnectionError):
         return "Anthropic 서버와 연결할 수 없어요. 인터넷 연결을 확인해 주세요."
     if isinstance(exc, anthropic.BadRequestError):
+        low = msg.lower()
+        # 크레딧/결제 이슈 — Anthropic에서 400으로 내려옴
+        if "credit balance" in low or "credit_balance" in low or "billing" in low or "insufficient" in low:
+            return "Anthropic 크레딧 잔액이 부족해요. console.anthropic.com의 Plans & Billing에서 결제 수단을 확인하거나 크레딧을 충전해 주세요."
+        if "organization" in low and ("disabled" in low or "suspended" in low):
+            return "Anthropic 조직 계정이 비활성화 상태예요. Anthropic 콘솔에서 상태를 확인해 주세요."
         # 길이 초과 등
-        if "max_tokens" in msg or "too long" in msg.lower():
+        if "max_tokens" in low or "too long" in low or "context" in low:
             return "요청이 너무 길어요. 대화를 나눠서 다시 시도하거나 파일을 줄여 주세요."
-        return "요청을 처리할 수 없어요. 입력 내용을 확인해 주세요."
+        if "api key" in low or "api_key" in low:
+            return "API 키가 유효하지 않아요. 좌하단 설정에서 새 키로 교체해 주세요."
+        # 마지막 fallback — 원본 메시지 뒷부분을 힌트로 제공
+        short = msg[:120]
+        return f"요청을 처리할 수 없어요. ({short})"
     if isinstance(exc, anthropic.InternalServerError):
         return "Anthropic 서버에 일시적 문제가 생겼어요. 잠시 후 다시 시도해 주세요."
     if isinstance(exc, anthropic.APIStatusError):

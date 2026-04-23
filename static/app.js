@@ -1042,9 +1042,7 @@ function renderAssistant(bubble, text, final = false) {
 
   const propEl = wrapper.querySelector(".proposal");
   if (propEl) {
-    // Apply accent color as CSS var
-    const accent = propEl.getAttribute("data-accent") || "#111827";
-    propEl.style.setProperty("--proposal-accent", accent);
+    // 완전 흑백 — 어떤 색상도 주입하지 않음 (디자이너가 나중에 입힘)
 
     // Add toolbar (only when final or has at least 1 page)
     const title = propEl.getAttribute("data-title") || "제안서";
@@ -1127,10 +1125,7 @@ function printProposal(propEl) {
     document.body.appendChild(mount);
   }
   mount.innerHTML = "";
-  // Copy accent CSS var
-  const accent = propEl.style.getPropertyValue("--proposal-accent") || propEl.getAttribute("data-accent") || "#111827";
-  clone.style.setProperty("--proposal-accent", accent);
-  // Remove keyword rows in print
+  // Remove keyword rows in print (B&W skeleton only)
   clone.querySelectorAll(".keyword-row").forEach(e => e.remove());
   mount.appendChild(clone);
   mount.style.display = "block";
@@ -1154,8 +1149,6 @@ function openProposalFullscreen(propEl) {
     h("button", { class: "icon-btn", onclick: () => backdrop.remove(), html: iconHtml("x", 20) }),
   ]));
   const clone = propEl.cloneNode(true);
-  const accent = propEl.style.getPropertyValue("--proposal-accent") || propEl.getAttribute("data-accent") || "#111827";
-  clone.style.setProperty("--proposal-accent", accent);
   modal.appendChild(clone);
   backdrop.appendChild(modal);
   document.body.appendChild(backdrop);

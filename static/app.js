@@ -57,43 +57,75 @@ function icon(name, size = 18) {
 }
 
 // ---------- API ----------
+// 중앙 에러 번역 — 네트워크 실패, 서버 JSON 에러, 시간 초과를 친절 메시지로
+async function _parseErrorResponse(r) {
+  let body;
+  try {
+    const text = await r.text();
+    try { body = JSON.parse(text); } catch { body = { error: text }; }
+  } catch { body = {}; }
+  const msg = body.error || body.detail || r.statusText || "알 수 없는 오류";
+  // 이미 친절 메시지면 그대로, 스택트레이스 같으면 일반화
+  if (typeof msg === "string" && /Traceback|Exception|at [A-Z]|<!DOCTYPE/i.test(msg)) {
+    return `잠시 문제가 생겼어요 (${r.status}). 다시 시도해 주세요.`;
+  }
+  return typeof msg === "string" ? msg : JSON.stringify(msg);
+}
+
+async function _call(method, path, { body, form, signal, timeoutMs = 60000 } = {}) {
+  const ctrl = new AbortController();
+  const signals = [ctrl.signal];
+  if (signal) signals.push(signal);
+  const timer = setTimeout(() => ctrl.abort(new Error("timeout")), timeoutMs);
+  try {
+    const init = { method, signal: ctrl.signal };
+    if (form) {
+      init.body = form;
+    } else if (body !== undefined) {
+      init.headers = { "Content-Type": "application/json" };
+      init.body = body ? JSON.stringify(body) : null;
+    }
+    const r = await fetch(path, init);
+    if (!r.ok) {
+      const msg = await _parseErrorResponse(r);
+      const err = new Error(msg);
+      err.status = r.status;
+      throw err;
+    }
+    const ct = r.headers.get("content-type") || "";
+    return ct.includes("application/json") ? r.json() : r.text();
+  } catch (e) {
+    if (e.name === "AbortError" || String(e.message).includes("timeout")) {
+      throw new Error("응답이 지연되고 있어요. 잠시 후 다시 시도해 주세요.");
+    }
+    if (e instanceof TypeError && /fetch|Failed|Network/i.test(e.message)) {
+      throw new Error("서버와 연결할 수 없어요. 네트워크 상태를 확인해 주세요.");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const api = {
-  async get(path) {
-    const r = await fetch(path);
-    if (!r.ok) throw new Error((await r.text()) || r.statusText);
-    return r.json();
-  },
-  async post(path, body) {
-    const r = await fetch(path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: body ? JSON.stringify(body) : null,
-    });
-    if (!r.ok) throw new Error((await r.text()) || r.statusText);
-    return r.json();
-  },
-  async patch(path, body) {
-    const r = await fetch(path, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!r.ok) throw new Error((await r.text()) || r.statusText);
-    return r.json();
-  },
-  async del(path) {
-    const r = await fetch(path, { method: "DELETE" });
-    if (!r.ok) throw new Error((await r.text()) || r.statusText);
-    return r.json();
-  },
-  async upload(path, file) {
+  get:   (p, opts)       => _call("GET",    p, opts),
+  post:  (p, body, opts) => _call("POST",   p, { ...opts, body: body ?? null }),
+  patch: (p, body, opts) => _call("PATCH",  p, { ...opts, body }),
+  del:   (p, opts)       => _call("DELETE", p, opts),
+  upload(path, file, { timeoutMs = 120000 } = {}) {
     const fd = new FormData();
     fd.append("file", file);
-    const r = await fetch(path, { method: "POST", body: fd });
-    if (!r.ok) throw new Error((await r.text()) || r.statusText);
-    return r.json();
+    return _call("POST", path, { form: fd, timeoutMs });
   },
 };
+
+// 프론트 언핸들드 에러 — 콘솔에 남기고 사용자에겐 토스트
+window.addEventListener("error", (e) => {
+  console.error("[error]", e.message, e.filename, e.lineno);
+});
+window.addEventListener("unhandledrejection", (e) => {
+  console.error("[unhandledrejection]", e.reason);
+});
 
 // ---------- Toast ----------
 function toast(msg, kind = "") {
@@ -793,61 +825,99 @@ async function renderCompetitorSection(cid) {
   const body = h("div", { class: "card-body row-gap-14" });
   card.appendChild(body);
 
-  // Input row — 기업명 입력 → 웹 검색 후보 → 선택 → 분석
-  const inp = h("input", { class: "input", placeholder: "경쟁사 기업명 또는 키워드 (예: LG CNS)" });
+  // Input row — 2글자 이상 입력 시 자동으로 후보 드롭다운
+  const inpWrap = h("div", { style: "position: relative;" });
+  const inp = h("input", { class: "input", placeholder: "경쟁사 기업명 2글자 이상 입력 — 자동으로 후보를 찾아드려요", autocomplete: "off" });
   const ctx = h("input", { class: "input", placeholder: "추가 컨텍스트 (선택, 예: 동일 사업 수주 이력)" });
-  const searchArea = h("div");
-  const searchBtn = h("button", {
-    class: "btn btn-primary", html: `${iconHtml("search", 16)}<span>후보 검색</span>`,
-    onclick: async () => {
-      const query = inp.value.trim();
-      if (!query) { toast("기업명 또는 키워드를 입력하세요", "error"); return; }
-      searchArea.innerHTML = "";
-      const loader = createSoftLoader(LOADER_STEPS.search, { block: true });
-      searchArea.appendChild(h("div", { style: "display: flex; justify-content: center; padding: 6px 0;" }, loader.el));
-      try {
-        const r = await api.post(`/api/clients/${cid}/competitors/search`, { query, context: ctx.value.trim() });
-        loader.stop();
-        showCandidates(r.candidates || []);
-      } catch (e) {
-        loader.stop();
-        toast("검색 실패: " + (e.message || e), "error");
-      }
-    },
-  });
-  body.appendChild(h("div", { style: "display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px;" }, [inp, ctx, searchBtn]));
-  body.appendChild(searchArea);
+  const dropdown = h("div", { class: "autocomplete-dropdown hidden" });
+  inpWrap.appendChild(inp);
+  inpWrap.appendChild(dropdown);
 
-  function showCandidates(candidates) {
-    searchArea.innerHTML = "";
-    if (!candidates.length) {
-      searchArea.appendChild(h("div", { class: "muted small", style: "padding: 6px 0;" }, "후보가 없습니다. 입력한 이름으로 바로 분석할 수 있습니다."));
-    }
-    const picker = h("div", { class: "comp-candidates" });
-    candidates.forEach((c) => {
-      picker.appendChild(h("div", { class: "comp-candidate", onclick: () => runAnalysis(c.name, ctx.value.trim()) }, [
-        h("div", { style: "flex: 1; min-width: 0;" }, [
-          h("div", { class: "cc-name" }, c.name),
-          c.desc ? h("div", { class: "cc-desc" }, c.desc + (c.domain ? ` · ${c.domain}` : "")) : null,
-        ]),
-        h("span", { class: "badge badge-outline" }, "선택"),
-      ]));
-    });
-    picker.appendChild(h("div", { class: "comp-candidate", style: "border-style: dashed;", onclick: () => runAnalysis(inp.value.trim(), ctx.value.trim()) }, [
-      h("div", { style: "flex: 1;" }, [
-        h("div", { class: "cc-name" }, `"${inp.value.trim()}" 그대로 분석`),
-        h("div", { class: "cc-desc" }, "후보에 없으면 입력한 이름 그대로 진행"),
-      ]),
-      h("span", { class: "badge badge-muted" }, "직접"),
+  const analysisArea = h("div");
+  body.appendChild(h("div", { style: "display: grid; grid-template-columns: 1fr 1fr; gap: 10px;" }, [inpWrap, ctx]));
+  body.appendChild(analysisArea);
+
+  let debounceT = null;
+  let currentQuery = "";
+  let searchAborter = null;
+
+  function closeDropdown() { dropdown.classList.add("hidden"); dropdown.innerHTML = ""; }
+  function showLoadingDropdown() {
+    dropdown.innerHTML = "";
+    dropdown.appendChild(h("div", { class: "autocomplete-loading" }, [
+      h("span", { class: "ac-spinner" }),
+      h("span", {}, "후보를 찾고 있어요…"),
     ]));
-    searchArea.appendChild(picker);
+    dropdown.classList.remove("hidden");
   }
+  function showCandidatesDropdown(candidates) {
+    dropdown.innerHTML = "";
+    if (!candidates || !candidates.length) {
+      dropdown.appendChild(h("div", { class: "autocomplete-empty" }, `후보를 찾지 못했어요. "${inp.value.trim()}" 그대로 분석하려면 아래 버튼을 눌러주세요.`));
+    } else {
+      candidates.slice(0, 5).forEach((c) => {
+        dropdown.appendChild(h("div", {
+          class: "autocomplete-item",
+          onclick: () => { closeDropdown(); runAnalysis(c.name, ctx.value.trim()); },
+        }, [
+          h("div", { class: "ac-name" }, c.name),
+          c.desc ? h("div", { class: "ac-desc" }, c.desc + (c.domain ? ` · ${c.domain}` : "")) : null,
+        ]));
+      });
+    }
+    const q = inp.value.trim();
+    if (q) {
+      dropdown.appendChild(h("div", {
+        class: "autocomplete-item ac-direct",
+        onclick: () => { closeDropdown(); runAnalysis(q, ctx.value.trim()); },
+      }, [
+        h("div", { class: "ac-name" }, `"${q}" 그대로 분석`),
+        h("div", { class: "ac-desc" }, "후보에 원하는 기업이 없으면 입력한 이름 그대로 진행"),
+      ]));
+    }
+    dropdown.classList.remove("hidden");
+  }
+
+  async function fetchCandidates(q) {
+    if (searchAborter) searchAborter.abort();
+    searchAborter = new AbortController();
+    showLoadingDropdown();
+    try {
+      const r = await api.post(`/api/clients/${cid}/competitors/search`, { query: q, context: ctx.value.trim() }, { signal: searchAborter.signal, timeoutMs: 45000 });
+      if (q !== currentQuery) return; // stale
+      showCandidatesDropdown(r.candidates || []);
+    } catch (e) {
+      if (e.name === "AbortError") return;
+      dropdown.innerHTML = "";
+      dropdown.appendChild(h("div", { class: "autocomplete-empty" }, e.message || "검색 중 문제가 생겼어요."));
+      dropdown.classList.remove("hidden");
+    }
+  }
+
+  inp.addEventListener("input", () => {
+    const q = inp.value.trim();
+    currentQuery = q;
+    clearTimeout(debounceT);
+    if (q.length < 2) { closeDropdown(); return; }
+    debounceT = setTimeout(() => { if (q === currentQuery) fetchCandidates(q); }, 450);
+  });
+  inp.addEventListener("focus", () => {
+    const q = inp.value.trim();
+    if (q.length >= 2 && dropdown.innerHTML) dropdown.classList.remove("hidden");
+  });
+  // Close dropdown when clicking outside
+  document.addEventListener("click", (e) => {
+    if (!inpWrap.contains(e.target)) closeDropdown();
+  });
+  inp.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeDropdown();
+  });
 
   async function runAnalysis(name, context) {
     if (!name) return;
-    searchArea.innerHTML = "";
+    analysisArea.innerHTML = "";
     const loader = createSoftLoader(LOADER_STEPS.competitor, { block: true });
-    searchArea.appendChild(h("div", { style: "display: flex; justify-content: center; padding: 6px 0;" }, loader.el));
+    analysisArea.appendChild(h("div", { style: "display: flex; justify-content: center; padding: 10px 0;" }, loader.el));
     try {
       await api.post(`/api/clients/${cid}/competitors`, { name, context });
       loader.finish("✅", "분석 완료!");

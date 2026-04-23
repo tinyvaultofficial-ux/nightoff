@@ -5,9 +5,11 @@ FastAPI + SQLite + Anthropic Claude (streaming)
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sqlite3
+import traceback
 import uuid
 from contextlib import contextmanager
 from datetime import datetime
@@ -15,11 +17,25 @@ from pathlib import Path
 from typing import Generator, Optional
 
 import anthropic
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+log = logging.getLogger("bidpick")
+
+# Max file size for uploads (50MB)
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024
+ALLOWED_UPLOAD_EXTS = {".pdf", ".doc", ".docx", ".txt", ".md", ".hwp", ".hwpx"}
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -165,7 +181,34 @@ def require_client() -> anthropic.Anthropic:
     key = get_api_key()
     if not key:
         raise HTTPException(status_code=400, detail="API 키가 설정되지 않았습니다. 좌하단 설정에서 등록해주세요.")
-    return anthropic.Anthropic(api_key=key)
+    return anthropic.Anthropic(api_key=key, timeout=60.0, max_retries=2)
+
+
+def translate_anthropic_error(exc: Exception) -> str:
+    """Anthropic SDK 예외를 사용자용 친절 메시지로 변환."""
+    name = type(exc).__name__
+    msg = str(exc) or ""
+    if isinstance(exc, anthropic.AuthenticationError):
+        return "API 키가 올바르지 않아요. 좌하단 설정에서 다시 확인해 주세요."
+    if isinstance(exc, anthropic.RateLimitError):
+        return "요청이 많아 잠시 대기가 필요해요. 1~2분 뒤 다시 시도해 주세요."
+    if isinstance(exc, anthropic.APITimeoutError):
+        return "AI 응답이 지연되고 있어요. 잠시 후 다시 시도해 주세요."
+    if isinstance(exc, anthropic.APIConnectionError):
+        return "Anthropic 서버와 연결할 수 없어요. 인터넷 연결을 확인해 주세요."
+    if isinstance(exc, anthropic.BadRequestError):
+        # 길이 초과 등
+        if "max_tokens" in msg or "too long" in msg.lower():
+            return "요청이 너무 길어요. 대화를 나눠서 다시 시도하거나 파일을 줄여 주세요."
+        return "요청을 처리할 수 없어요. 입력 내용을 확인해 주세요."
+    if isinstance(exc, anthropic.InternalServerError):
+        return "Anthropic 서버에 일시적 문제가 생겼어요. 잠시 후 다시 시도해 주세요."
+    if isinstance(exc, anthropic.APIStatusError):
+        return f"AI 서비스 오류: {getattr(exc, 'status_code', '')}. 잠시 후 다시 시도해 주세요."
+    # fallback
+    if "timeout" in msg.lower():
+        return "시간이 초과되었어요. 잠시 후 다시 시도해 주세요."
+    return "잠시 문제가 생겼어요. 다시 시도해 주세요."
 
 
 # ---------------------------------------------------------------------------
@@ -195,6 +238,26 @@ def human_size(n: int) -> str:
             return f"{n:.1f}{unit}" if unit != "B" else f"{n}{unit}"
         n /= 1024
     return f"{n:.1f}TB"
+
+
+async def read_and_validate_upload(file: UploadFile, *, allowed_exts: set = None) -> bytes:
+    """업로드 파일을 읽고 크기·확장자 검증. 실패 시 HTTPException."""
+    if not file or not file.filename:
+        raise HTTPException(400, "파일이 없어요. 파일을 선택해서 다시 업로드해 주세요.")
+    suffix = Path(file.filename).suffix.lower()
+    if allowed_exts and suffix not in allowed_exts:
+        exts = ", ".join(sorted(allowed_exts))
+        raise HTTPException(400, f"지원하지 않는 파일 형식이에요. 지원 형식: {exts}")
+    try:
+        content = await file.read()
+    except Exception as e:
+        log.exception("파일 읽기 실패")
+        raise HTTPException(400, "파일을 읽는 중 문제가 생겼어요. 다시 시도해 주세요.") from e
+    if len(content) > MAX_UPLOAD_SIZE:
+        raise HTTPException(400, f"파일이 너무 커요. 최대 {MAX_UPLOAD_SIZE // (1024*1024)}MB까지 업로드할 수 있어요.")
+    if len(content) == 0:
+        raise HTTPException(400, "빈 파일이에요. 내용이 있는 파일을 올려주세요.")
+    return content
 
 
 # ---------------------------------------------------------------------------
@@ -610,9 +673,70 @@ app.add_middleware(
 )
 
 
+from fastapi.exceptions import RequestValidationError
+
+
+@app.exception_handler(HTTPException)
+async def http_exc_handler(request: Request, exc: HTTPException):
+    """HTTPException은 detail을 그대로 — 개발자가 명시적으로 사용자용 메시지를 넣음."""
+    return JSONResponse({"error": exc.detail, "status": exc.status_code}, status_code=exc.status_code)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_handler(request: Request, exc: RequestValidationError):
+    """Pydantic/FastAPI 검증 실패 — 첫 필드 에러를 친절 메시지로."""
+    errs = exc.errors() or []
+    if errs:
+        first = errs[0]
+        loc = ".".join(str(p) for p in first.get("loc", []) if p not in ("body", "query"))
+        msg = first.get("msg") or "형식이 올바르지 않습니다"
+        if "required" in msg.lower():
+            friendly = f"필수 항목이 비어 있어요: {loc or '요청 데이터'}"
+        elif "too long" in msg.lower() or "length" in msg.lower():
+            friendly = f"입력 길이가 허용 범위를 벗어났어요: {loc}"
+        else:
+            friendly = f"입력을 확인해 주세요 ({loc}: {msg})"
+    else:
+        friendly = "요청 형식이 올바르지 않아요."
+    log.info("Validation error on %s: %s", request.url.path, errs)
+    return JSONResponse({"error": friendly, "status": 422}, status_code=422)
+
+
+@app.exception_handler(sqlite3.OperationalError)
+async def sqlite_op_handler(request: Request, exc: sqlite3.OperationalError):
+    log.exception("[DB OperationalError] %s %s", request.method, request.url.path)
+    return JSONResponse(
+        {"error": "데이터를 저장하는 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요.", "status": 500},
+        status_code=500,
+    )
+
+
+@app.exception_handler(sqlite3.IntegrityError)
+async def sqlite_int_handler(request: Request, exc: sqlite3.IntegrityError):
+    log.warning("[DB IntegrityError] %s %s — %s", request.method, request.url.path, exc)
+    return JSONResponse(
+        {"error": "이미 존재하거나 형식이 맞지 않는 데이터예요.", "status": 400},
+        status_code=400,
+    )
+
+
+@app.exception_handler(Exception)
+async def global_exc_handler(request: Request, exc: Exception):
+    """예상치 못한 모든 예외 — 내부 스택트레이스는 로그로, 사용자에게는 친절 메시지."""
+    log.error("[Unhandled] %s %s\n%s", request.method, request.url.path, traceback.format_exc())
+    # Anthropic SDK 예외는 친절히 번역
+    if isinstance(exc, anthropic.APIError):
+        return JSONResponse({"error": translate_anthropic_error(exc), "status": 502}, status_code=502)
+    return JSONResponse(
+        {"error": "잠시 문제가 생겼어요. 다시 시도해 주세요.", "status": 500},
+        status_code=500,
+    )
+
+
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
+    log.info("BidPick server ready — DB: %s, Uploads: %s", DB_PATH, UPLOADS_DIR)
 
 
 # ---------- Static ----------
@@ -991,8 +1115,13 @@ def api_chat(conv_id: str, body: ChatIn):
                     full_text += chunk
                     yield f"data: {json.dumps({'type':'delta','text':chunk})}\n\n"
             yield f"data: {json.dumps({'type':'done'})}\n\n"
+        except anthropic.APIError as e:
+            log.warning("스트리밍 Anthropic 오류: %s", e)
+            msg = translate_anthropic_error(e)
+            yield f"data: {json.dumps({'type':'error','error':msg})}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'type':'error','error':str(e)})}\n\n"
+            log.exception("스트리밍 예외")
+            yield f"data: {json.dumps({'type':'error','error':'잠시 문제가 생겼어요. 다시 시도해 주세요.'})}\n\n"
         finally:
             with get_db() as db:
                 db.execute(
@@ -1011,14 +1140,18 @@ async def api_rfp_upload(cid: str, file: UploadFile = File(...)):
         if not c:
             raise HTTPException(404, "발주처를 찾을 수 없습니다.")
 
+    content = await read_and_validate_upload(file, allowed_exts=ALLOWED_UPLOAD_EXTS)
     safe_name = re.sub(r"[^\w\.\-가-힣]", "_", file.filename or "rfp")
     save_path = UPLOADS_DIR / f"{cid}_rfp_{uuid.uuid4().hex[:6]}_{safe_name}"
-    content = await file.read()
-    save_path.write_bytes(content)
+    try:
+        save_path.write_bytes(content)
+    except OSError as e:
+        log.exception("RFP 파일 저장 실패")
+        raise HTTPException(500, "파일을 저장하지 못했어요. 디스크 상태를 확인해 주세요.") from e
 
     text = extract_text(save_path)[:30000]
 
-    # Claude 분석
+    # Claude 분석 — Anthropic 예외는 친절 번역, 분석 실패해도 파일은 저장 유지
     analysis = {}
     try:
         client = require_client()
@@ -1034,8 +1167,15 @@ async def api_rfp_upload(cid: str, file: UploadFile = File(...)):
         analysis = json.loads(raw)
     except HTTPException:
         raise
+    except anthropic.APIError as e:
+        log.warning("RFP 분석 Anthropic 오류: %s", e)
+        analysis = {"error": translate_anthropic_error(e), "summary": text[:500]}
+    except json.JSONDecodeError as e:
+        log.warning("RFP 분석 JSON 파싱 실패: %s", e)
+        analysis = {"error": "AI 응답을 이해하지 못했어요. 다시 시도해 주세요.", "summary": text[:500]}
     except Exception as e:
-        analysis = {"error": f"분석 실패: {e}", "summary": text[:500]}
+        log.exception("RFP 분석 예외")
+        analysis = {"error": "RFP 분석 중 문제가 생겼어요. 다시 시도해 주세요.", "summary": text[:500]}
 
     with get_db() as db:
         db.execute("DELETE FROM rfp_docs WHERE client_id=?", (cid,))
@@ -1106,10 +1246,14 @@ async def api_refs_upload(cid: str, file: UploadFile = File(...)):
         if not c:
             raise HTTPException(404, "발주처를 찾을 수 없습니다.")
 
+    content = await read_and_validate_upload(file, allowed_exts=ALLOWED_UPLOAD_EXTS)
     safe_name = re.sub(r"[^\w\.\-가-힣]", "_", file.filename or "ref")
     save_path = UPLOADS_DIR / f"{cid}_ref_{uuid.uuid4().hex[:6]}_{safe_name}"
-    content = await file.read()
-    save_path.write_bytes(content)
+    try:
+        save_path.write_bytes(content)
+    except OSError as e:
+        log.exception("레퍼런스 파일 저장 실패")
+        raise HTTPException(500, "파일을 저장하지 못했어요. 디스크 상태를 확인해 주세요.") from e
 
     text = extract_text(save_path)[:20000]
 

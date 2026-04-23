@@ -102,6 +102,74 @@ function toast(msg, kind = "") {
   setTimeout(() => el.remove(), 2800);
 }
 
+// ---------- Soft pulse loader with fading emoji + text sequence ----------
+// Steps: [{emoji, text}] rotated every ~1.8s with fade in/out
+function createSoftLoader(steps, opts = {}) {
+  const { block = false } = opts;
+  const el = h("div", { class: "soft-loader" + (block ? " block" : "") });
+  const emojiEl = h("span", { class: "soft-emoji" }, steps[0]?.emoji || "✨");
+  const textEl = h("span", { class: "soft-text fade-in" }, steps[0]?.text || "잠시만요…");
+  el.appendChild(emojiEl);
+  el.appendChild(textEl);
+  let idx = 0, stopped = false;
+  const tick = () => {
+    if (stopped || steps.length < 2) return;
+    textEl.classList.remove("fade-in");
+    textEl.classList.add("fade-out");
+    setTimeout(() => {
+      if (stopped) return;
+      idx = (idx + 1) % steps.length;
+      emojiEl.textContent = steps[idx].emoji;
+      textEl.textContent = steps[idx].text;
+      textEl.classList.remove("fade-out");
+      textEl.classList.add("fade-in");
+      setTimeout(tick, 1800);
+    }, 400);
+  };
+  if (steps.length > 1) setTimeout(tick, 1800);
+  return {
+    el,
+    finish(finalEmoji = "✅", finalText = "완료!") {
+      stopped = true;
+      textEl.classList.remove("fade-out");
+      textEl.classList.add("fade-in");
+      emojiEl.textContent = finalEmoji;
+      textEl.textContent = finalText;
+      el.style.animation = "none";
+    },
+    stop() { stopped = true; el.remove(); },
+  };
+}
+
+const LOADER_STEPS = {
+  rfp: [
+    { emoji: "📄", text: "RFP를 읽고 있어요…" },
+    { emoji: "🔍", text: "요구사항을 분석하고 있어요…" },
+    { emoji: "📊", text: "평가 기준을 파악하고 있어요…" },
+    { emoji: "🗂️", text: "목차와 페이지 수를 정리하고 있어요…" },
+  ],
+  competitor: [
+    { emoji: "🔎", text: "기업 정보를 검색하고 있어요…" },
+    { emoji: "⚡", text: "강점과 약점을 분석하고 있어요…" },
+    { emoji: "🎯", text: "차별화 포인트를 찾고 있어요…" },
+  ],
+  reference: [
+    { emoji: "📂", text: "파일을 읽고 있어요…" },
+    { emoji: "🧠", text: "내용을 분석하고 있어요…" },
+    { emoji: "💡", text: "패턴을 추출하고 있어요…" },
+  ],
+  proposal: [
+    { emoji: "📋", text: "RFP 요구사항을 확인하고 있어요…" },
+    { emoji: "✍️", text: "목차와 구성을 잡고 있어요…" },
+    { emoji: "🎨", text: "페이지 레이아웃을 설계하고 있어요…" },
+    { emoji: "🚀", text: "제안서를 작성하고 있어요…" },
+  ],
+  search: [
+    { emoji: "🌐", text: "웹에서 실제 정보를 찾고 있어요…" },
+    { emoji: "🔗", text: "후보를 정리하고 있어요…" },
+  ],
+};
+
 // ---------- Router ----------
 const routes = [
   { re: /^\/$/, handler: renderDashboard },
@@ -410,12 +478,12 @@ async function renderClientDetail(cid) {
   const stack = h("div", { class: "row-gap-18" });
   content.appendChild(stack);
 
-  // Order per spec: History → RFP → References → Competitors → Memory
+  // Order: History → RFP → References → Competitors
+  // (대화 기억 섹션은 제거 — 채팅 헤더에서 배지로만 표시)
   stack.appendChild(await renderConvHistorySection(cid));
   stack.appendChild(await renderRfpSection(cid));
   stack.appendChild(await renderReferenceSection(cid));
   stack.appendChild(await renderCompetitorSection(cid));
-  stack.appendChild(await renderMemorySection(cid));
 }
 
 // ---------- Conversation History ----------
@@ -527,23 +595,22 @@ async function renderReferenceSection(cid) {
   if (!refs.length) list.appendChild(h("div", { class: "muted small", style: "padding: 4px 0;" }, "아직 업로드된 레퍼런스가 없습니다."));
 
   async function uploadRef(file) {
-    const row = h("div", { class: "file-row" }, [
-      h("div", { class: "left" }, [
+    const loader = createSoftLoader(LOADER_STEPS.reference, { block: true });
+    const row = h("div", { class: "file-row", style: "padding: 6px 10px;" }, [
+      h("div", { class: "left", style: "flex: 1;" }, [
         h("div", { class: "file-icon", html: iconHtml("file", 18) }),
-        h("div", {}, [
+        h("div", { style: "flex: 1;" }, [
           h("p", { class: "file-name" }, file.name),
-          h("p", { class: "file-sub" }, [
-            h("span", { class: "loading-dots", html: "<span></span><span></span><span></span>" }),
-            document.createTextNode(" AI 분석 중…"),
-          ]),
+          h("p", { class: "file-sub", style: "margin-top: 4px;" }),
         ]),
       ]),
     ]);
+    row.querySelector(".file-sub").appendChild(loader.el);
     list.prepend(row);
     try {
       await api.upload(`/api/clients/${cid}/references`, file);
-      toast("레퍼런스 등록 완료", "success");
-      renderClientDetail(cid);
+      loader.finish("✅", "저장 완료!");
+      setTimeout(() => renderClientDetail(cid), 600);
     } catch (e) {
       row.remove();
       toast("업로드 실패: " + (e.message || e), "error");
@@ -613,12 +680,17 @@ async function renderRfpSection(cid) {
   body.appendChild(drop);
 
   async function doUpload(file) {
-    toast("RFP 업로드 & 분석 중…", "");
+    const loader = createSoftLoader(LOADER_STEPS.rfp, { block: true });
+    const loaderWrap = h("div", { style: "margin: 12px 0 4px; display: flex; justify-content: center;" }, loader.el);
+    body.insertBefore(loaderWrap, drop.nextSibling);
     try {
       await api.upload(`/api/clients/${cid}/rfp`, file);
-      toast("RFP 분석 완료", "success");
-      renderClientDetail(cid);
-    } catch (e) { toast("업로드 실패: " + (e.message || e), "error"); }
+      loader.finish("✅", "분석 완료!");
+      setTimeout(() => renderClientDetail(cid), 700);
+    } catch (e) {
+      loaderWrap.remove();
+      toast("업로드 실패: " + (e.message || e), "error");
+    }
   }
 
   if (rfp.has_rfp && rfp.analysis) {
@@ -721,25 +793,70 @@ async function renderCompetitorSection(cid) {
   const body = h("div", { class: "card-body row-gap-14" });
   card.appendChild(body);
 
-  // Input row
-  const inp = h("input", { class: "input", placeholder: "경쟁사 기업명을 입력하세요 (예: LG CNS)" });
+  // Input row — 기업명 입력 → 웹 검색 후보 → 선택 → 분석
+  const inp = h("input", { class: "input", placeholder: "경쟁사 기업명 또는 키워드 (예: LG CNS)" });
   const ctx = h("input", { class: "input", placeholder: "추가 컨텍스트 (선택, 예: 동일 사업 수주 이력)" });
-  body.appendChild(h("div", { style: "display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px;" }, [
-    inp, ctx,
-    h("button", {
-      class: "btn btn-primary", html: `${iconHtml("plus", 16)}<span>분석 추가</span>`,
-      onclick: async () => {
-        const name = inp.value.trim();
-        if (!name) { toast("경쟁사명을 입력하세요", "error"); return; }
-        toast("경쟁사 분석 중…", "");
-        try {
-          await api.post(`/api/clients/${cid}/competitors`, { name, context: ctx.value.trim() });
-          toast("분석 완료", "success");
-          renderClientDetail(cid);
-        } catch (e) { toast(String(e.message || e), "error"); }
-      },
-    }),
-  ]));
+  const searchArea = h("div");
+  const searchBtn = h("button", {
+    class: "btn btn-primary", html: `${iconHtml("search", 16)}<span>후보 검색</span>`,
+    onclick: async () => {
+      const query = inp.value.trim();
+      if (!query) { toast("기업명 또는 키워드를 입력하세요", "error"); return; }
+      searchArea.innerHTML = "";
+      const loader = createSoftLoader(LOADER_STEPS.search, { block: true });
+      searchArea.appendChild(h("div", { style: "display: flex; justify-content: center; padding: 6px 0;" }, loader.el));
+      try {
+        const r = await api.post(`/api/clients/${cid}/competitors/search`, { query, context: ctx.value.trim() });
+        loader.stop();
+        showCandidates(r.candidates || []);
+      } catch (e) {
+        loader.stop();
+        toast("검색 실패: " + (e.message || e), "error");
+      }
+    },
+  });
+  body.appendChild(h("div", { style: "display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px;" }, [inp, ctx, searchBtn]));
+  body.appendChild(searchArea);
+
+  function showCandidates(candidates) {
+    searchArea.innerHTML = "";
+    if (!candidates.length) {
+      searchArea.appendChild(h("div", { class: "muted small", style: "padding: 6px 0;" }, "후보가 없습니다. 입력한 이름으로 바로 분석할 수 있습니다."));
+    }
+    const picker = h("div", { class: "comp-candidates" });
+    candidates.forEach((c) => {
+      picker.appendChild(h("div", { class: "comp-candidate", onclick: () => runAnalysis(c.name, ctx.value.trim()) }, [
+        h("div", { style: "flex: 1; min-width: 0;" }, [
+          h("div", { class: "cc-name" }, c.name),
+          c.desc ? h("div", { class: "cc-desc" }, c.desc + (c.domain ? ` · ${c.domain}` : "")) : null,
+        ]),
+        h("span", { class: "badge badge-outline" }, "선택"),
+      ]));
+    });
+    picker.appendChild(h("div", { class: "comp-candidate", style: "border-style: dashed;", onclick: () => runAnalysis(inp.value.trim(), ctx.value.trim()) }, [
+      h("div", { style: "flex: 1;" }, [
+        h("div", { class: "cc-name" }, `"${inp.value.trim()}" 그대로 분석`),
+        h("div", { class: "cc-desc" }, "후보에 없으면 입력한 이름 그대로 진행"),
+      ]),
+      h("span", { class: "badge badge-muted" }, "직접"),
+    ]));
+    searchArea.appendChild(picker);
+  }
+
+  async function runAnalysis(name, context) {
+    if (!name) return;
+    searchArea.innerHTML = "";
+    const loader = createSoftLoader(LOADER_STEPS.competitor, { block: true });
+    searchArea.appendChild(h("div", { style: "display: flex; justify-content: center; padding: 6px 0;" }, loader.el));
+    try {
+      await api.post(`/api/clients/${cid}/competitors`, { name, context });
+      loader.finish("✅", "분석 완료!");
+      setTimeout(() => renderClientDetail(cid), 600);
+    } catch (e) {
+      loader.stop();
+      toast("분석 실패: " + (e.message || e), "error");
+    }
+  }
 
   if (!comps.length) {
     body.appendChild(h("div", { class: "muted small", style: "padding: 4px 0;" }, "등록된 경쟁사가 없습니다."));
@@ -882,12 +999,13 @@ async function renderChat(cid, convId) {
     ]),
     h("div", { class: "flex-row", style: "gap: 12px;" }, [
       pageLimit ? h("span", { class: "page-limit-badge" }, `최대 ${pageLimit}페이지`) : null,
+      injected.memory ? h("span", { class: "nuance-badge", title: "대화 기억이 이 대화에 자동 적용됩니다" }, [
+        h("span", { class: "dot" }),
+        document.createTextNode("이 발주처의 대화 기억이 적용됐어요"),
+      ]) : null,
       h("div", { class: "context-badges" }, [
-        h("span", { class: "small muted" }, "주입됨:"),
         injected.rfp ? h("span", { class: "badge badge-primary" }, "RFP") : null,
         injected.refs ? h("span", { class: "badge badge-primary" }, "레퍼런스") : null,
-        injected.memory ? h("span", { class: "badge badge-primary" }, "대화기억") : null,
-        (!injected.rfp && !injected.refs && !injected.memory) ? h("span", { class: "small muted" }, "없음") : null,
       ]),
       h("button", {
         class: "btn btn-outline", html: `${iconHtml("save", 14)}<span>대화 종료 & 기억 저장</span>`,
@@ -915,7 +1033,8 @@ async function renderChat(cid, convId) {
 
   // Input
   const ta = h("textarea", { placeholder: "메시지를 입력하세요… (Shift+Enter 줄바꿈, Enter 전송)", rows: 1 });
-  const sendBtn = h("button", { class: "send-btn", html: iconHtml("send", 20), disabled: true });
+  const sendBtn = h("button", { class: "send-btn", html: iconHtml("send", 20), disabled: true, title: "전송" });
+  const stopBtn = h("button", { class: "stop-btn hidden", html: `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`, title: "생성 중단" });
 
   ta.addEventListener("input", () => {
     ta.style.height = "auto";
@@ -927,29 +1046,44 @@ async function renderChat(cid, convId) {
   });
 
   let streaming = false;
+  let aborter = null;
+  stopBtn.addEventListener("click", () => {
+    if (aborter) { aborter.abort(); toast("생성을 중단했습니다", ""); }
+  });
+
   sendBtn.addEventListener("click", async () => {
     const text = ta.value.trim();
     if (!text || streaming) return;
     streaming = true; sendBtn.disabled = true; ta.disabled = true;
+    sendBtn.classList.add("hidden"); stopBtn.classList.remove("hidden");
 
     // Optimistic user bubble
     msgs.appendChild(msgElement("user", text, new Date().toISOString()));
     ta.value = ""; ta.style.height = "auto";
     body.scrollTop = body.scrollHeight;
 
-    // Assistant placeholder
+    // Detect proposal intent to show richer loader
+    const isProposal = /제안서|초안|구성안|페이지\s*구성|목차/.test(text);
+    const loaderSteps = isProposal ? LOADER_STEPS.proposal : [{ emoji: "💭", text: "생각하고 있어요…" }];
+    const loader = createSoftLoader(loaderSteps, { block: true });
+
+    // Assistant placeholder with soft loader
     const asstEl = msgElement("assistant", "", new Date().toISOString());
     msgs.appendChild(asstEl);
     const bubble = asstEl.querySelector(".msg-bubble");
-    bubble.innerHTML = '<span class="loading-dots"><span></span><span></span><span></span></span>';
+    bubble.innerHTML = "";
+    bubble.appendChild(loader.el);
     body.scrollTop = body.scrollHeight;
 
+    aborter = new AbortController();
     let fullText = "";
+    let firstDelta = true;
     try {
       const resp = await fetch(`/api/conversations/${convId}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text }),
+        signal: aborter.signal,
       });
       if (!resp.ok) throw new Error(await resp.text());
 
@@ -968,25 +1102,37 @@ async function renderChat(cid, convId) {
           let ev;
           try { ev = JSON.parse(m[1]); } catch { continue; }
           if (ev.type === "delta") {
+            if (firstDelta) { loader.stop(); bubble.innerHTML = ""; firstDelta = false; }
             fullText += ev.text;
             renderAssistant(bubble, fullText);
             body.scrollTop = body.scrollHeight;
           } else if (ev.type === "error") {
+            loader.stop();
             bubble.innerHTML = `<span style="color:var(--danger);">❌ ${escapeHtml(ev.error)}</span>`;
           } else if (ev.type === "done") {
+            loader.stop();
             renderAssistant(bubble, fullText, true);
           }
         }
       }
     } catch (e) {
-      bubble.innerHTML = `<span style="color:var(--danger);">❌ ${escapeHtml(e.message || String(e))}</span>`;
+      loader.stop();
+      if (e.name === "AbortError") {
+        if (fullText) renderAssistant(bubble, fullText + "\n\n⏸ (중단됨)", true);
+        else bubble.innerHTML = `<span class="muted small">⏸ 생성이 중단되었습니다.</span>`;
+      } else {
+        bubble.innerHTML = `<span style="color:var(--danger);">❌ ${escapeHtml(e.message || String(e))}</span>`;
+      }
     } finally {
-      streaming = false; sendBtn.disabled = false; ta.disabled = false; ta.focus();
+      streaming = false; sendBtn.disabled = false; ta.disabled = false;
+      sendBtn.classList.remove("hidden"); stopBtn.classList.add("hidden");
+      aborter = null;
+      ta.focus();
     }
   });
 
   shell.appendChild(h("div", { class: "chat-input-wrap" }, [
-    h("div", { class: "chat-input-container" }, [ta, sendBtn]),
+    h("div", { class: "chat-input-container" }, [ta, sendBtn, stopBtn]),
     h("p", { class: "chat-hint" }, "RFP 분석 · 레퍼런스 · 대화 기억이 자동으로 컨텍스트에 포함됩니다"),
   ]));
 

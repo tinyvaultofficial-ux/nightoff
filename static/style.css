@@ -52,19 +52,19 @@ input, select, textarea { font-family: inherit; color: inherit; }
 }
 .sidebar-logo {
   display: flex; align-items: center; justify-content: center;
-  height: 84px; padding: 10px 16px; border-bottom: 1px solid var(--border);
+  height: 140px; padding: 14px 18px; border-bottom: 1px solid var(--border);
   cursor: pointer; user-select: none; transition: opacity .15s;
   background: #fff;
 }
 .sidebar-logo:hover { opacity: 0.78; }
 .sidebar-logo:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .sidebar-logo-img {
-  max-height: 64px; max-width: 180px;
+  max-height: 112px; max-width: 220px;
   object-fit: contain; display: block;
 }
 /* Main header logo (dashboard) */
 .header-logo {
-  width: 46px; height: 46px; object-fit: contain;
+  width: 56px; height: 56px; object-fit: contain;
   cursor: pointer; transition: opacity .15s;
 }
 .header-logo:hover { opacity: 0.78; }
@@ -677,6 +677,80 @@ input, select, textarea { font-family: inherit; color: inherit; }
 .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
 @keyframes bounce { 0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; } 40% { transform: scale(1); opacity: 1; } }
 
+/* ===== Soft pulse loader (토스/카뱅 스타일) ===== */
+.soft-loader {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 10px 16px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  border-radius: 999px;
+  font-size: 14px; font-weight: 500;
+  animation: soft-pulse 1.8s ease-in-out infinite;
+}
+.soft-loader.block {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 18px 24px; border-radius: 14px;
+  font-size: 15px;
+}
+.soft-loader .soft-emoji { font-size: 18px; }
+.soft-loader.block .soft-emoji { font-size: 22px; }
+.soft-loader .soft-text {
+  transition: opacity .4s ease;
+}
+.soft-loader .soft-text.fade-out { opacity: 0; }
+.soft-loader .soft-text.fade-in  { opacity: 1; }
+@keyframes soft-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 25%, transparent); transform: translateY(0); }
+  50%      { box-shadow: 0 0 0 10px color-mix(in oklab, var(--primary) 0%, transparent); transform: translateY(-1px); }
+}
+
+/* Nuance badge on chat header */
+.nuance-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border-radius: 999px;
+  background: var(--primary-soft); color: var(--primary);
+  font-size: 12px; font-weight: 500;
+}
+.nuance-badge .dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--primary);
+  animation: soft-pulse 2s infinite;
+}
+
+/* Stop button in chat input area (red-ish but monochrome) */
+.stop-btn {
+  width: 52px; height: 52px; border-radius: 14px;
+  background: var(--fg); color: #fff;
+  display: grid; place-items: center; transition: background .15s;
+}
+.stop-btn:hover { background: #000; }
+
+/* RFP approval card (gate before generate) */
+.rfp-gate {
+  margin: 18px 0; padding: 20px 22px;
+  background: #fff; border: 1.5px solid var(--primary);
+  border-radius: var(--radius); box-shadow: var(--shadow-sm);
+}
+.rfp-gate h4 {
+  margin: 0 0 10px; font-size: 15px; font-weight: 700; color: var(--primary);
+  display: flex; align-items: center; gap: 8px;
+}
+.rfp-gate .gate-item { display: grid; grid-template-columns: 110px 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px dashed var(--border); }
+.rfp-gate .gate-item:last-of-type { border-bottom: 0; }
+.rfp-gate .gate-label { font-size: 12px; font-weight: 600; color: var(--fg-2); }
+.rfp-gate .gate-value { font-size: 14px; color: var(--fg); }
+.rfp-gate .gate-actions { margin-top: 14px; display: flex; gap: 8px; justify-content: flex-end; }
+
+/* Competitor candidate picker */
+.comp-candidates { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.comp-candidate {
+  padding: 10px 14px; border: 1px solid var(--border-strong); border-radius: 10px;
+  background: #fff; cursor: pointer; transition: all .15s;
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+}
+.comp-candidate:hover { border-color: var(--primary); background: var(--primary-soft); }
+.comp-candidate .cc-name { font-size: 14px; font-weight: 600; }
+.comp-candidate .cc-desc { font-size: 12px; color: var(--fg-2); margin-top: 2px; }
+
 /* ===== Comp (competitor) card ===== */
 .comp-card { padding: 18px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; }
 .comp-card h4 { margin: 0 0 6px; font-size: 15px; font-weight: 600; }
@@ -689,14 +763,73 @@ input, select, textarea { font-family: inherit; color: inherit; }
 .strength-badge { background: var(--success-soft); color: var(--success); }
 .weakness-badge { background: var(--danger-soft); color: var(--danger); }
 
-/* ===== Print-only: PDF-friendly proposal output ===== */
+/* ===== Print-only: A4 가로형 (기본) / 세로형 (명시 시) ===== */
+@page {
+  size: A4 landscape;
+  margin: 20mm;
+}
+@page portrait {
+  size: A4 portrait;
+  margin: 20mm;
+}
+
 @media print {
+  /* 화면상의 모든 요소 숨기고 프린트 마운트만 노출 */
+  html, body { background: #fff !important; }
   body > *:not(#print-mount) { display: none !important; }
   #print-mount { display: block !important; }
-  .proposal-page { box-shadow: none !important; border: none !important; page-break-after: always; margin: 0; }
-  .keyword-row { display: none; }
-  @page { margin: 0; size: A4 landscape; }
-  .proposal[data-orientation="portrait"] + @page { size: A4 portrait; }
+
+  /* 제안서 페이지는 A4 한 페이지씩 */
+  #print-mount .proposal-page {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100%;
+    aspect-ratio: auto !important;
+    min-height: auto !important;
+    page-break-after: always;
+    break-after: page;
+    overflow: visible !important;
+    font-size: 11pt;
+    line-height: 1.55;
+  }
+  #print-mount .proposal-page:last-of-type {
+    page-break-after: avoid;
+    break-after: auto;
+  }
+  /* 가로형일 때 각 페이지 portrait 클래스 지정 */
+  #print-mount .proposal[data-orientation="portrait"] { page: portrait; }
+
+  /* 프린트 타이포 — 모든 요소 최소 10pt 이상 */
+  #print-mount .page-section-name { font-size: 9pt !important; }
+  #print-mount .page-governing    { font-size: 22pt !important; line-height: 1.25; }
+  #print-mount .page-summary      { font-size: 11pt !important; }
+  #print-mount .action-caption    { font-size: 10pt !important; }
+  #print-mount .card-grid .card .card-title { font-size: 11pt !important; }
+  #print-mount .card-grid .card .card-body  { font-size: 10pt !important; }
+  #print-mount .step-flow .step-title { font-size: 11pt !important; }
+  #print-mount .step-flow .step-desc  { font-size: 10pt !important; }
+  #print-mount .num-list li           { font-size: 11pt !important; }
+  #print-mount .compare-table         { font-size: 10pt !important; }
+  #print-mount .stat-highlight .stat-big { font-size: 40pt !important; }
+  #print-mount .divider-intro .divider-num { font-size: 140pt !important; }
+  #print-mount .keyword-row { display: none !important; }
+  #print-mount .proposal-toolbar { display: none !important; }
+
+  /* 페이지 내 요소 분절 방지 */
+  #print-mount .proposal-page .card,
+  #print-mount .proposal-page .step,
+  #print-mount .proposal-page .strategy-box,
+  #print-mount .proposal-page .stat-highlight,
+  #print-mount .proposal-page .compare-table,
+  #print-mount .proposal-page .venn,
+  #print-mount .proposal-page .donut,
+  #print-mount .proposal-page .progress-list,
+  #print-mount .proposal-page .missing-alert {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
 }
 
 /* 데스크톱 기준 최소 너비 1280px 유지 — 이 아래로 내려가면 가로 스크롤 */

@@ -148,9 +148,9 @@ async function renderSidebar(active = "clients") {
       h("button", {
         class: "sidebar-item" + (active === "clients" ? " active" : ""),
         onclick: () => navigate("/"),
-        html: `${iconHtml("users")}<span>클라이언트 목록</span>`,
+        html: `${iconHtml("users")}<span>발주처 목록</span>`,
       }),
-      h("div", { class: "sidebar-section-title" }, "최근 클라이언트"),
+      h("div", { class: "sidebar-section-title" }, "최근 발주처"),
       ...recent.map((c) =>
         h("button", {
           class: "sidebar-recent-item",
@@ -159,7 +159,7 @@ async function renderSidebar(active = "clients") {
         })
       ),
       recent.length === 0
-        ? h("div", { class: "muted small", style: "padding: 8px 12px;" }, "등록된 클라이언트가 없습니다")
+        ? h("div", { class: "muted small", style: "padding: 8px 12px;" }, "등록된 발주처가 없습니다")
         : null,
     ]),
   ]);
@@ -197,13 +197,13 @@ async function renderDashboard() {
 
   main.appendChild(h("header", { class: "main-header" }, [
     h("div", {}, [
-      h("h1", {}, "클라이언트"),
-      h("p", {}, `총 ${clients.length}개의 클라이언트를 관리하고 있습니다`),
+      h("h1", {}, "발주처"),
+      h("p", {}, `총 ${clients.length}개의 발주처를 관리하고 있습니다`),
     ]),
     h("button", {
       class: "btn btn-primary btn-lg",
       onclick: () => navigate("/client/new"),
-      html: `${iconHtml("plus", 18)}<span>클라이언트 추가</span>`,
+      html: `${iconHtml("plus", 18)}<span>발주처 추가</span>`,
     }),
   ]));
 
@@ -213,7 +213,7 @@ async function renderDashboard() {
   // Stats
   const statItems = [
     { label: "진행 중인 대화", value: stats.active_conversations ?? 0, unit: "건", icon: "file", tint: "var(--primary-soft)", fg: "var(--primary)" },
-    { label: "등록 클라이언트", value: stats.total_clients ?? 0, unit: "건", icon: "users", tint: "var(--warning-soft)", fg: "var(--warning)" },
+    { label: "등록 발주처", value: stats.total_clients ?? 0, unit: "건", icon: "users", tint: "var(--warning-soft)", fg: "var(--warning)" },
     { label: "누적 메시지", value: stats.total_messages ?? 0, unit: "건", icon: "activity", tint: "var(--accent)", fg: "var(--accent-fg)" },
     { label: "RFP 분석", value: stats.rfp_count ?? 0, unit: "건", icon: "trending", tint: "var(--success-soft)", fg: "var(--success)" },
   ];
@@ -236,15 +236,15 @@ async function renderDashboard() {
 
   // Clients section
   const clientsHeader = h("div", { class: "flex-between", style: "margin-bottom: 18px;" }, [
-    h("h2", { style: "margin: 0; font-size: 18px; font-weight: 600;" }, "클라이언트 목록"),
+    h("h2", { style: "margin: 0; font-size: 18px; font-weight: 600;" }, "발주처 목록"),
   ]);
   content.appendChild(clientsHeader);
 
   if (clients.length === 0) {
     content.appendChild(h("div", { class: "card empty-state" }, [
-      h("p", {}, "등록된 클라이언트가 없습니다."),
+      h("p", {}, "등록된 발주처가 없습니다."),
       h("div", { style: "margin-top: 12px;" }, [
-        h("button", { class: "btn btn-primary", onclick: () => navigate("/client/new") }, "첫 클라이언트 추가"),
+        h("button", { class: "btn btn-primary", onclick: () => navigate("/client/new") }, "첫 발주처 추가"),
       ]),
     ]));
   } else {
@@ -298,21 +298,21 @@ async function renderClientForm(mode, id = null) {
   root.appendChild(main);
   main.appendChild(h("header", { class: "main-header" }, [
     h("div", {}, [
-      h("h1", {}, mode === "create" ? "새 클라이언트 추가" : "클라이언트 수정"),
-      h("p", {}, "클라이언트 기본 정보를 입력하세요"),
+      h("h1", {}, mode === "create" ? "새 발주처 추가" : "발주처 수정"),
+      h("p", {}, "발주처 기본 정보를 입력하세요"),
     ]),
   ]));
 
   let data = { name: "", industry: "", manager: "", memo: "" };
   if (mode === "edit" && id) {
-    try { data = await api.get(`/api/clients/${id}`); } catch (e) { toast("클라이언트를 불러올 수 없습니다", "error"); return; }
+    try { data = await api.get(`/api/clients/${id}`); } catch (e) { toast("발주처를 불러올 수 없습니다", "error"); return; }
   }
 
   const form = h("form", {}, [
     h("div", { class: "card", style: "padding: 28px; max-width: 720px;" }, [
       h("div", { class: "row-gap-18" }, [
         h("div", { class: "field" }, [
-          h("label", {}, [document.createTextNode("클라이언트명 "), h("span", { style: "color: var(--danger);" }, "*")]),
+          h("label", {}, [document.createTextNode("발주처명 "), h("span", { style: "color: var(--danger);" }, "*")]),
           h("input", { class: "input", id: "fld-name", value: data.name, placeholder: "예: 삼성전자" }),
         ]),
         h("div", { class: "field" }, [
@@ -345,12 +345,12 @@ async function renderClientForm(mode, id = null) {
               manager: $("#fld-manager").value.trim(),
               memo: $("#fld-memo").value.trim(),
             };
-            if (!body.name) { toast("클라이언트명을 입력하세요", "error"); return; }
+            if (!body.name) { toast("발주처명을 입력하세요", "error"); return; }
             if (!body.industry) { toast("업종을 선택하세요", "error"); return; }
             try {
               if (mode === "create") {
                 const r = await api.post("/api/clients", body);
-                toast("클라이언트가 추가되었습니다", "success");
+                toast("발주처가 추가되었습니다", "success");
                 navigate(`/client/${r.id}`);
               } else {
                 await api.patch(`/api/clients/${id}`, body);
@@ -377,7 +377,7 @@ async function renderClientDetail(cid) {
   root.appendChild(main);
 
   const client = await api.get(`/api/clients/${cid}`).catch(() => null);
-  if (!client) { toast("클라이언트를 찾을 수 없습니다", "error"); navigate("/"); return; }
+  if (!client) { toast("발주처를 찾을 수 없습니다", "error"); navigate("/"); return; }
 
   main.appendChild(h("header", { class: "main-header" }, [
     h("div", {}, [
@@ -402,7 +402,7 @@ async function renderClientDetail(cid) {
   main.appendChild(content);
 
   content.appendChild(h("a", { class: "back-link", href: "/", "data-link": "" }, [
-    icon("arrowL", 14), document.createTextNode("클라이언트 목록으로"),
+    icon("arrowL", 14), document.createTextNode("발주처 목록으로"),
   ]));
 
   const stack = h("div", { class: "row-gap-18" });
@@ -788,7 +788,7 @@ async function renderMemorySection(cid) {
       h("div", { class: "card-title-icon", html: iconHtml("brain", 18) }),
       h("div", {}, [
         h("h3", { class: "card-title" }, "대화 기억"),
-        h("p", { class: "card-subtitle" }, `AI가 학습한 클라이언트 정보 ${mems.length}개 · 새 대화에 자동 주입됩니다`),
+        h("p", { class: "card-subtitle" }, `AI가 학습한 발주처 정보 ${mems.length}개 · 새 대화에 자동 주입됩니다`),
       ]),
     ]),
     h("button", { class: "icon-btn", id: "mem-toggle", html: iconHtml("chevronD", 18) }),
@@ -888,7 +888,7 @@ async function renderChat(cid, convId) {
       h("button", {
         class: "btn btn-outline", html: `${iconHtml("save", 14)}<span>대화 종료 & 기억 저장</span>`,
         onclick: async () => {
-          if (!confirm("대화를 종료하고 기억을 저장하시겠습니까? AI가 대화에서 뉘앙스를 추출해 클라이언트에 저장합니다.")) return;
+          if (!confirm("대화를 종료하고 기억을 저장하시겠습니까? AI가 대화에서 뉘앙스를 추출해 발주처에 저장합니다.")) return;
           toast("대화 기억 저장 중…", "");
           try {
             const r = await api.post(`/api/conversations/${convId}/end`);

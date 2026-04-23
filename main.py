@@ -211,7 +211,7 @@ BidPick의 AI 엔진으로, 발주처를 설득하는 제안서를 한국어로 
    - 대기업: 규모/안정성/ROI 중심
    - 스타트업: 속도/유연성/임팩트 중심
 4. 주어진 레퍼런스 라이브러리의 패턴(문체, 구조, 접근법)을 학습해 새 제안서에 반영한다.
-5. 대화 기억(nuance)에 담긴 클라이언트 선호·맥락을 반드시 반영한다.
+5. 대화 기억(nuance)에 담긴 발주처 선호·맥락을 반드시 반영한다.
 
 [쉬플리(Shipley) 방법론 — 글로벌 표준, 반드시 적용]
 ■ Win Theme (수주 테마):
@@ -444,7 +444,7 @@ JSON만 출력.
 JSON:"""
 
 
-NUANCE_SUMMARY_PROMPT = """아래 대화를 기반으로, 이 클라이언트와의 이후 대화에 이어갈 수 있도록
+NUANCE_SUMMARY_PROMPT = """아래 대화를 기반으로, 이 발주처와의 이후 대화에 이어갈 수 있도록
 핵심 맥락·뉘앙스·선호·금지사항을 뽑아내세요.
 
 JSON 배열 스키마(0~6개 항목):
@@ -483,6 +483,17 @@ def _startup() -> None:
 
 # ---------- Static ----------
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+@app.middleware("http")
+async def no_cache_static(request, call_next):
+    """개발 편의: static 자원은 절대 캐시하지 않음."""
+    response = await call_next(request)
+    if request.url.path.startswith("/static") or request.url.path == "/":
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
 
 @app.get("/")
@@ -588,7 +599,7 @@ def api_clients_get(cid: str):
     with get_db() as db:
         row = db.execute("SELECT * FROM clients WHERE id=?", (cid,)).fetchone()
         if not row:
-            raise HTTPException(404, "클라이언트를 찾을 수 없습니다.")
+            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
         return dict(row)
 
 
@@ -601,7 +612,7 @@ def api_clients_update(cid: str, body: ClientIn):
             (body.name, body.industry, body.manager, body.memo, cid),
         )
         if cur.rowcount == 0:
-            raise HTTPException(404, "클라이언트를 찾을 수 없습니다.")
+            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
     return {"ok": True}
 
 
@@ -633,7 +644,7 @@ def api_convs_create(cid: str):
     with get_db() as db:
         row = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
         if not row:
-            raise HTTPException(404, "클라이언트를 찾을 수 없습니다.")
+            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
         conv_id = uuid.uuid4().hex[:12]
         db.execute("INSERT INTO conversations(id,client_id) VALUES(?,?)", (conv_id, cid))
     return {"id": conv_id}
@@ -745,7 +756,7 @@ def _build_system_prompt(client_id: str) -> str:
     parts = [PROPOSAL_SYSTEM_PROMPT, ""]
 
     if client:
-        parts.append(f"[현재 클라이언트]\n- 이름: {client['name']}\n- 업종: {client['industry']}\n- 담당자: {client['manager']}\n- 메모: {client['memo']}")
+        parts.append(f"[현재 발주처]\n- 이름: {client['name']}\n- 업종: {client['industry']}\n- 담당자: {client['manager']}\n- 메모: {client['memo']}")
 
     if rfp and rfp["analysis_json"]:
         try:
@@ -845,7 +856,7 @@ async def api_rfp_upload(cid: str, file: UploadFile = File(...)):
     with get_db() as db:
         c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
         if not c:
-            raise HTTPException(404, "클라이언트를 찾을 수 없습니다.")
+            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
 
     safe_name = re.sub(r"[^\w\.\-가-힣]", "_", file.filename or "rfp")
     save_path = UPLOADS_DIR / f"{cid}_rfp_{uuid.uuid4().hex[:6]}_{safe_name}"
@@ -940,7 +951,7 @@ async def api_refs_upload(cid: str, file: UploadFile = File(...)):
     with get_db() as db:
         c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
         if not c:
-            raise HTTPException(404, "클라이언트를 찾을 수 없습니다.")
+            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
 
     safe_name = re.sub(r"[^\w\.\-가-힣]", "_", file.filename or "ref")
     save_path = UPLOADS_DIR / f"{cid}_ref_{uuid.uuid4().hex[:6]}_{safe_name}"
@@ -1019,7 +1030,7 @@ def api_comp_add(cid: str, body: CompetitorIn):
     with get_db() as db:
         c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
         if not c:
-            raise HTTPException(404, "클라이언트를 찾을 수 없습니다.")
+            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
 
     try:
         client = require_client()

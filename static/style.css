@@ -437,6 +437,13 @@ input, select, textarea { font-family: inherit; color: inherit; }
   color: #9ca3af; font-size: 13px;
 }
 
+/* === Shipley Action Caption — sits above/below a visualization === */
+.proposal-page .action-caption {
+  font-size: 13px; font-weight: 600; color: #111827;
+  margin: 6px 0 4px; line-height: 1.55; letter-spacing: -0.005em;
+  padding-left: 10px; border-left: 3px solid #111827;
+}
+
 /* === B&W visualization primitives — all monochrome, no color === */
 
 /* Arrow flow (process / change) */

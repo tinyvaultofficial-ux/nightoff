@@ -1012,8 +1012,15 @@ async function renderRfpSection(cid) {
         const err = await r.json().catch(() => ({ error: r.statusText }));
         throw new Error(err.error || "업로드 실패");
       }
-      loader.finish("✅", "분석 완료!");
-      setTimeout(() => renderClientDetail(cid), 700);
+      const result = await r.json();
+      // 파일은 저장됐지만 분석이 실패한 경우 — 사용자에게 즉시 알림
+      if (result?.analysis?.error) {
+        loader.finish("⚠️", "업로드 완료 · 분석 실패");
+        toast(result.analysis.error, "error");
+      } else {
+        loader.finish("✅", "분석 완료!");
+      }
+      setTimeout(() => renderClientDetail(cid), 900);
     } catch (e) {
       loaderWrap.remove();
       toast(e.message || "업로드 실패", "error");
@@ -1072,6 +1079,48 @@ async function renderRfpSection(cid) {
 
   if (rfp.files && rfp.files.length && rfp.analysis && Object.keys(rfp.analysis).length) {
     const a = rfp.analysis;
+    const hasAnalysisError = !!a.error;
+
+    // 분석 실패 시 명확한 에러 배너 + 재분석 버튼
+    if (hasAnalysisError) {
+      const errBanner = h("div", {
+        class: "card",
+        style: "padding: 16px 18px; border: 1.5px solid var(--danger); background: var(--danger-soft); box-shadow: none;"
+      }, [
+        h("div", { class: "flex-between" }, [
+          h("div", { class: "flex-row", style: "gap: 10px; align-items: flex-start;" }, [
+            h("span", { style: "font-size: 20px;" }, "⚠️"),
+            h("div", {}, [
+              h("p", { style: "margin: 0 0 4px; font-weight: 700; color: var(--danger);" }, "RFP 분석이 완료되지 않았어요"),
+              h("p", { style: "margin: 0; font-size: 13px; color: var(--fg); line-height: 1.5;" }, a.error),
+            ]),
+          ]),
+          h("button", {
+            class: "btn btn-outline",
+            style: "flex-shrink: 0;",
+            onclick: async () => {
+              const loader = createSoftLoader(LOADER_STEPS.rfp, { block: true });
+              const wrap = h("div", { style: "margin: 10px 0; display: flex; justify-content: center;" }, loader.el);
+              errBanner.after(wrap);
+              try {
+                // Trigger re-analysis by touching role (noop update)
+                const firstFile = rfp.files[0];
+                await api.patch(`/api/clients/${cid}/rfp/files/${firstFile.id}`, { role: firstFile.role });
+                loader.finish("✅", "재분석 완료!");
+                setTimeout(() => renderClientDetail(cid), 600);
+              } catch (e) {
+                wrap.remove();
+                toast(e.message || "재분석 실패", "error");
+              }
+            },
+            html: `${iconHtml("trending", 14)}<span>다시 분석</span>`,
+          }),
+        ]),
+      ]);
+      body.appendChild(errBanner);
+      return card;  // 에러 상태에서는 빈 분석 카드를 보여주지 않음
+    }
+
     const result = h("div", { class: "card", style: "padding: 20px; border: 1px solid var(--border); box-shadow: none;" });
     body.appendChild(result);
 

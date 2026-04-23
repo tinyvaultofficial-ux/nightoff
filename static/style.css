@@ -478,6 +478,50 @@ input, select, textarea { font-family: inherit; color: inherit; }
   padding-left: 10px; border-left: 3px solid #111827;
 }
 
+/* === Floor plan (행사장 평면도 SVG) — B&W === */
+.proposal-page .floor-plan {
+  display: flex; flex-direction: column; gap: 10px;
+  margin: 6px 0 4px;
+}
+.proposal-page .floor-plan-svg {
+  width: 100%; max-height: 280px;
+  background: #fff;
+  border: 1.5px solid #111827;
+  border-radius: 10px;
+  display: block;
+}
+.proposal-page .floor-plan-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 4px 18px;
+  padding: 10px 14px;
+  border: 1px solid #e5e7eb; border-radius: 8px;
+  background: #fafafa;
+}
+.proposal-page .floor-plan-legend .legend-item {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 12px; color: #374151; line-height: 1.5;
+}
+.proposal-page .floor-plan-legend .legend-key {
+  font-weight: 700; color: #111827; white-space: nowrap;
+}
+.proposal-page .floor-plan-legend .legend-desc {
+  color: #4b5563;
+}
+
+/* 프린트 — SVG는 벡터라 축소되어도 선명 */
+@media print {
+  #print-mount .floor-plan-svg {
+    max-height: none !important;
+    border-width: 1pt !important;
+  }
+  #print-mount .floor-plan-legend {
+    font-size: 10pt !important;
+    background: #f9f9f9 !important;
+  }
+  #print-mount .floor-plan { break-inside: avoid; page-break-inside: avoid; }
+}
+
 /* === Compliance missing-alert (B&W, 강한 시각적 경고) === */
 .proposal-page .missing-alert {
   margin-top: 18px; padding: 14px 18px;

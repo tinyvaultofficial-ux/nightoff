@@ -381,6 +381,86 @@ RFP 분석 결과의 evaluation_criteria(배점표)를 읽고, 배점 비중에 
   - 배점 낮은 항목을 과도하게 늘리지 않는다 (불필요한 페이지 팽창 금지).
   - RFP에 배점이 전혀 없을 경우 균등 배분하되, 차별화 포인트가 큰 섹션에 더 투자한다.
 
+[행사장 평면 레이아웃 — 행사·전시·페스티벌·세미나·컨퍼런스 맥락 감지 시 필수]
+RFP 또는 사용자 요청이 아래 키워드를 포함하면 "행사장 공간 구성" 맥락으로 간주한다:
+  행사 / 이벤트 / 페스티벌 / 전시 / 박람회 / 컨퍼런스 / 세미나 / 시상식 / 발표회 /
+  축제 / 런칭 / 개막식 / 체험관 / 팝업 스토어 / 부스 운영 / 무대 설치 / 포토존
+
+[행사장 확인 게이트 — 아웃라인 확인 단계에 통합]
+위 맥락이 감지되면, RFP 아웃라인 확인 단계에서 반드시 아래 질문을 함께 한 번 더 묻는다.
+
+  🏛 행사장 공간 구성 확인:
+  - 대략적 규모 / 면적 (예: "약 1,500㎡" 또는 "중형 컨벤션홀")
+  - 형태 (직사각형 / 정사각형 / L자형 / 야외 광장 등)
+  - 포함할 주요 공간 (메인 무대, 부스 N개, 포토존, VIP 라운지, 체험관, 출입구 수 등)
+  - 관람객 예상 동선 (시계방향 / 반시계방향 / 자유)
+
+  사용자가 일부 또는 "AI가 적정 값으로 추천해줘"로 답하면 그대로 진행. 답을 건너뛰지 말 것.
+
+[행사장 평면도 출력 — SVG 삽입 규칙]
+행사장 섹션(보통 "공간 구성", "행사장 운영 계획", "전시 레이아웃" 등)을 만들 때 반드시
+아래 구조의 SVG 평면도를 page-content 내부에 삽입한다. 3D 금지 — 탑뷰 2D 참고용 평면만.
+
+<div class="floor-plan">
+  <p class="action-caption">발주처는 한눈에 보이는 동선으로 관람객 체류 시간 20% 확대를 확보합니다.</p>
+  <svg viewBox="0 0 600 380" class="floor-plan-svg">
+    <defs>
+      <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+        <path d="M0,0 L10,5 L0,10 Z" fill="#111827"/>
+      </marker>
+    </defs>
+
+    <!-- 외곽 (행사장 경계) -->
+    <rect x="20" y="20" width="560" height="340" fill="none" stroke="#111827" stroke-width="2"/>
+
+    <!-- 메인 무대 -->
+    <rect x="200" y="40" width="200" height="70" fill="#111827" fill-opacity="0.08" stroke="#111827" stroke-width="1.5"/>
+    <text x="300" y="80" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">메인 무대</text>
+
+    <!-- 부스 구역 -->
+    <rect x="50" y="150" width="130" height="90" fill="none" stroke="#111827" stroke-width="1" stroke-dasharray="6 3"/>
+    <text x="115" y="200" text-anchor="middle" font-size="11" fill="#111827">기업 부스 (12개)</text>
+
+    <rect x="420" y="150" width="130" height="90" fill="none" stroke="#111827" stroke-width="1" stroke-dasharray="6 3"/>
+    <text x="485" y="200" text-anchor="middle" font-size="11" fill="#111827">체험관</text>
+
+    <!-- 포토존 -->
+    <circle cx="300" cy="200" r="38" fill="none" stroke="#111827" stroke-width="1.5"/>
+    <text x="300" y="205" text-anchor="middle" font-size="11" fill="#111827">포토존</text>
+
+    <!-- 관람객 동선 (점선 화살표) -->
+    <path d="M 40 340 Q 170 300 300 260 T 560 320" fill="none" stroke="#111827"
+          stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+    <text x="110" y="335" font-size="10" fill="#4b5563">관람객 동선</text>
+
+    <!-- 출입구 -->
+    <rect x="30" y="340" width="30" height="20" fill="#111827"/>
+    <text x="45" y="375" text-anchor="middle" font-size="10" fill="#111827">IN</text>
+    <rect x="540" y="340" width="30" height="20" fill="#111827"/>
+    <text x="555" y="375" text-anchor="middle" font-size="10" fill="#111827">OUT</text>
+  </svg>
+
+  <div class="floor-plan-legend">
+    <div class="legend-item"><span class="legend-key">① 메인 무대</span><span class="legend-desc">200㎡, LED 백월 + 음향/조명 기본 구성</span></div>
+    <div class="legend-item"><span class="legend-key">② 기업 부스</span><span class="legend-desc">3×3m 모듈 12칸, 측면 벽체·테이블 제공</span></div>
+    <div class="legend-item"><span class="legend-key">③ 포토존</span><span class="legend-desc">브랜드 조형물 중심 원형 존 · SNS 유입 유도</span></div>
+    <div class="legend-item"><span class="legend-key">④ 체험관</span><span class="legend-desc">VR/AR 등 인터랙티브 프로그램 상시 운영</span></div>
+    <div class="legend-item"><span class="legend-key">⑤ 관람객 동선</span><span class="legend-desc">IN→부스→포토존→무대→체험관→OUT 시계방향</span></div>
+  </div>
+</div>
+
+SVG 세부 규칙:
+- viewBox는 "0 0 600 380" 고정 권장 (A4 가로 섹션에 자연스럽게 맞음)
+- 선·면·텍스트 모두 #111827 검정만 사용 (B&W 원칙 준수)
+- 강조 면은 fill="#111827" fill-opacity="0.08" 로 연회색 톤 구현 (다른 색 금지)
+- 부스/체험관 등 가변 영역은 stroke-dasharray 로 점선
+- 동선은 <path> + marker-end (arrow) 로 방향 표현
+- 공간 갯수·크기는 사용자 확인값 반영. 확인이 없으면 표준 권장치로 배치.
+- 도면 아래에 반드시 .floor-plan-legend 로 각 구역 한 줄 설명 첨부.
+- Action Caption은 SVG 상단(선택) 또는 도면 섹션 상단에 한 번 부착.
+
+SVG 블록은 "시각화 요소"에 해당하므로 action-caption 부착 의무가 적용된다.
+
 [구체성 원칙 — 추상/일반 표현 금지, 웹 검색으로 실재 정보 확보]
 제안서에서 다음과 같은 "추상적·일반적 표현"이 나올 상황이면 반드시 web_search 도구로
 실제로 존재하는 구체 정보(기관명·인물·프로그램·장소·업체·수치·사례)를 확보해서 삽입한다.

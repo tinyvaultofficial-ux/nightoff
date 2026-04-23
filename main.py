@@ -987,15 +987,86 @@ def api_settings_set(body: SettingsIn):
 def api_stats():
     with get_db() as db:
         total_clients = db.execute("SELECT COUNT(*) c FROM clients").fetchone()["c"]
+        total_convs = db.execute("SELECT COUNT(*) c FROM conversations").fetchone()["c"]
         active_convs = db.execute("SELECT COUNT(*) c FROM conversations WHERE ended=0").fetchone()["c"]
         total_msgs = db.execute("SELECT COUNT(*) c FROM messages").fetchone()["c"]
         rfps = db.execute("SELECT COUNT(DISTINCT client_id) c FROM rfp_files").fetchone()["c"]
+        # 이번 달 시작
+        month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+        month_activity = db.execute(
+            "SELECT COUNT(*) c FROM messages WHERE created_at >= ?", (month_start,)
+        ).fetchone()["c"]
+        # 대화 1건 = 제안서 1건으로 단순 집계
+        total_proposals = db.execute(
+            "SELECT COUNT(DISTINCT conversation_id) c FROM messages WHERE role='assistant' "
+            "AND content LIKE '%class=\"proposal\"%'"
+        ).fetchone()["c"]
     return {
         "total_clients": total_clients,
+        "total_proposals": total_proposals,
+        "total_conversations": total_convs,
         "active_conversations": active_convs,
         "total_messages": total_msgs,
+        "month_activity": month_activity,
         "rfp_count": rfps,
     }
+
+
+@app.get("/api/activity")
+def api_activity(limit: int = 12):
+    """최근 활동 피드 — 발주처 등록 / RFP 업로드 / 대화·제안서 생성."""
+    events: list[dict] = []
+    with get_db() as db:
+        # 발주처 등록
+        for r in db.execute("SELECT id,name,created_at FROM clients ORDER BY created_at DESC LIMIT 10").fetchall():
+            events.append({
+                "type": "client_created",
+                "client_id": r["id"],
+                "title": f"{r['name']} 발주처 등록",
+                "at": r["created_at"],
+                "icon": "building",
+            })
+        # RFP 업로드
+        for r in db.execute(
+            "SELECT rf.filename, rf.role, rf.created_at, c.id cid, c.name cname "
+            "FROM rfp_files rf JOIN clients c ON c.id=rf.client_id ORDER BY rf.created_at DESC LIMIT 10"
+        ).fetchall():
+            events.append({
+                "type": "rfp_uploaded",
+                "client_id": r["cid"],
+                "title": f"{r['cname']} · {r['role']} 업로드",
+                "at": r["created_at"],
+                "icon": "fileSearch",
+            })
+        # 대화 / 제안서 생성
+        for r in db.execute(
+            "SELECT cv.id, cv.title, cv.updated_at, cv.client_id cid, c.name cname, "
+            "  (SELECT COUNT(*) FROM messages m WHERE m.conversation_id=cv.id AND m.role='assistant' "
+            "   AND m.content LIKE '%class=\"proposal\"%') proposal_count "
+            "FROM conversations cv JOIN clients c ON c.id=cv.client_id "
+            "ORDER BY cv.updated_at DESC LIMIT 10"
+        ).fetchall():
+            if r["proposal_count"] > 0:
+                events.append({
+                    "type": "proposal_generated",
+                    "client_id": r["cid"],
+                    "conv_id": r["id"],
+                    "title": f"{r['cname']} 제안서 생성 완료",
+                    "at": r["updated_at"],
+                    "icon": "file",
+                })
+            else:
+                events.append({
+                    "type": "conversation",
+                    "client_id": r["cid"],
+                    "conv_id": r["id"],
+                    "title": f"{r['cname']} · {r['title']}",
+                    "at": r["updated_at"],
+                    "icon": "msg",
+                })
+    # 시간 내림차순 정렬 후 limit
+    events.sort(key=lambda e: e["at"] or "", reverse=True)
+    return events[:limit]
 
 
 # ---------- Clients ----------

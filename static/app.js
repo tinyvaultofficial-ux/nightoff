@@ -283,6 +283,19 @@ function fmtSize(bytes) {
 }
 
 // ---------- Dashboard ----------
+function relativeTime(ts) {
+  if (!ts) return "";
+  try {
+    const d = new Date(ts.includes("T") ? ts : ts.replace(" ", "T"));
+    const diff = (Date.now() - d.getTime()) / 1000;
+    if (diff < 60) return "방금 전";
+    if (diff < 3600) return `${Math.floor(diff / 60)}분 전`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}시간 전`;
+    if (diff < 86400 * 7) return `${Math.floor(diff / 86400)}일 전`;
+    return d.toLocaleDateString("ko-KR", { year: "numeric", month: "short", day: "numeric" });
+  } catch { return ""; }
+}
+
 async function renderDashboard() {
   const root = $("#app-root");
   root.innerHTML = "";
@@ -291,35 +304,37 @@ async function renderDashboard() {
   const main = h("main", { class: "main" });
   root.appendChild(main);
 
-  const stats = await api.get("/api/stats").catch(() => ({}));
-  const clients = await api.get("/api/clients").catch(() => []);
+  const [stats, clients, activity] = await Promise.all([
+    api.get("/api/stats").catch(() => ({})),
+    api.get("/api/clients").catch(() => []),
+    api.get("/api/activity").catch(() => []),
+  ]);
 
   main.appendChild(h("header", { class: "main-header" }, [
     h("div", { class: "flex-row", style: "gap: 18px;" }, [
       h("img", { class: "header-logo", src: "/static/logo.png", alt: "BidPick", onclick: () => navigate("/") }),
       h("div", {}, [
-        h("h1", {}, "발주처"),
-        h("p", {}, `총 ${clients.length}개의 발주처를 관리하고 있습니다`),
+        h("h1", {}, "대시보드"),
+        h("p", {}, "기획자가 만든 기획자를 위한 제안서 AI"),
       ]),
     ]),
     h("button", {
       class: "btn btn-primary btn-lg",
       onclick: () => navigate("/client/new"),
-      html: `${iconHtml("plus", 18)}<span>발주처 추가</span>`,
+      html: `${iconHtml("plus", 18)}<span>새 발주처</span>`,
     }),
   ]));
 
   const content = h("div", { class: "main-content" });
   main.appendChild(content);
 
-  // Stats
+  // ── 3개 핵심 스탯
   const statItems = [
-    { label: "진행 중인 대화", value: stats.active_conversations ?? 0, unit: "건", icon: "file", tint: "var(--primary-soft)", fg: "var(--primary)" },
-    { label: "등록 발주처", value: stats.total_clients ?? 0, unit: "건", icon: "users", tint: "var(--warning-soft)", fg: "var(--warning)" },
-    { label: "누적 메시지", value: stats.total_messages ?? 0, unit: "건", icon: "activity", tint: "var(--accent)", fg: "var(--accent-fg)" },
-    { label: "RFP 분석", value: stats.rfp_count ?? 0, unit: "건", icon: "trending", tint: "var(--success-soft)", fg: "var(--success)" },
+    { label: "등록된 발주처", value: stats.total_clients ?? 0, unit: "곳", icon: "users", tint: "var(--primary-soft)", fg: "var(--primary)" },
+    { label: "작성한 제안서", value: stats.total_proposals ?? 0, unit: "건", icon: "file", tint: "var(--success-soft)", fg: "var(--success)" },
+    { label: "이번 달 활동", value: stats.month_activity ?? 0, unit: "회", icon: "activity", tint: "var(--warning-soft)", fg: "var(--warning)" },
   ];
-  const statsGrid = h("div", { class: "stats-grid" });
+  const statsGrid = h("div", { class: "stats-grid stats-grid-3" });
   statItems.forEach((s) => {
     statsGrid.appendChild(h("div", { class: "card stat-card" }, [
       h("div", { class: "flex-between", style: "align-items: flex-start;" }, [
@@ -336,24 +351,91 @@ async function renderDashboard() {
   });
   content.appendChild(h("section", { style: "margin-bottom: 28px;" }, statsGrid));
 
-  // Clients section
-  const clientsHeader = h("div", { class: "flex-between", style: "margin-bottom: 18px;" }, [
-    h("h2", { style: "margin: 0; font-size: 18px; font-weight: 600;" }, "발주처 목록"),
-  ]);
-  content.appendChild(clientsHeader);
+  // ── 빠른 시작 CTA
+  content.appendChild(h("section", { class: "quick-start", style: "margin-bottom: 28px;" }, [
+    h("div", { class: "quick-card", onclick: () => navigate("/client/new") }, [
+      h("div", { class: "quick-icon", html: iconHtml("plus", 22) }),
+      h("div", {}, [
+        h("h4", {}, "새 발주처 등록"),
+        h("p", {}, "발주처 정보를 입력하고 대화를 시작하세요"),
+      ]),
+    ]),
+    h("div", { class: "quick-card", onclick: async () => {
+      if (!clients.length) { toast("먼저 발주처를 등록해 주세요", "error"); navigate("/client/new"); return; }
+      // 가장 최근 발주처로 이동하면서 RFP 섹션까지 스크롤 유도는 단순히 detail로
+      navigate(`/client/${clients[0].id}`);
+    } }, [
+      h("div", { class: "quick-icon", html: iconHtml("fileSearch", 22) }),
+      h("div", {}, [
+        h("h4", {}, "RFP 바로 분석"),
+        h("p", {}, "최근 발주처로 이동해 문서를 업로드하세요"),
+      ]),
+    ]),
+    h("div", { class: "quick-card", onclick: () => { $("#settings-btn").click(); } }, [
+      h("div", { class: "quick-icon", html: iconHtml("brain", 22) }),
+      h("div", {}, [
+        h("h4", {}, "AI 설정"),
+        h("p", {}, "Anthropic 키와 모델을 확인/변경하세요"),
+      ]),
+    ]),
+  ]));
 
+  // ── 2열 레이아웃: 발주처 목록 + 최근 활동
+  const twoCol = h("div", { class: "dashboard-two-col" });
+  content.appendChild(twoCol);
+
+  // 발주처 목록
+  const leftCol = h("section");
+  leftCol.appendChild(h("div", { class: "flex-between", style: "margin-bottom: 14px;" }, [
+    h("h2", { style: "margin: 0; font-size: 18px; font-weight: 600;" }, "발주처 목록"),
+    h("span", { class: "small muted" }, `총 ${clients.length}곳`),
+  ]));
   if (clients.length === 0) {
-    content.appendChild(h("div", { class: "card empty-state" }, [
+    leftCol.appendChild(h("div", { class: "card empty-state" }, [
       h("p", {}, "등록된 발주처가 없습니다."),
       h("div", { style: "margin-top: 12px;" }, [
         h("button", { class: "btn btn-primary", onclick: () => navigate("/client/new") }, "첫 발주처 추가"),
       ]),
     ]));
   } else {
-    const grid = h("div", { class: "client-grid" });
+    const grid = h("div", { class: "client-grid client-grid-2" });
     clients.forEach((c) => grid.appendChild(clientCard(c)));
-    content.appendChild(grid);
+    leftCol.appendChild(grid);
   }
+  twoCol.appendChild(leftCol);
+
+  // 최근 활동
+  const rightCol = h("aside", { class: "activity-feed" });
+  rightCol.appendChild(h("div", { class: "flex-between", style: "margin-bottom: 14px;" }, [
+    h("h2", { style: "margin: 0; font-size: 18px; font-weight: 600;" }, "최근 활동"),
+  ]));
+  if (!activity.length) {
+    rightCol.appendChild(h("div", { class: "card empty-state", style: "font-size: 13px;" }, "활동이 아직 없습니다."));
+  } else {
+    const feed = h("div", { class: "card", style: "padding: 10px 6px;" });
+    activity.forEach((ev) => {
+      feed.appendChild(h("div", {
+        class: "activity-item",
+        onclick: () => {
+          if (ev.conv_id && ev.client_id) navigate(`/client/${ev.client_id}/chat/${ev.conv_id}`);
+          else if (ev.client_id) navigate(`/client/${ev.client_id}`);
+        },
+      }, [
+        h("div", { class: "activity-icon", html: iconHtml(ev.icon || "activity", 16) }),
+        h("div", { class: "activity-body" }, [
+          h("div", { class: "activity-title" }, ev.title),
+          h("div", { class: "activity-time" }, relativeTime(ev.at)),
+        ]),
+      ]));
+    });
+    rightCol.appendChild(feed);
+  }
+  twoCol.appendChild(rightCol);
+
+  // ── 푸터
+  content.appendChild(h("footer", { class: "dashboard-footer" },
+    "BidPick · 기획자가 만든 기획자를 위한 제안서 AI · ver 0.1"
+  ));
 }
 
 function clientCard(c) {
@@ -940,7 +1022,7 @@ async function renderCompetitorSection(cid) {
 
   // Input row — 2글자 이상 입력 시 자동으로 후보 드롭다운
   const inpWrap = h("div", { style: "position: relative;" });
-  const inp = h("input", { class: "input", placeholder: "경쟁사 기업명 2글자 이상 입력 — 자동으로 후보를 찾아드려요", autocomplete: "off" });
+  const inp = h("input", { class: "input", placeholder: "경쟁사 기업명 (2글자+) · 쉼표로 여러 개 가능 (예: LG CNS, SK C&C)", autocomplete: "off" });
   const ctx = h("input", { class: "input", placeholder: "추가 컨텍스트 (선택, 예: 동일 사업 수주 이력)" });
   const dropdown = h("div", { class: "autocomplete-dropdown hidden" });
   inpWrap.appendChild(inp);
@@ -1028,16 +1110,35 @@ async function renderCompetitorSection(cid) {
 
   async function runAnalysis(name, context) {
     if (!name) return;
+    // 쉼표로 분리하면 여러 기업을 순차 분석
+    const names = name.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+    if (!names.length) return;
+
     analysisArea.innerHTML = "";
     const loader = createSoftLoader(LOADER_STEPS.competitor, { block: true });
-    analysisArea.appendChild(h("div", { style: "display: flex; justify-content: center; padding: 10px 0;" }, loader.el));
-    try {
-      await api.post(`/api/clients/${cid}/competitors`, { name, context });
-      loader.finish("✅", "분석 완료!");
-      setTimeout(() => renderClientDetail(cid), 600);
-    } catch (e) {
+    const wrap = h("div", { style: "display: flex; justify-content: center; padding: 10px 0;" }, loader.el);
+    analysisArea.appendChild(wrap);
+
+    let success = 0;
+    for (const [i, n] of names.entries()) {
+      try {
+        if (names.length > 1) {
+          wrap.firstChild?.replaceWith(createSoftLoader([
+            { emoji: "🔎", text: `${i + 1}/${names.length} — ${n} 정보 수집 중…` },
+            { emoji: "⚡", text: `${i + 1}/${names.length} — ${n} 강약점 분석 중…` },
+          ], { block: true }).el);
+        }
+        await api.post(`/api/clients/${cid}/competitors`, { name: n, context });
+        success++;
+      } catch (e) {
+        toast(`${n} 분석 실패: ` + (e.message || e), "error");
+      }
+    }
+    if (success > 0) {
+      loader.finish("✅", names.length > 1 ? `${success}/${names.length}개 분석 완료!` : "분석 완료!");
+      setTimeout(() => renderClientDetail(cid), 700);
+    } else {
       loader.stop();
-      toast("분석 실패: " + (e.message || e), "error");
     }
   }
 
@@ -1259,8 +1360,31 @@ async function renderChat(cid, convId) {
     body.scrollTop = body.scrollHeight;
 
     aborter = new AbortController();
-    let fullText = "";
+    let targetText = "";    // 서버에서 받아 누적한 실제 full text
+    let displayedText = ""; // 화면에 출력된 길이
     let firstDelta = true;
+    let rafActive = false;
+    let streamDone = false;
+
+    // 부드러운 흐름 애니메이션 — RAF 기반으로 target보다 뒤처진 displayed를 따라잡음
+    const tick = () => {
+      if (displayedText.length >= targetText.length) {
+        rafActive = false;
+        if (streamDone) renderAssistant(bubble, targetText, true);
+        return;
+      }
+      const lag = targetText.length - displayedText.length;
+      // 뒤처진 정도에 비례해서 더 많이 진행 — 최소 2자, 최대 24자/frame
+      const step = Math.min(24, Math.max(2, Math.ceil(lag / 10)));
+      displayedText = targetText.slice(0, displayedText.length + step);
+      renderAssistant(bubble, displayedText);
+      body.scrollTop = body.scrollHeight;
+      requestAnimationFrame(tick);
+    };
+    const kickTyper = () => {
+      if (!rafActive) { rafActive = true; requestAnimationFrame(tick); }
+    };
+
     try {
       const resp = await fetch(`/api/conversations/${convId}/chat`, {
         method: "POST",
@@ -1286,22 +1410,31 @@ async function renderChat(cid, convId) {
           try { ev = JSON.parse(m[1]); } catch { continue; }
           if (ev.type === "delta") {
             if (firstDelta) { loader.stop(); bubble.innerHTML = ""; firstDelta = false; }
-            fullText += ev.text;
-            renderAssistant(bubble, fullText);
-            body.scrollTop = body.scrollHeight;
+            targetText += ev.text;
+            kickTyper();
           } else if (ev.type === "error") {
             loader.stop();
             bubble.innerHTML = `<span style="color:var(--danger);">❌ ${escapeHtml(ev.error)}</span>`;
+            streamDone = true;
           } else if (ev.type === "done") {
             loader.stop();
-            renderAssistant(bubble, fullText, true);
+            streamDone = true;
+            displayedText = targetText;  // 즉시 전체 출력
+            renderAssistant(bubble, targetText, true);
           }
         }
       }
+      // 스트림 끝났는데 displayed가 아직 따라잡지 못한 경우 보강
+      if (displayedText.length < targetText.length) {
+        displayedText = targetText;
+        renderAssistant(bubble, targetText, true);
+      }
+      // rafActive가 진행 중이면 streamDone을 보고 알아서 마감
+      streamDone = true;
     } catch (e) {
       loader.stop();
       if (e.name === "AbortError") {
-        if (fullText) renderAssistant(bubble, fullText + "\n\n⏸ (중단됨)", true);
+        if (targetText) renderAssistant(bubble, targetText + "\n\n⏸ (중단됨)", true);
         else bubble.innerHTML = `<span class="muted small">⏸ 생성이 중단되었습니다.</span>`;
       } else {
         bubble.innerHTML = `<span style="color:var(--danger);">❌ ${escapeHtml(e.message || String(e))}</span>`;
@@ -1470,21 +1603,42 @@ function printProposal(propEl) {
 
 function openProposalFullscreen(propEl) {
   const backdrop = h("div", {
-    class: "modal-backdrop",
+    class: "modal-backdrop proposal-viewer-backdrop",
     onclick: (e) => { if (e.target === backdrop) backdrop.remove(); },
   });
-  const modal = h("div", {
-    class: "modal",
-    style: "max-width: 95vw; max-height: 95vh; overflow: auto; padding: 24px;",
-  });
-  modal.appendChild(h("div", { class: "flex-between", style: "margin-bottom: 14px;" }, [
-    h("h3", { style: "margin: 0;" }, propEl.getAttribute("data-title") || "제안서 미리보기"),
-    h("button", { class: "icon-btn", onclick: () => backdrop.remove(), html: iconHtml("x", 20) }),
+  const modal = h("div", { class: "proposal-viewer" });
+
+  // 상단 고정 툴바
+  const pages = propEl.querySelectorAll(".proposal-page");
+  const total = pages.length;
+  modal.appendChild(h("div", { class: "proposal-viewer-topbar" }, [
+    h("div", { class: "pv-title" }, propEl.getAttribute("data-title") || "제안서 미리보기"),
+    h("div", { class: "pv-meta" }, [
+      h("span", {}, `총 ${total} 페이지`),
+      h("button", { class: "btn btn-outline", html: `${iconHtml("printer", 14)}<span>인쇄 / PDF</span>`,
+        onclick: () => printProposal(propEl) }),
+      h("button", { class: "icon-btn", onclick: () => backdrop.remove(), html: iconHtml("x", 20) }),
+    ]),
   ]));
+
+  // 본문 — 세로 스크롤로 모든 페이지 표시
+  const scrollArea = h("div", { class: "proposal-viewer-scroll" });
   const clone = propEl.cloneNode(true);
-  modal.appendChild(clone);
+  clone.querySelectorAll(".keyword-row").forEach((e) => e.remove());
+  // 각 페이지에 번호 표시
+  clone.querySelectorAll(".proposal-page").forEach((p, i) => {
+    const num = h("div", { class: "pv-page-num" }, `${i + 1} / ${total}`);
+    p.appendChild(num);
+  });
+  scrollArea.appendChild(clone);
+  modal.appendChild(scrollArea);
+
   backdrop.appendChild(modal);
   document.body.appendChild(backdrop);
+
+  // ESC 로 닫기
+  const onKey = (e) => { if (e.key === "Escape") { backdrop.remove(); document.removeEventListener("keydown", onKey); } };
+  document.addEventListener("keydown", onKey);
 }
 
 // ---------- Settings modal ----------

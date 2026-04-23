@@ -138,6 +138,27 @@ def init_db() -> None:
                 FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
             );
 
+            -- 다중 RFP 파일 (과업지시서 / 제안요청서 / 기타 역할별)
+            CREATE TABLE IF NOT EXISTS rfp_files (
+                id             TEXT PRIMARY KEY,
+                client_id      TEXT NOT NULL,
+                filename       TEXT NOT NULL,
+                filepath       TEXT NOT NULL,
+                role           TEXT DEFAULT '기타',
+                raw_text       TEXT DEFAULT '',
+                created_at     TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_rfpf_client ON rfp_files(client_id);
+
+            -- 통합 분석 결과 캐시
+            CREATE TABLE IF NOT EXISTS rfp_aggregated (
+                client_id      TEXT PRIMARY KEY,
+                analysis_json  TEXT DEFAULT '{}',
+                updated_at     TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+            );
+
             CREATE TABLE IF NOT EXISTS competitors (
                 id           TEXT PRIMARY KEY,
                 client_id    TEXT NOT NULL,
@@ -156,6 +177,36 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_ref_client ON references_lib(client_id);
             CREATE INDEX IF NOT EXISTS idx_comp_client ON competitors(client_id);
         """)
+
+        # One-time migration: 기존 rfp_docs → rfp_files (role=제안요청서)
+        # 고아 레코드(client 삭제됨)는 건너뜀
+        try:
+            old_rows = db.execute("SELECT * FROM rfp_docs").fetchall()
+            for r in old_rows:
+                client_exists = db.execute("SELECT id FROM clients WHERE id=?", (r["client_id"],)).fetchone()
+                if not client_exists:
+                    continue
+                exists = db.execute("SELECT id FROM rfp_files WHERE id=?", (r["id"],)).fetchone()
+                if exists:
+                    continue
+                try:
+                    db.execute(
+                        "INSERT INTO rfp_files(id,client_id,filename,filepath,role,raw_text,created_at) "
+                        "VALUES(?,?,?,?,?,?,?)",
+                        (r["id"], r["client_id"], r["filename"], r["filepath"],
+                         "제안요청서", r["raw_text"], r["created_at"]),
+                    )
+                    agg = db.execute("SELECT client_id FROM rfp_aggregated WHERE client_id=?", (r["client_id"],)).fetchone()
+                    if not agg:
+                        db.execute(
+                            "INSERT INTO rfp_aggregated(client_id,analysis_json) VALUES(?,?)",
+                            (r["client_id"], r["analysis_json"] or "{}"),
+                        )
+                except sqlite3.IntegrityError:
+                    log.warning("마이그레이션 스킵 (FK): rfp_docs row %s", r["id"])
+                    continue
+        except sqlite3.OperationalError:
+            pass
 
 
 def get_setting(key: str, default: str = "") -> str:
@@ -638,10 +689,20 @@ RFP 분석 결과가 없으면 그 점을 먼저 짚어주고, 사용자가 RFP 
 - 각 페이지의 data-keyword는 해당 페이지 내용을 대표하는 영문 구글 이미지 검색 키워드.
 - 페이지 수 제한(data-page-limit)이 RFP에 명시되면 반드시 준수.
 
-[제안서 형식 자동 판별]
-- 기본값: landscape (A4 가로).
-- RFP에 "세로", "portrait", "A4 세로" 명시 시 portrait.
-- 페이지 수 제한 명시 시 data-page-limit에 숫자 기입.
+[제안서 형식 — 엄격 규칙, 위반 시 제안서 폐기]
+data-orientation 은 아래 규칙만 따른다. 내용 맥락이나 "세로가 어울려 보인다"는 느낌으로
+바꾸지 말 것. 규칙 외 어떤 판단도 금지.
+
+  1) [RFP 분석]에 orientation="landscape" 값이 있으면 → "landscape"
+  2) [RFP 분석]에 orientation="portrait" 값이 있으면 → "portrait"
+     (이 값은 RFP/과업지시서 원문에 "세로", "portrait", "A4 세로" 같은
+      명시적 표현이 확인되었을 때만 부여된 것이므로 그대로 신뢰)
+  3) 그 외 모든 경우(RFP 분석이 없음 / orientation 필드가 빈 값 / 언급 없음):
+     → 반드시 "landscape" (가로) 고정. 다른 값 금지.
+  4) 한 번 결정된 orientation은 모든 페이지·모든 섹션·모든 재생성에서 동일 유지.
+  5) page_limit이 명시되어 있으면 data-page-limit에 숫자만 기입.
+
+위 4원칙은 작성 도중 어떤 이유로도 번복될 수 없다. 세로형은 오직 RFP 명시가 있을 때만.
 
 [금지]
 - 코드블록(```) 사용 금지. HTML만 직접 출력.
@@ -650,10 +711,22 @@ RFP 분석 결과가 없으면 그 점을 먼저 짚어주고, 사용자가 RFP 
 """
 
 
-RFP_ANALYSIS_PROMPT = """당신은 RFP(제안요청서) 분석 전문가입니다.
-아래 RFP 원문을 읽고 핵심 정보를 JSON으로 추출하세요. JSON 외의 어떤 텍스트도 출력하지 마세요.
+RFP_ANALYSIS_PROMPT = """당신은 공공/민간 입찰 RFP·과업지시서 분석 전문가입니다.
+아래 1개 이상의 문서가 제공됩니다. 각 문서 앞에 [ROLE: 과업지시서|제안요청서|기타] 표기가 있습니다.
 
-추출 스키마:
+역할별 핵심 정보(두 문서가 모두 있으면 통합):
+- 과업지시서 → 사업 내용 / 수행 범위 / 주요 과업 / 산출물 / 제약사항
+- 제안요청서 → 제안서 형태(가로/세로) / 배점 기준 / 페이지 수 제한 / 제출 형식 /
+             PT 일정 / 평가 방식 / 마감일
+- 기타 → 보조 자료로 활용
+
+orientation 엄격 규칙:
+- 본문에 "가로", "landscape", "A4 가로" 명시 → "landscape"
+- 본문에 "세로", "portrait", "A4 세로" 명시 → "portrait"
+- 언급이 전혀 없거나 모호하면 반드시 "landscape" (디폴트)
+- 페이지 비율·이미지 배치 느낌 같은 추측 근거 사용 금지. 원문 명시만 판단 근거.
+
+출력 스키마 (JSON만, 다른 텍스트 금지):
 {
   "title": "사업/과업명",
   "client_type": "공공|대기업|민간|스타트업",
@@ -662,13 +735,15 @@ RFP_ANALYSIS_PROMPT = """당신은 RFP(제안요청서) 분석 전문가입니�
   "orientation": "landscape|portrait",
   "page_limit": 숫자 또는 null,
   "submission_format": "제출 형식 설명",
-  "key_requirements": ["핵심 요구사항 5-8개"],
+  "key_requirements": ["핵심 요구사항 5-8개 (과업 + 제안 요구사항 통합)"],
   "evaluation_criteria": [{"item": "평가항목", "weight": "배점"}],
+  "deliverables": ["산출물 목록"],
+  "pt_schedule": "PT/심사 일정 텍스트",
   "risk_points": ["리스크/주의사항 3-5개"],
   "summary": "전체 3문장 요약"
 }
 
-RFP 원문:
+문서:
 ---
 {RFP_TEXT}
 ---
@@ -914,7 +989,7 @@ def api_stats():
         total_clients = db.execute("SELECT COUNT(*) c FROM clients").fetchone()["c"]
         active_convs = db.execute("SELECT COUNT(*) c FROM conversations WHERE ended=0").fetchone()["c"]
         total_msgs = db.execute("SELECT COUNT(*) c FROM messages").fetchone()["c"]
-        rfps = db.execute("SELECT COUNT(*) c FROM rfp_docs").fetchone()["c"]
+        rfps = db.execute("SELECT COUNT(DISTINCT client_id) c FROM rfp_files").fetchone()["c"]
     return {
         "total_clients": total_clients,
         "active_conversations": active_convs,
@@ -931,7 +1006,7 @@ def api_clients_list():
             SELECT c.*,
               (SELECT COUNT(*) FROM conversations cv WHERE cv.client_id=c.id) conv_count,
               (SELECT MAX(created_at) FROM conversations cv WHERE cv.client_id=c.id) last_conv,
-              (SELECT COUNT(*) FROM rfp_docs r WHERE r.client_id=c.id) has_rfp,
+              (SELECT COUNT(*) FROM rfp_files r WHERE r.client_id=c.id) has_rfp,
               (SELECT COUNT(*) FROM nuance_memories n WHERE n.client_id=c.id) memory_count
             FROM clients c
             ORDER BY c.updated_at DESC
@@ -1017,12 +1092,11 @@ def api_conv_get(conv_id: str):
             (conv_id,),
         ).fetchall()
         client = db.execute("SELECT * FROM clients WHERE id=?", (conv["client_id"],)).fetchone()
-        rfp = db.execute("SELECT * FROM rfp_docs WHERE client_id=?", (conv["client_id"],)).fetchone()
     return {
         "conversation": dict(conv),
         "messages": [dict(m) for m in msgs],
         "client": dict(client) if client else None,
-        "rfp_analysis": json.loads(rfp["analysis_json"]) if rfp else None,
+        "rfp_analysis": _get_rfp_aggregated(conv["client_id"]) or None,
     }
 
 
@@ -1091,11 +1165,29 @@ def api_conv_end(conv_id: str):
 
 
 # ---------- Streaming chat ----------
+def _get_rfp_aggregated(client_id: str) -> Optional[dict]:
+    """통합 분석 결과 (rfp_aggregated 우선, 없으면 구 rfp_docs fallback)."""
+    with get_db() as db:
+        row = db.execute("SELECT analysis_json FROM rfp_aggregated WHERE client_id=?", (client_id,)).fetchone()
+        if row and row["analysis_json"]:
+            try:
+                return json.loads(row["analysis_json"])
+            except Exception:
+                pass
+        # 구 테이블 fallback
+        old = db.execute("SELECT analysis_json FROM rfp_docs WHERE client_id=?", (client_id,)).fetchone()
+        if old and old["analysis_json"]:
+            try:
+                return json.loads(old["analysis_json"])
+            except Exception:
+                pass
+    return None
+
+
 def _build_system_prompt(client_id: str) -> str:
     """RFP 분석, 경쟁사, 뉘앙스, 레퍼런스를 시스템 프롬프트에 주입."""
     with get_db() as db:
         client = db.execute("SELECT * FROM clients WHERE id=?", (client_id,)).fetchone()
-        rfp = db.execute("SELECT * FROM rfp_docs WHERE client_id=?", (client_id,)).fetchone()
         refs = db.execute(
             "SELECT filename,summary FROM references_lib WHERE client_id=? ORDER BY created_at",
             (client_id,),
@@ -1114,12 +1206,13 @@ def _build_system_prompt(client_id: str) -> str:
     if client:
         parts.append(f"[현재 발주처]\n- 이름: {client['name']}\n- 업종: {client['industry']}\n- 담당자: {client['manager']}\n- 메모: {client['memo']}")
 
-    if rfp and rfp["analysis_json"]:
-        try:
-            a = json.loads(rfp["analysis_json"])
-            parts.append("[RFP 분석]\n" + json.dumps(a, ensure_ascii=False, indent=2))
-        except Exception:
-            pass
+    rfp_analysis = _get_rfp_aggregated(client_id)
+    if rfp_analysis:
+        # orientation 기본값 강제 주입
+        if not rfp_analysis.get("orientation"):
+            rfp_analysis["orientation"] = "landscape"
+        parts.append("[RFP 분석]\n" + json.dumps(rfp_analysis, ensure_ascii=False, indent=2))
+        parts.append(f"[⚠ 필수 준수] data-orientation=\"{rfp_analysis['orientation']}\" — 이 값을 그대로 제안서 루트 div에 기입. 바꾸지 말 것.")
 
     if refs:
         ref_str = "\n".join(f"- {r['filename']}: {r['summary']}" for r in refs if r["summary"])
@@ -1212,14 +1305,76 @@ def api_chat(conv_id: str, body: ChatIn):
     return StreamingResponse(stream(), media_type="text/event-stream")
 
 
-# ---------- RFP ----------
-@app.post("/api/clients/{cid}/rfp")
-async def api_rfp_upload(cid: str, file: UploadFile = File(...)):
-    with get_db() as db:
-        c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
-        if not c:
-            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
+# ---------- RFP (multi-file, role-aware) ----------
+VALID_ROLES = {"과업지시서", "제안요청서", "기타"}
 
+
+def _run_rfp_aggregate(cid: str) -> dict:
+    """현재 client의 rfp_files 전체를 role과 함께 하나의 프롬프트로 묶어 분석."""
+    with get_db() as db:
+        files = db.execute(
+            "SELECT role,filename,raw_text FROM rfp_files WHERE client_id=? ORDER BY created_at",
+            (cid,),
+        ).fetchall()
+    if not files:
+        with get_db() as db:
+            db.execute("DELETE FROM rfp_aggregated WHERE client_id=?", (cid,))
+        return {}
+
+    # 역할별 텍스트 조합 (과업지시서 → 제안요청서 → 기타 순서)
+    role_order = {"과업지시서": 0, "제안요청서": 1, "기타": 2}
+    sorted_files = sorted(files, key=lambda f: role_order.get(f["role"], 3))
+    parts = []
+    total_len = 0
+    LIMIT = 45000  # 안전 토큰 버짓
+    for f in sorted_files:
+        header = f"[ROLE: {f['role']} — FILE: {f['filename']}]"
+        body = (f["raw_text"] or "").strip()
+        remaining = LIMIT - total_len - len(header) - 10
+        if remaining <= 200:
+            break
+        body = body[:remaining]
+        parts.append(f"{header}\n{body}")
+        total_len += len(header) + len(body) + 10
+    combined = "\n\n\n".join(parts) or "(본문 추출 실패)"
+
+    analysis: dict = {}
+    try:
+        client = require_client()
+        prompt = RFP_ANALYSIS_PROMPT.replace("{RFP_TEXT}", combined)
+        resp = client.messages.create(
+            model=get_setting("model", MODEL_DEFAULT),
+            max_tokens=4000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = resp.content[0].text.strip()
+        raw = re.sub(r"^```(?:json)?\s*", "", raw)
+        raw = re.sub(r"\s*```$", "", raw)
+        analysis = json.loads(raw)
+    except anthropic.APIError as e:
+        log.warning("RFP 통합 분석 Anthropic 오류: %s", e)
+        analysis = {"error": translate_anthropic_error(e)}
+    except json.JSONDecodeError as e:
+        log.warning("RFP 통합 분석 JSON 파싱 실패: %s", e)
+        analysis = {"error": "AI 응답을 이해하지 못했어요. 다시 시도해 주세요."}
+    except Exception as e:
+        log.exception("RFP 통합 분석 예외")
+        analysis = {"error": "RFP 분석 중 문제가 생겼어요. 다시 시도해 주세요."}
+
+    # orientation 기본값 강제 — 명시 없으면 무조건 landscape
+    if not analysis.get("orientation") or analysis.get("orientation") not in ("landscape", "portrait"):
+        analysis["orientation"] = "landscape"
+
+    with get_db() as db:
+        db.execute(
+            "INSERT INTO rfp_aggregated(client_id,analysis_json,updated_at) VALUES(?,?,datetime('now','localtime')) "
+            "ON CONFLICT(client_id) DO UPDATE SET analysis_json=excluded.analysis_json, updated_at=excluded.updated_at",
+            (cid, json.dumps(analysis, ensure_ascii=False)),
+        )
+    return analysis
+
+
+async def _save_rfp_file(cid: str, file: UploadFile, role: str) -> dict:
     content = await read_and_validate_upload(file, allowed_exts=ALLOWED_UPLOAD_EXTS)
     safe_name = re.sub(r"[^\w\.\-가-힣]", "_", file.filename or "rfp")
     save_path = UPLOADS_DIR / f"{cid}_rfp_{uuid.uuid4().hex[:6]}_{safe_name}"
@@ -1228,79 +1383,129 @@ async def api_rfp_upload(cid: str, file: UploadFile = File(...)):
     except OSError as e:
         log.exception("RFP 파일 저장 실패")
         raise HTTPException(500, "파일을 저장하지 못했어요. 디스크 상태를 확인해 주세요.") from e
-
-    text = extract_text(save_path)[:30000]
-
-    # Claude 분석 — Anthropic 예외는 친절 번역, 분석 실패해도 파일은 저장 유지
-    analysis = {}
-    try:
-        client = require_client()
-        prompt = RFP_ANALYSIS_PROMPT.replace("{RFP_TEXT}", text or "(본문 추출 실패)")
-        resp = client.messages.create(
-            model=get_setting("model", MODEL_DEFAULT),
-            max_tokens=3000,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        raw = resp.content[0].text.strip()
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```$", "", raw)
-        analysis = json.loads(raw)
-    except HTTPException:
-        raise
-    except anthropic.APIError as e:
-        log.warning("RFP 분석 Anthropic 오류: %s", e)
-        analysis = {"error": translate_anthropic_error(e), "summary": text[:500]}
-    except json.JSONDecodeError as e:
-        log.warning("RFP 분석 JSON 파싱 실패: %s", e)
-        analysis = {"error": "AI 응답을 이해하지 못했어요. 다시 시도해 주세요.", "summary": text[:500]}
-    except Exception as e:
-        log.exception("RFP 분석 예외")
-        analysis = {"error": "RFP 분석 중 문제가 생겼어요. 다시 시도해 주세요.", "summary": text[:500]}
-
+    text = extract_text(save_path)[:40000]
+    fid = uuid.uuid4().hex[:12]
     with get_db() as db:
-        db.execute("DELETE FROM rfp_docs WHERE client_id=?", (cid,))
         db.execute(
-            "INSERT INTO rfp_docs(id,client_id,filename,filepath,raw_text,analysis_json) "
-            "VALUES(?,?,?,?,?,?)",
-            (
-                uuid.uuid4().hex[:12],
-                cid,
-                file.filename or safe_name,
-                str(save_path),
-                text,
-                json.dumps(analysis, ensure_ascii=False),
-            ),
+            "INSERT INTO rfp_files(id,client_id,filename,filepath,role,raw_text) VALUES(?,?,?,?,?,?)",
+            (fid, cid, file.filename or safe_name, str(save_path),
+             role if role in VALID_ROLES else "기타", text),
         )
+    return {"id": fid, "filename": file.filename or safe_name, "role": role, "filesize": len(content)}
 
-    return {"ok": True, "analysis": analysis, "filename": file.filename}
+
+@app.post("/api/clients/{cid}/rfp")
+async def api_rfp_upload_single(cid: str, file: UploadFile = File(...), role: str = Form("기타")):
+    """단일 파일 업로드 (기존 호환). role 없으면 기타."""
+    with get_db() as db:
+        c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
+        if not c:
+            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
+    info = await _save_rfp_file(cid, file, role)
+    analysis = _run_rfp_aggregate(cid)
+    return {"ok": True, "file": info, "analysis": analysis}
+
+
+@app.post("/api/clients/{cid}/rfp/upload")
+async def api_rfp_upload_multi(
+    cid: str,
+    files: list[UploadFile] = File(...),
+    roles: str = Form("[]"),
+):
+    """여러 파일 동시 업로드. roles는 JSON 배열 문자열 (각 파일의 역할)."""
+    with get_db() as db:
+        c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
+        if not c:
+            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
+
+    try:
+        role_list = json.loads(roles) if roles else []
+    except Exception:
+        role_list = []
+
+    saved = []
+    for idx, f in enumerate(files):
+        role = role_list[idx] if idx < len(role_list) else "기타"
+        info = await _save_rfp_file(cid, f, role)
+        saved.append(info)
+
+    analysis = _run_rfp_aggregate(cid)
+    return {"ok": True, "files": saved, "analysis": analysis}
 
 
 @app.get("/api/clients/{cid}/rfp")
 def api_rfp_get(cid: str):
     with get_db() as db:
-        row = db.execute("SELECT * FROM rfp_docs WHERE client_id=?", (cid,)).fetchone()
-    if not row:
-        return {"has_rfp": False}
+        files = db.execute(
+            "SELECT id,filename,role,created_at FROM rfp_files WHERE client_id=? ORDER BY created_at",
+            (cid,),
+        ).fetchall()
+        agg_row = db.execute("SELECT analysis_json FROM rfp_aggregated WHERE client_id=?", (cid,)).fetchone()
+    if not files:
+        return {"has_rfp": False, "files": [], "analysis": {}}
     analysis = {}
-    try:
-        analysis = json.loads(row["analysis_json"])
-    except Exception:
-        pass
+    if agg_row and agg_row["analysis_json"]:
+        try:
+            analysis = json.loads(agg_row["analysis_json"])
+        except Exception:
+            pass
     return {
         "has_rfp": True,
-        "filename": row["filename"],
-        "created_at": row["created_at"],
+        "files": [dict(f) for f in files],
         "analysis": analysis,
     }
 
 
-@app.delete("/api/clients/{cid}/rfp")
-def api_rfp_delete(cid: str):
+class RfpRoleUpdate(BaseModel):
+    role: str
+
+
+@app.patch("/api/clients/{cid}/rfp/files/{fid}")
+def api_rfp_update_role(cid: str, fid: str, body: RfpRoleUpdate):
+    if body.role not in VALID_ROLES:
+        raise HTTPException(400, f"역할은 {', '.join(VALID_ROLES)} 중 하나여야 해요.")
     with get_db() as db:
-        row = db.execute("SELECT filepath FROM rfp_docs WHERE client_id=?", (cid,)).fetchone()
-        if row and row["filepath"]:
+        cur = db.execute("UPDATE rfp_files SET role=? WHERE id=? AND client_id=?",
+                         (body.role, fid, cid))
+        if cur.rowcount == 0:
+            raise HTTPException(404, "파일을 찾을 수 없습니다.")
+    analysis = _run_rfp_aggregate(cid)
+    return {"ok": True, "analysis": analysis}
+
+
+@app.delete("/api/clients/{cid}/rfp/files/{fid}")
+def api_rfp_delete_file(cid: str, fid: str):
+    with get_db() as db:
+        row = db.execute("SELECT filepath FROM rfp_files WHERE id=? AND client_id=?", (fid, cid)).fetchone()
+        if not row:
+            raise HTTPException(404, "파일을 찾을 수 없습니다.")
+        if row["filepath"]:
             try:
                 Path(row["filepath"]).unlink(missing_ok=True)
+            except Exception:
+                pass
+        db.execute("DELETE FROM rfp_files WHERE id=? AND client_id=?", (fid, cid))
+    analysis = _run_rfp_aggregate(cid)
+    return {"ok": True, "analysis": analysis}
+
+
+@app.delete("/api/clients/{cid}/rfp")
+def api_rfp_delete_all(cid: str):
+    with get_db() as db:
+        rows = db.execute("SELECT filepath FROM rfp_files WHERE client_id=?", (cid,)).fetchall()
+        for r in rows:
+            if r["filepath"]:
+                try:
+                    Path(r["filepath"]).unlink(missing_ok=True)
+                except Exception:
+                    pass
+        db.execute("DELETE FROM rfp_files WHERE client_id=?", (cid,))
+        db.execute("DELETE FROM rfp_aggregated WHERE client_id=?", (cid,))
+        # 구 테이블 정리
+        old = db.execute("SELECT filepath FROM rfp_docs WHERE client_id=?", (cid,)).fetchone()
+        if old and old["filepath"]:
+            try:
+                Path(old["filepath"]).unlink(missing_ok=True)
             except Exception:
                 pass
         db.execute("DELETE FROM rfp_docs WHERE client_id=?", (cid,))

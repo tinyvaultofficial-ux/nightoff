@@ -675,15 +675,17 @@ function refRow(f, cid) {
 }
 
 // ---------- RFP Analysis ----------
+const ROLE_LABELS = ["과업지시서", "제안요청서", "기타"];
+
 async function renderRfpSection(cid) {
-  const rfp = await api.get(`/api/clients/${cid}/rfp`).catch(() => ({ has_rfp: false }));
+  const rfp = await api.get(`/api/clients/${cid}/rfp`).catch(() => ({ has_rfp: false, files: [], analysis: {} }));
   const card = h("div", { class: "card" });
   card.appendChild(h("div", { class: "card-head" }, [
     h("div", { class: "card-title-row" }, [
       h("div", { class: "card-title-icon", html: iconHtml("fileSearch", 18) }),
       h("div", {}, [
         h("h3", { class: "card-title" }, "RFP 분석"),
-        h("p", { class: "card-subtitle" }, "RFP 문서를 업로드하면 핵심 요구사항·마감일·형식을 자동 파악합니다"),
+        h("p", { class: "card-subtitle" }, "과업지시서 + 제안요청서 여러 파일을 한꺼번에 올릴 수 있어요 (나라장터 분리 입찰 대응)"),
       ]),
     ]),
   ]));
@@ -691,56 +693,167 @@ async function renderRfpSection(cid) {
   const body = h("div", { class: "card-body row-gap-14" });
   card.appendChild(body);
 
-  const input = h("input", { type: "file", style: "display: none;", accept: ".pdf,.doc,.docx,.txt" });
+  const input = h("input", { type: "file", style: "display: none;", multiple: "", accept: ".pdf,.doc,.docx,.txt,.hwp,.hwpx" });
   input.addEventListener("change", async () => {
-    if (input.files[0]) await doUpload(input.files[0]);
+    if (input.files.length) openRoleModal(Array.from(input.files));
     input.value = "";
   });
   body.appendChild(input);
 
   const drop = h("div", { class: "drop-area", onclick: () => input.click() }, [
     h("div", { class: "drop-icon", html: iconHtml("upload", 22) }),
-    h("p", { class: "drop-title" }, rfp.has_rfp ? "새 RFP로 교체 업로드" : "RFP 파일 업로드"),
-    h("p", { class: "drop-hint" }, "PDF / Word 지원"),
+    h("p", { class: "drop-title" }, (rfp.files && rfp.files.length) ? "RFP 파일 추가 업로드" : "RFP 파일 업로드 (여러 개 가능)"),
+    h("p", { class: "drop-hint" }, "PDF / Word / HWP 지원 — 드롭 또는 클릭, 여러 파일 선택 가능"),
   ]);
   ["dragenter","dragover"].forEach(t => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("dragover"); }));
   ["dragleave","drop"].forEach(t => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("dragover"); }));
-  drop.addEventListener("drop", async (e) => {
+  drop.addEventListener("drop", (e) => {
     e.preventDefault();
-    if (e.dataTransfer.files[0]) await doUpload(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files.length) openRoleModal(Array.from(e.dataTransfer.files));
   });
   body.appendChild(drop);
 
-  async function doUpload(file) {
+  // Role assignment modal + upload flow
+  function openRoleModal(files) {
+    const backdrop = h("div", { class: "modal-backdrop", onclick: (e) => { if (e.target === backdrop) backdrop.remove(); } });
+    const modal = h("div", { class: "modal", style: "max-width: 560px;" });
+    modal.appendChild(h("div", { class: "modal-header" }, [
+      h("h3", {}, `업로드할 파일 ${files.length}개`),
+      h("button", { class: "icon-btn", onclick: () => backdrop.remove(), html: iconHtml("x", 18) }),
+    ]));
+
+    const roleSelects = [];
+    const filesList = h("div", { style: "display: flex; flex-direction: column; gap: 10px;" });
+    files.forEach((f) => {
+      const autoRole = guessRole(f.name);
+      const select = h("select", { class: "select" },
+        ROLE_LABELS.map((r) => h("option", { value: r, ...(r === autoRole ? { selected: "" } : {}) }, r))
+      );
+      roleSelects.push(select);
+      filesList.appendChild(h("div", { class: "file-row", style: "align-items: center; gap: 10px;" }, [
+        h("div", { class: "left", style: "flex: 1; min-width: 0;" }, [
+          h("div", { class: "file-icon", html: iconHtml("file", 16) }),
+          h("div", { style: "flex: 1; min-width: 0;" }, [
+            h("p", { class: "file-name" }, f.name),
+            h("p", { class: "file-sub" }, fmtSize(f.size)),
+          ]),
+        ]),
+        h("div", { style: "min-width: 140px;" }, select),
+      ]));
+    });
+
+    modal.appendChild(h("div", { class: "modal-body" }, [
+      h("p", { class: "small muted", style: "margin: 0 0 10px;" }, "각 파일의 역할을 선택해 주세요. 역할에 따라 AI가 추출하는 정보가 달라져요."),
+      filesList,
+    ]));
+
+    modal.appendChild(h("div", { class: "modal-footer" }, [
+      h("button", { class: "btn btn-ghost", onclick: () => backdrop.remove() }, "취소"),
+      h("button", { class: "btn btn-primary", onclick: async () => {
+        const roles = roleSelects.map((s) => s.value);
+        backdrop.remove();
+        await doMultiUpload(files, roles);
+      } }, "업로드 & 분석"),
+    ]));
+
+    backdrop.appendChild(modal);
+    document.body.appendChild(backdrop);
+  }
+
+  function guessRole(name) {
+    const n = (name || "").toLowerCase();
+    if (/과업|task|사업계획|지시서/.test(n)) return "과업지시서";
+    if (/제안요청|제안서|rfp|공고|입찰/.test(n)) return "제안요청서";
+    return "기타";
+  }
+
+  async function doMultiUpload(files, roles) {
     const loader = createSoftLoader(LOADER_STEPS.rfp, { block: true });
     const loaderWrap = h("div", { style: "margin: 12px 0 4px; display: flex; justify-content: center;" }, loader.el);
     body.insertBefore(loaderWrap, drop.nextSibling);
     try {
-      await api.upload(`/api/clients/${cid}/rfp`, file);
+      const fd = new FormData();
+      for (const f of files) fd.append("files", f);
+      fd.append("roles", JSON.stringify(roles));
+      const r = await fetch(`/api/clients/${cid}/rfp/upload`, { method: "POST", body: fd });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ error: r.statusText }));
+        throw new Error(err.error || "업로드 실패");
+      }
       loader.finish("✅", "분석 완료!");
       setTimeout(() => renderClientDetail(cid), 700);
     } catch (e) {
       loaderWrap.remove();
-      toast("업로드 실패: " + (e.message || e), "error");
+      toast(e.message || "업로드 실패", "error");
     }
   }
 
-  if (rfp.has_rfp && rfp.analysis) {
+  // 파일 리스트 (여러 파일 UI)
+  if (rfp.files && rfp.files.length) {
+    const fileListCard = h("div", { class: "card", style: "padding: 14px 18px; border: 1px solid var(--border); box-shadow: none;" });
+    body.appendChild(fileListCard);
+    fileListCard.appendChild(h("div", { class: "flex-between", style: "margin-bottom: 10px;" }, [
+      h("h4", { style: "margin: 0; font-size: 14px; font-weight: 700;" }, `업로드된 파일 ${rfp.files.length}개`),
+      h("span", { class: "small muted" }, "역할을 바꾸면 자동으로 다시 분석합니다"),
+    ]));
+    rfp.files.forEach((f) => {
+      const roleSel = h("select", { class: "select", style: "height: 34px; font-size: 13px; width: 140px;" },
+        ROLE_LABELS.map((r) => h("option", { value: r, ...(r === f.role ? { selected: "" } : {}) }, r))
+      );
+      roleSel.addEventListener("change", async () => {
+        const loader = createSoftLoader(LOADER_STEPS.rfp, { block: true });
+        const loaderWrap = h("div", { style: "margin: 6px 0; display: flex; justify-content: center;" }, loader.el);
+        fileListCard.appendChild(loaderWrap);
+        try {
+          await api.patch(`/api/clients/${cid}/rfp/files/${f.id}`, { role: roleSel.value });
+          loader.finish("✅", "재분석 완료!");
+          setTimeout(() => renderClientDetail(cid), 600);
+        } catch (e) {
+          loaderWrap.remove();
+          toast(e.message || "역할 변경 실패", "error");
+        }
+      });
+      fileListCard.appendChild(h("div", { class: "file-row", style: "margin-top: 6px;" }, [
+        h("div", { class: "left" }, [
+          h("div", { class: "file-icon", html: iconHtml("file", 16) }),
+          h("div", { style: "min-width: 0; flex: 1;" }, [
+            h("p", { class: "file-name" }, f.filename),
+            h("p", { class: "file-sub" }, fmtDate(f.created_at)),
+          ]),
+        ]),
+        h("div", { class: "flex-row", style: "gap: 8px;" }, [
+          roleSel,
+          h("button", {
+            class: "icon-btn", title: "삭제", html: iconHtml("x", 16),
+            onclick: async () => {
+              if (!confirm(`"${f.filename}"을 삭제하시겠습니까?`)) return;
+              try {
+                await api.del(`/api/clients/${cid}/rfp/files/${f.id}`);
+                renderClientDetail(cid);
+              } catch (e) { toast(e.message || "삭제 실패", "error"); }
+            },
+          }),
+        ]),
+      ]));
+    });
+  }
+
+  if (rfp.files && rfp.files.length && rfp.analysis && Object.keys(rfp.analysis).length) {
     const a = rfp.analysis;
     const result = h("div", { class: "card", style: "padding: 20px; border: 1px solid var(--border); box-shadow: none;" });
     body.appendChild(result);
 
     result.appendChild(h("div", { class: "flex-between" }, [
       h("div", {}, [
-        h("h4", { style: "margin: 0 0 4px; font-size: 16px; font-weight: 600;" }, a.title || rfp.filename),
-        h("p", { class: "small muted", style: "margin: 0;" }, rfp.filename),
+        h("h4", { style: "margin: 0 0 4px; font-size: 16px; font-weight: 600;" }, a.title || "RFP 통합 분석"),
+        h("p", { class: "small muted", style: "margin: 0;" }, `파일 ${rfp.files.length}개 통합 분석`),
       ]),
       h("div", { class: "flex-row", style: "gap: 6px;" }, [
         h("span", { class: "badge badge-success", html: `${iconHtml("check", 12)}<span>분석 완료</span>` }),
         h("button", {
-          class: "icon-btn", title: "삭제", html: iconHtml("trash", 16),
+          class: "icon-btn", title: "전체 RFP 삭제", html: iconHtml("trash", 16),
           onclick: async () => {
-            if (!confirm("RFP를 삭제하시겠습니까?")) return;
+            if (!confirm("업로드된 모든 RFP 파일을 삭제하시겠습니까?")) return;
             await api.del(`/api/clients/${cid}/rfp`);
             toast("삭제되었습니다", "success");
             renderClientDetail(cid);

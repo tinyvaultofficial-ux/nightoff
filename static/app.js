@@ -141,8 +141,7 @@ async function renderSidebar(active = "clients") {
   try { recent = (await api.get("/api/clients")).slice(0, 6); } catch {}
   const side = h("aside", { class: "sidebar" }, [
     h("div", { class: "sidebar-logo", role: "button", tabindex: "0", title: "메인으로", onclick: () => navigate("/"), onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } } }, [
-      h("div", { class: "sidebar-logo-mark" }, "B"),
-      h("span", { class: "sidebar-logo-name" }, "BidPick"),
+      h("img", { class: "sidebar-logo-img", src: "/static/logo.png", alt: "BidPick" }),
     ]),
     h("nav", { class: "sidebar-nav" }, [
       h("button", {
@@ -196,9 +195,12 @@ async function renderDashboard() {
   const clients = await api.get("/api/clients").catch(() => []);
 
   main.appendChild(h("header", { class: "main-header" }, [
-    h("div", {}, [
-      h("h1", {}, "발주처"),
-      h("p", {}, `총 ${clients.length}개의 발주처를 관리하고 있습니다`),
+    h("div", { class: "flex-row", style: "gap: 18px;" }, [
+      h("img", { class: "header-logo", src: "/static/logo.png", alt: "BidPick", onclick: () => navigate("/") }),
+      h("div", {}, [
+        h("h1", {}, "발주처"),
+        h("p", {}, `총 ${clients.length}개의 발주처를 관리하고 있습니다`),
+      ]),
     ]),
     h("button", {
       class: "btn btn-primary btn-lg",
@@ -844,6 +846,8 @@ async function renderChat(cid, convId) {
 
   const data = await api.get(`/api/conversations/${convId}`).catch(() => null);
   if (!data) { toast("대화를 불러올 수 없습니다", "error"); navigate(`/client/${cid}`); return; }
+
+  root.appendChild(await renderSidebar());
 
   const shell = h("main", { class: "chat-shell" });
   root.appendChild(shell);

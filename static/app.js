@@ -140,7 +140,7 @@ async function renderSidebar(active = "clients") {
   let recent = [];
   try { recent = (await api.get("/api/clients")).slice(0, 6); } catch {}
   const side = h("aside", { class: "sidebar" }, [
-    h("div", { class: "sidebar-logo" }, [
+    h("div", { class: "sidebar-logo", role: "button", tabindex: "0", title: "메인으로", onclick: () => navigate("/"), onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } } }, [
       h("div", { class: "sidebar-logo-mark" }, "B"),
       h("span", { class: "sidebar-logo-name" }, "BidPick"),
     ]),

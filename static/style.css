@@ -53,7 +53,10 @@ input, select, textarea { font-family: inherit; color: inherit; }
 .sidebar-logo {
   display: flex; align-items: center; gap: 12px;
   height: 72px; padding: 0 20px; border-bottom: 1px solid var(--border);
+  cursor: pointer; user-select: none; transition: opacity .15s;
 }
+.sidebar-logo:hover { opacity: 0.78; }
+.sidebar-logo:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .sidebar-logo-mark {
   width: 40px; height: 40px; border-radius: 12px;
   background: var(--primary); color: var(--primary-fg);

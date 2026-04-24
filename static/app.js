@@ -2475,22 +2475,54 @@ function decorateProposalPages(propEl) {
     }
   });
   // AI/스톡 이미지 플레이스홀더 자동 로드
+  //   data-type="ai"    → Gemini Nano Banana 생성 (data-prompt 상세 프롬프트)
+  //   data-type="stock" → Unsplash 검색 (data-keyword 영문 2~5 단어)
   propEl.querySelectorAll("figure.ai-image").forEach(async (fig) => {
     if (fig.dataset.loaded === "1") return;
     fig.dataset.loaded = "1";
-    const type = fig.dataset.type || "stock";
-    const key = fig.dataset.prompt || fig.dataset.keyword || "";
-    if (!key) return;
+    const type = (fig.dataset.type || "stock").toLowerCase();
+    const prompt = fig.dataset.prompt || "";
+    const keyword = fig.dataset.keyword || "";
+    const primary = prompt || keyword;
+    if (!primary) return;
+    // 플레이스홀더 라벨 갱신
+    const ph = fig.querySelector(".ai-image-placeholder");
+    if (ph && !ph.dataset.touched) {
+      ph.dataset.touched = "1";
+      ph.textContent = type === "ai" ? "🎨 AI 이미지 생성 중…" : "📷 사진 검색 중…";
+    }
     try {
-      const j = await api.get(`/api/images/search?kind=${encodeURIComponent(type)}&keyword=${encodeURIComponent(key)}`);
+      const qs = new URLSearchParams();
+      qs.set("kind", type);
+      if (prompt) qs.set("prompt", prompt);
+      if (keyword) qs.set("keyword", keyword);
+      qs.set("orientation", "landscape");
+      // Gemini 이미지 생성은 수십 초 소요될 수 있음 — 타임아웃 넉넉하게
+      const j = await api.get(`/api/images/search?${qs.toString()}`, { timeoutMs: 90000 });
       if (j.url) {
         const img = document.createElement("img");
         img.src = j.url;
-        img.alt = key;
-        const ph = fig.querySelector(".ai-image-placeholder");
+        img.alt = primary;
+        img.loading = "lazy";
         if (ph) ph.replaceWith(img); else fig.insertBefore(img, fig.firstChild);
+        // Unsplash credit 표기
+        if (j.source === "unsplash" && j.credit?.photographer) {
+          const credit = h("small", {
+            class: "image-credit muted",
+            style: "display:block; font-size:10px; margin-top:2px; opacity:0.7;",
+          });
+          credit.textContent = `© ${j.credit.photographer} · Unsplash`;
+          fig.appendChild(credit);
+        }
+        // 디버그용 소스 태그
+        fig.dataset.imageSource = j.source || "";
+      } else if (ph) {
+        ph.textContent = "⚠️ 이미지 로드 실패";
       }
-    } catch (e) { /* 실패 시 플레이스홀더 유지 */ }
+    } catch (e) {
+      if (ph) ph.textContent = "⚠️ 이미지 로드 실패";
+      console.warn("image load failed:", e);
+    }
   });
 }
 
@@ -2950,6 +2982,43 @@ async function openSettings() {
     }
   }
 
+  // Gemini key
+  const gmInp = $("#gemini-key-input");
+  if (gmInp) {
+    gmInp.value = "";
+    gmInp.placeholder = s.has_gemini_key ? s.masked_gemini_key : "AIza...";
+    gmInp.disabled = !!s.gemini_env_active;
+    const gmStatus = $("#gemini-key-status");
+    if (gmStatus) {
+      const model = s.gemini_image_model || "gemini-2.5-flash-image";
+      if (s.gemini_env_active) {
+        gmStatus.innerHTML = `<strong style="color: var(--primary);">🔒 Railway 환경변수 사용 중</strong><br><span class="muted">서버 환경변수 <code>GEMINI_API_KEY</code> 적용 (<code>${escapeHtml(s.masked_gemini_key)}</code>) · 모델 <code>${escapeHtml(model)}</code></span>`;
+      } else if (s.has_gemini_key) {
+        gmStatus.innerHTML = `DB에 저장됨: <code>${escapeHtml(s.masked_gemini_key)}</code> · 모델 <code>${escapeHtml(model)}</code>`;
+      } else {
+        gmStatus.textContent = "설정된 키 없음 — 포토존·시안·인포그래픽 AI 이미지 생성에 필요합니다.";
+      }
+    }
+  }
+
+  // Unsplash key
+  const unInp = $("#unsplash-key-input");
+  if (unInp) {
+    unInp.value = "";
+    unInp.placeholder = s.has_unsplash_key ? s.masked_unsplash_key : "Access Key...";
+    unInp.disabled = !!s.unsplash_env_active;
+    const unStatus = $("#unsplash-key-status");
+    if (unStatus) {
+      if (s.unsplash_env_active) {
+        unStatus.innerHTML = `<strong style="color: var(--primary);">🔒 Railway 환경변수 사용 중</strong><br><span class="muted">서버 환경변수 <code>UNSPLASH_ACCESS_KEY</code> 적용 (<code>${escapeHtml(s.masked_unsplash_key)}</code>)</span>`;
+      } else if (s.has_unsplash_key) {
+        unStatus.innerHTML = `DB에 저장됨: <code>${escapeHtml(s.masked_unsplash_key)}</code>`;
+      } else {
+        unStatus.textContent = "설정된 키 없음 — 없으면 공개 fallback 사용 (품질 제한).";
+      }
+    }
+  }
+
   const dx = $("#settings-diagnostic");
   if (dx) { dx.classList.add("hidden"); dx.classList.remove("ok", "err"); dx.innerHTML = ""; }
   modal.classList.remove("hidden");
@@ -2968,6 +3037,10 @@ $("#save-settings")?.addEventListener("click", async () => {
   body.model = $("#model-select").value;
   const gk = $("#gamma-key-input")?.value.trim();
   if (gk) body.gamma_api_key = gk;
+  const gmk = $("#gemini-key-input")?.value.trim();
+  if (gmk) body.gemini_api_key = gmk;
+  const unk = $("#unsplash-key-input")?.value.trim();
+  if (unk) body.unsplash_access_key = unk;
   try {
     await api.post("/api/settings", body);
     toast("설정이 저장되었습니다", "success");

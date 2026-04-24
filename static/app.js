@@ -1,4 +1,4 @@
-// BidPick — SPA client
+// NightOff — SPA client
 // Router + views + streaming chat + proposal renderer
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -180,72 +180,66 @@ const WITTY_LINES = [
   "애매하게 썼으면 전화는 잘 받아주세요, 공뭔님들",
 ];
 
-// 풀스크린 로딩 오버레이 — 딤처리 + 인터랙션 차단 + 스피너 + 단계 메시지 + 위트
+// 풀스크린 로딩 오버레이 — 딤처리 + 인터랙션 차단 + 스피너 + 실무/위트 교대 표시 (한 슬롯)
 function showFullscreenLoader(steps) {
-  // 기존 오버레이 있으면 제거 (중첩 방지)
   document.querySelectorAll(".fs-loader-backdrop").forEach((el) => el.remove());
 
   const safeSteps = (steps && steps.length) ? steps : [{ emoji: "✨", text: "잠시만요…" }];
   const backdrop = h("div", { class: "fs-loader-backdrop" });
-  const progressText = h("div", { class: "fs-progress-text" }, `${safeSteps[0].emoji} ${safeSteps[0].text}`);
-  const wittyText = h("div", { class: "fs-witty-text" }, WITTY_LINES[Math.floor(Math.random() * WITTY_LINES.length)]);
+  const messageEl = h("div", { class: "fs-message-text" }, `${safeSteps[0].emoji} ${safeSteps[0].text}`);
   const content = h("div", { class: "fs-loader-content" }, [
     h("div", { class: "fs-spinner" }),
-    progressText,
-    wittyText,
+    messageEl,
   ]);
   backdrop.appendChild(content);
-  // 인터랙션 완전 차단
   backdrop.addEventListener("click", (e) => e.stopPropagation());
   backdrop.addEventListener("mousedown", (e) => e.preventDefault());
   document.body.appendChild(backdrop);
   document.body.classList.add("fs-loader-active");
 
+  // 교대 시퀀스: 실무 1 → 위트 1 → 실무 2 → 위트 2 …
+  let isWittyTurn = false;
   let stepIdx = 0;
-  const stepTimer = setInterval(() => {
-    if (safeSteps.length < 2) return;
-    progressText.classList.add("fade-out");
-    setTimeout(() => {
-      stepIdx = (stepIdx + 1) % safeSteps.length;
-      progressText.textContent = `${safeSteps[stepIdx].emoji} ${safeSteps[stepIdx].text}`;
-      progressText.classList.remove("fade-out");
-    }, 320);
-  }, 1900);
+  let wittyIdx = Math.floor(Math.random() * WITTY_LINES.length);
 
-  // 위트 문구 순환 (랜덤 시작점, 3.5초마다)
-  let wittyIdx = WITTY_LINES.indexOf(wittyText.textContent);
-  const wittyTimer = setInterval(() => {
-    wittyText.classList.add("fade-out");
+  const rotate = () => {
+    messageEl.classList.add("fade-out");
     setTimeout(() => {
-      wittyIdx = (wittyIdx + 1) % WITTY_LINES.length;
-      wittyText.textContent = WITTY_LINES[wittyIdx];
-      wittyText.classList.remove("fade-out");
-    }, 400);
-  }, 3500);
+      if (isWittyTurn) {
+        wittyIdx = (wittyIdx + 1) % WITTY_LINES.length;
+        messageEl.textContent = WITTY_LINES[wittyIdx];
+        messageEl.classList.add("is-witty");
+      } else {
+        stepIdx = (stepIdx + 1) % safeSteps.length;
+        messageEl.textContent = `${safeSteps[stepIdx].emoji} ${safeSteps[stepIdx].text}`;
+        messageEl.classList.remove("is-witty");
+      }
+      isWittyTurn = !isWittyTurn;
+      messageEl.classList.remove("fade-out");
+    }, 380);
+  };
+  const timer = setInterval(rotate, 2800);
 
   let closed = false;
   const handle = {
     setStep(emoji, text) {
-      progressText.classList.add("fade-out");
+      messageEl.classList.add("fade-out");
       setTimeout(() => {
-        progressText.textContent = `${emoji} ${text}`;
-        progressText.classList.remove("fade-out");
-      }, 250);
+        messageEl.textContent = `${emoji} ${text}`;
+        messageEl.classList.remove("is-witty", "fade-out");
+      }, 260);
     },
     finish(emoji = "✅", text = "완료!", delayMs = 700) {
       if (closed) return;
-      clearInterval(stepTimer);
-      clearInterval(wittyTimer);
-      progressText.classList.remove("fade-out");
-      progressText.textContent = `${emoji} ${text}`;
-      wittyText.style.opacity = "0";
+      clearInterval(timer);
+      messageEl.classList.remove("fade-out", "is-witty");
+      messageEl.textContent = `${emoji} ${text}`;
       setTimeout(() => handle.stop(), delayMs);
     },
     stop() {
       if (closed) return;
       closed = true;
-      clearInterval(stepTimer);
-      clearInterval(wittyTimer);
+      clearInterval(timer);
       backdrop.classList.add("closing");
       setTimeout(() => {
         backdrop.remove();
@@ -326,7 +320,7 @@ async function renderSidebar(active = "clients") {
   try { recent = (await api.get("/api/clients")).slice(0, 6); } catch {}
   const side = h("aside", { class: "sidebar" }, [
     h("div", { class: "sidebar-logo", role: "button", tabindex: "0", title: "메인으로", onclick: () => navigate("/"), onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } } }, [
-      h("img", { class: "sidebar-logo-img", src: "/static/logo.png", alt: "BidPick" }),
+      h("img", { class: "sidebar-logo-img", src: "/static/logo.png", alt: "NightOff" }),
     ]),
     h("nav", { class: "sidebar-nav" }, [
       h("button", {
@@ -335,13 +329,14 @@ async function renderSidebar(active = "clients") {
         html: `${iconHtml("users")}<span>발주처 목록</span>`,
       }),
       h("div", { class: "sidebar-section-title" }, "최근 발주처"),
-      ...recent.map((c) =>
-        h("button", {
+      ...recent.map((c) => {
+        const initial = (c.name || "?").trim().slice(0, 1);
+        return h("button", {
           class: "sidebar-recent-item",
           onclick: () => navigate(`/client/${c.id}`),
-          html: `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.name)}</span>${iconHtml("chevronR", 14)}`,
-        })
-      ),
+          html: `<span class="avatar">${escapeHtml(initial)}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.name)}</span>`,
+        });
+      }),
       recent.length === 0
         ? h("div", { class: "muted small", style: "padding: 8px 12px;" }, "등록된 발주처가 없습니다")
         : null,
@@ -369,7 +364,7 @@ function fmtSize(bytes) {
 
 // ---------- Dashboard ----------
 function renderSmartLearningBanner(dna, stats) {
-  const stored = localStorage.getItem("bidpick.smartBannerOpen");
+  const stored = localStorage.getItem("nightoff.smartBannerOpen");
   // 기본: 접힘. 사용자가 한 번 열었던 적이 있다면 그 상태 유지.
   let expanded = stored === "1";
 
@@ -384,11 +379,11 @@ function renderSmartLearningBanner(dna, stats) {
     banner.classList.toggle("expanded", expanded);
     banner.classList.toggle("collapsed", !expanded);
     toggleBtn.innerHTML = iconHtml(expanded ? "chevronD" : "chevronR", 18);
-    localStorage.setItem("bidpick.smartBannerOpen", expanded ? "1" : "0");
+    localStorage.setItem("nightoff.smartBannerOpen", expanded ? "1" : "0");
   } }, [
     h("span", { class: "sm-emoji" }, "✨"),
     h("div", { style: "flex: 1;" }, [
-      h("h2", {}, "BidPick은 쓸수록 똑똑해져요"),
+      h("h2", {}, "NightOff은 쓸수록 똑똑해져요"),
       h("p", {}, "RFP와 대화·과거 제안서·승패 기록이 쌓일수록 더 정확한 제안서가 나옵니다"),
     ]),
     toggleBtn,
@@ -397,7 +392,7 @@ function renderSmartLearningBanner(dna, stats) {
   const feats = [
     {
       icon: "brain",
-      title: "발주처 프로파일",
+      title: "발주처 성향",
       desc: "RFP와 대화마다 발주처 선호 키워드, 높은 배점 항목을 자동 축적해요.",
     },
     {
@@ -445,7 +440,7 @@ async function openCompanyDnaModal() {
       h("span", { class: "ob-emoji" }, "📂"),
       h("div", {}, [
         h("p", { class: "ob-title" }, "과거 제안서를 올려두면 회사 스타일을 학습해요"),
-        h("p", { class: "ob-desc" }, "발주처 상세의 ‘레퍼런스 라이브러리’에 이전 제안서·회사 소개서·성공 사례를 업로드하면, BidPick이 자주 쓰는 표현·강점 키워드·전략 구조를 추출합니다. 올리면 올릴수록 새 제안서가 우리 회사답게 나와요."),
+        h("p", { class: "ob-desc" }, "발주처 상세의 ‘레퍼런스 라이브러리’에 이전 제안서·회사 소개서·성공 사례를 업로드하면, NightOff이 자주 쓰는 표현·강점 키워드·전략 구조를 추출합니다. 올리면 올릴수록 새 제안서가 우리 회사답게 나와요."),
       ]),
     ]));
   } else {
@@ -516,7 +511,7 @@ async function renderDashboard() {
 
   main.appendChild(h("header", { class: "main-header" }, [
     h("div", { class: "flex-row", style: "gap: 18px;" }, [
-      h("img", { class: "header-logo", src: "/static/logo.png", alt: "BidPick", onclick: () => navigate("/") }),
+      h("img", { class: "header-logo", src: "/static/logo.png", alt: "NightOff", onclick: () => navigate("/") }),
       h("div", {}, [
         h("h1", {}, "대시보드"),
         h("p", {}, "기획자가 만든 기획자를 위한 제안서 AI"),
@@ -639,12 +634,12 @@ async function renderDashboard() {
   }
   twoCol.appendChild(rightCol);
 
-  // ── BidPick 소개 배너 (하단, 기본 접힌 상태) ──
+  // ── NightOff 소개 배너 (하단, 기본 접힌 상태) ──
   content.appendChild(renderSmartLearningBanner(dna, stats));
 
   // ── 푸터
   content.appendChild(h("footer", { class: "dashboard-footer" },
-    "BidPick · 기획자가 만든 기획자를 위한 제안서 AI · ver 0.1"
+    "NightOff · 기획자가 만든 기획자를 위한 제안서 AI · ver 0.1"
   ));
 }
 
@@ -1453,7 +1448,7 @@ function compCard(c, cid) {
   ]);
 }
 
-// ---------- 발주처 프로파일 ----------
+// ---------- 발주처 성향 ----------
 async function renderProfileSection(cid) {
   const p = await api.get(`/api/clients/${cid}/profile`).catch(() => ({ exists: false }));
   const card = h("div", { class: "card" });
@@ -1462,8 +1457,8 @@ async function renderProfileSection(cid) {
     h("div", { class: "card-title-row" }, [
       h("div", { class: "card-title-icon", style: "background: var(--primary-soft); color: var(--primary);", html: iconHtml("brain", 18) }),
       h("div", {}, [
-        h("h3", { class: "card-title" }, "발주처 프로파일"),
-        h("p", { class: "card-subtitle" }, p.exists ? `${p.sample_count || 1}회 축적 · RFP와 대화에서 자동 학습` : "RFP를 넣고 대화할수록 BidPick이 이 발주처를 더 깊이 이해해요"),
+        h("h3", { class: "card-title" }, "발주처 성향"),
+        h("p", { class: "card-subtitle" }, p.exists ? `${p.sample_count || 1}회 축적 · RFP와 대화에서 자동 학습` : "RFP를 넣고 대화할수록 NightOff이 이 발주처를 더 깊이 이해해요"),
       ]),
     ]),
     p.exists ? h("span", {
@@ -1627,7 +1622,7 @@ async function renderChat(cid, convId) {
         injected.refs ? h("span", { class: "badge badge-primary" }, "레퍼런스") : null,
       ]),
       h("button", {
-        class: "btn btn-outline", html: `${iconHtml("save", 14)}<span>대화 종료 & 기억 저장</span>`,
+        class: "btn btn-outline", html: `${iconHtml("save", 14)}<span>대화 마치기</span>`,
         onclick: async () => {
           if (!confirm("대화를 종료하고 기억을 저장하시겠습니까? AI가 대화에서 뉘앙스를 추출해 발주처에 저장합니다.")) return;
           toast("대화 기억 저장 중…", "");
@@ -1681,15 +1676,9 @@ async function renderChat(cid, convId) {
     ta.value = ""; ta.style.height = "auto";
     body.scrollTop = body.scrollHeight;
 
-    // Detect proposal intent — show richer loader steps
-    const isProposal = /제안서|초안|구성안|페이지\s*구성|목차/.test(text);
-    const loaderSteps = isProposal ? LOADER_STEPS.proposal : [
-      { emoji: "💭", text: "생각하고 있어요…" },
-      { emoji: "📚", text: "맥락을 살피고 있어요…" },
-      { emoji: "✍️", text: "답변을 준비하고 있어요…" },
-    ];
-    // 풀스크린 오버레이 (첫 delta 도착 시 닫힘)
-    const overlayLoader = showFullscreenLoader(loaderSteps);
+    // 채팅은 풀스크린 오버레이 없이 인라인 텍스트 스트리밍만 사용.
+    // no-op 핸들러 — 아래 기존 호출부를 최소 변경으로 무효화
+    const overlayLoader = { setStep() {}, finish() {}, stop() {} };
 
     // Assistant placeholder
     const asstEl = msgElement("assistant", "", new Date().toISOString());
@@ -1821,12 +1810,48 @@ function fmtTime(ts) {
 }
 
 // ---------- Render assistant content (detects & renders proposal HTML) ----------
+// 가벼운 마크다운 → HTML 변환 (bold / italic / heading / list / inline code / linebreak)
+function renderMarkdown(src) {
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  let html = esc(src);
+  // 헤딩 (### / ## / #)
+  html = html.replace(/^###\s+(.+)$/gm, '<h3 class="md-h3">$1</h3>');
+  html = html.replace(/^##\s+(.+)$/gm, '<h2 class="md-h2">$1</h2>');
+  html = html.replace(/^#\s+(.+)$/gm, '<h1 class="md-h1">$1</h1>');
+  // bullet 리스트 (- / * / •)
+  html = html.replace(/^(?:[-*•]\s+.+(?:\n|$))+?/gm, (block) => {
+    const items = block.trim().split(/\n/).map((l) => l.replace(/^[-*•]\s+/, "")).map((t) => `<li>${t}</li>`).join("");
+    return `<ul class="md-ul">${items}</ul>`;
+  });
+  // 번호 리스트 (1. / 2.)
+  html = html.replace(/^(?:\d+\.\s+.+(?:\n|$))+?/gm, (block) => {
+    const items = block.trim().split(/\n/).map((l) => l.replace(/^\d+\.\s+/, "")).map((t) => `<li>${t}</li>`).join("");
+    return `<ol class="md-ol">${items}</ol>`;
+  });
+  // bold (**text** or __text__)
+  html = html.replace(/\*\*([^*\n]+?)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/__([^_\n]+?)__/g, "<strong>$1</strong>");
+  // italic (*text* or _text_)
+  html = html.replace(/(?<![*\w])\*([^*\n]+?)\*(?!\*)/g, "<em>$1</em>");
+  html = html.replace(/(?<![_\w])_([^_\n]+?)_(?!_)/g, "<em>$1</em>");
+  // inline code
+  html = html.replace(/`([^`\n]+)`/g, '<code class="md-code">$1</code>');
+  // 연속된 줄바꿈은 단락, 단일은 <br>
+  html = html.split(/\n{2,}/).map((block) => {
+    if (/^<(h\d|ul|ol)/.test(block.trim())) return block;
+    return `<p>${block.replace(/\n/g, "<br>")}</p>`;
+  }).join("");
+  return html;
+}
+
 function renderAssistant(bubble, text, final = false) {
   bubble.dataset.raw = text;
   // Detect proposal block
   const idx = text.indexOf('<div class="proposal"');
   if (idx === -1) {
-    bubble.textContent = text;
+    // 마크다운 렌더링 — 일반 채팅 응답
+    bubble.innerHTML = renderMarkdown(text);
     return;
   }
 
@@ -1837,8 +1862,14 @@ function renderAssistant(bubble, text, final = false) {
   let propHtml = endIdx > 0 ? rest.slice(0, endIdx) : rest;
   const post = endIdx > 0 ? rest.slice(endIdx).trim() : "";
 
-  bubble.innerHTML = "";
-  if (pre) bubble.appendChild(h("div", { style: "white-space: pre-wrap; margin-bottom: 10px;" }, pre));
+  // ── 깜빡임 방지: 완성된 페이지 개수가 늘어났거나, final일 때만 DOM 재구축
+  const completedPages = (propHtml.match(/<\/div>\s*(?=<div class="proposal-page"|<\/div>\s*$)/g) || []).length;
+  const lastCount = parseInt(bubble.dataset.propPages || "-1", 10);
+  const alreadyRendered = bubble.querySelector(".proposal-wrapper");
+  if (alreadyRendered && !final && completedPages === lastCount) {
+    return; // 스트림은 계속 쌓이지만 DOM은 그대로 — 깜빡임 제거
+  }
+  bubble.dataset.propPages = String(completedPages);
 
   // Sanitize and render proposal
   const wrapper = h("div", { class: "proposal-wrapper" });
@@ -1847,9 +1878,6 @@ function renderAssistant(bubble, text, final = false) {
 
   const propEl = wrapper.querySelector(".proposal");
   if (propEl) {
-    // 완전 흑백 — 어떤 색상도 주입하지 않음 (디자이너가 나중에 입힘)
-
-    // Add toolbar (only when final or has at least 1 page)
     const title = propEl.getAttribute("data-title") || "제안서";
     const toolbar = h("div", { class: "proposal-toolbar" }, [
       h("div", { class: "title" }, title),
@@ -1865,7 +1893,6 @@ function renderAssistant(bubble, text, final = false) {
       ]),
     ]);
 
-    // Add keyword row under each page
     propEl.querySelectorAll(".proposal-page").forEach((page) => {
       const kw = page.getAttribute("data-keyword");
       if (kw && !page.nextElementSibling?.classList.contains("keyword-row")) {
@@ -1883,8 +1910,12 @@ function renderAssistant(bubble, text, final = false) {
     propEl.parentElement.insertBefore(toolbar, propEl);
   }
 
-  bubble.appendChild(wrapper);
-  if (post) bubble.appendChild(h("div", { style: "white-space: pre-wrap; margin-top: 10px;" }, post));
+  // 재구축 시 한 번만 innerHTML 교체 — repaint 최소화
+  const newContent = document.createDocumentFragment();
+  if (pre) newContent.appendChild(h("div", { style: "white-space: pre-wrap; margin-bottom: 10px;" }, pre));
+  newContent.appendChild(wrapper);
+  if (post) newContent.appendChild(h("div", { style: "white-space: pre-wrap; margin-top: 10px;" }, post));
+  bubble.replaceChildren(newContent);
 }
 
 function findProposalEnd(s) {
@@ -1956,7 +1987,13 @@ function openProposalFullscreen(propEl) {
       h("span", {}, `총 ${total} 페이지`),
       h("button", { class: "btn btn-outline", html: `${iconHtml("printer", 14)}<span>인쇄 / PDF</span>`,
         onclick: () => printProposal(propEl) }),
-      h("button", { class: "icon-btn", onclick: () => backdrop.remove(), html: iconHtml("x", 20) }),
+      h("button", {
+        class: "pv-close-btn",
+        title: "닫기 (ESC)",
+        "aria-label": "닫기",
+        onclick: () => backdrop.remove(),
+        html: iconHtml("x", 22),
+      }),
     ]),
   ]));
 

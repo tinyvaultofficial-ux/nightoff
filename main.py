@@ -1,5 +1,5 @@
 """
-BidPick - 제안서 작성 전문가를 위한 AI 어시스턴트
+NightOff - 제안서 작성 전문가를 위한 AI 어시스턴트
 FastAPI + SQLite + Anthropic Claude (streaming)
 """
 from __future__ import annotations
@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
-log = logging.getLogger("bidpick")
+log = logging.getLogger("nightoff")
 
 # Max file size for uploads (50MB)
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024
@@ -159,7 +159,7 @@ def init_db() -> None:
                 FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
             );
 
-            -- 발주처 프로파일 (RFP + 대화에서 추출된 인사이트 축적)
+            -- 발주처 성향 (RFP + 대화에서 추출된 인사이트 축적)
             CREATE TABLE IF NOT EXISTS client_profiles (
                 client_id        TEXT PRIMARY KEY,
                 keywords         TEXT DEFAULT '[]',
@@ -357,7 +357,7 @@ async def read_and_validate_upload(file: UploadFile, *, allowed_exts: set = None
 # System prompts
 # ---------------------------------------------------------------------------
 PROPOSAL_SYSTEM_PROMPT = """당신은 대한민국 최고 수준의 제안서 작성 전문가이자 크리에이티브 디렉터입니다.
-BidPick의 AI 엔진으로, 발주처를 설득하는 제안서를 한국어로 작성합니다.
+NightOff의 AI 엔진으로, 발주처를 설득하는 제안서를 한국어로 작성합니다.
 
 [작성 원칙]
 1. RFP를 단순 재각색하지 않고 독창적 전략과 차별화 포인트를 반드시 담는다.
@@ -906,7 +906,7 @@ JSON:"""
 # ---------------------------------------------------------------------------
 # FastAPI
 # ---------------------------------------------------------------------------
-app = FastAPI(title="BidPick")
+app = FastAPI(title="NightOff")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -978,7 +978,7 @@ async def global_exc_handler(request: Request, exc: Exception):
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
-    log.info("BidPick server ready — DB: %s, Uploads: %s", DB_PATH, UPLOADS_DIR)
+    log.info("NightOff server ready — DB: %s, Uploads: %s", DB_PATH, UPLOADS_DIR)
 
 
 # ---------- Static ----------
@@ -1469,7 +1469,7 @@ def _build_system_prompt(client_id: str) -> str:
         lines = [f"- [{m['category']}] {m['content']}" for m in memories]
         parts.append("[대화 기억(뉘앙스)]\n" + "\n".join(lines))
 
-    # 발주처 프로파일 주입
+    # 발주처 성향 주입
     with get_db() as db:
         profile_row = db.execute("SELECT * FROM client_profiles WHERE client_id=?", (client_id,)).fetchone()
         dna_row = db.execute("SELECT * FROM company_dna WHERE id=1").fetchone()
@@ -1491,7 +1491,7 @@ def _build_system_prompt(client_id: str) -> str:
                 "recurring_reqs": json.loads(profile_row["recurring_reqs"] or "[]"),
                 "insights": json.loads(profile_row["insights"] or "[]"),
             }
-            parts.append("[발주처 프로파일 — 축적된 인사이트]\n" + json.dumps(p, ensure_ascii=False, indent=2))
+            parts.append("[발주처 성향 — 축적된 인사이트]\n" + json.dumps(p, ensure_ascii=False, indent=2))
         except Exception:
             pass
 

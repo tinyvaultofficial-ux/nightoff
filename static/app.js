@@ -2448,9 +2448,18 @@ function openProposalFullscreen(propEl) {
 async function openSettings() {
   const modal = $("#settings-modal");
   const s = await api.get("/api/settings");
-  $("#api-key-input").value = "";
-  $("#api-key-input").placeholder = s.has_key ? s.masked_key : "sk-ant-api03-...";
-  $("#api-key-status").textContent = s.has_key ? `설정된 키: ${s.masked_key}` : "설정된 키 없음";
+  const inp = $("#api-key-input");
+  inp.value = "";
+  inp.placeholder = s.has_key ? s.masked_key : "sk-ant-api03-...";
+  inp.disabled = !!s.env_active;  // env 사용 중이면 입력창 비활성
+  const status = $("#api-key-status");
+  if (s.env_active) {
+    status.innerHTML = `<strong style="color: var(--primary);">🔒 Railway 환경변수 사용 중</strong><br><span class="muted">서버 환경변수 <code>ANTHROPIC_API_KEY</code> 가 우선 적용됩니다 (<code>${escapeHtml(s.masked_key)}</code>). 키를 바꾸려면 Railway Variables 에서 수정하세요.</span>`;
+  } else if (s.has_key) {
+    status.innerHTML = `DB에 저장된 키 사용 중: <code>${escapeHtml(s.masked_key)}</code>`;
+  } else {
+    status.textContent = "설정된 키 없음 — 입력 후 저장하거나 Railway 환경변수로 주입하세요.";
+  }
   $("#model-select").value = s.model || "claude-sonnet-4-5-20250929";
   const dx = $("#settings-diagnostic");
   if (dx) { dx.classList.add("hidden"); dx.classList.remove("ok", "err"); dx.innerHTML = ""; }

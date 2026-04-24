@@ -333,7 +333,22 @@ def set_setting(key: str, value: str) -> None:
 
 
 def get_api_key() -> str:
-    return get_setting("anthropic_api_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+    """Railway 등 운영 환경에서는 환경변수 ANTHROPIC_API_KEY 를 우선 사용.
+    env 값이 없을 때만 DB(settings 테이블)에서 읽어온다.
+    이렇게 해야 재배포/DB 초기화 시에도 키가 살아있음."""
+    env_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if env_key:
+        return env_key
+    return get_setting("anthropic_api_key", "")
+
+
+def get_api_key_source() -> str:
+    """'env' / 'db' / '' 중 하나 — 현재 사용 중인 키의 출처."""
+    if os.environ.get("ANTHROPIC_API_KEY", "").strip():
+        return "env"
+    if get_setting("anthropic_api_key", ""):
+        return "db"
+    return ""
 
 
 def require_client() -> anthropic.Anthropic:
@@ -1235,12 +1250,15 @@ class CompetitorIn(BaseModel):
 @app.get("/api/settings")
 def api_settings_get():
     key = get_api_key()
+    source = get_api_key_source()
     masked = ""
     if key:
         masked = f"{key[:10]}...{key[-4:]}" if len(key) > 16 else "********"
     return {
         "has_key": bool(key),
         "masked_key": masked,
+        "source": source,  # 'env' | 'db' | ''
+        "env_active": source == "env",
         "model": get_setting("model", MODEL_DEFAULT),
     }
 

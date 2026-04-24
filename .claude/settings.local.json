@@ -129,7 +129,15 @@
       "Bash(curl -s -X POST http://127.0.0.1:8000/api/signup -H \"Content-Type: application/json\" -d '{\"email\":\"t@e.com\",\"company\":\"Test\"}')",
       "Bash(curl -s \"http://127.0.0.1:8000/api/images/search?kind=stock&keyword=office\")",
       "Bash(curl -s \"http://127.0.0.1:8000/api/stats\")",
-      "Bash(python -c \"import json; from pathlib import Path; t=Path\\('main.py'\\).read_text\\(encoding='utf-8'\\); assert 'BUDGET_TABLE_PROMPT' in t and 'categories' in t and 'utilization' in t; print\\('prompt OK'\\)\")"
+      "Bash(python -c \"import json; from pathlib import Path; t=Path\\('main.py'\\).read_text\\(encoding='utf-8'\\); assert 'BUDGET_TABLE_PROMPT' in t and 'categories' in t and 'utilization' in t; print\\('prompt OK'\\)\")",
+      "Bash(curl -s -X POST http://127.0.0.1:8000/api/clients -H \"Content-Type: application/json\" -d '{\"name\":\"audit\",\"industry\":\"기타\"}')",
+      "Bash(python -c \"import json,sys; print\\(json.load\\(sys.stdin\\)['id']\\)\")",
+      "Bash(curl -s -X POST http://127.0.0.1:8000/api/clients -H \"Content-Type: application/json; charset=utf-8\" --data-binary '{\"name\":\"audit\",\"industry\":\"기타\"}')",
+      "Bash(curl -s -X POST http://127.0.0.1:8000/api/clients -H \"Content-Type: application/json\" -d \"{\\\\\"name\\\\\":\\\\\"audit-ascii\\\\\",\\\\\"industry\\\\\":\\\\\"IT\\\\\"}\")",
+      "Bash(curl -s -X POST \"http://127.0.0.1:8000/api/clients/46757fe0ac6e/rfp\" -F \"file=@test_rfp.txt\" -F \"role=제안요청서\")",
+      "Bash(curl -s -X POST \"http://127.0.0.1:8000/api/clients/46757fe0ac6e/rfp\" -F \"file=@/c/Users/00/Downloads/\\(0205공고문\\)2026 만석거 새빛축제 행사대행 용역.pdf\" -F \"role=공고문\" -w \"\\\\nHTTP %{http_code} · %{time_total}s\\\\n\")",
+      "Bash(curl -s \"http://127.0.0.1:8000/api/clients\")",
+      "Bash(curl -s -X POST \"http://127.0.0.1:8000/api/clients/46757fe0ac6e/rfp\" -F \"file=@/c/Users/00/Downloads/\\(공고\\)제안요청서 수정본\\(2026 안전문화 캠페인 기획·홍보 용역\\).hwpx\" -F \"role=공고문\" -w \"\\\\nHTTP %{http_code} · %{time_total}s\\\\n\")"
     ]
   }
 }

@@ -2518,22 +2518,17 @@ def _extract_text_from_resp(resp) -> str:
         return ""
 
 
-@app.post("/api/clients/{cid}/competitors/search")
-def api_comp_search(cid: str, body: CompetitorQueryIn):
-    """기업명 입력 → 웹 검색으로 실존 후보 3~5개 반환. 속도 최우선."""
-    with get_db() as db:
-        c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
-        if not c:
-            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
+# ---------- 경쟁사 검색/분석 (발주처 독립) ----------
+def _do_competitor_search(query: str, context: str = "") -> list:
+    """발주처 무관 — 기업명/키워드로 실존 후보 3~5개 반환."""
     try:
         client = require_client()
         prompt = (COMPETITOR_CANDIDATES_PROMPT
-                  .replace("{QUERY}", body.query)
-                  .replace("{CONTEXT}", body.context or "(없음)"))
-        # 후보 검색은 빠른 모델 + 검색 횟수 제한으로 응답 시간 단축
+                  .replace("{QUERY}", query)
+                  .replace("{CONTEXT}", context or "(없음)"))
         fast_search_tool = {"type": "web_search_20250305", "name": "web_search", "max_uses": 2}
         resp = client.messages.create(
-            model=MODEL_FAST,  # Haiku 4.5 — 빠른 응답
+            model=MODEL_FAST,
             max_tokens=1500,
             tools=[fast_search_tool],
             messages=[{"role": "user", "content": prompt}],
@@ -2542,35 +2537,28 @@ def api_comp_search(cid: str, body: CompetitorQueryIn):
         raw = re.sub(r"^```(?:json)?\s*", "", raw)
         raw = re.sub(r"\s*```$", "", raw)
         candidates = json.loads(raw)
-        if not isinstance(candidates, list):
-            candidates = []
+        if isinstance(candidates, list):
+            return candidates
+        return []
     except HTTPException:
         raise
     except anthropic.APIError as e:
-        log.warning("경쟁사 후보 검색 Anthropic 오류: %s", e)
-        # 실패해도 사용자가 입력한 이름으로 직접 진행할 수 있게 후보 1개 반환
-        candidates = [{"name": body.query, "desc": "자동 검색을 이용할 수 없어요 — 입력한 이름으로 직접 분석 가능", "domain": ""}]
+        log.warning("경쟁사 후보 Anthropic 오류: %s", e)
     except json.JSONDecodeError as e:
-        log.warning("경쟁사 후보 JSON 파싱 실패: %s · raw=%s", e, (raw or "")[:200])
-        candidates = [{"name": body.query, "desc": "검색 결과 파싱에 실패했어요 — 입력한 이름으로 직접 분석 가능", "domain": ""}]
+        log.warning("경쟁사 후보 JSON 파싱 실패: %s", e)
     except Exception as e:
-        log.exception("경쟁사 후보 검색 예외")
-        candidates = [{"name": body.query, "desc": f"검색 중 문제가 생겼어요 ({type(e).__name__}) — 직접 분석 가능", "domain": ""}]
-    return {"candidates": candidates}
+        log.exception("경쟁사 후보 예외")
+    # 실패 시에도 입력값 1건 반환 → 사용자 직접 분석 가능
+    return [{"name": query, "desc": "자동 검색을 이용할 수 없어요 — 입력한 이름 그대로 분석 가능", "domain": ""}]
 
 
-@app.post("/api/clients/{cid}/competitors")
-def api_comp_add(cid: str, body: CompetitorIn):
-    with get_db() as db:
-        c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
-        if not c:
-            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
-
+def _do_competitor_analyze(name: str, context: str = "") -> dict:
+    """발주처 무관 — 기업명으로 강점/약점/차별화 분석."""
     try:
         client = require_client()
         prompt = (COMPETITOR_ANALYSIS_PROMPT
-                  .replace("{COMPANY}", body.name)
-                  .replace("{CONTEXT}", body.context or "(없음)"))
+                  .replace("{COMPANY}", name)
+                  .replace("{CONTEXT}", context or "(없음)"))
         resp = client.messages.create(
             model=get_setting("model", MODEL_DEFAULT),
             max_tokens=2500,
@@ -2580,28 +2568,97 @@ def api_comp_add(cid: str, body: CompetitorIn):
         raw = _extract_text_from_resp(resp)
         raw = re.sub(r"^```(?:json)?\s*", "", raw)
         raw = re.sub(r"\s*```$", "", raw)
-        data = json.loads(raw)
+        return json.loads(raw)
     except HTTPException:
         raise
+    except anthropic.APIError as e:
+        log.warning("경쟁사 분석 Anthropic 오류: %s", e)
+        return {"strengths": [], "weaknesses": [], "differentiator": "",
+                "summary": translate_anthropic_error(e), "error": True}
+    except json.JSONDecodeError as e:
+        log.warning("경쟁사 분석 JSON 파싱 실패: %s", e)
+        return {"strengths": [], "weaknesses": [], "differentiator": "",
+                "summary": "AI 응답을 이해하지 못했어요. 다시 시도해 주세요.", "error": True}
     except Exception as e:
-        data = {
-            "strengths": [], "weaknesses": [], "differentiator": "",
-            "summary": f"분석 실패: {e}",
-        }
+        log.exception("경쟁사 분석 예외")
+        return {"strengths": [], "weaknesses": [], "differentiator": "",
+                "summary": f"분석 중 문제가 생겼어요 ({type(e).__name__})", "error": True}
 
-    cid_new = uuid.uuid4().hex[:12]
+
+# ─── 독립 엔드포인트 (발주처 ID 불필요) ───
+@app.post("/api/competitors/search")
+def api_competitors_search_standalone(body: CompetitorQueryIn):
+    """기업명/키워드 → 후보 3~5개 반환. 발주처 무관."""
+    q = (body.query or "").strip()
+    if not q:
+        raise HTTPException(400, "기업명 또는 키워드를 입력해 주세요.")
+    return {"candidates": _do_competitor_search(q, body.context)}
+
+
+class CompetitorAnalyzeIn(BaseModel):
+    name: str
+    context: str = ""
+    client_id: Optional[str] = None  # 있으면 해당 발주처에 저장, 없으면 분석만 반환
+
+
+@app.post("/api/competitors/analyze")
+def api_competitors_analyze_standalone(body: CompetitorAnalyzeIn):
+    """기업명 → 강점/약점/차별화 분석. client_id 주면 저장까지."""
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(400, "기업명을 입력해 주세요.")
+    data = _do_competitor_analyze(name, body.context)
+
+    saved_id = None
+    if body.client_id:
+        # 발주처가 존재할 때만 저장 (없어도 분석 결과는 반환)
+        with get_db() as db:
+            c = db.execute("SELECT id FROM clients WHERE id=?", (body.client_id,)).fetchone()
+            if c:
+                saved_id = uuid.uuid4().hex[:12]
+                db.execute(
+                    "INSERT INTO competitors(id,client_id,name,analysis,strengths,weaknesses,differentiator) "
+                    "VALUES(?,?,?,?,?,?,?)",
+                    (
+                        saved_id, body.client_id, name, data.get("summary", ""),
+                        json.dumps(data.get("strengths") or [], ensure_ascii=False),
+                        json.dumps(data.get("weaknesses") or [], ensure_ascii=False),
+                        data.get("differentiator", ""),
+                    ),
+                )
+    return {"ok": True, "id": saved_id, "data": data}
+
+
+# ─── 기존 client-scoped 엔드포인트 (하위 호환, 내부에서 동일 로직 사용) ───
+@app.post("/api/clients/{cid}/competitors/search")
+def api_comp_search(cid: str, body: CompetitorQueryIn):
+    """[하위 호환] 검색은 client_id 와 무관하므로 발주처 체크 없이 동일 로직."""
+    q = (body.query or "").strip()
+    if not q:
+        raise HTTPException(400, "기업명 또는 키워드를 입력해 주세요.")
+    return {"candidates": _do_competitor_search(q, body.context)}
+
+
+@app.post("/api/clients/{cid}/competitors")
+def api_comp_add(cid: str, body: CompetitorIn):
+    """[하위 호환] cid 없으면 분석만 반환, 있으면 저장까지."""
+    data = _do_competitor_analyze(body.name, body.context)
+    saved_id = None
     with get_db() as db:
-        db.execute(
-            "INSERT INTO competitors(id,client_id,name,analysis,strengths,weaknesses,differentiator) "
-            "VALUES(?,?,?,?,?,?,?)",
-            (
-                cid_new, cid, body.name, data.get("summary", ""),
-                json.dumps(data.get("strengths") or [], ensure_ascii=False),
-                json.dumps(data.get("weaknesses") or [], ensure_ascii=False),
-                data.get("differentiator", ""),
-            ),
-        )
-    return {"ok": True, "id": cid_new, "data": data}
+        c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
+        if c:
+            saved_id = uuid.uuid4().hex[:12]
+            db.execute(
+                "INSERT INTO competitors(id,client_id,name,analysis,strengths,weaknesses,differentiator) "
+                "VALUES(?,?,?,?,?,?,?)",
+                (
+                    saved_id, cid, body.name, data.get("summary", ""),
+                    json.dumps(data.get("strengths") or [], ensure_ascii=False),
+                    json.dumps(data.get("weaknesses") or [], ensure_ascii=False),
+                    data.get("differentiator", ""),
+                ),
+            )
+    return {"ok": True, "id": saved_id, "data": data}
 
 
 @app.delete("/api/competitors/{comp_id}")

@@ -1686,10 +1686,11 @@ async function renderCompetitorSection(cid) {
       if (l) l.textContent = "거의 다 됐어요… 조금만 더 기다려주세요";
     }, 35000);
     try {
+      // 독립 엔드포인트 — 발주처 ID 불필요
       const r = await api.post(
-        `/api/clients/${cid}/competitors/search`,
+        `/api/competitors/search`,
         { query: q, context: ctx.value.trim() },
-        { signal: searchAborter.signal, timeoutMs: 90000 }  // 90초로 증가 (web_search 툴 고려)
+        { signal: searchAborter.signal, timeoutMs: 90000 }
       );
       if (q !== currentQuery) return;
       showCandidatesDropdown(r.candidates || []);
@@ -1748,7 +1749,8 @@ async function renderCompetitorSection(cid) {
         if (names.length > 1) {
           loader.setStep("🔎", `${i + 1}/${names.length} — ${n} 분석 중…`);
         }
-        await api.post(`/api/clients/${cid}/competitors`, { name: n, context });
+        // 독립 엔드포인트 — cid 는 저장 대상일 뿐 검증 통과 조건 아님
+        await api.post(`/api/competitors/analyze`, { name: n, context, client_id: cid }, { timeoutMs: 120000 });
         success++;
       } catch (e) {
         toast(`${n} 분석 실패: ` + (e.message || e), "error");

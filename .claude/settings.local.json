@@ -148,7 +148,16 @@
       "Bash(curl -s -o /dev/null -w '  HTTP %{http_code}\\\\n' http://127.0.0.1:8000/api/clients)",
       "Bash(curl -s -o /dev/null -w '  HTTP %{http_code}\\\\n' http://127.0.0.1:8000/api/activity)",
       "Bash(curl -s -o /dev/null -w '  HTTP %{http_code}\\\\n' http://127.0.0.1:8000/api/company-dna)",
-      "Bash(curl -s http://127.0.0.1:8000/api/activity)"
+      "Bash(curl -s http://127.0.0.1:8000/api/activity)",
+      "Bash(node --check static/app.js)",
+      "Bash(where python *)",
+      "Bash(python -c \"import py_compile; py_compile.compile\\('main.py', doraise=True\\); print\\('main.py OK'\\)\")",
+      "Bash(where node *)",
+      "Bash(where npx *)",
+      "Bash(where deno *)",
+      "Bash(python)",
+      "Bash(python _check_balance.py)",
+      "Bash(python _check_balance2.py)"
     ]
   }
 }

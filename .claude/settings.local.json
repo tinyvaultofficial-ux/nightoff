@@ -142,7 +142,13 @@
       "Bash(curl -s http://127.0.0.1:8000/api/settings)",
       "Bash(ANTHROPIC_API_KEY=\"sk-ant-api03-RAILWAY_ENV_TEST_KEY_1234567890abcdef\" python -m uvicorn main:app --host 127.0.0.1 --port 8000)",
       "Bash(pkill -f \"uvicorn main:app\")",
-      "Bash(taskkill //F //IM python.exe)"
+      "Bash(taskkill //F //IM python.exe)",
+      "Bash(curl -s -o /dev/null -w '  HTTP %{http_code} · %{time_total}s\\\\n' http://127.0.0.1:8000/)",
+      "Bash(curl -s -o /dev/null -w '  HTTP %{http_code}\\\\n' http://127.0.0.1:8000/api/stats)",
+      "Bash(curl -s -o /dev/null -w '  HTTP %{http_code}\\\\n' http://127.0.0.1:8000/api/clients)",
+      "Bash(curl -s -o /dev/null -w '  HTTP %{http_code}\\\\n' http://127.0.0.1:8000/api/activity)",
+      "Bash(curl -s -o /dev/null -w '  HTTP %{http_code}\\\\n' http://127.0.0.1:8000/api/company-dna)",
+      "Bash(curl -s http://127.0.0.1:8000/api/activity)"
     ]
   }
 }

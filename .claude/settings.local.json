@@ -157,7 +157,8 @@
       "Bash(where deno *)",
       "Bash(python)",
       "Bash(python _check_balance.py)",
-      "Bash(python _check_balance2.py)"
+      "Bash(python _check_balance2.py)",
+      "WebFetch(domain:developers.gamma.app)"
     ]
   }
 }

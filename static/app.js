@@ -2347,28 +2347,42 @@ function renderAssistant(bubble, text, final = false) {
   const newContent = document.createDocumentFragment();
   if (pre) newContent.appendChild(h("div", { style: "white-space: pre-wrap; margin-bottom: 10px;" }, pre));
   newContent.appendChild(wrapper);
-  if (post) newContent.appendChild(h("div", { style: "white-space: pre-wrap; margin-top: 10px;" }, post));
+  if (post) {
+    // post 에 HTML 태그 흔적이 남아 있으면 코드로 노출되지 않게 숨김
+    // (findProposalEnd 가 잘라낸 뒷부분 — 짧은 마침 문구만 통과)
+    const hasHtml = /<\w+[\s>]/.test(post);
+    if (!hasHtml) {
+      newContent.appendChild(h("div", { style: "white-space: pre-wrap; margin-top: 10px;" }, post));
+    }
+  }
   bubble.replaceChildren(newContent);
 }
 
 function findProposalEnd(s) {
-  // Finds matching closing </div> for .proposal outer div by depth counting
-  // Start from opening <div class="proposal"
-  const openRe = /<div\b/gi;
-  const closeRe = /<\/div>/gi;
-  let depth = 0, i = 0;
-  // Skip first opening tag
-  const firstOpen = s.indexOf(">");
-  if (firstOpen < 0) return -1;
-  i = firstOpen + 1; depth = 1;
-  while (i < s.length && depth > 0) {
-    openRe.lastIndex = i; closeRe.lastIndex = i;
-    const o = openRe.exec(s); const c = closeRe.exec(s);
-    if (!c) return -1;
-    if (o && o.index < c.index) { depth++; i = o.index + 1; }
-    else { depth--; i = c.index + "</div>".length; if (depth === 0) return i; }
+  // s 는 <div class="proposal"... 로 시작하는 문자열.
+  // AI가 outer div 를 중간에 잘못 닫고 이후에도 제안서 HTML(page/figure/table 등)을
+  // 계속 출력하는 경우가 있어 단순 depth matching 은 신뢰할 수 없다.
+  // → 전략: s 안에서 제안서성 HTML 태그가 등장하는 한 계속 포함하고,
+  //   마지막 </div> 뒤 "순수 산문"이 나타나면 거기서 컷.
+  // 먼저 문자열 끝까지 가장 마지막 </div> 위치를 찾는다.
+  const allCloses = [...s.matchAll(/<\/div>/gi)];
+  if (!allCloses.length) return -1;
+  const lastClose = allCloses[allCloses.length - 1];
+  const lastCloseEnd = lastClose.index + "</div>".length;
+
+  // 그 뒤에 의미 있는 HTML 태그(제안서 블록류)가 더 있으면 그것도 포함
+  const after = s.slice(lastCloseEnd);
+  const moreHtml = /<(div|section|table|figure|svg|ul|ol|h\d)\b/i.exec(after);
+  if (moreHtml) {
+    // 뒤쪽에도 제안서 요소가 있음 → 문자열 끝까지 전부 proposal 로 포함
+    return s.length;
   }
-  return -1;
+  // 마지막 </div> 이후가 짧은 산문(설명/마침문구)이면 잘라내고 post 로 분리
+  if (after.trim().length > 0 && after.trim().length < 400) {
+    return lastCloseEnd;
+  }
+  // 그 외엔 문자열 끝까지 전부 proposal 취급 (안전)
+  return s.length;
 }
 
 function sanitizeProposalHtml(html) {

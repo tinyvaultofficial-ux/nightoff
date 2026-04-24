@@ -676,19 +676,21 @@ input, select, textarea { font-family: inherit; color: inherit; }
   position: relative; background: #ffffff; color: #111827;
   border: 1px solid var(--border); border-radius: var(--radius);
   box-shadow: var(--shadow-md);
-  /* A4 비율 힌트: 최소 높이만 설정 — 콘텐츠 많으면 자연스럽게 늘어남.
-     인쇄는 @page A4 규칙이 실제 페이지 분할 담당. */
-  min-height: 560px;
+  /* A4 가로형(297×210, 1.4142:1) 엄격 고정.
+     콘텐츠가 넘치면 hidden 으로 자르는 대신 내부 스크롤 허용 — 사용자 볼 수 있음. */
+  aspect-ratio: 1.4142 / 1;
   padding: 38px 48px 48px;
-  overflow: visible;  /* 콘텐츠 잘림 방지 (이전 hidden → visible) */
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 14px;
   font-size: 15px;
   page-break-inside: avoid;
 }
+/* 세로형은 RFP 명시 시에만 (드물다) */
 .proposal[data-orientation="portrait"] .proposal-page {
-  min-height: 760px; padding: 44px 40px 48px;
+  aspect-ratio: 0.7071 / 1;
+  padding: 44px 40px 48px;
 }
 /* 페이지 내부 콘텐츠 정렬 */
 .proposal-page > * { min-width: 0; }
@@ -723,7 +725,14 @@ input, select, textarea { font-family: inherit; color: inherit; }
 .proposal-page .page-content {
   flex: 1;
   display: flex; flex-direction: column; gap: 14px;
-  overflow: visible;
+  overflow-y: auto;        /* A4 범위 넘치면 내부 스크롤 */
+  overflow-x: hidden;
+  min-height: 0;            /* flex child 가 스크롤 가능해지도록 */
+}
+.proposal-page .page-content::-webkit-scrollbar { width: 6px; }
+.proposal-page .page-content::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--proposal-accent) 30%, transparent);
+  border-radius: 3px;
 }
 .proposal-page .page-summary {
   margin-top: auto;

@@ -424,96 +424,310 @@ function renderSmartLearningBanner(dna, stats) {
   return banner;
 }
 
+// ===== 산출내역서 (고정 양식: 구분→항목→세부내역→단가→수량→단위→기간→투입율→금액→비고) =====
+const BUDGET_COLS = [
+  { key: "item",         label: "항목",     width: "13%", align: "left" },
+  { key: "spec",         label: "세부내역", width: "20%", align: "left" },
+  { key: "unit_price",   label: "단가",     width: "10%", align: "right", num: true },
+  { key: "qty",          label: "수량",     width: "6%",  align: "right", num: true },
+  { key: "unit",         label: "단위",     width: "6%",  align: "center" },
+  { key: "period",       label: "기간",     width: "8%",  align: "center" },
+  { key: "utilization",  label: "투입율",   width: "7%",  align: "right", num: true, suffix: "%" },
+  { key: "amount",       label: "금액",     width: "12%", align: "right", num: true, bold: true },
+  { key: "note",         label: "비고",     width: "12%", align: "left" },
+];
+
+function _n(v) { const n = Number(String(v).replace(/[^\d.-]/g, "")); return isFinite(n) ? n : 0; }
+function _fmt(n) { return (Number(n) || 0).toLocaleString("ko-KR"); }
+
+function recalcBudget(data) {
+  let subtotalSum = 0;
+  (data.categories || []).forEach((cat) => {
+    cat.subtotal = 0;
+    (cat.items || []).forEach((it) => {
+      const up = _n(it.unit_price);
+      const qty = _n(it.qty);
+      const util = _n(it.utilization);
+      // amount = unit_price × qty × (util/100 or 1)
+      const mult = util > 0 ? util / 100 : 1;
+      it.amount = Math.round(up * qty * mult);
+      cat.subtotal += it.amount;
+    });
+    subtotalSum += cat.subtotal;
+  });
+  data.subtotal_sum = subtotalSum;
+  data.admin_fee   = Math.round(subtotalSum * 0.08);            // 일반관리비 8%
+  data.agency_fee  = Math.round((subtotalSum + data.admin_fee) * 0.10);  // 대행료 10%
+  data.total       = subtotalSum + data.admin_fee + data.agency_fee;
+  data.proposed    = Math.floor(data.total / 10000) * 10000;    // 만원 단위 절사
+  data.vat         = Math.round(data.proposed * 0.10);
+  data.grand_total = data.proposed + data.vat;
+  return data;
+}
+
 async function openBudgetModal(convId) {
   const backdrop = h("div", { class: "modal-backdrop", onclick: (e) => { if (e.target === backdrop) backdrop.remove(); } });
-  const modal = h("div", { class: "modal", style: "max-width: 900px; max-height: 88vh; display: flex; flex-direction: column;" });
+  const modal = h("div", { class: "modal budget-modal" });
   modal.appendChild(h("div", { class: "modal-header" }, [
-    h("h3", {}, "산출내역서 (업계 평균 시세 기반 자동 생성)"),
+    h("h3", {}, "산출내역서"),
     h("button", { class: "icon-btn", onclick: () => backdrop.remove(), html: iconHtml("x", 18) }),
   ]));
-  const body = h("div", { class: "modal-body", style: "overflow-y: auto;" });
+  const body = h("div", { class: "modal-body budget-body" });
   modal.appendChild(body);
   const footer = h("div", { class: "modal-footer" });
   modal.appendChild(footer);
 
-  body.appendChild(h("div", { style: "padding: 24px; text-align: center;" }, "AI가 산출내역을 작성하고 있어요…"));
+  body.appendChild(h("div", { style: "padding: 40px; text-align: center; color: var(--fg-2);" }, [
+    h("div", { class: "loading-dots", style: "display: inline-flex; gap: 4px; margin-bottom: 10px;" }, [h("span"), h("span"), h("span")]),
+    h("div", {}, "AI가 과업을 분석하고 업계 평균 시세로 산출내역을 작성하고 있어요…"),
+  ]));
   backdrop.appendChild(modal);
   document.body.appendChild(backdrop);
 
   let data;
   try {
-    data = await api.post("/api/budget/generate", { conversation_id: convId });
+    data = await api.post("/api/budget/generate", { conversation_id: convId }, { timeoutMs: 180000 });
   } catch (e) {
     body.innerHTML = "";
-    body.appendChild(h("div", { style: "padding: 24px; color: var(--danger);" }, e.message || "생성 실패"));
+    body.appendChild(h("div", { style: "padding: 40px; color: var(--danger); text-align: center;" }, e.message || "생성 실패"));
     return;
   }
+  if (!data.categories && data.sections) {
+    // 구 스키마 호환
+    data.categories = data.sections.map((s) => ({
+      name: s.name,
+      items: (s.items || []).map((it) => ({
+        item: it.name || it.item, spec: it.spec, unit_price: it.unit_price,
+        qty: it.qty, unit: it.unit, period: it.period || "-", utilization: 100,
+        amount: it.amount, note: it.note,
+      })),
+    }));
+  }
+  recalcBudget(data);
+  renderBudget(body, footer, data, backdrop);
+}
 
+function renderBudget(body, footer, data, backdrop) {
   body.innerHTML = "";
-  body.appendChild(h("h4", { style: "margin: 0 0 14px; font-size: 16px;" }, data.title || "산출내역서"));
-  const fmt = (n) => (n || 0).toLocaleString("ko-KR") + "원";
+  footer.innerHTML = "";
 
-  (data.sections || []).forEach((sec) => {
-    body.appendChild(h("div", { class: "budget-section" }, [
-      h("h5", {}, sec.name),
-      h("table", { class: "budget-table" }, [
-        h("thead", {}, h("tr", {}, [
-          h("th", {}, "항목"),
-          h("th", {}, "규격"),
-          h("th", {}, "수량"),
-          h("th", {}, "단위"),
-          h("th", {}, "단가"),
-          h("th", {}, "금액"),
-          h("th", {}, "비고"),
-        ])),
-        h("tbody", {}, (sec.items || []).map((it) => h("tr", {}, [
-          h("td", { contenteditable: "true" }, it.name || ""),
-          h("td", { contenteditable: "true" }, it.spec || ""),
-          h("td", { contenteditable: "true" }, String(it.qty ?? 1)),
-          h("td", { contenteditable: "true" }, it.unit || "식"),
-          h("td", { contenteditable: "true", style: "text-align:right;" }, fmt(it.unit_price)),
-          h("td", { style: "text-align:right; font-weight:600;" }, fmt(it.amount)),
-          h("td", { contenteditable: "true" }, it.note || ""),
-        ]))),
-      ]),
-    ]));
+  // 제목 (편집 가능)
+  const titleEl = h("input", {
+    class: "budget-title", value: data.title || "산출내역서",
+    placeholder: "사업/용역 명칭",
+    oninput: (e) => { data.title = e.target.value; },
   });
+  body.appendChild(titleEl);
 
-  body.appendChild(h("div", { class: "budget-total" }, [
-    h("div", {}, [h("span", { class: "muted small" }, "소계 "), h("strong", {}, fmt(data.subtotal))]),
-    h("div", {}, [h("span", { class: "muted small" }, "VAT 10% "), h("strong", {}, fmt(data.vat))]),
-    h("div", {}, [h("span", { class: "muted small" }, "합계 "), h("strong", { style: "color: var(--primary); font-size: 18px;" }, fmt(data.total))]),
-  ]));
+  // 테이블
+  const table = h("table", { class: "budget-fixed-table" });
+  const colgroup = h("colgroup", {}, [
+    h("col", { style: "width: 13%;" }),
+    ...BUDGET_COLS.map((c) => h("col", { style: `width: ${c.width};` })),
+  ]);
+  table.appendChild(colgroup);
+  table.appendChild(h("thead", {}, h("tr", {}, [
+    h("th", {}, "구분"),
+    ...BUDGET_COLS.map((c) => h("th", { style: `text-align: ${c.align};` }, c.label)),
+  ])));
 
+  const tbody = h("tbody");
+  table.appendChild(tbody);
+  body.appendChild(table);
+
+  const summary = h("div", { class: "budget-summary" });
+  body.appendChild(summary);
+
+  const rerenderRows = () => {
+    tbody.innerHTML = "";
+    (data.categories || []).forEach((cat, ci) => {
+      const rowCount = (cat.items || []).length || 1;
+      // 항목들
+      (cat.items || []).forEach((it, ii) => {
+        const tr = h("tr");
+        if (ii === 0) {
+          const catCell = h("td", {
+            class: "budget-cat-cell",
+            rowspan: String(rowCount + 1), // +1 for 소계 row
+            contenteditable: "true",
+            oninput: (e) => { cat.name = e.target.innerText; },
+          }, cat.name || "");
+          tr.appendChild(catCell);
+        }
+        BUDGET_COLS.forEach((col) => {
+          const td = h("td", {
+            class: "budget-cell " + (col.num ? "num" : ""),
+            style: `text-align: ${col.align};` + (col.bold ? " font-weight: 700;" : ""),
+            contenteditable: col.key === "amount" ? "false" : "true",
+            onblur: (e) => {
+              const raw = e.target.innerText.trim();
+              if (col.num) it[col.key] = _n(raw);
+              else it[col.key] = raw;
+              recalcBudget(data);
+              rerenderSummary();
+              if (["unit_price", "qty", "utilization"].includes(col.key)) {
+                // amount 셀만 업데이트
+                const rowEl = e.target.closest("tr");
+                const amtIdx = BUDGET_COLS.findIndex((c) => c.key === "amount");
+                // amount cell은 구분 셀 존재 여부에 따라 오프셋 조정 필요
+                const cells = rowEl.querySelectorAll("td");
+                // 첫 행일 때만 rowspan 셀이 맨 앞에 있음
+                const catCellOffset = ii === 0 ? 1 : 0;
+                const amtCell = cells[catCellOffset + amtIdx];
+                if (amtCell) amtCell.innerText = _fmt(it.amount);
+                // 소계도 업데이트
+                const subEl = tbody.querySelector(`[data-sub-idx="${ci}"]`);
+                if (subEl) subEl.innerText = _fmt(cat.subtotal) + "원";
+              }
+            },
+          }, col.key === "amount" ? _fmt(it.amount) :
+             col.num ? (it[col.key] != null ? String(it[col.key]) : "0") :
+             (it[col.key] || ""));
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      // 소계 행
+      const subTr = h("tr", { class: "budget-sub-row" });
+      subTr.appendChild(h("td", { colspan: String(BUDGET_COLS.length - 1), style: "text-align: right; font-weight: 600;" }, "소계"));
+      subTr.appendChild(h("td", {
+        "data-sub-idx": String(ci),
+        style: "text-align: right; font-weight: 700; color: var(--primary);",
+      }, _fmt(cat.subtotal) + "원"));
+      subTr.appendChild(h("td"));  // 비고
+      tbody.appendChild(subTr);
+    });
+  };
+
+  const rerenderSummary = () => {
+    summary.innerHTML = "";
+    const rows = [
+      { label: "소계 합", value: data.subtotal_sum },
+      { label: "일반관리비 (소계합 × 8%)", value: data.admin_fee },
+      { label: "대행료 ((소계합+일반관리비) × 10%)", value: data.agency_fee },
+      { label: "합계", value: data.total, strong: true },
+      { label: "제안가 (만원 단위 절사)", value: data.proposed, strong: true, accent: true },
+      { label: "부가세 (제안가 × 10%)", value: data.vat },
+      { label: "최종 제안가 (VAT 포함)", value: data.grand_total, huge: true, accent: true },
+    ];
+    rows.forEach((r) => {
+      summary.appendChild(h("div", { class: "budget-sum-row " + (r.accent ? "accent" : "") + (r.huge ? " huge" : "") }, [
+        h("div", { class: "sum-label" }, r.label),
+        h("div", { class: "sum-value" + (r.strong ? " strong" : ""), }, _fmt(r.value) + "원"),
+      ]));
+    });
+  };
+
+  rerenderRows();
+  rerenderSummary();
+
+  // 푸터 버튼
   footer.appendChild(h("button", { class: "btn btn-ghost", onclick: () => backdrop.remove() }, "닫기"));
   footer.appendChild(h("button", {
     class: "btn btn-outline",
-    html: `${iconHtml("printer", 14)}<span>인쇄 / PDF</span>`,
-    onclick: () => { window.print(); },
+    html: `${iconHtml("printer", 14)}<span>PDF / 인쇄</span>`,
+    onclick: () => printBudget(data),
   }));
   footer.appendChild(h("button", {
     class: "btn btn-primary",
-    html: `${iconHtml("save", 14)}<span>CSV 다운로드</span>`,
+    html: `${iconHtml("save", 14)}<span>엑셀 다운로드</span>`,
     onclick: () => downloadBudgetCsv(data),
   }));
 }
 
 function downloadBudgetCsv(data) {
-  const rows = [["카테고리", "항목", "규격", "수량", "단위", "단가", "금액", "비고"]];
-  (data.sections || []).forEach((s) => (s.items || []).forEach((it) => {
-    rows.push([s.name, it.name, it.spec, it.qty, it.unit, it.unit_price, it.amount, it.note]);
-  }));
-  rows.push(["", "", "", "", "", "소계", data.subtotal, ""]);
-  rows.push(["", "", "", "", "", "VAT 10%", data.vat, ""]);
-  rows.push(["", "", "", "", "", "합계", data.total, ""]);
-  const csv = "\uFEFF" + rows.map((r) => r.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+  const header = ["구분", "항목", "세부내역", "단가", "수량", "단위", "기간", "투입율", "금액", "비고"];
+  const rows = [header];
+  (data.categories || []).forEach((cat) => {
+    (cat.items || []).forEach((it) => {
+      rows.push([
+        cat.name, it.item || "", it.spec || "",
+        it.unit_price, it.qty, it.unit || "",
+        it.period || "", it.utilization || 100,
+        it.amount, it.note || "",
+      ]);
+    });
+    rows.push(["", "", "", "", "", "", "", "소계", cat.subtotal, ""]);
+  });
+  rows.push(["", "", "", "", "", "", "", "소계합", data.subtotal_sum, ""]);
+  rows.push(["", "", "", "", "", "", "", "일반관리비(8%)", data.admin_fee, ""]);
+  rows.push(["", "", "", "", "", "", "", "대행료(10%)", data.agency_fee, ""]);
+  rows.push(["", "", "", "", "", "", "", "합계", data.total, ""]);
+  rows.push(["", "", "", "", "", "", "", "제안가(만원절사)", data.proposed, ""]);
+  rows.push(["", "", "", "", "", "", "", "부가세(10%)", data.vat, ""]);
+  rows.push(["", "", "", "", "", "", "", "최종 제안가(VAT포함)", data.grand_total, ""]);
+
+  const csv = "\uFEFF" + rows.map((r) => r.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `산출내역_${(data.title || "제안").replace(/\s+/g, "_")}.csv`;
+  a.download = `산출내역서_${(data.title || "제안").replace(/\s+/g, "_")}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function printBudget(data) {
+  const w = window.open("", "_blank", "width=1000,height=800");
+  if (!w) { toast("팝업이 차단됐어요. 팝업 허용 후 다시 시도해주세요.", "error"); return; }
+  const rowHtml = (data.categories || []).map((cat) => {
+    const rc = (cat.items || []).length;
+    const items = (cat.items || []).map((it, i) => `
+      <tr>
+        ${i === 0 ? `<td rowspan="${rc + 1}" class="cat">${escapeHtml(cat.name || "")}</td>` : ""}
+        <td>${escapeHtml(it.item || "")}</td>
+        <td>${escapeHtml(it.spec || "")}</td>
+        <td class="num">${_fmt(it.unit_price)}</td>
+        <td class="num">${_fmt(it.qty)}</td>
+        <td class="c">${escapeHtml(it.unit || "")}</td>
+        <td class="c">${escapeHtml(it.period || "")}</td>
+        <td class="num">${_fmt(it.utilization)}%</td>
+        <td class="num bold">${_fmt(it.amount)}</td>
+        <td>${escapeHtml(it.note || "")}</td>
+      </tr>`).join("");
+    const sub = `<tr class="sub"><td colspan="8" class="r">소계</td><td class="num bold accent">${_fmt(cat.subtotal)}원</td><td></td></tr>`;
+    return items + sub;
+  }).join("");
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>산출내역서 · ${escapeHtml(data.title || "")}</title>
+<style>
+body{font-family:Pretendard,sans-serif;padding:24px;color:#111;font-size:12px;}
+h1{font-size:22px;margin:0 0 16px;letter-spacing:-0.02em;}
+table{width:100%;border-collapse:collapse;}
+th,td{border:1px solid #d4d4d8;padding:6px 8px;vertical-align:middle;}
+th{background:#f4f4f5;font-size:11px;font-weight:700;}
+td.num{text-align:right;}
+td.c{text-align:center;}
+td.r{text-align:right;}
+td.bold{font-weight:700;}
+td.accent{color:#6b46e5;}
+td.cat{background:#faf5ff;font-weight:600;}
+tr.sub{background:#fafafa;}
+.summary{margin-top:20px;border-top:2px solid #111;padding-top:14px;}
+.summary-row{display:flex;justify-content:space-between;padding:4px 12px;font-size:13px;}
+.summary-row.huge{font-size:16px;font-weight:700;color:#6b46e5;border-top:1px solid #d4d4d8;margin-top:6px;padding-top:10px;}
+.summary-row.accent .val{color:#6b46e5;font-weight:700;}
+@media print{body{padding:12mm;} @page{size:A4;margin:10mm;}}
+</style></head><body>
+<h1>산출내역서 · ${escapeHtml(data.title || "")}</h1>
+<table>
+<colgroup><col style="width:13%"/><col style="width:13%"/><col style="width:20%"/><col style="width:10%"/><col style="width:6%"/><col style="width:6%"/><col style="width:8%"/><col style="width:7%"/><col style="width:12%"/><col style="width:12%"/></colgroup>
+<thead><tr>
+<th>구분</th><th>항목</th><th>세부내역</th><th>단가</th><th>수량</th><th>단위</th><th>기간</th><th>투입율</th><th>금액</th><th>비고</th>
+</tr></thead>
+<tbody>${rowHtml}</tbody>
+</table>
+<div class="summary">
+<div class="summary-row"><span>소계 합</span><span class="val">${_fmt(data.subtotal_sum)}원</span></div>
+<div class="summary-row"><span>일반관리비 (소계합 × 8%)</span><span class="val">${_fmt(data.admin_fee)}원</span></div>
+<div class="summary-row"><span>대행료 ((소계합+관리비) × 10%)</span><span class="val">${_fmt(data.agency_fee)}원</span></div>
+<div class="summary-row"><span><b>합계</b></span><span class="val"><b>${_fmt(data.total)}원</b></span></div>
+<div class="summary-row accent"><span>제안가 (만원 단위 절사)</span><span class="val">${_fmt(data.proposed)}원</span></div>
+<div class="summary-row"><span>부가세 (제안가 × 10%)</span><span class="val">${_fmt(data.vat)}원</span></div>
+<div class="summary-row huge"><span>최종 제안가 (VAT 포함)</span><span class="val">${_fmt(data.grand_total)}원</span></div>
+</div>
+<script>setTimeout(()=>window.print(),300);</script>
+</body></html>`);
+  w.document.close();
 }
 
 async function openCompanyDnaModal() {

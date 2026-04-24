@@ -1038,37 +1038,85 @@ input, select, textarea { font-family: inherit; color: inherit; }
   flex-shrink: 0;
 }
 
-/* 산출내역서 모달 */
-.budget-section { margin-bottom: 20px; }
-.budget-section h5 {
-  margin: 0 0 8px; padding: 8px 12px;
-  background: var(--primary-soft); color: var(--primary);
-  border-radius: 8px; font-size: 13.5px; font-weight: 700;
+/* ===== 산출내역서 모달 (고정 양식) ===== */
+.budget-modal {
+  max-width: 1200px !important;
+  width: 95vw;
+  max-height: 92vh;
+  display: flex; flex-direction: column;
 }
-.budget-table {
-  width: 100%; border-collapse: collapse;
-  font-size: 13px;
+.budget-body { overflow-y: auto; padding: 18px 22px 10px; }
+.budget-title {
+  width: 100%;
+  font-size: 20px; font-weight: 700; letter-spacing: -0.02em;
+  padding: 10px 12px; margin-bottom: 14px;
+  border: 1px solid transparent; border-radius: 8px;
+  background: transparent; color: var(--fg);
 }
-.budget-table th {
-  background: var(--bg-2); color: var(--fg-2);
-  font-size: 11.5px; font-weight: 600; text-transform: uppercase;
-  padding: 8px 10px; border-bottom: 1px solid var(--border-strong);
-  text-align: left;
-}
-.budget-table td {
-  padding: 8px 10px; border-bottom: 1px solid var(--border);
-  vertical-align: top;
-}
-.budget-table td[contenteditable="true"]:focus {
-  outline: 2px solid var(--primary); outline-offset: -2px;
+.budget-title:hover { border-color: var(--border); }
+.budget-title:focus {
+  outline: none; border-color: var(--primary);
   background: var(--primary-soft);
 }
-.budget-total {
-  display: flex; gap: 20px; justify-content: flex-end;
-  padding: 14px 16px; margin-top: 14px;
-  background: var(--bg-2); border-radius: 10px;
+
+.budget-fixed-table {
+  width: 100%; border-collapse: collapse;
+  font-size: 12.5px; table-layout: fixed;
 }
-.budget-total strong { margin-left: 4px; }
+.budget-fixed-table th {
+  background: linear-gradient(180deg, var(--bg-2), #eaeaec);
+  color: var(--fg); font-weight: 700; font-size: 11.5px;
+  padding: 10px 8px; border: 1px solid var(--border-strong);
+  letter-spacing: 0.01em;
+}
+.budget-fixed-table td {
+  padding: 6px 8px; border: 1px solid var(--border);
+  vertical-align: middle; line-height: 1.5;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.budget-fixed-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.budget-fixed-table td[contenteditable="true"] { cursor: text; }
+.budget-fixed-table td[contenteditable="true"]:hover { background: color-mix(in oklab, var(--primary) 3%, #fff); }
+.budget-fixed-table td[contenteditable="true"]:focus {
+  outline: 2px solid var(--primary); outline-offset: -2px;
+  background: color-mix(in oklab, var(--primary) 6%, #fff);
+}
+.budget-fixed-table td.budget-cat-cell {
+  background: linear-gradient(180deg, color-mix(in oklab, var(--primary) 10%, #fff), color-mix(in oklab, var(--primary) 6%, #fff));
+  font-weight: 700; color: var(--primary);
+  text-align: center; vertical-align: middle;
+  font-size: 13px; letter-spacing: -0.01em;
+}
+.budget-fixed-table tr.budget-sub-row {
+  background: var(--bg-2);
+}
+.budget-fixed-table tr.budget-sub-row td {
+  border-top: 2px solid var(--border-strong);
+  border-bottom: 2px solid var(--border-strong);
+}
+
+/* 요약 박스 */
+.budget-summary {
+  margin-top: 20px;
+  background: #fff; border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 14px 20px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.budget-sum-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 2px;
+  font-size: 13.5px;
+}
+.budget-sum-row .sum-label { color: var(--fg-2); }
+.budget-sum-row .sum-value { font-weight: 600; font-variant-numeric: tabular-nums; }
+.budget-sum-row .sum-value.strong { font-weight: 700; color: var(--fg); }
+.budget-sum-row.accent .sum-value { color: var(--primary); }
+.budget-sum-row.huge {
+  border-top: 2px solid var(--primary); margin-top: 8px; padding-top: 14px;
+  font-size: 16px;
+}
+.budget-sum-row.huge .sum-label { color: var(--fg); font-weight: 700; }
+.budget-sum-row.huge .sum-value { color: var(--primary); font-size: 22px; font-weight: 800; }
 
 /* ===== Proposal fullscreen viewer ===== */
 .proposal-viewer-backdrop {

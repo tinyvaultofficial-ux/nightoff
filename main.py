@@ -2257,38 +2257,61 @@ def api_signup(body: SignupIn):
 
 
 # ---------- 산출내역서 생성 ----------
-BUDGET_TABLE_PROMPT = """당신은 행사/용역 분야 산출내역서(Cost Breakdown) 작성 전문가입니다.
-아래 제안서/RFP 컨텍스트를 보고 업계 평균 시세로 산출내역 JSON을 작성하세요.
+BUDGET_TABLE_PROMPT = """당신은 용역/행사 분야 산출내역서(Cost Breakdown) 작성 전문가입니다.
+아래 제안서/RFP 컨텍스트를 분석해서 과업 성격에 맞는 대분류를 자동 설정하고,
+각 대분류별 세부 항목을 업계 평균 시세 기반으로 작성하세요.
 
 컨텍스트:
 ---
 {CONTEXT}
 ---
 
-JSON 스키마 (금액은 원 단위 정수, 수량은 숫자, 단가는 원):
+고정 양식 (열): 구분 → 항목 → 세부내역 → 단가 → 수량 → 단위 → 기간 → 투입율 → 금액 → 비고
+
+JSON 스키마 (금액·단가는 원 단위 정수):
 {
   "title": "사업/용역 명칭",
-  "sections": [
+  "categories": [
     {
-      "name": "카테고리 (예: 무대/음향, 인건비, 홍보·마케팅, 운영, 예비비)",
+      "name": "대분류 (AI 자동 설정 — 예: 기획/컨셉, 무대/음향/조명, 홍보·마케팅,
+              운영·진행 인건비, 디자인/영상, 시스템 구축, 예비비 등)",
       "items": [
-        {"name": "세부 항목명", "spec": "규격/비고", "qty": 1, "unit": "식", "unit_price": 3000000, "amount": 3000000, "note": ""}
+        {
+          "item": "항목명 (예: 메인 무대 설치)",
+          "spec": "세부내역 (예: 6m×10m LED 백월, 프레임 포함)",
+          "unit_price": 3000000,
+          "qty": 1,
+          "unit": "식",
+          "period": "2일",
+          "utilization": 100,
+          "amount": 3000000,
+          "note": ""
+        }
       ]
     }
-  ],
-  "subtotal": 0,
-  "vat": 0,
-  "total": 0
+  ]
 }
 
 규칙:
-- 모든 amount = qty * unit_price (정수 반올림)
-- subtotal = 모든 items.amount 합
-- vat = subtotal * 0.1 (정수 반올림)
-- total = subtotal + vat
-- items는 8~25개 사이. 행사 규모·예산에 비례.
-- 업계 평균 시세 기반 (예: 메인 무대 4×8m 3,000,000원, 음향 장비 2,500,000원, 진행 PD 1일 500,000원 등).
-JSON만 출력."""
+- 대분류는 과업 성격에 맞춰 3~7개 자동 설정. 단순 복붙 금지.
+- 각 대분류별 세부 항목 4~12개. 전체 합산 항목 25~60개 사이.
+- unit_price(단가)는 한국 업계 평균 시세 기반 — 예:
+  * 메인 무대 4×8m 3,000,000원
+  * 기본 음향 시스템 2,500,000원
+  * LED 월 1㎡당 80,000원
+  * 진행 PD 1일 500,000원
+  * 기획팀 투입(AD/기획자) 월 4,500,000원
+  * 스크립트/콘티 제작 1,500,000원
+  * SNS 광고 1개월 3,000,000원
+  * 예비비(총액 3~5%) 별도 카테고리
+- utilization(투입율)은 % 단위 정수, 기본 100. 부분 투입 시 50/30/70 등.
+- amount = unit_price * qty * (utilization / 100)  — 반올림 정수
+- period는 "1일", "3개월", "-" 등 자연어 허용 (계산에 영향 없음)
+- note에는 산출 근거·특이사항 짧게
+- 소계·일반관리비(소계합×8%)·대행료((소계합+일반관리비)×10%)·합계·VAT(10%)는
+  프론트에서 자동 계산하므로 출력할 필요 없음
+
+JSON만 출력. 설명문·코드블록 금지."""
 
 
 class BudgetRequest(BaseModel):
@@ -2327,7 +2350,7 @@ def api_budget_generate(body: BudgetRequest):
         prompt = BUDGET_TABLE_PROMPT.replace("{CONTEXT}", ctx)
         resp = client.messages.create(
             model=get_setting("model", MODEL_DEFAULT),
-            max_tokens=4000,
+            max_tokens=8000,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = resp.content[0].text.strip()

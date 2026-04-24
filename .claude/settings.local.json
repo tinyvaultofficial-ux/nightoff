@@ -168,7 +168,9 @@
       "Bash(GEMINI_API_KEY=\"AIzaSyAX34VvCYKBaMIr_c9KwByhZF48J9cxFkM\" python -m uvicorn main:app --host 127.0.0.1 --port 8000)",
       "Bash(echo \"PID: $!\" sleep 3 curl -s --max-time 5 http://127.0.0.1:8000/api/settings)",
       "Bash(python _gen_test.py)",
-      "Bash(iconv -f cp949 -t utf-8)"
+      "Bash(iconv -f cp949 -t utf-8)",
+      "Bash(python _pollinate.py)",
+      "Bash(python _pollinate2.py)"
     ]
   }
 }

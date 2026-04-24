@@ -57,7 +57,7 @@ input, select, textarea { font-family: inherit; color: inherit; }
 }
 .sidebar-logo {
   display: flex; align-items: center; justify-content: center;
-  min-height: 110px; padding: 22px 20px; border-bottom: 1px solid var(--border);
+  padding: 8px 10px; border-bottom: 1px solid var(--border);
   cursor: pointer; user-select: none; transition: opacity .15s;
   background: #fff;
 }
@@ -65,8 +65,8 @@ input, select, textarea { font-family: inherit; color: inherit; }
 .sidebar-logo:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .sidebar-logo-img {
   width: 100%;
-  max-width: 240px;
-  max-height: 80px;
+  max-width: 100%;
+  height: auto;
   object-fit: contain; display: block;
 }
 /* Main header logo (dashboard) — 가로형 로고에 맞게 비율 유지 */

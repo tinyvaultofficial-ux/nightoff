@@ -1676,15 +1676,44 @@ async function renderCompetitorSection(cid) {
     if (searchAborter) searchAborter.abort();
     searchAborter = new AbortController();
     showLoadingDropdown();
+    // 15초·30초 경과 시 메시지 업데이트 (웹 검색은 시간이 걸려요)
+    const hint1 = setTimeout(() => {
+      const l = dropdown.querySelector(".autocomplete-loading span:last-child");
+      if (l) l.textContent = "웹 검색이 진행 중이에요… (최대 1분)";
+    }, 15000);
+    const hint2 = setTimeout(() => {
+      const l = dropdown.querySelector(".autocomplete-loading span:last-child");
+      if (l) l.textContent = "거의 다 됐어요… 조금만 더 기다려주세요";
+    }, 35000);
     try {
-      const r = await api.post(`/api/clients/${cid}/competitors/search`, { query: q, context: ctx.value.trim() }, { signal: searchAborter.signal, timeoutMs: 45000 });
-      if (q !== currentQuery) return; // stale
+      const r = await api.post(
+        `/api/clients/${cid}/competitors/search`,
+        { query: q, context: ctx.value.trim() },
+        { signal: searchAborter.signal, timeoutMs: 90000 }  // 90초로 증가 (web_search 툴 고려)
+      );
+      if (q !== currentQuery) return;
       showCandidatesDropdown(r.candidates || []);
     } catch (e) {
       if (e.name === "AbortError") return;
       dropdown.innerHTML = "";
-      dropdown.appendChild(h("div", { class: "autocomplete-empty" }, e.message || "검색 중 문제가 생겼어요."));
+      const msg = /timeout|지연/.test(String(e.message || ""))
+        ? `웹 검색이 오래 걸려요. "${q}" 그대로 바로 분석하려면 아래 버튼을 눌러주세요.`
+        : (e.message || "검색 중 문제가 생겼어요.");
+      dropdown.appendChild(h("div", { class: "autocomplete-empty" }, msg));
+      // 타임아웃/실패 시 "직접" 옵션 즉시 노출
+      if (q) {
+        dropdown.appendChild(h("div", {
+          class: "autocomplete-item ac-direct",
+          onclick: () => { closeDropdown(); runAnalysis(q, ctx.value.trim()); },
+        }, [
+          h("div", { class: "ac-name" }, `"${q}" 그대로 분석`),
+          h("div", { class: "ac-desc" }, "입력한 이름 그대로 경쟁사 분석 진행"),
+        ]));
+      }
       dropdown.classList.remove("hidden");
+    } finally {
+      clearTimeout(hint1);
+      clearTimeout(hint2);
     }
   }
 

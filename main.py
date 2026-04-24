@@ -2520,7 +2520,7 @@ def _extract_text_from_resp(resp) -> str:
 
 @app.post("/api/clients/{cid}/competitors/search")
 def api_comp_search(cid: str, body: CompetitorQueryIn):
-    """기업명 입력 → 웹 검색으로 실존 후보 3~5개 반환."""
+    """기업명 입력 → 웹 검색으로 실존 후보 3~5개 반환. 속도 최우선."""
     with get_db() as db:
         c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
         if not c:
@@ -2530,10 +2530,12 @@ def api_comp_search(cid: str, body: CompetitorQueryIn):
         prompt = (COMPETITOR_CANDIDATES_PROMPT
                   .replace("{QUERY}", body.query)
                   .replace("{CONTEXT}", body.context or "(없음)"))
+        # 후보 검색은 빠른 모델 + 검색 횟수 제한으로 응답 시간 단축
+        fast_search_tool = {"type": "web_search_20250305", "name": "web_search", "max_uses": 2}
         resp = client.messages.create(
-            model=get_setting("model", MODEL_DEFAULT),
-            max_tokens=2000,
-            tools=[WEB_SEARCH_TOOL],
+            model=MODEL_FAST,  # Haiku 4.5 — 빠른 응답
+            max_tokens=1500,
+            tools=[fast_search_tool],
             messages=[{"role": "user", "content": prompt}],
         )
         raw = _extract_text_from_resp(resp)
@@ -2544,8 +2546,16 @@ def api_comp_search(cid: str, body: CompetitorQueryIn):
             candidates = []
     except HTTPException:
         raise
+    except anthropic.APIError as e:
+        log.warning("경쟁사 후보 검색 Anthropic 오류: %s", e)
+        # 실패해도 사용자가 입력한 이름으로 직접 진행할 수 있게 후보 1개 반환
+        candidates = [{"name": body.query, "desc": "자동 검색을 이용할 수 없어요 — 입력한 이름으로 직접 분석 가능", "domain": ""}]
+    except json.JSONDecodeError as e:
+        log.warning("경쟁사 후보 JSON 파싱 실패: %s · raw=%s", e, (raw or "")[:200])
+        candidates = [{"name": body.query, "desc": "검색 결과 파싱에 실패했어요 — 입력한 이름으로 직접 분석 가능", "domain": ""}]
     except Exception as e:
-        candidates = [{"name": body.query, "desc": f"자동 검색 실패 — 직접 이름으로 분석 진행 가능: {e}", "domain": ""}]
+        log.exception("경쟁사 후보 검색 예외")
+        candidates = [{"name": body.query, "desc": f"검색 중 문제가 생겼어요 ({type(e).__name__}) — 직접 분석 가능", "domain": ""}]
     return {"candidates": candidates}
 
 

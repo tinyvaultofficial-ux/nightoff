@@ -138,7 +138,11 @@
       "Bash(curl -s -X POST \"http://127.0.0.1:8000/api/clients/46757fe0ac6e/rfp\" -F \"file=@/c/Users/00/Downloads/\\(0205공고문\\)2026 만석거 새빛축제 행사대행 용역.pdf\" -F \"role=공고문\" -w \"\\\\nHTTP %{http_code} · %{time_total}s\\\\n\")",
       "Bash(curl -s \"http://127.0.0.1:8000/api/clients\")",
       "Bash(curl -s -X POST \"http://127.0.0.1:8000/api/clients/46757fe0ac6e/rfp\" -F \"file=@/c/Users/00/Downloads/\\(공고\\)제안요청서 수정본\\(2026 안전문화 캠페인 기획·홍보 용역\\).hwpx\" -F \"role=공고문\" -w \"\\\\nHTTP %{http_code} · %{time_total}s\\\\n\")",
-      "Bash(time curl *)"
+      "Bash(time curl *)",
+      "Bash(curl -s http://127.0.0.1:8000/api/settings)",
+      "Bash(ANTHROPIC_API_KEY=\"sk-ant-api03-RAILWAY_ENV_TEST_KEY_1234567890abcdef\" python -m uvicorn main:app --host 127.0.0.1 --port 8000)",
+      "Bash(pkill -f \"uvicorn main:app\")",
+      "Bash(taskkill //F //IM python.exe)"
     ]
   }
 }

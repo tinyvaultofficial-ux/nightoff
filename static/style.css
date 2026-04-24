@@ -676,27 +676,27 @@ input, select, textarea { font-family: inherit; color: inherit; }
   position: relative; background: #ffffff; color: #111827;
   border: 1px solid var(--border); border-radius: var(--radius);
   box-shadow: var(--shadow-md);
-  aspect-ratio: 1.4142 / 1;
+  /* A4 비율 힌트: 최소 높이만 설정 — 콘텐츠 많으면 자연스럽게 늘어남.
+     인쇄는 @page A4 규칙이 실제 페이지 분할 담당. */
+  min-height: 560px;
   padding: 38px 48px 48px;
-  overflow: hidden;
-  display: grid;
-  grid-template-rows: 18px auto 1fr auto;  /* 섹션명 / 거버닝 / 본문 / 요약 */
-  row-gap: 14px;
+  overflow: visible;  /* 콘텐츠 잘림 방지 (이전 hidden → visible) */
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
   font-size: 15px;
   page-break-inside: avoid;
 }
 .proposal[data-orientation="portrait"] .proposal-page {
-  aspect-ratio: 0.7071 / 1; padding: 44px 40px 48px;
-  grid-template-rows: 18px auto 1fr auto;
+  min-height: 760px; padding: 44px 40px 48px;
 }
-/* 페이지 내부 콘텐츠 정렬 오차 방지 — 그리드 기반 박스들을 일관된 간격으로 */
+/* 페이지 내부 콘텐츠 정렬 */
 .proposal-page > * { min-width: 0; }
 .proposal-page .page-content {
-  display: grid;
-  grid-auto-flow: row;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
   gap: 14px;
-  overflow: hidden;
+  overflow: visible;  /* 콘텐츠 잘림 방지 */
 }
 .proposal-page .page-content > * { min-width: 0; }
 /* 세그먼트가 지나치게 많아도 넘치지 않게 — 중요 요소만 노출 */
@@ -714,14 +714,17 @@ input, select, textarea { font-family: inherit; color: inherit; }
   font-size: 34px; font-weight: 800; line-height: 1.25; letter-spacing: -0.02em;
   color: var(--proposal-accent);
   max-width: 95%;
-  grid-row: 2;
-  align-self: start;
+  margin-top: 22px;
+}
+.proposal-page .page-content {
+  flex: 1;
+  display: flex; flex-direction: column; gap: 14px;
+  overflow: visible;
 }
 .proposal-page .page-summary {
+  margin-top: auto;
   padding-top: 18px; border-top: 2px solid var(--proposal-accent);
   font-size: 15px; font-weight: 600; color: #111827;
-  grid-row: 4;
-  align-self: end;
 }
 .keyword-row {
   display: flex; align-items: center; justify-content: space-between;

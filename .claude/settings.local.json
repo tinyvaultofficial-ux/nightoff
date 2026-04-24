@@ -158,7 +158,8 @@
       "Bash(python)",
       "Bash(python _check_balance.py)",
       "Bash(python _check_balance2.py)",
-      "WebFetch(domain:developers.gamma.app)"
+      "WebFetch(domain:developers.gamma.app)",
+      "Bash(python -c \"import httpx; print\\('httpx OK', httpx.__version__\\)\")"
     ]
   }
 }

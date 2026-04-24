@@ -389,16 +389,68 @@ def extract_text(path: Path) -> str:
         if suffix == ".pdf":
             from pypdf import PdfReader
             reader = PdfReader(str(path))
-            return "\n\n".join((p.extract_text() or "") for p in reader.pages)
-        if suffix in (".docx", ".doc"):
+            pages_text = []
+            for p in reader.pages:
+                try:
+                    t = p.extract_text() or ""
+                except Exception:
+                    t = ""
+                pages_text.append(t)
+            full = "\n\n".join(pages_text).strip()
+            if not full:
+                return "[PDF 본문 추출 실패 — 스캔 이미지 기반 PDF일 수 있어요. 텍스트 변환 후 다시 업로드해 주세요.]"
+            return full
+        if suffix == ".docx":
             from docx import Document
             doc = Document(str(path))
-            return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+            text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+            if not text:
+                return "[Word 문서 본문 추출 실패 — 빈 문서일 수 있어요.]"
+            return text
+        if suffix == ".doc":
+            # python-docx는 구형 .doc 미지원 — 명확한 안내
+            return "[구형 .doc 형식은 지원하지 않아요. .docx 로 저장 후 업로드해 주세요.]"
         if suffix in (".txt", ".md"):
             return path.read_text(encoding="utf-8", errors="ignore")
+        if suffix in (".hwp", ".hwpx"):
+            # HWP 텍스트 추출 시도 — olefile 기반, 실패 시 명확한 안내
+            try:
+                return _extract_hwp_text(path)
+            except Exception as e:
+                log.warning("HWP 추출 실패: %s", e)
+                return ("[HWP 파일 텍스트 자동 추출이 지원되지 않아요. "
+                        "한글 프로그램에서 PDF 또는 Word(.docx) 로 변환 후 업로드해 주세요.]")
     except Exception as e:
-        return f"[파일 텍스트 추출 실패: {e}]"
+        log.exception("파일 텍스트 추출 실패 — %s", path)
+        return f"[파일 텍스트 추출 실패: {type(e).__name__}]"
     return ""
+
+
+def _extract_hwp_text(path: Path) -> str:
+    """최소 HWP 텍스트 추출 — olefile 우회. 대부분 깨끗하진 않지만 키워드는 잡힘."""
+    try:
+        import zipfile
+        # .hwpx 는 zip 기반
+        if path.suffix.lower() == ".hwpx":
+            with zipfile.ZipFile(path) as zf:
+                texts = []
+                for n in zf.namelist():
+                    if n.endswith(".xml") and "/Contents/" in n.replace("\\", "/"):
+                        try:
+                            raw = zf.read(n).decode("utf-8", errors="ignore")
+                            # XML 태그 제거
+                            import re as _re
+                            text = _re.sub(r"<[^>]+>", " ", raw)
+                            texts.append(text)
+                        except Exception:
+                            continue
+                joined = " ".join(texts)
+                joined = re.sub(r"\s+", " ", joined).strip()
+                if len(joined) > 100:
+                    return joined[:40000]
+    except Exception:
+        pass
+    return "[HWP 파일 텍스트 자동 추출이 지원되지 않아요. PDF 또는 Word(.docx) 로 변환 후 업로드해 주세요.]"
 
 
 def human_size(n: int) -> str:
@@ -1505,7 +1557,7 @@ def api_conv_end(conv_id: str):
             max_tokens=2000,
             messages=[{"role": "user", "content": prompt}],
         )
-        raw = resp.content[0].text.strip()
+        raw = _extract_text_from_resp(resp)
         # Strip accidental code fences
         raw = re.sub(r"^```(?:json)?\s*", "", raw)
         raw = re.sub(r"\s*```$", "", raw)
@@ -1769,7 +1821,9 @@ def _run_rfp_aggregate(cid: str) -> dict:
             max_tokens=4000,
             messages=[{"role": "user", "content": prompt}],
         )
-        raw = resp.content[0].text.strip()
+        raw = _extract_text_from_resp(resp)
+        if not raw:
+            raise ValueError("AI가 빈 응답을 반환했어요 — 파일 본문 추출 실패 또는 토큰 한도 초과일 수 있어요.")
         raw = re.sub(r"^```(?:json)?\s*", "", raw)
         raw = re.sub(r"\s*```$", "", raw)
         analysis = json.loads(raw)
@@ -1777,11 +1831,14 @@ def _run_rfp_aggregate(cid: str) -> dict:
         log.warning("RFP 통합 분석 Anthropic 오류: %s", e)
         analysis = {"error": translate_anthropic_error(e)}
     except json.JSONDecodeError as e:
-        log.warning("RFP 통합 분석 JSON 파싱 실패: %s", e)
-        analysis = {"error": "AI 응답을 이해하지 못했어요. 다시 시도해 주세요."}
+        log.warning("RFP 통합 분석 JSON 파싱 실패: %s · 원본 앞 200자: %s", e, (raw or "")[:200])
+        analysis = {"error": "AI 응답을 이해하지 못했어요 (JSON 파싱 실패). 다시 시도해 주세요."}
+    except ValueError as e:
+        log.warning("RFP 통합 분석 값 오류: %s", e)
+        analysis = {"error": str(e)}
     except Exception as e:
         log.exception("RFP 통합 분석 예외")
-        analysis = {"error": "RFP 분석 중 문제가 생겼어요. 다시 시도해 주세요."}
+        analysis = {"error": f"RFP 분석 중 문제가 생겼어요 ({type(e).__name__}: {str(e)[:100]})"}
 
     # orientation 기본값 강제 — 명시 없으면 무조건 landscape
     if not analysis.get("orientation") or analysis.get("orientation") not in ("landscape", "portrait"):
@@ -1843,7 +1900,7 @@ def _rebuild_client_profile(cid: str, rfp_analysis: Optional[dict] = None) -> di
             max_tokens=1500,
             messages=[{"role": "user", "content": prompt}],
         )
-        raw = resp.content[0].text.strip()
+        raw = _extract_text_from_resp(resp)
         raw = re.sub(r"^```(?:json)?\s*", "", raw)
         raw = re.sub(r"\s*```$", "", raw)
         data = json.loads(raw)
@@ -1899,7 +1956,7 @@ def _rebuild_company_dna() -> dict:
             max_tokens=1500,
             messages=[{"role": "user", "content": prompt}],
         )
-        raw = resp.content[0].text.strip()
+        raw = _extract_text_from_resp(resp)
         raw = re.sub(r"^```(?:json)?\s*", "", raw)
         raw = re.sub(r"\s*```$", "", raw)
         data = json.loads(raw)
@@ -2101,7 +2158,7 @@ async def api_refs_upload(cid: str, file: UploadFile = File(...)):
             max_tokens=1500,
             messages=[{"role": "user", "content": prompt}],
         )
-        raw = resp.content[0].text.strip()
+        raw = _extract_text_from_resp(resp)
         raw = re.sub(r"^```(?:json)?\s*", "", raw)
         raw = re.sub(r"\s*```$", "", raw)
         data = json.loads(raw)
@@ -2353,7 +2410,7 @@ def api_budget_generate(body: BudgetRequest):
             max_tokens=8000,
             messages=[{"role": "user", "content": prompt}],
         )
-        raw = resp.content[0].text.strip()
+        raw = _extract_text_from_resp(resp)
         raw = re.sub(r"^```(?:json)?\s*", "", raw)
         raw = re.sub(r"\s*```$", "", raw)
         data = json.loads(raw)
@@ -2445,12 +2502,20 @@ WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_use
 
 
 def _extract_text_from_resp(resp) -> str:
-    """Anthropic 응답에서 텍스트 블록만 모아 반환 (tool_use 블록 스킵)."""
-    parts = []
-    for b in resp.content:
-        if getattr(b, "type", None) == "text":
-            parts.append(b.text)
-    return "".join(parts).strip()
+    """Anthropic 응답에서 텍스트 블록만 모아 반환. tool_use/thinking 블록은 스킵.
+    빈 응답, 잘못된 구조여도 예외 없이 '' 반환."""
+    try:
+        parts = []
+        for b in (getattr(resp, "content", None) or []):
+            btype = getattr(b, "type", None)
+            if btype == "text":
+                text = getattr(b, "text", "")
+                if text:
+                    parts.append(text)
+        return "".join(parts).strip()
+    except Exception as e:
+        log.warning("응답 파싱 실패: %s", e)
+        return ""
 
 
 @app.post("/api/clients/{cid}/competitors/search")

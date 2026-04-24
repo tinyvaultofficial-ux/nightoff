@@ -52,17 +52,84 @@ MODEL_FAST = "claude-haiku-4-5-20251001"
 
 
 # ---------------------------------------------------------------------------
-# DB helpers
+# DB helpers — SQLite(로컬) / PostgreSQL(운영) 자동 스위치
+# DATABASE_URL 이 설정돼 있으면 PostgreSQL, 없으면 로컬 SQLite 파일 사용
 # ---------------------------------------------------------------------------
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+USE_PG = DATABASE_URL.startswith(("postgres://", "postgresql://"))
+
+if USE_PG:
+    import psycopg
+    from psycopg.rows import dict_row
+    # Railway 구형 스킴 'postgres://' → psycopg 3도 허용하지만 명시적으로 정규화
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = "postgresql://" + DATABASE_URL[len("postgres://"):]
+
+
+def _adapt_sql(sql: str) -> str:
+    """SQLite → PostgreSQL SQL 변환. 로컬 모드면 그대로 반환."""
+    if not USE_PG:
+        return sql
+    # PRAGMA 제거 (PG 미지원)
+    sql = re.sub(r"PRAGMA [^;]+;", "", sql, flags=re.IGNORECASE)
+    # datetime('now','localtime') → KST 시각 텍스트
+    dt_repl = "TO_CHAR(NOW() AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD HH24:MI:SS')"
+    sql = re.sub(r"datetime\(\s*'now'\s*,\s*'localtime'\s*\)", dt_repl, sql, flags=re.IGNORECASE)
+    # ? 플레이스홀더 → %s (이 프로젝트 쿼리는 문자열 안에 ? 미사용, 안전)
+    sql = sql.replace("?", "%s")
+    # CHECK 제약 (id = 1) 같은 것도 PG에서 동작하므로 그대로 둠
+    return sql
+
+
+def _split_sql(script: str):
+    """세미콜론으로 다중 구문 분리 (단순 분리 — 우리 DDL은 문자열 리터럴에 ; 없음)"""
+    for stmt in script.split(";"):
+        s = stmt.strip()
+        if s:
+            yield s
+
+
+class _PgConnWrapper:
+    """sqlite3.Connection 인터페이스를 흉내내는 얇은 어댑터 (psycopg 3)."""
+    def __init__(self, conn):
+        self.conn = conn
+    def execute(self, sql, params=()):
+        cur = self.conn.cursor()
+        cur.execute(_adapt_sql(sql), params)
+        return cur  # psycopg 커서는 fetchone/fetchall/rowcount 지원
+    def executescript(self, script):
+        cur = self.conn.cursor()
+        for stmt in _split_sql(_adapt_sql(script)):
+            cur.execute(stmt)
+    def commit(self):
+        self.conn.commit()
+    def rollback(self):
+        self.conn.rollback()
+    def close(self):
+        self.conn.close()
+
+
 @contextmanager
-def get_db() -> Generator[sqlite3.Connection, None, None]:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-        conn.commit()
-    finally:
-        conn.close()
+def get_db():
+    if USE_PG:
+        conn = psycopg.connect(DATABASE_URL, row_factory=dict_row)
+        wrapper = _PgConnWrapper(conn)
+        try:
+            yield wrapper
+            wrapper.commit()
+        except Exception:
+            wrapper.rollback()
+            raise
+        finally:
+            wrapper.close()
+    else:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
 
 
 def init_db() -> None:

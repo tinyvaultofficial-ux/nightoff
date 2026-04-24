@@ -1201,6 +1201,284 @@ input, select, textarea { font-family: inherit; color: inherit; }
   font-size: 12px; color: #374151; line-height: 1.55; margin: 2px 0 0;
 }
 
+/* ============================================================
+   디렉터즈 스타일 레이아웃 프리셋 — data-layout="..."
+   7종: strategy-4cards / step-process / timeline-4step /
+        gantt-d-day / manual-table / threshold-table / target-matrix
+   ============================================================ */
+
+/* 공통 — breadcrumb (페이지 좌상단) 강조 */
+.proposal-page[data-layout] .page-section-name {
+  display: block !important;
+  position: absolute; top: 26px; left: 48px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+  color: color-mix(in oklab, var(--proposal-accent) 70%, #6b7280);
+  text-transform: none;
+  z-index: 1;
+}
+.proposal-page[data-layout]::before { display: none; }
+
+/* ───── 1) strategy-4cards — 4개 병렬 전략 카드 ───── */
+.proposal-page[data-layout="strategy-4cards"] .strategy-4cards-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-top: 4px;
+}
+.proposal-page[data-layout="strategy-4cards"] .s4-card {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 18px 16px;
+  background: linear-gradient(160deg,
+    color-mix(in oklab, var(--proposal-accent) 6%, #fff) 0%,
+    #ffffff 100%);
+  border: 1px solid color-mix(in oklab, var(--proposal-accent) 25%, #e5e7eb);
+  border-radius: 12px;
+  border-top: 4px solid var(--proposal-accent);
+  box-shadow: 0 4px 10px -4px color-mix(in oklab, var(--proposal-accent) 20%, transparent);
+  min-width: 0;
+}
+.proposal-page[data-layout="strategy-4cards"] .s4-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--proposal-accent); color: #fff;
+  font-size: 13px; font-weight: 800; letter-spacing: 0.02em;
+}
+.proposal-page[data-layout="strategy-4cards"] .s4-title {
+  font-size: 15px; font-weight: 700; color: #111827;
+  letter-spacing: -0.01em;
+}
+.proposal-page[data-layout="strategy-4cards"] .s4-body {
+  font-size: 12.5px; color: #374151; line-height: 1.55;
+}
+
+/* ───── 2) step-process — STEP 1→2→3→4 가로 프로세스 ───── */
+.proposal-page[data-layout="step-process"] .step-process-flow {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0;
+  margin-top: 6px;
+  position: relative;
+}
+.proposal-page[data-layout="step-process"] .sp-step {
+  position: relative;
+  padding: 20px 22px 18px 30px;
+  background: #fff;
+  border: 1px solid color-mix(in oklab, var(--proposal-accent) 22%, #e5e7eb);
+  border-left: 4px solid var(--proposal-accent);
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%, 14px 50%);
+  min-width: 0;
+}
+.proposal-page[data-layout="step-process"] .sp-step:first-child {
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%);
+  border-radius: 10px 0 0 10px;
+}
+.proposal-page[data-layout="step-process"] .sp-step:last-child {
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 14px 50%);
+  border-radius: 0 10px 10px 0;
+}
+.proposal-page[data-layout="step-process"] .sp-num {
+  font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
+  color: var(--proposal-accent); margin-bottom: 4px;
+}
+.proposal-page[data-layout="step-process"] .sp-title {
+  font-size: 14px; font-weight: 700; color: #111827; margin-bottom: 4px;
+}
+.proposal-page[data-layout="step-process"] .sp-desc {
+  font-size: 12px; color: #4b5563; line-height: 1.5;
+}
+
+/* ───── 3) timeline-4step — 4단계 타임라인 (D-60 → D+30) ───── */
+.proposal-page[data-layout="timeline-4step"] .timeline-4step-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+  position: relative;
+}
+.proposal-page[data-layout="timeline-4step"] .timeline-4step-row::before {
+  content: ""; position: absolute;
+  top: 28px; left: 6%; right: 6%;
+  height: 3px;
+  background: linear-gradient(90deg,
+    color-mix(in oklab, var(--proposal-accent) 20%, #e5e7eb) 0%,
+    var(--proposal-accent) 100%);
+  border-radius: 2px;
+}
+.proposal-page[data-layout="timeline-4step"] .t4-node {
+  position: relative;
+  padding: 44px 14px 14px;
+  text-align: center;
+  min-width: 0;
+}
+.proposal-page[data-layout="timeline-4step"] .t4-node::before {
+  content: ""; position: absolute;
+  top: 21px; left: 50%; transform: translateX(-50%);
+  width: 18px; height: 18px;
+  background: var(--proposal-accent); border: 3px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--proposal-accent);
+}
+.proposal-page[data-layout="timeline-4step"] .t4-stage {
+  font-size: 14px; font-weight: 800; color: var(--proposal-accent);
+  letter-spacing: -0.01em;
+}
+.proposal-page[data-layout="timeline-4step"] .t4-range {
+  font-size: 11px; font-weight: 600;
+  color: color-mix(in oklab, var(--proposal-accent) 60%, #6b7280);
+  margin: 3px 0 6px;
+}
+.proposal-page[data-layout="timeline-4step"] .t4-body {
+  font-size: 12px; color: #374151; line-height: 1.5;
+}
+
+/* ───── 4) gantt-d-day — D-일정 간트 차트 ───── */
+.proposal-page[data-layout="gantt-d-day"] .gantt-d-day-table {
+  width: 100%;
+  border-collapse: separate; border-spacing: 0;
+  font-size: 12px;
+  margin-top: 4px;
+}
+.proposal-page[data-layout="gantt-d-day"] .gantt-d-day-table thead th {
+  background: color-mix(in oklab, var(--proposal-accent) 8%, #fff);
+  color: var(--proposal-accent);
+  font-weight: 700; font-size: 11px;
+  padding: 8px 6px;
+  border-bottom: 2px solid var(--proposal-accent);
+  text-align: center;
+}
+.proposal-page[data-layout="gantt-d-day"] .gantt-d-day-table thead th:first-child {
+  text-align: left; padding-left: 12px;
+}
+.proposal-page[data-layout="gantt-d-day"] .gantt-d-day-table tbody td {
+  padding: 8px 4px;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: center; font-size: 11.5px;
+  color: #374151;
+}
+.proposal-page[data-layout="gantt-d-day"] .gantt-d-day-table tbody td:first-child {
+  text-align: left; font-weight: 700; color: #111827;
+  padding-left: 12px;
+  background: #fafafa;
+}
+.proposal-page[data-layout="gantt-d-day"] .gantt-d-day-table td.g-on {
+  background: linear-gradient(90deg,
+    color-mix(in oklab, var(--proposal-accent) 15%, #fff) 0%,
+    color-mix(in oklab, var(--proposal-accent) 35%, #fff) 100%);
+  color: #111827; font-weight: 600;
+  border-left: 3px solid var(--proposal-accent);
+}
+
+/* ───── 5) manual-table — 상세 매뉴얼/배치표 ───── */
+.proposal-page[data-layout="manual-table"] .manual-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 4px;
+}
+.proposal-page[data-layout="manual-table"] .manual-table thead th {
+  background: var(--proposal-accent);
+  color: #fff; font-weight: 700; font-size: 12px;
+  padding: 10px 12px; text-align: left;
+  letter-spacing: -0.01em;
+}
+.proposal-page[data-layout="manual-table"] .manual-table thead th:first-child { border-top-left-radius: 8px; }
+.proposal-page[data-layout="manual-table"] .manual-table thead th:last-child  { border-top-right-radius: 8px; }
+.proposal-page[data-layout="manual-table"] .manual-table tbody td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  color: #374151; font-size: 11.5px; line-height: 1.5;
+  vertical-align: top;
+}
+.proposal-page[data-layout="manual-table"] .manual-table tbody td:first-child {
+  font-weight: 700; color: var(--proposal-accent);
+  background: color-mix(in oklab, var(--proposal-accent) 4%, #fff);
+  white-space: nowrap;
+}
+.proposal-page[data-layout="manual-table"] .manual-table tbody tr:nth-child(even) td:not(:first-child) {
+  background: #fafafa;
+}
+
+/* ───── 6) threshold-table — 단계별 임계치 조치표 ───── */
+.proposal-page[data-layout="threshold-table"] .threshold-table {
+  width: 100%;
+  border-collapse: separate; border-spacing: 0;
+  font-size: 13px;
+  margin-top: 6px;
+  border-radius: 10px; overflow: hidden;
+  box-shadow: 0 2px 6px -2px rgba(0,0,0,0.08);
+}
+.proposal-page[data-layout="threshold-table"] .threshold-table thead th {
+  background: #111827; color: #fff; font-weight: 700;
+  padding: 10px 14px; text-align: left;
+  font-size: 12px; letter-spacing: -0.01em;
+}
+.proposal-page[data-layout="threshold-table"] .threshold-table tbody tr {
+  border-left: 5px solid;
+}
+.proposal-page[data-layout="threshold-table"] .threshold-table tbody td {
+  padding: 12px 14px; border-bottom: 1px solid #e5e7eb;
+  font-size: 12.5px; line-height: 1.5; color: #1f2937;
+  vertical-align: top;
+}
+.proposal-page[data-layout="threshold-table"] .threshold-table tbody td:first-child {
+  font-weight: 800; font-size: 14px;
+  width: 90px;
+}
+.proposal-page[data-layout="threshold-table"] .threshold-table tbody tr.th-lv1 {
+  background: #f0fdf4;
+  border-left-color: #16a34a;
+}
+.proposal-page[data-layout="threshold-table"] .threshold-table tbody tr.th-lv1 td:first-child { color: #16a34a; }
+.proposal-page[data-layout="threshold-table"] .threshold-table tbody tr.th-lv2 {
+  background: #fef9c3;
+  border-left-color: #ca8a04;
+}
+.proposal-page[data-layout="threshold-table"] .threshold-table tbody tr.th-lv2 td:first-child { color: #a16207; }
+.proposal-page[data-layout="threshold-table"] .threshold-table tbody tr.th-lv3 {
+  background: #fee2e2;
+  border-left-color: #dc2626;
+}
+.proposal-page[data-layout="threshold-table"] .threshold-table tbody tr.th-lv3 td:first-child { color: #b91c1c; }
+
+/* ───── 7) target-matrix — 타깃 × 메시지 × 채널 매트릭스 ───── */
+.proposal-page[data-layout="target-matrix"] .target-matrix {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  margin-top: 4px;
+}
+.proposal-page[data-layout="target-matrix"] .target-matrix thead th {
+  background: color-mix(in oklab, var(--proposal-accent) 12%, #fff);
+  color: var(--proposal-accent);
+  font-weight: 700; font-size: 12px;
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 2px solid var(--proposal-accent);
+  letter-spacing: -0.01em;
+}
+.proposal-page[data-layout="target-matrix"] .target-matrix tbody td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 12.5px; line-height: 1.55;
+  vertical-align: top;
+}
+.proposal-page[data-layout="target-matrix"] .target-matrix tbody td:nth-child(1) {
+  font-weight: 700; color: #111827;
+  width: 22%;
+}
+.proposal-page[data-layout="target-matrix"] .target-matrix tbody td:nth-child(2) {
+  color: #374151; font-style: italic;
+  width: 46%;
+  border-left: 3px solid color-mix(in oklab, var(--proposal-accent) 30%, transparent);
+  padding-left: 18px;
+}
+.proposal-page[data-layout="target-matrix"] .target-matrix tbody td:nth-child(3) {
+  color: color-mix(in oklab, var(--proposal-accent) 70%, #4b5563);
+  font-weight: 600;
+  width: 32%;
+}
+
 /* 포인트 컬러 피커 (채팅 헤더) */
 .accent-picker {
   display: inline-flex; align-items: center; gap: 6px;

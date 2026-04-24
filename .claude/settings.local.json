@@ -175,7 +175,8 @@
       "Bash(where magick *)",
       "Bash(where gs *)",
       "Bash(python _extract_pdf.py)",
-      "Bash(python _analyze_pdf.py)"
+      "Bash(python _analyze_pdf.py)",
+      "Bash(python _extract2.py)"
     ]
   }
 }

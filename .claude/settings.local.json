@@ -170,7 +170,12 @@
       "Bash(python _gen_test.py)",
       "Bash(iconv -f cp949 -t utf-8)",
       "Bash(python _pollinate.py)",
-      "Bash(python _pollinate2.py)"
+      "Bash(python _pollinate2.py)",
+      "Bash(where pdftoppm *)",
+      "Bash(where magick *)",
+      "Bash(where gs *)",
+      "Bash(python _extract_pdf.py)",
+      "Bash(python _analyze_pdf.py)"
     ]
   }
 }

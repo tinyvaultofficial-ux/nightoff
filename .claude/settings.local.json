@@ -162,7 +162,13 @@
       "Bash(python -c \"import httpx; print\\('httpx OK', httpx.__version__\\)\")",
       "Bash(curl -s --max-time 5 http://127.0.0.1:8000/api/settings)",
       "Bash(python -c \"import sys, json; d=json.loads\\(sys.stdin.read\\(\\)\\); print\\('has_gemini_key:', d.get\\('has_gemini_key'\\), '| source:', d.get\\('gemini_source'\\), '| model:', d.get\\('gemini_image_model'\\)\\)\")",
-      "Bash(curl -s -o /dev/null -w \"POST /api/images/generate: %{http_code}\\\\n\" --max-time 3 -X POST -H \"Content-Type: application/json\" -d '{\"prompt\":\"test\",\"kind\":\"ai\"}' http://127.0.0.1:8000/api/images/generate)"
+      "Bash(curl -s -o /dev/null -w \"POST /api/images/generate: %{http_code}\\\\n\" --max-time 3 -X POST -H \"Content-Type: application/json\" -d '{\"prompt\":\"test\",\"kind\":\"ai\"}' http://127.0.0.1:8000/api/images/generate)",
+      "Bash(taskkill //PID 27592 //F)",
+      "Bash(curl -s -o /dev/null -w \"재시작 전 서버 응답: %{http_code}\\\\n\" --max-time 2 http://127.0.0.1:8000/api/settings)",
+      "Bash(GEMINI_API_KEY=\"AIzaSyAX34VvCYKBaMIr_c9KwByhZF48J9cxFkM\" python -m uvicorn main:app --host 127.0.0.1 --port 8000)",
+      "Bash(echo \"PID: $!\" sleep 3 curl -s --max-time 5 http://127.0.0.1:8000/api/settings)",
+      "Bash(python _gen_test.py)",
+      "Bash(iconv -f cp949 -t utf-8)"
     ]
   }
 }

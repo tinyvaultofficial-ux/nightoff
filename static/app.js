@@ -1961,7 +1961,11 @@ async function renderMemorySection(cid) {
 }
 
 // ---------- Chat Screen ----------
+// 현재 활성 채팅의 conversation id — Gamma 버튼 등 전역 핸들러가 참조
+let currentConvId = null;
+
 async function renderChat(cid, convId) {
+  currentConvId = convId;
   const root = $("#app-root");
   root.innerHTML = "";
 
@@ -2331,6 +2335,13 @@ function renderAssistant(bubble, text, final = false) {
     ]));
     card.appendChild(thumbWrap);
     card.appendChild(h("div", { class: "proposal-thumb-actions" }, [
+      h("button", {
+        class: "btn btn-gamma",
+        html: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/></svg><span>Gamma로 디자인 생성</span>`,
+        title: "Claude 가 만든 내용을 Gamma AI 로 전송해 슬라이드 디자인을 입힙니다",
+        disabled: !final,
+        onclick: () => openGammaDesignModal(propEl),
+      }),
       h("button", { class: "btn btn-outline", html: `${iconHtml("printer", 14)}<span>인쇄 / PDF</span>`,
         onclick: () => printProposal(propEl) }),
       h("button", { class: "btn btn-outline", html: `${iconHtml("eye", 14)}<span>모달로 보기</span>`,
@@ -2645,6 +2656,264 @@ function openProposalFullscreen(propEl) {
   document.addEventListener("keydown", onKey);
 }
 
+// ============================================================
+// Gamma API 연동 — Claude 가 만든 내용 + 구조 → Gamma 디자인 변환
+// ============================================================
+// 1) 옵션 모달 (포맷 / 내보내기 / 추가 지시)
+// 2) 제출 → 생성 ID 수신 → 폴링
+// 3) 완성 시 Gamma 링크 + 다운로드 버튼 노출
+// ----------------------------------------------------------------
+function openGammaDesignModal(propEl) {
+  const title = propEl?.getAttribute?.("data-title") || "제안서";
+  const pageCount = propEl?.querySelectorAll?.(".proposal-page")?.length || 0;
+
+  const backdrop = h("div", { class: "modal-backdrop" });
+  const modal = h("div", { class: "modal", style: "max-width: 520px;" });
+
+  // ── 헤더
+  modal.appendChild(h("div", { class: "modal-header" }, [
+    h("h3", {}, "Gamma로 디자인 생성"),
+    h("button", { class: "icon-btn", onclick: () => backdrop.remove(), "aria-label": "닫기",
+      html: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>` }),
+  ]));
+
+  // ── 본문 — 옵션 입력
+  const fmtSel = h("select", { id: "gamma-format" }, [
+    h("option", { value: "presentation" }, "프레젠테이션 (슬라이드)"),
+    h("option", { value: "document" }, "문서형 (긴 글)"),
+    h("option", { value: "webpage" }, "웹페이지"),
+    h("option", { value: "social" }, "소셜"),
+  ]);
+  const exportSel = h("select", { id: "gamma-export" }, [
+    h("option", { value: "" }, "Gamma 링크만 (빠름)"),
+    h("option", { value: "pdf" }, "+ PDF 파일"),
+    h("option", { value: "pptx" }, "+ PPTX 파일"),
+  ]);
+  const cardsInp = h("input", { id: "gamma-cards", type: "number", min: "1", max: "40", value: String(pageCount || 10) });
+  const addlTa = h("textarea", {
+    id: "gamma-addl",
+    rows: 3,
+    placeholder: "예: 한국 공공 제안서 톤, 전문적·신뢰감, 브랜드 컬러 유지",
+    style: "width:100%; min-height:72px; padding:10px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px; resize:vertical;",
+  });
+
+  modal.appendChild(h("div", { class: "modal-body" }, [
+    h("p", { class: "small muted", style: "margin:0 0 6px;" },
+      `"${title}" (${pageCount} 페이지) — Claude 가 만든 내용을 Gamma AI 로 전송해 슬라이드 디자인을 적용합니다. 보통 1-3 분 소요.`),
+    h("div", { class: "field" }, [h("label", {}, "형식"), fmtSel]),
+    h("div", { class: "field" }, [h("label", {}, "내보내기 파일"), exportSel]),
+    h("div", { class: "field" }, [h("label", {}, "카드(슬라이드) 개수 목표"), cardsInp]),
+    h("div", { class: "field" }, [
+      h("label", {}, "추가 지시사항 (선택)"),
+      addlTa,
+      h("p", { class: "field-hint" }, "톤, 타겟 청중, 디자인 방향 등을 자유롭게 적어주세요."),
+    ]),
+  ]));
+
+  // ── 푸터
+  const submitBtn = h("button", { class: "btn btn-primary" }, "Gamma로 생성 시작");
+  modal.appendChild(h("div", { class: "modal-footer" }, [
+    h("button", { class: "btn btn-ghost", onclick: () => backdrop.remove() }, "취소"),
+    submitBtn,
+  ]));
+
+  submitBtn.addEventListener("click", async () => {
+    const payload = {
+      conversation_id: currentConvId || undefined,
+      format: fmtSel.value,
+      num_cards: parseInt(cardsInp.value, 10) || null,
+      export_as: exportSel.value || null,
+      additional_instructions: (addlTa.value || "").trim() || null,
+      text_mode: "preserve",  // 우리가 이미 구조화한 내용 → 내용 보존
+    };
+    // fallback: 대화 ID 없으면 propEl 에서 직접 텍스트 추출해 input_text 전송
+    if (!payload.conversation_id) {
+      payload.input_text = extractProposalAsText(propEl);
+    }
+    submitBtn.disabled = true;
+    submitBtn.textContent = "요청 중…";
+    try {
+      const r = await api.post("/api/gamma/generate", payload, { timeoutMs: 90000 });
+      backdrop.remove();
+      openGammaPolling(r.generation_id, title, payload.export_as);
+    } catch (e) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Gamma로 생성 시작";
+      const msg = String(e.message || e);
+      if (/Gamma API 키/.test(msg)) {
+        toast("Gamma API 키를 먼저 등록해 주세요 (좌하단 설정)", "error");
+      } else {
+        toast(msg, "error");
+      }
+    }
+  });
+
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) backdrop.remove(); });
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
+  setTimeout(() => fmtSel.focus(), 100);
+}
+
+// propEl → 평문 텍스트 (폴백 — 대화 ID 없을 때 서버로 전송)
+function extractProposalAsText(propEl) {
+  if (!propEl) return "";
+  const pages = propEl.querySelectorAll(".proposal-page");
+  if (!pages.length) return propEl.textContent.trim();
+  const cards = [];
+  pages.forEach((p) => {
+    const gov = p.querySelector(".page-governing");
+    const sum = p.querySelector(".page-summary");
+    const section = p.getAttribute("data-section") || "";
+    const clone = p.cloneNode(true);
+    clone.querySelectorAll(".page-governing, .page-summary").forEach((e) => e.remove());
+    const bodyText = clone.textContent.replace(/\s+/g, " ").trim();
+    const parts = [];
+    const header = (gov?.textContent || section || "페이지").trim();
+    parts.push(`# ${header}`);
+    if (bodyText) parts.push(bodyText);
+    if (sum?.textContent) parts.push(`> 핵심: ${sum.textContent.trim()}`);
+    cards.push(parts.join("\n\n"));
+  });
+  return cards.join("\n\n---\n\n");
+}
+
+// Gamma 생성 폴링 뷰 — 우측 하단 플로팅 카드 + 중앙 backdrop
+function openGammaPolling(generationId, title, exportAs) {
+  const backdrop = h("div", { class: "modal-backdrop gamma-polling-backdrop" });
+  const modal = h("div", { class: "modal gamma-polling-modal", style: "max-width: 520px;" });
+
+  // 헤더
+  modal.appendChild(h("div", { class: "modal-header" }, [
+    h("h3", {}, "Gamma 디자인 생성 중"),
+  ]));
+
+  // 본문 — 진행 표시
+  const spinner = h("div", { class: "gamma-spinner" });
+  const statusLabel = h("div", { class: "gamma-status-label" }, "요청 접수됨 — 디자인 준비 중…");
+  const statusSub = h("div", { class: "gamma-status-sub muted small" }, "보통 1-3 분 소요됩니다. 창을 닫아도 생성은 계속됩니다.");
+  const bar = h("div", { class: "gamma-bar" }, [h("div", { class: "gamma-bar-fill" })]);
+  const body = h("div", { class: "modal-body gamma-polling-body" }, [
+    h("div", { class: "gamma-title" }, `"${title}"`),
+    h("div", { style: "display:flex; gap:14px; align-items:center; margin:14px 0;" }, [spinner, h("div", { style: "flex:1;" }, [statusLabel, statusSub])]),
+    bar,
+  ]);
+  modal.appendChild(body);
+
+  // 푸터
+  const resultFooter = h("div", { class: "modal-footer", style: "display:none;" });
+  const closeFooter = h("div", { class: "modal-footer" }, [
+    h("button", { class: "btn btn-ghost", onclick: () => { cancelled = true; backdrop.remove(); } }, "창 닫기 (생성 계속)"),
+  ]);
+  modal.appendChild(closeFooter);
+  modal.appendChild(resultFooter);
+
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
+
+  // ── 폴링 루프 (지수 backoff + 최대 10 분)
+  let cancelled = false;
+  let attempts = 0;
+  const maxSeconds = 600;  // 10 분
+  const startT = Date.now();
+
+  async function poll() {
+    if (cancelled) return;
+    attempts += 1;
+    const elapsed = (Date.now() - startT) / 1000;
+
+    // 진행률 추정 — 시간 기반 (최대 90% 까지만 채우고 완료 시 100%)
+    const pct = Math.min(90, Math.floor((elapsed / 180) * 90));
+    bar.querySelector(".gamma-bar-fill").style.width = `${pct}%`;
+
+    if (elapsed > maxSeconds) {
+      statusLabel.textContent = "⏱ 시간 초과 — Gamma 대시보드에서 확인해 주세요";
+      return;
+    }
+
+    try {
+      const r = await api.get(`/api/gamma/status/${encodeURIComponent(generationId)}`);
+      const s = (r.status || "").toLowerCase();
+
+      // 상태 레이블
+      if (s === "pending" || s === "queued" || s === "processing" || s === "generating" || s === "running") {
+        statusLabel.textContent = {
+          pending:   "대기 중 — 곧 시작됩니다",
+          queued:    "대기열에서 대기 중…",
+          processing:"디자인 적용 중… 🎨",
+          generating:"슬라이드 생성 중… ✍️",
+          running:   "디자인 적용 중… 🎨",
+        }[s] || "처리 중…";
+      } else if (s === "completed" || s === "success" || s === "succeeded" || s === "done") {
+        // 완료
+        bar.querySelector(".gamma-bar-fill").style.width = "100%";
+        spinner.classList.add("done");
+        statusLabel.textContent = "✅ 디자인 생성 완료!";
+        statusSub.textContent = r.credits
+          ? `이번 작업: ${r.credits.deducted ?? 0} 크레딧 사용 · 잔여 ${r.credits.remaining ?? "?"}`
+          : "아래 버튼에서 결과를 확인하세요.";
+        showGammaResult(resultFooter, closeFooter, r, exportAs);
+        return;
+      } else if (s === "failed" || s === "error" || s === "cancelled" || s === "canceled") {
+        spinner.classList.add("error");
+        statusLabel.textContent = "❌ 생성 실패";
+        statusSub.textContent = r.error?.message || "다시 시도해 주세요.";
+        resultFooter.style.display = "";
+        resultFooter.innerHTML = "";
+        resultFooter.appendChild(h("button", { class: "btn btn-ghost", onclick: () => backdrop.remove() }, "닫기"));
+        return;
+      } else {
+        statusLabel.textContent = `상태: ${s || "unknown"} — 재확인 중…`;
+      }
+    } catch (e) {
+      // 일시적 에러는 무시, 계속 폴링
+      statusSub.textContent = `일시 오류: ${String(e.message || e)} — 재시도 중…`;
+    }
+
+    // 폴링 주기: 처음 5회는 2초, 이후 5초
+    const delay = attempts <= 5 ? 2000 : 5000;
+    setTimeout(poll, delay);
+  }
+  // 첫 호출은 1.5 초 후 — Gamma 측 레코드 확정 여유
+  setTimeout(poll, 1500);
+}
+
+function showGammaResult(footerEl, closeFooterEl, r, exportAs) {
+  closeFooterEl.style.display = "none";
+  footerEl.style.display = "";
+  footerEl.innerHTML = "";
+  // Gamma 링크
+  if (r.gamma_url) {
+    footerEl.appendChild(h("a", {
+      class: "btn btn-primary",
+      href: r.gamma_url,
+      target: "_blank",
+      rel: "noopener",
+    }, "🎨 Gamma 에서 열기"));
+  }
+  // 다운로드 (export)
+  if (r.export_url) {
+    const label = exportAs === "pptx" ? "⬇ PPTX 다운로드"
+                : exportAs === "pdf"  ? "⬇ PDF 다운로드"
+                : "⬇ 파일 다운로드";
+    footerEl.appendChild(h("a", {
+      class: "btn btn-outline",
+      href: r.export_url,
+      target: "_blank",
+      rel: "noopener",
+      download: "",
+    }, label));
+  }
+  footerEl.appendChild(h("button", {
+    class: "btn btn-ghost",
+    onclick: () => {
+      footerEl.closest(".modal-backdrop")?.remove();
+    },
+  }, "닫기"));
+  if (r.gamma_url) {
+    try { window.open(r.gamma_url, "_blank", "noopener"); } catch {}
+  }
+}
+
 // ---------- Settings modal ----------
 async function openSettings() {
   const modal = $("#settings-modal");
@@ -2662,6 +2931,25 @@ async function openSettings() {
     status.textContent = "설정된 키 없음 — 입력 후 저장하거나 Railway 환경변수로 주입하세요.";
   }
   $("#model-select").value = s.model || "claude-sonnet-4-5-20250929";
+
+  // Gamma key
+  const gInp = $("#gamma-key-input");
+  if (gInp) {
+    gInp.value = "";
+    gInp.placeholder = s.has_gamma_key ? s.masked_gamma_key : "sk-gamma-...";
+    gInp.disabled = !!s.gamma_env_active;
+    const gStatus = $("#gamma-key-status");
+    if (gStatus) {
+      if (s.gamma_env_active) {
+        gStatus.innerHTML = `<strong style="color: var(--primary);">🔒 Railway 환경변수 사용 중</strong><br><span class="muted">서버 환경변수 <code>GAMMA_API_KEY</code> 가 우선 적용됩니다 (<code>${escapeHtml(s.masked_gamma_key)}</code>).</span>`;
+      } else if (s.has_gamma_key) {
+        gStatus.innerHTML = `DB에 저장된 키 사용 중: <code>${escapeHtml(s.masked_gamma_key)}</code>`;
+      } else {
+        gStatus.textContent = "설정된 키 없음 — 제안서 카드의 [Gamma로 디자인 생성] 을 쓰려면 필요합니다.";
+      }
+    }
+  }
+
   const dx = $("#settings-diagnostic");
   if (dx) { dx.classList.add("hidden"); dx.classList.remove("ok", "err"); dx.innerHTML = ""; }
   modal.classList.remove("hidden");
@@ -2678,6 +2966,8 @@ $("#save-settings")?.addEventListener("click", async () => {
   const k = $("#api-key-input").value.trim();
   if (k) body.api_key = k;
   body.model = $("#model-select").value;
+  const gk = $("#gamma-key-input")?.value.trim();
+  if (gk) body.gamma_api_key = gk;
   try {
     await api.post("/api/settings", body);
     toast("설정이 저장되었습니다", "success");

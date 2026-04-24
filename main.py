@@ -351,6 +351,28 @@ def get_api_key_source() -> str:
     return ""
 
 
+# ---------------------------------------------------------------------------
+# Gamma API key — 동일 env 우선 전략
+# ---------------------------------------------------------------------------
+GAMMA_API_BASE = "https://public-api.gamma.app/v1.0"
+
+
+def get_gamma_api_key() -> str:
+    """Railway 환경변수 GAMMA_API_KEY 우선, 없으면 DB(settings) 조회."""
+    env_key = os.environ.get("GAMMA_API_KEY", "").strip()
+    if env_key:
+        return env_key
+    return get_setting("gamma_api_key", "")
+
+
+def get_gamma_api_key_source() -> str:
+    if os.environ.get("GAMMA_API_KEY", "").strip():
+        return "env"
+    if get_setting("gamma_api_key", ""):
+        return "db"
+    return ""
+
+
 def require_client() -> anthropic.Anthropic:
     key = get_api_key()
     if not key:
@@ -947,6 +969,7 @@ def spa_fallback_client(rest: str):
 class SettingsIn(BaseModel):
     api_key: Optional[str] = None
     model: Optional[str] = None
+    gamma_api_key: Optional[str] = None
 
 
 class ClientIn(BaseModel):
@@ -973,12 +996,23 @@ def api_settings_get():
     masked = ""
     if key:
         masked = f"{key[:10]}...{key[-4:]}" if len(key) > 16 else "********"
+    # Gamma
+    g_key = get_gamma_api_key()
+    g_src = get_gamma_api_key_source()
+    g_masked = ""
+    if g_key:
+        g_masked = f"{g_key[:10]}...{g_key[-4:]}" if len(g_key) > 16 else "********"
     return {
         "has_key": bool(key),
         "masked_key": masked,
         "source": source,  # 'env' | 'db' | ''
         "env_active": source == "env",
         "model": get_setting("model", MODEL_DEFAULT),
+        # Gamma
+        "has_gamma_key": bool(g_key),
+        "masked_gamma_key": g_masked,
+        "gamma_source": g_src,
+        "gamma_env_active": g_src == "env",
     }
 
 
@@ -988,6 +1022,8 @@ def api_settings_set(body: SettingsIn):
         set_setting("anthropic_api_key", body.api_key.strip())
     if body.model:
         set_setting("model", body.model.strip())
+    if body.gamma_api_key is not None:
+        set_setting("gamma_api_key", body.gamma_api_key.strip())
     return api_settings_get()
 
 
@@ -2426,6 +2462,249 @@ def api_mem_delete(mem_id: str):
     with get_db() as db:
         db.execute("DELETE FROM nuance_memories WHERE id=?", (mem_id,))
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Gamma API 연동 — Claude 가 만든 내용 + 구조를 Gamma 로 넘겨 디자인된 제안서 생성
+# ---------------------------------------------------------------------------
+def _gamma_request(method: str, path: str, body: Optional[dict] = None, *, timeout: float = 60.0) -> dict:
+    """Gamma Public API 호출 헬퍼 — urllib 기반 (추가 의존성 없음).
+    X-API-KEY 헤더로 인증. 에러는 HTTPException 으로 재포장."""
+    import urllib.request
+    import urllib.error
+
+    key = get_gamma_api_key()
+    if not key:
+        raise HTTPException(
+            status_code=400,
+            detail="Gamma API 키가 설정되지 않았어요. 좌하단 설정에서 등록하거나 Railway 환경변수 GAMMA_API_KEY 를 설정해 주세요.",
+        )
+    url = GAMMA_API_BASE + path
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header("X-API-KEY", key)
+    req.add_header("Content-Type", "application/json")
+    req.add_header("Accept", "application/json")
+    req.add_header("User-Agent", "NightOff/1.0 (+gamma-integration)")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8")
+            return json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as e:
+        raw = ""
+        try:
+            raw = e.read().decode("utf-8", errors="ignore")
+        except Exception:
+            pass
+        msg = raw[:600] or str(e)
+        try:
+            parsed = json.loads(raw)
+            msg = parsed.get("message") or parsed.get("error") or msg
+        except Exception:
+            pass
+        log.warning("Gamma API %s %s → %s: %s", method, path, e.code, msg[:300])
+        if e.code in (401, 403):
+            raise HTTPException(status_code=401, detail=f"Gamma API 인증 실패 — X-API-KEY 를 확인해 주세요. ({msg})")
+        if e.code == 429:
+            raise HTTPException(status_code=429, detail="Gamma API 사용량 한도에 도달했어요. 잠시 후 다시 시도해 주세요.")
+        raise HTTPException(status_code=e.code, detail=f"Gamma API 오류 ({e.code}): {msg}")
+    except urllib.error.URLError as e:
+        log.exception("Gamma 네트워크 오류")
+        raise HTTPException(status_code=502, detail=f"Gamma API 연결 실패: {e}")
+
+
+def _strip_html_to_text(s: str) -> str:
+    """아주 단순한 HTML → 텍스트 변환 (Gamma inputText 용)."""
+    if not s:
+        return ""
+    s = re.sub(r"<br\s*/?>", "\n", s, flags=re.I)
+    s = re.sub(r"</(p|div|h[1-6]|section|article|tr|li)\s*>", "\n", s, flags=re.I)
+    s = re.sub(r"<li[^>]*>", "- ", s, flags=re.I)
+    s = re.sub(r"<(td|th)[^>]*>", " | ", s, flags=re.I)
+    s = re.sub(r"<[^>]+>", "", s)
+    # HTML entity decode (최소)
+    s = (s.replace("&nbsp;", " ")
+           .replace("&amp;", "&")
+           .replace("&lt;", "<").replace("&gt;", ">")
+           .replace("&quot;", '"').replace("&#39;", "'"))
+    s = re.sub(r"\n{3,}", "\n\n", s)
+    s = re.sub(r"[ \t]{2,}", " ", s)
+    return s.strip()
+
+
+def _html_proposal_to_gamma_text(html: str) -> tuple[str, str]:
+    """Claude 의 <div class="proposal"> HTML 을 Gamma inputText(마크다운/텍스트) 로 변환.
+    각 .proposal-page 를 '---' 로 구분 → Gamma cardSplit="inputTextBreaks" 와 매칭.
+    반환: (title, gamma_input_text)
+    """
+    if not html:
+        return "제안서", ""
+
+    # 제목
+    m_title = re.search(r'<div class="proposal"[^>]*data-title=["\']([^"\']+)', html)
+    title = (m_title.group(1).strip() if m_title else "제안서")
+
+    # .proposal-page 블록 추출 (data-section 포함)
+    page_iter = re.finditer(
+        r'<div class="proposal-page[^"]*"([^>]*)>([\s\S]*?)(?=<div class="proposal-page|</div>\s*(?:$|(?=<div class="proposal)))',
+        html,
+    )
+    cards: list[str] = []
+    for m in page_iter:
+        attrs = m.group(1) or ""
+        body = m.group(2) or ""
+        m_section = re.search(r'data-section=["\']([^"\']+)', attrs)
+        section = m_section.group(1).strip() if m_section else ""
+
+        # governing headline
+        m_gov = re.search(
+            r'<[^>]+class="[^"]*page-governing[^"]*"[^>]*>([\s\S]*?)</[^>]+>',
+            body,
+        )
+        governing = _strip_html_to_text(m_gov.group(1)) if m_gov else ""
+
+        # summary
+        m_sum = re.search(
+            r'<[^>]+class="[^"]*page-summary[^"]*"[^>]*>([\s\S]*?)</[^>]+>',
+            body,
+        )
+        summary = _strip_html_to_text(m_sum.group(1)) if m_sum else ""
+
+        # body without governing/summary
+        body_wo = body
+        if m_gov:
+            body_wo = body_wo.replace(m_gov.group(0), "")
+        if m_sum:
+            body_wo = body_wo.replace(m_sum.group(0), "")
+        content_text = _strip_html_to_text(body_wo)
+
+        parts: list[str] = []
+        header = governing or section or "제안서 페이지"
+        parts.append(f"# {header}")
+        if governing and section and section.lower() != governing.lower():
+            parts.append(f"_{section}_")
+        if content_text:
+            parts.append(content_text)
+        if summary:
+            parts.append(f"> **핵심 요약:** {summary}")
+
+        cards.append("\n\n".join(parts))
+
+    if not cards:
+        # fallback: 전체를 텍스트로
+        return title, _strip_html_to_text(html)
+
+    # Gamma 는 cardSplit="inputTextBreaks" 에서 '---' 로 카드를 분리
+    return title, "\n\n---\n\n".join(cards)
+
+
+class GammaGenerateIn(BaseModel):
+    conversation_id: Optional[str] = None
+    input_text: Optional[str] = None
+    format: str = "presentation"        # presentation | document | social | webpage
+    text_mode: str = "generate"         # generate | condense | preserve
+    num_cards: Optional[int] = None
+    export_as: Optional[str] = None     # pptx | pdf | png | None(=Gamma 링크만)
+    additional_instructions: Optional[str] = None
+    theme_id: Optional[str] = None
+    tone: Optional[str] = None
+    audience: Optional[str] = None
+
+
+@app.post("/api/gamma/generate")
+def api_gamma_generate(body: GammaGenerateIn):
+    """Claude 가 생성한 제안서를 Gamma 로 넘겨 디자인된 버전 생성 요청.
+    - input_text 가 제공되면 그대로 사용
+    - 아니면 conversation_id 로 최신 assistant 메시지 중 제안서 HTML 을 자동 추출
+    """
+    text = (body.input_text or "").strip()
+    title = "제안서"
+    if not text:
+        if not body.conversation_id:
+            raise HTTPException(status_code=400, detail="input_text 또는 conversation_id 중 하나는 필요합니다.")
+        with get_db() as db:
+            rows = db.execute(
+                "SELECT content FROM messages WHERE conversation_id=? AND role='assistant' "
+                "ORDER BY created_at DESC",
+                (body.conversation_id,),
+            ).fetchall()
+        for r in rows:
+            content = r["content"] or ""
+            if '<div class="proposal"' in content:
+                title, text = _html_proposal_to_gamma_text(content)
+                break
+        if not text:
+            raise HTTPException(
+                status_code=404,
+                detail="이 대화에서 Claude 가 생성한 제안서를 찾지 못했어요. 먼저 제안서를 생성한 뒤 다시 시도해 주세요.",
+            )
+
+    # Gamma API 는 inputText 최대 400,000 자 — 안전하게 cap
+    if len(text) > 395000:
+        text = text[:395000] + "\n\n(이하 생략)"
+
+    payload: dict = {
+        "inputText": text,
+        "textMode": body.text_mode if body.text_mode in {"generate", "condense", "preserve"} else "generate",
+        "format": body.format if body.format in {"presentation", "document", "social", "webpage"} else "presentation",
+        # 우리가 '---' 로 카드를 구분해 넘기므로 명시적 브레이크 분할 사용
+        "cardSplit": "inputTextBreaks",
+    }
+    if body.num_cards and body.num_cards > 0:
+        payload["numCards"] = int(body.num_cards)
+    if body.export_as in {"pptx", "pdf", "png"}:
+        payload["exportAs"] = body.export_as
+    if body.additional_instructions:
+        payload["additionalInstructions"] = body.additional_instructions[:5000]
+    if body.theme_id:
+        payload["themeId"] = body.theme_id
+    # tone / audience
+    text_options: dict = {}
+    if body.tone:
+        text_options["tone"] = body.tone[:200]
+    if body.audience:
+        text_options["audience"] = body.audience[:200]
+    if text_options:
+        payload["textOptions"] = text_options
+
+    resp = _gamma_request("POST", "/generations", payload, timeout=60.0)
+    gen_id = resp.get("generationId") or resp.get("id")
+    if not gen_id:
+        raise HTTPException(status_code=502, detail=f"Gamma 응답에 generationId 가 없어요: {resp}")
+
+    return {
+        "generation_id": gen_id,
+        "warnings": resp.get("warnings"),
+        "title": title,
+        "card_count_hint": text.count("\n---\n") + 1,
+    }
+
+
+@app.get("/api/gamma/status/{generation_id}")
+def api_gamma_status(generation_id: str):
+    """Gamma 생성 상태 폴링. 프론트가 2~5 초 간격으로 호출."""
+    resp = _gamma_request("GET", f"/generations/{generation_id}", timeout=30.0)
+    status_raw = resp.get("status")
+    # 스펙상 'status' 가 문자열일 수도, 객체일 수도 있음 — 둘 다 처리
+    if isinstance(status_raw, dict):
+        status = (
+            status_raw.get("status")
+            or status_raw.get("name")
+            or status_raw.get("state")
+            or "unknown"
+        )
+    else:
+        status = status_raw or "unknown"
+    status = str(status).lower()
+
+    return {
+        "status": status,
+        "gamma_id": resp.get("gammaId"),
+        "gamma_url": resp.get("gammaUrl"),
+        "export_url": resp.get("exportUrl"),
+        "credits": resp.get("credits"),
+        "error": resp.get("error"),
+    }
 
 
 if __name__ == "__main__":

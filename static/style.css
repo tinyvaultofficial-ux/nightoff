@@ -1545,6 +1545,97 @@ input, select, textarea { font-family: inherit; color: inherit; }
   100% { margin-left: 100%; }
 }
 
+/* ============================================================
+   Gamma 디자인 생성 — 버튼 / 폴링 / 결과
+   ============================================================ */
+.btn.btn-gamma {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px;
+  font-size: 12px; font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #7c3aed 0%, #ec4899 55%, #f59e0b 100%);
+  border: none;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px -4px rgba(124, 58, 237, 0.55);
+  transition: transform .1s ease, box-shadow .15s ease, filter .15s ease;
+  cursor: pointer;
+}
+.btn.btn-gamma:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px -6px rgba(124, 58, 237, 0.65);
+  filter: brightness(1.05);
+}
+.btn.btn-gamma:disabled {
+  opacity: 0.55; cursor: not-allowed;
+  filter: grayscale(40%);
+}
+.btn.btn-gamma svg { animation: gammaSparkle 3s ease-in-out infinite; }
+@keyframes gammaSparkle {
+  0%, 100% { transform: rotate(0) scale(1); opacity: 1; }
+  50%      { transform: rotate(90deg) scale(1.15); opacity: 0.85; }
+}
+
+.gamma-polling-modal .gamma-title {
+  font-size: 15px; font-weight: 700; color: var(--fg);
+  letter-spacing: -0.01em;
+}
+.gamma-polling-body {
+  padding: 20px 22px 18px !important;
+  gap: 6px !important;
+}
+.gamma-spinner {
+  width: 48px; height: 48px; flex-shrink: 0;
+  border-radius: 999px;
+  border: 3px solid rgba(124, 58, 237, 0.15);
+  border-top-color: #7c3aed;
+  border-right-color: #ec4899;
+  animation: gammaSpin 0.9s linear infinite;
+}
+@keyframes gammaSpin { to { transform: rotate(360deg); } }
+.gamma-spinner.done {
+  border: 3px solid #16a34a;
+  animation: none;
+  position: relative;
+}
+.gamma-spinner.done::after {
+  content: "✓";
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  font-size: 24px; font-weight: 800; color: #16a34a;
+}
+.gamma-spinner.error {
+  border: 3px solid var(--danger);
+  animation: none;
+  position: relative;
+}
+.gamma-spinner.error::after {
+  content: "✕";
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  font-size: 24px; font-weight: 800; color: var(--danger);
+}
+.gamma-status-label {
+  font-size: 14px; font-weight: 600; color: var(--fg);
+  letter-spacing: -0.01em;
+}
+.gamma-status-sub {
+  margin-top: 3px; font-size: 12px; color: var(--fg-2);
+  line-height: 1.5;
+}
+.gamma-bar {
+  height: 6px; border-radius: 999px;
+  background: #eef0f7;
+  overflow: hidden;
+  margin-top: 6px;
+}
+.gamma-bar-fill {
+  height: 100%; width: 5%;
+  background: linear-gradient(90deg, #7c3aed 0%, #ec4899 60%, #f59e0b 100%);
+  border-radius: inherit;
+  transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 0 14px rgba(236, 72, 153, 0.45);
+}
+
 /* ===== Modal ===== */
 .modal-backdrop {
   position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 100;

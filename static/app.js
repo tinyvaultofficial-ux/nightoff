@@ -802,18 +802,24 @@ function relativeTime(ts) {
 
 async function renderDashboard() {
   const root = $("#app-root");
+  if (!root) return;  // SPA 라우트 밖 호출 방어
   root.innerHTML = "";
   root.appendChild(await renderSidebar("clients"));
 
   const main = h("main", { class: "main" });
   root.appendChild(main);
 
-  const [stats, clients, activity, dna] = await Promise.all([
+  const [statsR, clientsR, activityR, dnaR] = await Promise.all([
     api.get("/api/stats").catch(() => ({})),
     api.get("/api/clients").catch(() => []),
     api.get("/api/activity").catch(() => []),
     api.get("/api/company-dna").catch(() => ({ exists: false, ref_count: 0 })),
   ]);
+  // 방어적 정규화 — 서버 응답이 예상 타입 아니어도 크래시 안 나게
+  const stats = (statsR && typeof statsR === "object" && !Array.isArray(statsR)) ? statsR : {};
+  const clients = Array.isArray(clientsR) ? clientsR : [];
+  const activity = Array.isArray(activityR) ? activityR : [];
+  const dna = (dnaR && typeof dnaR === "object" && !Array.isArray(dnaR)) ? dnaR : { exists: false, ref_count: 0 };
 
   main.appendChild(h("header", { class: "main-header" }, [
     h("div", { class: "flex-row", style: "gap: 18px;" }, [
@@ -2467,12 +2473,12 @@ async function openSettings() {
 }
 function closeSettings() { $("#settings-modal").classList.add("hidden"); }
 
-$("#settings-btn").addEventListener("click", openSettings);
+$("#settings-btn")?.addEventListener("click", openSettings);
 $$("[data-close-modal]").forEach((el) => el.addEventListener("click", closeSettings));
-$("#settings-modal").addEventListener("click", (e) => {
+$("#settings-modal")?.addEventListener("click", (e) => {
   if (e.target.id === "settings-modal") closeSettings();
 });
-$("#save-settings").addEventListener("click", async () => {
+$("#save-settings")?.addEventListener("click", async () => {
   const body = {};
   const k = $("#api-key-input").value.trim();
   if (k) body.api_key = k;
@@ -2484,9 +2490,9 @@ $("#save-settings").addEventListener("click", async () => {
   } catch (e) { toast(String(e.message || e), "error"); }
 });
 
-$("#test-key").addEventListener("click", async () => {
+$("#test-key")?.addEventListener("click", async () => {
   // 저장 안 된 새 키가 입력창에 있다면 먼저 저장
-  const newKey = $("#api-key-input").value.trim();
+  const newKey = $("#api-key-input")?.value.trim() || "";
   const box = $("#settings-diagnostic");
   const btn = $("#test-key");
   btn.disabled = true; btn.textContent = "테스트 중…";

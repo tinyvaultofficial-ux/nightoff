@@ -128,7 +128,8 @@
       "Bash(curl -s -o /tmp/resp.txt -w \"HTTP %{http_code}\\\\nContent-Type: %{content_type}\\\\n\" http://127.0.0.1:8000/api/stats)",
       "Bash(curl -s -X POST http://127.0.0.1:8000/api/signup -H \"Content-Type: application/json\" -d '{\"email\":\"t@e.com\",\"company\":\"Test\"}')",
       "Bash(curl -s \"http://127.0.0.1:8000/api/images/search?kind=stock&keyword=office\")",
-      "Bash(curl -s \"http://127.0.0.1:8000/api/stats\")"
+      "Bash(curl -s \"http://127.0.0.1:8000/api/stats\")",
+      "Bash(python -c \"import json; from pathlib import Path; t=Path\\('main.py'\\).read_text\\(encoding='utf-8'\\); assert 'BUDGET_TABLE_PROMPT' in t and 'categories' in t and 'utilization' in t; print\\('prompt OK'\\)\")"
     ]
   }
 }

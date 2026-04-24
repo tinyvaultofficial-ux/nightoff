@@ -2101,6 +2101,10 @@ async function renderChat(cid, convId) {
     bubble.innerHTML = '<span class="loading-dots"><span></span><span></span><span></span></span>';
     body.scrollTop = body.scrollHeight;
 
+    // 진행 표시 바 — 스트리밍 중 현재 섹션/페이지 표시
+    const progress = createStreamProgress();
+    asstEl.querySelector(".msg-body").insertBefore(progress.el, bubble);
+
     aborter = new AbortController();
     let targetText = "";    // 서버에서 받아 누적한 실제 full text
     let displayedText = ""; // 화면에 출력된 길이
@@ -2120,6 +2124,7 @@ async function renderChat(cid, convId) {
       const step = Math.min(24, Math.max(2, Math.ceil(lag / 10)));
       displayedText = targetText.slice(0, displayedText.length + step);
       renderAssistant(bubble, displayedText);
+      progress.update(targetText);   // ← 전체 target 기준으로 진행률 업데이트
       body.scrollTop = body.scrollHeight;
       requestAnimationFrame(tick);
     };
@@ -2153,16 +2158,19 @@ async function renderChat(cid, convId) {
           if (ev.type === "delta") {
             if (firstDelta) { overlayLoader.stop(); bubble.innerHTML = ""; firstDelta = false; }
             targetText += ev.text;
+            progress.update(targetText);
             kickTyper();
           } else if (ev.type === "error") {
             overlayLoader.stop();
             bubble.innerHTML = `<span style="color:var(--danger);">❌ ${escapeHtml(ev.error)}</span>`;
             streamDone = true;
+            progress.finish(false);
           } else if (ev.type === "done") {
             overlayLoader.stop();
             streamDone = true;
             displayedText = targetText;
             renderAssistant(bubble, targetText, true);
+            progress.finish(true);
           }
         }
       }
@@ -2173,8 +2181,10 @@ async function renderChat(cid, convId) {
       }
       // rafActive가 진행 중이면 streamDone을 보고 알아서 마감
       streamDone = true;
+      progress.finish(true);
     } catch (e) {
       overlayLoader.stop();
+      progress.finish(false);
       if (e.name === "AbortError") {
         if (targetText) renderAssistant(bubble, targetText + "\n\n⏸ (중단됨)", true);
         else bubble.innerHTML = `<span class="muted small">⏸ 생성이 중단되었습니다.</span>`;
@@ -2261,101 +2271,272 @@ function renderMarkdown(src) {
 
 function renderAssistant(bubble, text, final = false) {
   bubble.dataset.raw = text;
-  // Detect proposal block
   const idx = text.indexOf('<div class="proposal"');
   if (idx === -1) {
-    // 마크다운 렌더링 — 일반 채팅 응답
+    // 제안서 HTML 없음 → 마크다운 렌더링
     bubble.innerHTML = renderMarkdown(text);
     return;
   }
 
-  // Split: pre-text and proposal content
+  // ── 제안서 검출: idx 이후 모든 텍스트를 HTML로 취급 (post-text 분리 제거)
+  // AI가 outer div 를 중간에 닫아도, 추가 텍스트가 있어도 브라우저가 알아서
+  // 무효한 태그/닫힘 처리를 하므로 HTML 코드가 문자로 노출될 일이 없음.
   const pre = text.slice(0, idx).trim();
-  const rest = text.slice(idx);
-  const endIdx = findProposalEnd(rest);
-  let propHtml = endIdx > 0 ? rest.slice(0, endIdx) : rest;
-  const post = endIdx > 0 ? rest.slice(endIdx).trim() : "";
+  const propHtml = text.slice(idx);
 
-  // ── 깜빡임 방지: 완성된 페이지 개수가 늘어났거나, final일 때만 DOM 재구축
-  const completedPages = (propHtml.match(/<\/div>\s*(?=<div class="proposal-page"|<\/div>\s*$)/g) || []).length;
+  // 완성된 페이지 수 — 스트리밍 중 카드 업데이트 용
+  const completedPages = (propHtml.match(/<\/div>\s*(?=<div class="proposal-page"|<\/div>\s*$)/gi) || []).length;
   const lastCount = parseInt(bubble.dataset.propPages || "-1", 10);
-  const alreadyRendered = bubble.querySelector(".proposal-wrapper");
+  const alreadyRendered = bubble.querySelector(".proposal-thumb-card");
   if (alreadyRendered && !final && completedPages === lastCount) {
-    return; // 스트림은 계속 쌓이지만 DOM은 그대로 — 깜빡임 제거
+    return; // DOM 재구축 스킵 — 깜빡임 방지
   }
   bubble.dataset.propPages = String(completedPages);
 
-  // Sanitize and render proposal
-  const wrapper = h("div", { class: "proposal-wrapper" });
-  const safe = sanitizeProposalHtml(propHtml);
-  wrapper.innerHTML = safe;
+  // 숨겨진 컨테이너에 실제 proposal 렌더 (썸네일·팝업·프린트 재사용용)
+  const hidden = h("div", { class: "proposal-hidden" });
+  hidden.innerHTML = sanitizeProposalHtml(propHtml);
+  const propEl = hidden.querySelector(".proposal");
 
-  const propEl = wrapper.querySelector(".proposal");
+  // ── 채팅창에는 큰 제안서를 그대로 박지 않고 작은 "썸네일 카드"만 배치
+  const card = h("div", { class: "proposal-thumb-card" });
   if (propEl) {
     const title = propEl.getAttribute("data-title") || "제안서";
-    const toolbar = h("div", { class: "proposal-toolbar" }, [
-      h("div", { class: "title" }, title),
-      h("div", { class: "actions" }, [
-        h("button", {
-          class: "btn btn-outline", html: `${iconHtml("printer", 14)}<span>인쇄 / PDF</span>`,
-          onclick: () => printProposal(propEl),
-        }),
-        h("button", {
-          class: "btn btn-outline", html: `${iconHtml("eye", 14)}<span>전체보기</span>`,
-          onclick: () => openProposalFullscreen(propEl),
-        }),
+    const pageCount = propEl.querySelectorAll(".proposal-page").length;
+    const orientation = propEl.getAttribute("data-orientation") || "landscape";
+    const accent = propEl.getAttribute("data-accent") || "#6b46e5";
+
+    // 페이지에 keyword-row / figure 이미지 자동 장식 (공통)
+    decorateProposalPages(propEl);
+
+    // 썸네일: 축소 미리보기 (첫 2~3 페이지)
+    const thumbWrap = h("div", { class: "proposal-thumb-preview" });
+    const thumbInner = h("div", { class: "proposal-thumb-stage", style: `--proposal-accent: ${accent};` });
+    const propClone = propEl.cloneNode(true);
+    propClone.classList.add("proposal-thumb-mode");
+    thumbInner.appendChild(propClone);
+    thumbWrap.appendChild(thumbInner);
+
+    card.appendChild(h("div", { class: "proposal-thumb-header" }, [
+      h("div", { style: "flex:1; min-width:0;" }, [
+        h("div", { class: "thumb-label" }, final ? "✅ 제안서 완성" : "📝 제안서 생성 중"),
+        h("h4", { class: "thumb-title" }, title),
+        h("div", { class: "thumb-meta" }, `${orientation === "portrait" ? "A4 세로" : "A4 가로"} · 총 ${pageCount}페이지`),
       ]),
-    ]);
-
-    propEl.querySelectorAll(".proposal-page").forEach((page) => {
-      const kw = page.getAttribute("data-keyword");
-      if (kw && !page.nextElementSibling?.classList.contains("keyword-row")) {
-        const kwRow = h("div", { class: "keyword-row" }, [
-          h("span", { class: "muted" }, `이미지 검색 · ${kw}`),
-          h("a", {
-            href: `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(kw)}`,
-            target: "_blank", rel: "noopener",
-          }, "구글에서 이미지 보기 →"),
-        ]);
-        page.insertAdjacentElement("afterend", kwRow);
-      }
-    });
-
-    // AI/스톡 이미지 플레이스홀더 자동 로드
-    propEl.querySelectorAll("figure.ai-image").forEach(async (fig) => {
-      if (fig.dataset.loaded === "1") return;
-      fig.dataset.loaded = "1";
-      const type = fig.dataset.type || "stock";
-      const key = fig.dataset.prompt || fig.dataset.keyword || "";
-      if (!key) return;
-      try {
-        const j = await api.get(`/api/images/search?kind=${encodeURIComponent(type)}&keyword=${encodeURIComponent(key)}`);
-        if (j.url) {
-          const img = document.createElement("img");
-          img.src = j.url;
-          img.alt = key;
-          const ph = fig.querySelector(".ai-image-placeholder");
-          if (ph) ph.replaceWith(img); else fig.insertBefore(img, fig.firstChild);
-        }
-      } catch (e) { /* 실패 시 플레이스홀더 그대로 */ }
-    });
-
-    propEl.parentElement.insertBefore(toolbar, propEl);
+      h("button", {
+        class: "btn btn-primary btn-lg thumb-open",
+        html: `${iconHtml("eye", 16)}<span>전체화면으로 보기</span>`,
+        onclick: () => openProposalInNewTab(propEl),
+      }),
+    ]));
+    card.appendChild(thumbWrap);
+    card.appendChild(h("div", { class: "proposal-thumb-actions" }, [
+      h("button", { class: "btn btn-outline", html: `${iconHtml("printer", 14)}<span>인쇄 / PDF</span>`,
+        onclick: () => printProposal(propEl) }),
+      h("button", { class: "btn btn-outline", html: `${iconHtml("eye", 14)}<span>모달로 보기</span>`,
+        onclick: () => openProposalFullscreen(propEl) }),
+    ]));
+    card.appendChild(hidden);
+    hidden.style.display = "none";
+  } else {
+    // proposal 태그는 있으나 파싱 실패 (극히 예외) — 빈 스켈레톤
+    card.appendChild(h("div", { class: "thumb-label" }, "📝 제안서 생성 중"));
+    card.appendChild(h("div", { class: "muted small", style: "padding:20px; text-align:center;" }, `${completedPages}페이지 작성 중…`));
   }
 
-  // 재구축 시 한 번만 innerHTML 교체 — repaint 최소화
-  const newContent = document.createDocumentFragment();
-  if (pre) newContent.appendChild(h("div", { style: "white-space: pre-wrap; margin-bottom: 10px;" }, pre));
-  newContent.appendChild(wrapper);
-  if (post) {
-    // post 에 HTML 태그 흔적이 남아 있으면 코드로 노출되지 않게 숨김
-    // (findProposalEnd 가 잘라낸 뒷부분 — 짧은 마침 문구만 통과)
-    const hasHtml = /<\w+[\s>]/.test(post);
-    if (!hasHtml) {
-      newContent.appendChild(h("div", { style: "white-space: pre-wrap; margin-top: 10px;" }, post));
+  const fragment = document.createDocumentFragment();
+  if (pre) fragment.appendChild(h("div", { style: "white-space: pre-wrap; margin-bottom: 10px;" }, pre));
+  fragment.appendChild(card);
+  bubble.replaceChildren(fragment);
+}
+
+// ---------- 스트리밍 진행 표시 바 ----------
+// 현재 섹션명·페이지 X/Y·진행률 — 제안서 HTML 이 오기 전에도 "분석 중" 상태로 표시
+function createStreamProgress() {
+  const el = h("div", { class: "stream-progress indeterminate" }, [
+    h("div", { class: "sp-head" }, [
+      h("div", { class: "sp-spinner" }),
+      h("div", { class: "sp-section" }, "생각하는 중…"),
+      h("div", { class: "sp-count" }, "준비 중"),
+    ]),
+    h("div", { class: "sp-bar" }, [ h("div", { class: "sp-bar-fill" }) ]),
+  ]);
+  const sectionEl = el.querySelector(".sp-section");
+  const countEl = el.querySelector(".sp-count");
+  const fillEl = el.querySelector(".sp-bar-fill");
+
+  // 제안서 단계: 목차의 [페이지 수] 목표 (시스템 프롬프트 내 권장치) — 기본 10
+  // 실제 파싱되는 `data-total-pages` 가 있으면 그걸 사용
+  const DEFAULT_TARGET_PAGES = 10;
+
+  let finished = false;
+
+  // HTML 이 아직 오기 전엔 "생각하는 중…" 상태로 pulse
+  // <div class="proposal" 이후부터는 페이지 단위 파싱
+  function update(fullText) {
+    if (finished) return;
+
+    // 1) 제안서 HTML 시작 전 — 인트로 메시지 회전
+    const propIdx = fullText.indexOf('<div class="proposal"');
+    if (propIdx === -1) {
+      el.classList.add("indeterminate");
+      // 짧은 텍스트면 "분석 중", 점점 길어지면 "구조 설계 중"
+      if (fullText.length < 80)      sectionEl.textContent = "RFP·컨텍스트 분석 중…";
+      else if (fullText.length < 400) sectionEl.textContent = "제안 전략 설계 중…";
+      else                            sectionEl.textContent = "제안서 구조 작성 중…";
+      countEl.textContent = "";
+      return;
     }
+
+    // 2) 제안서 HTML 진입 — determinate 모드
+    el.classList.remove("indeterminate");
+    const propSlice = fullText.slice(propIdx);
+
+    // 목표 페이지 수 힌트 (있으면 사용)
+    let totalTarget = DEFAULT_TARGET_PAGES;
+    const totalAttr = propSlice.match(/data-total-pages=["'](\d+)["']/);
+    if (totalAttr) totalTarget = parseInt(totalAttr[1], 10) || DEFAULT_TARGET_PAGES;
+
+    // 시작된 페이지 / 완료된 페이지
+    const openedPages = (propSlice.match(/<div class="proposal-page\b/gi) || []).length;
+    // 완료된 페이지 = proposal-page 다음에 닫힘 </div> 가 대응된 것
+    // 간단 근사: 열린 페이지 수 - (마지막 페이지가 아직 열린 상태면 1 감산)
+    // — 정확히 하려면 tag stack 파싱 필요하지만 진행률 용도론 충분
+    const lastPageOpen = propSlice.lastIndexOf('<div class="proposal-page');
+    const afterLast = lastPageOpen >= 0 ? propSlice.slice(lastPageOpen) : "";
+    const closedInLast = (afterLast.match(/<\/div>/gi) || []).length;
+    const lastClosed = closedInLast >= 4; // page 내부 중첩 div 대략 4개 이상 닫힘 → 완료 근사
+    const completedPages = Math.max(0, openedPages - (lastClosed ? 0 : 1));
+
+    // 현재 작성 중인 페이지의 섹션명 (data-section="…")
+    let currentSection = "페이지 작성 중";
+    const secMatches = [...propSlice.matchAll(/data-section=["']([^"']+)["']/g)];
+    if (secMatches.length) {
+      const last = secMatches[secMatches.length - 1];
+      currentSection = last[1];
+    }
+
+    const currentPage = Math.max(1, openedPages);
+    const displayTotal = Math.max(totalTarget, openedPages);
+
+    sectionEl.textContent = `${currentSection} 페이지 작성 중…`;
+    countEl.textContent = `페이지 ${currentPage} / ${displayTotal}`;
+
+    // 진행률 — 완료된 페이지 + 현재 페이지 진행 근사 (0.5)
+    const ratio = Math.min(1, (completedPages + 0.5) / displayTotal);
+    fillEl.style.width = `${Math.max(6, ratio * 100).toFixed(1)}%`;
   }
-  bubble.replaceChildren(newContent);
+
+  function finish(ok) {
+    if (finished) return;
+    finished = true;
+    if (ok) {
+      el.classList.remove("indeterminate");
+      fillEl.style.width = "100%";
+      sectionEl.textContent = "✅ 제안서 생성 완료";
+      countEl.textContent = "완료";
+    } else {
+      sectionEl.textContent = "중단됨";
+    }
+    // 0.9s 대기 → 부드럽게 fade-out → 1.4s 후 DOM 제거
+    setTimeout(() => {
+      el.classList.add("fade-out");
+      setTimeout(() => { el.remove(); }, 500);
+    }, 900);
+  }
+
+  return { el, update, finish };
+}
+
+// 제안서 페이지에 keyword row / 이미지 자동 로드 장식 — 썸네일/팝업 공통
+function decorateProposalPages(propEl) {
+  propEl.querySelectorAll(".proposal-page").forEach((page) => {
+    const kw = page.getAttribute("data-keyword");
+    if (kw && !page.nextElementSibling?.classList.contains("keyword-row")) {
+      const kwRow = h("div", { class: "keyword-row" }, [
+        h("span", { class: "muted" }, `이미지 검색 · ${kw}`),
+        h("a", {
+          href: `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(kw)}`,
+          target: "_blank", rel: "noopener",
+        }, "구글에서 이미지 보기 →"),
+      ]);
+      page.insertAdjacentElement("afterend", kwRow);
+    }
+  });
+  // AI/스톡 이미지 플레이스홀더 자동 로드
+  propEl.querySelectorAll("figure.ai-image").forEach(async (fig) => {
+    if (fig.dataset.loaded === "1") return;
+    fig.dataset.loaded = "1";
+    const type = fig.dataset.type || "stock";
+    const key = fig.dataset.prompt || fig.dataset.keyword || "";
+    if (!key) return;
+    try {
+      const j = await api.get(`/api/images/search?kind=${encodeURIComponent(type)}&keyword=${encodeURIComponent(key)}`);
+      if (j.url) {
+        const img = document.createElement("img");
+        img.src = j.url;
+        img.alt = key;
+        const ph = fig.querySelector(".ai-image-placeholder");
+        if (ph) ph.replaceWith(img); else fig.insertBefore(img, fig.firstChild);
+      }
+    } catch (e) { /* 실패 시 플레이스홀더 유지 */ }
+  });
+}
+
+// 새 탭으로 제안서 열기 — 독립 HTML 문서 생성
+function openProposalInNewTab(propEl) {
+  const title = propEl.getAttribute("data-title") || "제안서";
+  const accent = propEl.getAttribute("data-accent") || "#6b46e5";
+  const w = window.open("", "_blank");
+  if (!w) { toast("팝업이 차단됐어요. 브라우저 팝업 허용 후 다시 시도해주세요.", "error"); return; }
+  // style.css 링크의 절대 경로 — 실패 시에도 안전 fallback
+  const cssLink = document.querySelector('link[rel="stylesheet"][href*="/static/style.css"]');
+  const cssHref = cssLink
+    ? new URL(cssLink.getAttribute("href"), location.origin).href
+    : `${location.origin}/static/style.css`;
+  const bodyHtml = propEl.outerHTML;
+  w.document.write(`<!DOCTYPE html><html lang="ko"><head>
+<meta charset="utf-8"/>
+<title>${title.replace(/</g, "&lt;")} · NightOff</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css"/>
+<link rel="stylesheet" href="${cssHref}"/>
+<style>
+  body { margin:0; background:#f5f5f5; font-family:'Pretendard Variable',Pretendard,sans-serif; }
+  .proposal-viewer-root {
+    padding: 40px 32px 80px;
+    display: flex; flex-direction: column; align-items: center; gap: 24px;
+  }
+  .proposal-viewer-root .proposal { --proposal-accent: ${accent}; width: 100%; max-width: 1240px; display:flex; flex-direction:column; gap:24px; }
+  .proposal-viewer-root .proposal-page {
+    width: 100%; aspect-ratio: 1.4142/1; box-shadow: 0 20px 40px -10px rgba(0,0,0,0.15);
+  }
+  .pv-topbar {
+    position: sticky; top: 0; background: #fff; padding: 14px 24px;
+    border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center;
+    z-index: 10;
+  }
+  .pv-topbar h1 { font-size: 16px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+  .pv-topbar .actions { display: flex; gap: 8px; }
+  .pv-btn { padding: 8px 14px; border-radius: 8px; border: 1px solid #d1d1d1; background: #fff; cursor: pointer; font-size: 13px; font-weight: 500; }
+  .pv-btn.primary { background: ${accent}; color: #fff; border-color: ${accent}; }
+  @media print {
+    .pv-topbar { display:none; }
+    .proposal-viewer-root { padding: 0; }
+    .proposal-viewer-root .proposal-page { box-shadow:none; break-after:page; page-break-after:always; }
+    @page { size: A4 landscape; margin: 0; }
+  }
+</style>
+</head><body>
+<div class="pv-topbar">
+  <h1>${title.replace(/</g, "&lt;")}</h1>
+  <div class="actions">
+    <button class="pv-btn" onclick="window.print()">🖨 인쇄 / PDF</button>
+    <button class="pv-btn" onclick="window.close()">닫기</button>
+  </div>
+</div>
+<div class="proposal-viewer-root">${bodyHtml}</div>
+</body></html>`);
+  w.document.close();
 }
 
 function findProposalEnd(s) {

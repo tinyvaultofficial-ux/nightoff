@@ -670,15 +670,17 @@ input, select, textarea { font-family: inherit; color: inherit; }
 .proposal-toolbar .title { font-size: 14px; font-weight: 600; }
 .proposal-toolbar .actions { display: flex; gap: 6px; }
 
-/* A4 ratios: landscape 297:210 (1.414), portrait 210:297 (0.707) */
-/* ▶ 고정 그리드: 페이지는 항상 4-zone (section-name | governing | content | summary) 세로 그리드 */
+/* A4 ratios: landscape 297:210 (1.414), portrait 210:297 (0.707)
+   ▶ 기본값 = 가로형. RFP 가 명시적으로 portrait 를 요구한 경우에만 세로형.
+   ▶ 고정 그리드: 페이지는 항상 4-zone (section-name | governing | content | summary) */
 .proposal-page {
   position: relative; background: #ffffff; color: #111827;
   border: 1px solid var(--border); border-radius: var(--radius);
   box-shadow: var(--shadow-md);
-  /* A4 가로형(297×210, 1.4142:1) 엄격 고정.
-     콘텐츠가 넘치면 hidden 으로 자르는 대신 내부 스크롤 허용 — 사용자 볼 수 있음. */
-  aspect-ratio: 1.4142 / 1;
+  /* A4 가로형(297×210, 1.4142:1) 엄격 고정. */
+  aspect-ratio: 1.4142 / 1 !important;
+  width: 100%;
+  max-width: 1240px;
   padding: 38px 48px 48px;
   overflow: hidden;
   display: flex;
@@ -687,9 +689,15 @@ input, select, textarea { font-family: inherit; color: inherit; }
   font-size: 15px;
   page-break-inside: avoid;
 }
+/* 가로형 명시 또는 기본 (data-orientation 없음) 모두 landscape 강제 */
+.proposal:not([data-orientation="portrait"]) .proposal-page,
+.proposal[data-orientation="landscape"] .proposal-page,
+.proposal[data-orientation=""]           .proposal-page {
+  aspect-ratio: 1.4142 / 1 !important;
+}
 /* 세로형은 RFP 명시 시에만 (드물다) */
 .proposal[data-orientation="portrait"] .proposal-page {
-  aspect-ratio: 0.7071 / 1;
+  aspect-ratio: 0.7071 / 1 !important;
   padding: 44px 40px 48px;
 }
 /* 페이지 내부 콘텐츠 정렬 */
@@ -1354,6 +1362,189 @@ input, select, textarea { font-family: inherit; color: inherit; }
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* ============================================================
+   Proposal thumbnail card (채팅에 박히는 미니 카드)
+   - 원본 큰 제안서는 hidden 에 숨김
+   - 카드는 "썸네일 미리보기 + 전체화면 버튼 + 인쇄"
+   ============================================================ */
+.proposal-thumb-card {
+  margin: 14px 0 8px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  animation: cardIn .25s ease-out both;
+}
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.proposal-thumb-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, #faf8ff 0%, #fff 55%);
+  border-bottom: 1px solid var(--border);
+}
+.proposal-thumb-header .thumb-label {
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.04em; color: var(--primary);
+  text-transform: uppercase; margin-bottom: 2px;
+}
+.proposal-thumb-header .thumb-title {
+  margin: 0; font-size: 16px; font-weight: 700;
+  color: var(--fg); letter-spacing: -0.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.proposal-thumb-header .thumb-meta {
+  margin-top: 4px; font-size: 12px; color: var(--fg-2);
+}
+.proposal-thumb-header .thumb-open {
+  flex-shrink: 0;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 10px 16px; font-size: 13px; font-weight: 600;
+  border-radius: 10px;
+}
+.proposal-thumb-header .thumb-open svg { flex-shrink: 0; }
+
+/* 썸네일 미리보기 — A4 가로형 축소 */
+.proposal-thumb-preview {
+  position: relative;
+  padding: 18px 20px;
+  background: linear-gradient(180deg, #f7f7fb 0%, #eef0f7 100%);
+  max-height: 420px;
+  overflow: hidden;
+}
+.proposal-thumb-preview::after {
+  /* 하단 fade-out — 전체화면 버튼 유도 */
+  content: "";
+  position: absolute; left: 0; right: 0; bottom: 0;
+  height: 60px;
+  background: linear-gradient(180deg, rgba(238,240,247,0) 0%, #eef0f7 100%);
+  pointer-events: none;
+}
+.proposal-thumb-stage {
+  /* 썸네일은 실제 A4 가로 비율로 축소해서 첫 2~3 페이지만 보이게 */
+  transform-origin: top center;
+  transform: scale(0.42);
+  width: 238%;  /* scale 보정 */
+  margin: 0 auto;
+  pointer-events: none;  /* 썸네일은 클릭 비활성 — 버튼 유도 */
+}
+.proposal-thumb-stage .proposal {
+  margin: 0;
+  gap: 14px;
+}
+.proposal-thumb-stage .proposal-page {
+  box-shadow: 0 6px 16px -6px rgba(0,0,0,0.12);
+  animation: none;
+}
+/* 썸네일 모드에서는 최대 3 페이지만 */
+.proposal-thumb-mode .proposal-page:nth-of-type(n+4) { display: none; }
+
+/* 하단 액션 바 */
+.proposal-thumb-actions {
+  display: flex; gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+  background: #fff;
+}
+.proposal-thumb-actions .btn { font-size: 12px; padding: 8px 12px; }
+
+/* 원본 숨김 영역 */
+.proposal-hidden { display: none !important; }
+
+/* ============================================================
+   생성 진행 표시 바 (스트리밍 중 상단 고정)
+   ============================================================ */
+.stream-progress {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: linear-gradient(135deg, #ffffff 0%, #faf8ff 100%);
+  border: 1px solid color-mix(in oklab, var(--primary) 20%, var(--border));
+  border-radius: 14px;
+  padding: 14px 18px 12px;
+  margin: 0 0 14px;
+  box-shadow: 0 4px 16px -6px rgba(107, 70, 229, 0.22);
+  animation: progressIn .3s ease-out both;
+  transition: opacity .35s ease, transform .35s ease, max-height .4s ease;
+  overflow: hidden;
+}
+@keyframes progressIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.stream-progress.fade-out {
+  opacity: 0;
+  transform: translateY(-8px);
+  max-height: 0;
+  padding-top: 0; padding-bottom: 0;
+  margin-bottom: 0;
+  border-width: 0;
+}
+.stream-progress .sp-head {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 8px;
+}
+.stream-progress .sp-spinner {
+  width: 16px; height: 16px; flex-shrink: 0;
+  border: 2px solid color-mix(in oklab, var(--primary) 20%, transparent);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spSpin 0.7s linear infinite;
+}
+@keyframes spSpin { to { transform: rotate(360deg); } }
+.stream-progress .sp-section {
+  flex: 1; min-width: 0;
+  font-size: 14px; font-weight: 600;
+  color: var(--fg);
+  letter-spacing: -0.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.stream-progress .sp-count {
+  flex-shrink: 0;
+  font-size: 12px; font-weight: 700;
+  color: var(--primary);
+  background: var(--primary-soft);
+  padding: 3px 10px; border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+.stream-progress .sp-bar {
+  position: relative;
+  height: 6px; border-radius: 999px;
+  background: color-mix(in oklab, var(--primary) 12%, #eef0f7);
+  overflow: hidden;
+}
+.stream-progress .sp-bar-fill {
+  position: absolute; top: 0; left: 0; bottom: 0;
+  width: 0%;
+  background: linear-gradient(90deg, var(--primary) 0%, color-mix(in oklab, var(--primary) 60%, #a78bfa) 100%);
+  border-radius: inherit;
+  transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 0 12px color-mix(in oklab, var(--primary) 50%, transparent);
+}
+.stream-progress .sp-bar-fill::after {
+  /* shimmer */
+  content: "";
+  position: absolute; top: 0; right: 0; bottom: 0;
+  width: 40%;
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.45) 50%, rgba(255,255,255,0) 100%);
+  animation: spShimmer 1.4s linear infinite;
+}
+@keyframes spShimmer {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(250%); }
+}
+.stream-progress.indeterminate .sp-bar-fill {
+  width: 35% !important;
+  animation: spIndeterminate 1.2s ease-in-out infinite;
+}
+@keyframes spIndeterminate {
+  0%   { margin-left: -35%; }
+  100% { margin-left: 100%; }
+}
+
 /* ===== Modal ===== */
 .modal-backdrop {
   position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 100;
@@ -1601,13 +1792,14 @@ body.fs-loader-active {
 .weakness-badge { background: var(--danger-soft); color: var(--danger); }
 
 /* ===== Print-only: A4 가로형 (기본) / 세로형 (명시 시) ===== */
+/* 기본은 무조건 A4 가로 (297mm × 210mm) — RFP 가 portrait 지정한 경우에만 전환 */
 @page {
-  size: A4 landscape;
-  margin: 20mm;
+  size: 297mm 210mm;    /* A4 landscape — 정확한 치수 명시 */
+  margin: 12mm;
 }
 @page portrait {
-  size: A4 portrait;
-  margin: 20mm;
+  size: 210mm 297mm;    /* A4 portrait */
+  margin: 15mm;
 }
 
 @media print {

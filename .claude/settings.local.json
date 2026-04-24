@@ -123,7 +123,9 @@
       "Bash(unzip -q \"C:/Users/00/Downloads/b_wk142EhjHEv.zip\")",
       "Bash(gh auth *)",
       "Bash(where gh *)",
-      "Read(//c/Program Files/**)"
+      "Read(//c/Program Files/**)",
+      "Bash(pip install *)",
+      "Bash(curl -s -o /tmp/resp.txt -w \"HTTP %{http_code}\\\\nContent-Type: %{content_type}\\\\n\" http://127.0.0.1:8000/api/stats)"
     ]
   }
 }

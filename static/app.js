@@ -407,7 +407,7 @@ function renderSmartLearningBanner(dna, stats) {
       title: "승패 학습",
       desc: (stats.wins || stats.losses)
         ? `${stats.wins}승 ${stats.losses}패 기록 — 승률 ${stats.win_rate ?? "—"}% 로 전략에 반영 중`
-        : "낙찰/탈락 결과를 기록하면 승률 높은 전략을 우선 반영해요.",
+        : "수주/탈락 결과를 기록하면 승률 높은 전략을 우선 반영해요.",
     },
   ];
   const grid = h("div", { class: "smart-grid" });
@@ -422,6 +422,98 @@ function renderSmartLearningBanner(dna, stats) {
   });
   banner.appendChild(grid);
   return banner;
+}
+
+async function openBudgetModal(convId) {
+  const backdrop = h("div", { class: "modal-backdrop", onclick: (e) => { if (e.target === backdrop) backdrop.remove(); } });
+  const modal = h("div", { class: "modal", style: "max-width: 900px; max-height: 88vh; display: flex; flex-direction: column;" });
+  modal.appendChild(h("div", { class: "modal-header" }, [
+    h("h3", {}, "산출내역서 (업계 평균 시세 기반 자동 생성)"),
+    h("button", { class: "icon-btn", onclick: () => backdrop.remove(), html: iconHtml("x", 18) }),
+  ]));
+  const body = h("div", { class: "modal-body", style: "overflow-y: auto;" });
+  modal.appendChild(body);
+  const footer = h("div", { class: "modal-footer" });
+  modal.appendChild(footer);
+
+  body.appendChild(h("div", { style: "padding: 24px; text-align: center;" }, "AI가 산출내역을 작성하고 있어요…"));
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
+
+  let data;
+  try {
+    data = await api.post("/api/budget/generate", { conversation_id: convId });
+  } catch (e) {
+    body.innerHTML = "";
+    body.appendChild(h("div", { style: "padding: 24px; color: var(--danger);" }, e.message || "생성 실패"));
+    return;
+  }
+
+  body.innerHTML = "";
+  body.appendChild(h("h4", { style: "margin: 0 0 14px; font-size: 16px;" }, data.title || "산출내역서"));
+  const fmt = (n) => (n || 0).toLocaleString("ko-KR") + "원";
+
+  (data.sections || []).forEach((sec) => {
+    body.appendChild(h("div", { class: "budget-section" }, [
+      h("h5", {}, sec.name),
+      h("table", { class: "budget-table" }, [
+        h("thead", {}, h("tr", {}, [
+          h("th", {}, "항목"),
+          h("th", {}, "규격"),
+          h("th", {}, "수량"),
+          h("th", {}, "단위"),
+          h("th", {}, "단가"),
+          h("th", {}, "금액"),
+          h("th", {}, "비고"),
+        ])),
+        h("tbody", {}, (sec.items || []).map((it) => h("tr", {}, [
+          h("td", { contenteditable: "true" }, it.name || ""),
+          h("td", { contenteditable: "true" }, it.spec || ""),
+          h("td", { contenteditable: "true" }, String(it.qty ?? 1)),
+          h("td", { contenteditable: "true" }, it.unit || "식"),
+          h("td", { contenteditable: "true", style: "text-align:right;" }, fmt(it.unit_price)),
+          h("td", { style: "text-align:right; font-weight:600;" }, fmt(it.amount)),
+          h("td", { contenteditable: "true" }, it.note || ""),
+        ]))),
+      ]),
+    ]));
+  });
+
+  body.appendChild(h("div", { class: "budget-total" }, [
+    h("div", {}, [h("span", { class: "muted small" }, "소계 "), h("strong", {}, fmt(data.subtotal))]),
+    h("div", {}, [h("span", { class: "muted small" }, "VAT 10% "), h("strong", {}, fmt(data.vat))]),
+    h("div", {}, [h("span", { class: "muted small" }, "합계 "), h("strong", { style: "color: var(--primary); font-size: 18px;" }, fmt(data.total))]),
+  ]));
+
+  footer.appendChild(h("button", { class: "btn btn-ghost", onclick: () => backdrop.remove() }, "닫기"));
+  footer.appendChild(h("button", {
+    class: "btn btn-outline",
+    html: `${iconHtml("printer", 14)}<span>인쇄 / PDF</span>`,
+    onclick: () => { window.print(); },
+  }));
+  footer.appendChild(h("button", {
+    class: "btn btn-primary",
+    html: `${iconHtml("save", 14)}<span>CSV 다운로드</span>`,
+    onclick: () => downloadBudgetCsv(data),
+  }));
+}
+
+function downloadBudgetCsv(data) {
+  const rows = [["카테고리", "항목", "규격", "수량", "단위", "단가", "금액", "비고"]];
+  (data.sections || []).forEach((s) => (s.items || []).forEach((it) => {
+    rows.push([s.name, it.name, it.spec, it.qty, it.unit, it.unit_price, it.amount, it.note]);
+  }));
+  rows.push(["", "", "", "", "", "소계", data.subtotal, ""]);
+  rows.push(["", "", "", "", "", "VAT 10%", data.vat, ""]);
+  rows.push(["", "", "", "", "", "합계", data.total, ""]);
+  const csv = "\uFEFF" + rows.map((r) => r.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `산출내역_${(data.title || "제안").replace(/\s+/g, "_")}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 async function openCompanyDnaModal() {
@@ -534,7 +626,7 @@ async function renderDashboard() {
     { label: "등록된 발주처", value: stats.total_clients ?? 0, unit: "곳", icon: "users", tint: "var(--primary-soft)", fg: "var(--primary)" },
     { label: "작성한 제안서", value: stats.total_proposals ?? 0, unit: "건", icon: "file", tint: "var(--success-soft)", fg: "var(--success)" },
     { label: "이번 달 활동", value: stats.month_activity ?? 0, unit: "회", icon: "activity", tint: "var(--warning-soft)", fg: "var(--warning)" },
-    { label: `낙찰률 (${stats.wins ?? 0}승 ${stats.losses ?? 0}패)`, value: winRateDisplay, unit: winRateUnit, icon: "trending", tint: "var(--accent)", fg: "var(--accent-fg)" },
+    { label: `수주율 (${stats.wins ?? 0}승 ${stats.losses ?? 0}패)`, value: winRateDisplay, unit: winRateUnit, icon: "trending", tint: "var(--accent)", fg: "var(--accent-fg)" },
   ];
   const statsGrid = h("div", { class: "stats-grid stats-grid-4" });
   statItems.forEach((s) => {
@@ -805,14 +897,14 @@ async function renderClientDetail(cid) {
   stack.appendChild(await renderCompetitorSection(cid));
 }
 
-// ---------- 낙찰/탈락 Outcome ----------
+// ---------- 수주/탈락 Outcome ----------
 const OUTCOME_META = {
-  "":            { label: "상태 설정", cls: "outcome-none" },
-  "in_progress": { label: "진행 중",   cls: "outcome-inprogress" },
-  "won":         { label: "낙찰 🏆",   cls: "outcome-won" },
-  "lost":        { label: "탈락",      cls: "outcome-lost" },
+  "":            { label: "⏳ 결과 입력",  cls: "outcome-none" },
+  "in_progress": { label: "⏳ 진행중",     cls: "outcome-inprogress" },
+  "won":         { label: "🏆 수주",       cls: "outcome-won" },
+  "lost":        { label: "❌ 탈락",       cls: "outcome-lost" },
 };
-const OUTCOME_OPTIONS = ["", "in_progress", "won", "lost"];
+const OUTCOME_OPTIONS = ["in_progress", "won", "lost", ""];
 
 function outcomeChip(cv, cid) {
   const current = cv.outcome || "";
@@ -857,22 +949,26 @@ async function renderConvHistorySection(cid) {
         h("p", { class: "card-subtitle" }, `총 ${convs.length}개의 대화`),
       ]),
     ]),
-    h("button", {
-      class: "btn btn-primary", html: `${iconHtml("plus", 16)}<span>새 대화 시작</span>`,
-      onclick: async () => {
-        try {
-          const r = await api.post(`/api/clients/${cid}/conversations`);
-          navigate(`/client/${cid}/chat/${r.id}`);
-        } catch (e) { toast(String(e.message || e), "error"); }
-      },
-    }),
   ]));
 
   const body = h("div", { class: "card-body" });
   card.appendChild(body);
 
+  // 큰 "새 대화 시작" CTA — 섹션 상단 중앙에 강조 배치
+  const startNew = async () => {
+    try {
+      const r = await api.post(`/api/clients/${cid}/conversations`);
+      navigate(`/client/${cid}/chat/${r.id}`);
+    } catch (e) { toast(String(e.message || e), "error"); }
+  };
+  body.appendChild(h("button", {
+    class: "btn btn-primary big-cta",
+    onclick: startNew,
+    html: `${iconHtml("plus", 22)}<span>새 대화 시작하기</span>`,
+  }));
+
   if (!convs.length) {
-    body.appendChild(h("div", { class: "empty-state" }, "대화가 없습니다. 새 대화를 시작해보세요."));
+    body.appendChild(h("div", { class: "empty-state", style: "margin-top: 14px;" }, "대화가 없습니다. 위 버튼으로 시작해보세요."));
     return card;
   }
 
@@ -1239,33 +1335,46 @@ async function renderRfpSection(cid) {
     });
     result.appendChild(infoGrid);
 
-    // Requirements
+    // Requirements — 체크리스트 형태
     if (a.key_requirements?.length) {
       result.appendChild(h("div", { style: "margin-top: 18px;" }, [
-        h("p", { class: "small muted", style: "margin: 0 0 8px; font-weight: 500;" }, "주요 요구사항"),
-        h("div", { class: "flex-row", style: "flex-wrap: wrap; gap: 6px;" },
-          a.key_requirements.map((r) => h("span", { class: "badge badge-outline" }, r))),
+        h("p", { class: "small muted", style: "margin: 0 0 10px; font-weight: 500;" }, "주요 요구사항"),
+        h("ul", { class: "check-list" },
+          a.key_requirements.map((r) => h("li", {}, [
+            h("span", { class: "check-icon", html: iconHtml("check", 14) }),
+            h("span", {}, r),
+          ]))),
       ]));
     }
 
-    // Evaluation criteria
+    // Requirements — 체크리스트 형태
+    // (앞선 key_requirements 블록을 보강: 배지 대신 체크 아이콘 리스트)
+    // 평가기준 — 배점 높은 순 프로그레스바
     if (a.evaluation_criteria?.length) {
+      const crit = [...a.evaluation_criteria]
+        .map((ec) => {
+          const m = String(ec.weight || "").match(/(\d+(?:\.\d+)?)/);
+          return { ...ec, _w: m ? parseFloat(m[1]) : 0 };
+        })
+        .sort((x, y) => y._w - x._w);
+      const maxW = Math.max(1, ...crit.map((c) => c._w));
       result.appendChild(h("div", { style: "margin-top: 18px;" }, [
-        h("p", { class: "small muted", style: "margin: 0 0 8px; font-weight: 500;" }, "평가 기준"),
-        ...a.evaluation_criteria.map((ec) => h("div", { style: "display: flex; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 14px;" }, [
-          h("span", {}, ec.item || ""),
-          h("span", { class: "muted" }, ec.weight || ""),
+        h("p", { class: "small muted", style: "margin: 0 0 10px; font-weight: 500;" }, "평가 기준 (배점 높은 순)"),
+        ...crit.map((ec) => h("div", { class: "eval-bar-row" }, [
+          h("div", { class: "eval-label" }, ec.item || ""),
+          h("div", { class: "eval-bar" }, [h("span", { style: `width: ${(ec._w / maxW) * 100}%;` })]),
+          h("div", { class: "eval-weight" }, ec.weight || "—"),
         ])),
       ]));
     }
 
-    // Risk points
+    // Risk points — 빨간 경고 배지
     if (a.risk_points?.length) {
       result.appendChild(h("div", { style: "margin-top: 18px;" }, [
-        h("p", { class: "small muted", style: "margin: 0 0 8px; font-weight: 500;" }, "리스크/주의사항"),
-        h("ul", { style: "list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px;" },
-          a.risk_points.map((p) => h("li", { class: "flex-row", style: "align-items: flex-start; font-size: 14px;" }, [
-            h("span", { style: "color: var(--warning); flex-shrink: 0; margin-top: 3px;", html: iconHtml("alert", 14) }),
+        h("p", { class: "small muted", style: "margin: 0 0 8px; font-weight: 500;" }, "리스크 / 주의사항"),
+        h("div", { class: "risk-stack" },
+          a.risk_points.map((p) => h("div", { class: "risk-alert" }, [
+            h("span", { class: "risk-emoji" }, "⚠️"),
             h("span", {}, p),
           ]))),
       ]));
@@ -1299,13 +1408,13 @@ async function renderCompetitorSection(cid) {
   // Input row — 2글자 이상 입력 시 자동으로 후보 드롭다운
   const inpWrap = h("div", { style: "position: relative;" });
   const inp = h("input", { class: "input", placeholder: "경쟁사 기업명 (2글자+) · 쉼표로 여러 개 가능 (예: LG CNS, SK C&C)", autocomplete: "off" });
-  const ctx = h("input", { class: "input", placeholder: "추가 컨텍스트 (선택, 예: 동일 사업 수주 이력)" });
+  const ctx = { value: "" };  // 추가 컨텍스트 입력창 제거 — 빈 값으로 호환성 유지
   const dropdown = h("div", { class: "autocomplete-dropdown hidden" });
   inpWrap.appendChild(inp);
   inpWrap.appendChild(dropdown);
 
   const analysisArea = h("div");
-  body.appendChild(h("div", { style: "display: grid; grid-template-columns: 1fr 1fr; gap: 10px;" }, [inpWrap, ctx]));
+  body.appendChild(inpWrap);
   body.appendChild(analysisArea);
 
   let debounceT = null;
@@ -1422,6 +1531,12 @@ async function renderCompetitorSection(cid) {
 }
 
 function compCard(c, cid) {
+  const col = (cls, title, items) => h("div", { class: `comp-col-card ${cls}` }, [
+    h("h5", {}, title),
+    items && items.length
+      ? h("ul", {}, items.map((x) => h("li", {}, x)))
+      : h("p", { class: "small muted", style: "margin: 0;" }, "—"),
+  ]);
   return h("div", { class: "comp-card" }, [
     h("div", { class: "flex-between", style: "margin-bottom: 8px;" }, [
       h("h4", {}, c.name),
@@ -1436,15 +1551,15 @@ function compCard(c, cid) {
       }),
     ]),
     c.analysis ? h("p", { class: "comp-summary" }, c.analysis) : null,
-    (c.strengths?.length ? h("div", {}, [
-      h("p", { class: "small muted", style: "margin: 8px 0 4px; font-weight: 500;" }, "강점"),
-      h("div", { class: "comp-tags-row" }, c.strengths.map((s) => h("span", { class: "badge strength-badge" }, s))),
-    ]) : null),
-    (c.weaknesses?.length ? h("div", {}, [
-      h("p", { class: "small muted", style: "margin: 8px 0 4px; font-weight: 500;" }, "약점"),
-      h("div", { class: "comp-tags-row" }, c.weaknesses.map((s) => h("span", { class: "badge weakness-badge" }, s))),
-    ]) : null),
-    c.differentiator ? h("div", { class: "comp-diff" }, "우리의 승부수 · " + c.differentiator) : null,
+    // 3열 카드: 강점 / 약점 / 차별화
+    h("div", { class: "comp-3col" }, [
+      col("strengths", "강점", c.strengths),
+      col("weaknesses", "약점", c.weaknesses),
+      h("div", { class: "comp-col-card diff" }, [
+        h("h5", {}, "차별화 (우리 승부수)"),
+        c.differentiator ? h("p", {}, c.differentiator) : h("p", { class: "small muted", style: "margin:0;" }, "—"),
+      ]),
+    ]),
   ]);
 }
 
@@ -1463,7 +1578,7 @@ async function renderProfileSection(cid) {
     ]),
     p.exists ? h("span", {
       class: "win-rate-badge " + (p.win_rate === null ? "muted" : (p.win_rate >= 50 ? "good" : "warn")),
-      title: `낙찰 ${p.win}건 / 탈락 ${p.lose}건`,
+      title: `수주 ${p.win}건 / 탈락 ${p.lose}건`,
     }, p.win_rate === null ? "기록 없음" : `승률 ${p.win_rate}%`) : null,
   ]));
 
@@ -1481,27 +1596,51 @@ async function renderProfileSection(cid) {
     return card;
   }
 
-  const kwBox = (label, items, cls = "badge-outline") => {
-    if (!items || !items.length) return null;
-    return h("div", {}, [
-      h("p", { class: "small muted", style: "margin: 0 0 6px; font-weight: 500;" }, label),
-      h("div", { class: "flex-row", style: "flex-wrap: wrap; gap: 6px;" },
-        items.map((x) => h("span", { class: "badge " + cls }, x))),
-    ]);
-  };
-  const blocks = [
-    kwBox("선호 키워드", p.keywords, "badge-primary"),
-    kwBox("높은 배점 항목", p.high_weight_items, "badge-success"),
-    kwBox("반복 요구사항", p.recurring_reqs, "badge-warning"),
-  ].filter(Boolean);
-  if (blocks.length) body.appendChild(h("div", { class: "row-gap-14" }, blocks));
+  // 선호 키워드 — 태그 클라우드 (빈도 가중치 없어도 크기 랜덤 배분 느낌)
+  if (p.keywords?.length) {
+    body.appendChild(h("div", {}, [
+      h("p", { class: "small muted", style: "margin: 0 0 10px; font-weight: 500;" }, "선호 키워드"),
+      h("div", { class: "tag-cloud" },
+        p.keywords.map((k, i) => {
+          const sizes = ["sz-lg", "sz-md", "sz-sm"];
+          const sz = sizes[i % sizes.length];
+          return h("span", { class: `cloud-tag ${sz}` }, k);
+        })),
+    ]));
+  }
 
+  // 높은 배점 항목 — 가로 바 차트
+  if (p.high_weight_items?.length) {
+    const items = p.high_weight_items.slice(0, 6);
+    body.appendChild(h("div", {}, [
+      h("p", { class: "small muted", style: "margin: 0 0 10px; font-weight: 500;" }, "높은 배점 항목 (상위 6개)"),
+      h("div", { class: "hbar-chart" },
+        items.map((x, i) => {
+          // 순위 기반 가중치: 1등 100%, 2등 82%, 3등 68%, ...
+          const pct = Math.round(100 - (i * 14));
+          return h("div", { class: "hbar-row" }, [
+            h("div", { class: "hbar-label" }, x),
+            h("div", { class: "hbar" }, [h("span", { style: `width: ${pct}%;` })]),
+          ]);
+        })),
+    ]));
+  }
+
+  if (p.recurring_reqs?.length) {
+    body.appendChild(h("div", {}, [
+      h("p", { class: "small muted", style: "margin: 0 0 8px; font-weight: 500;" }, "반복 요구사항"),
+      h("div", { class: "flex-row", style: "flex-wrap: wrap; gap: 6px;" },
+        p.recurring_reqs.map((x) => h("span", { class: "badge badge-warning" }, x))),
+    ]));
+  }
+
+  // 축적된 인사이트 — 아이콘 + 한 줄 카드
   if (p.insights?.length) {
     body.appendChild(h("div", {}, [
-      h("p", { class: "small muted", style: "margin: 0 0 8px; font-weight: 500;" }, "축적된 인사이트"),
-      h("ul", { style: "list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px;" },
-        p.insights.map((ins) => h("li", { class: "flex-row", style: "align-items: flex-start; font-size: 14px;" }, [
-          h("span", { style: "color: var(--primary); flex-shrink: 0; margin-top: 3px;" }, "•"),
+      h("p", { class: "small muted", style: "margin: 0 0 10px; font-weight: 500;" }, "축적된 인사이트"),
+      h("div", { class: "insight-stack" },
+        p.insights.map((ins) => h("div", { class: "insight-card" }, [
+          h("div", { class: "insight-icon", html: iconHtml("brain", 16) }),
           h("span", {}, ins),
         ]))),
     ]));
@@ -1621,6 +1760,30 @@ async function renderChat(cid, convId) {
         injected.rfp ? h("span", { class: "badge badge-primary" }, "RFP") : null,
         injected.refs ? h("span", { class: "badge badge-primary" }, "레퍼런스") : null,
       ]),
+      // 포인트 컬러 피커
+      h("label", {
+        class: "accent-picker", title: "발주처 포인트 컬러",
+      }, [
+        h("span", { class: "accent-dot" }),
+        h("input", {
+          type: "color",
+          value: "#6b46e5",
+          onchange: async (e) => {
+            const v = e.target.value;
+            try {
+              await api.patch(`/api/clients/${cid}/accent`, { accent: v });
+              toast("포인트 컬러가 적용되었습니다", "success");
+              // 현재 렌더된 제안서에도 즉시 반영
+              document.querySelectorAll(".proposal").forEach((el) => el.style.setProperty("--proposal-accent", v));
+            } catch (err) { toast(err.message || "컬러 적용 실패", "error"); }
+          },
+        }),
+      ]),
+      // 산출내역서 버튼
+      h("button", {
+        class: "btn btn-outline", html: `${iconHtml("file", 14)}<span>산출내역서</span>`,
+        onclick: () => openBudgetModal(convId),
+      }),
       h("button", {
         class: "btn btn-outline", html: `${iconHtml("save", 14)}<span>대화 마치기</span>`,
         onclick: async () => {
@@ -1907,6 +2070,25 @@ function renderAssistant(bubble, text, final = false) {
       }
     });
 
+    // AI/스톡 이미지 플레이스홀더 자동 로드
+    propEl.querySelectorAll("figure.ai-image").forEach(async (fig) => {
+      if (fig.dataset.loaded === "1") return;
+      fig.dataset.loaded = "1";
+      const type = fig.dataset.type || "stock";
+      const key = fig.dataset.prompt || fig.dataset.keyword || "";
+      if (!key) return;
+      try {
+        const j = await api.get(`/api/images/search?kind=${encodeURIComponent(type)}&keyword=${encodeURIComponent(key)}`);
+        if (j.url) {
+          const img = document.createElement("img");
+          img.src = j.url;
+          img.alt = key;
+          const ph = fig.querySelector(".ai-image-placeholder");
+          if (ph) ph.replaceWith(img); else fig.insertBefore(img, fig.firstChild);
+        }
+      } catch (e) { /* 실패 시 플레이스홀더 그대로 */ }
+    });
+
     propEl.parentElement.insertBefore(toolbar, propEl);
   }
 
@@ -2081,5 +2263,51 @@ $("#test-key").addEventListener("click", async () => {
   }
 });
 
+// ---------- 이메일 간편 가입 (랜딩 CTA → 모달) ----------
+function ensureSignup(onDone) {
+  const cached = localStorage.getItem("nightoff.email");
+  if (cached) { if (onDone) onDone(cached); return; }
+
+  const backdrop = h("div", { class: "modal-backdrop" });
+  const modal = h("div", { class: "modal", style: "max-width: 440px;" });
+  modal.appendChild(h("div", { class: "modal-header" }, [h("h3", {}, "시작하기")]));
+  const emailIn = h("input", { class: "input", type: "email", placeholder: "이메일", autocomplete: "email" });
+  const compIn = h("input", { class: "input", type: "text", placeholder: "회사명 (선택)" });
+  modal.appendChild(h("div", { class: "modal-body" }, [
+    h("p", { class: "small muted", style: "margin: 0 0 10px;" }, "비밀번호 없이 이메일만으로 시작할 수 있어요. 같은 이메일로 재방문 시 자동 로그인됩니다."),
+    h("div", { class: "field" }, [h("label", {}, "이메일"), emailIn]),
+    h("div", { class: "field" }, [h("label", {}, "회사명"), compIn]),
+  ]));
+  modal.appendChild(h("div", { class: "modal-footer" }, [
+    h("button", {
+      class: "btn btn-primary",
+      onclick: async () => {
+        const email = emailIn.value.trim();
+        const company = compIn.value.trim();
+        if (!email || !email.includes("@")) { toast("이메일을 확인해 주세요", "error"); return; }
+        try {
+          const r = await api.post("/api/signup", { email, company });
+          localStorage.setItem("nightoff.email", r.email);
+          localStorage.setItem("nightoff.company", company);
+          backdrop.remove();
+          toast(r.returning ? "다시 오신 것을 환영합니다!" : "시작해요!", "success");
+          if (onDone) onDone(r.email);
+        } catch (err) { toast(err.message || "가입 실패", "error"); }
+      },
+    }, "시작하기"),
+  ]));
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
+  setTimeout(() => emailIn.focus(), 100);
+}
+
 // ---------- Boot ----------
+// 최초 방문 체크
+window.addEventListener("DOMContentLoaded", () => {
+  if (!localStorage.getItem("nightoff.email")) {
+    // 비동기 — 페이지 렌더 후 모달
+    setTimeout(() => ensureSignup(), 400);
+  }
+});
+
 route();

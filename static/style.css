@@ -715,6 +715,10 @@ input, select, textarea { font-family: inherit; color: inherit; }
   color: var(--proposal-accent);
   max-width: 95%;
   margin-top: 22px;
+  padding-bottom: 16px;
+  border-bottom: 4px solid var(--proposal-accent);
+  display: inline-block;
+  align-self: flex-start;
 }
 .proposal-page .page-content {
   flex: 1;
@@ -723,8 +727,165 @@ input, select, textarea { font-family: inherit; color: inherit; }
 }
 .proposal-page .page-summary {
   margin-top: auto;
-  padding-top: 18px; border-top: 2px solid var(--proposal-accent);
-  font-size: 15px; font-weight: 600; color: #111827;
+  padding: 14px 20px;
+  background: linear-gradient(135deg,
+    var(--proposal-accent) 0%,
+    color-mix(in oklab, var(--proposal-accent) 80%, #8b5cf6) 100%);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 15px; font-weight: 600;
+  box-shadow: 0 6px 16px -6px color-mix(in oklab, var(--proposal-accent) 50%, transparent);
+}
+
+/* ──── accent 더 강하게 반영 ──── */
+.proposal-page::before {
+  color: color-mix(in oklab, var(--proposal-accent) 65%, #94a3b8);
+  font-weight: 600;
+}
+
+/* 카드 그리드 — 배경·보더에 accent tint */
+.proposal-page .card-grid .card {
+  background: color-mix(in oklab, var(--proposal-accent) 5%, #fff);
+  border: 1px solid color-mix(in oklab, var(--proposal-accent) 22%, #e5e7eb);
+}
+.proposal-page .card-grid .card .card-title {
+  color: var(--proposal-accent);
+}
+
+/* 통계 강조 — accent 그라디언트 배경 */
+.proposal-page .stat-highlight {
+  background: linear-gradient(135deg,
+    color-mix(in oklab, var(--proposal-accent) 12%, #fff) 0%,
+    color-mix(in oklab, var(--proposal-accent) 4%, #fff) 100%);
+  border: 1px solid color-mix(in oklab, var(--proposal-accent) 25%, #e5e7eb);
+}
+.proposal-page .stat-highlight .stat-big {
+  color: var(--proposal-accent);
+  filter: drop-shadow(0 2px 6px color-mix(in oklab, var(--proposal-accent) 30%, transparent));
+}
+
+/* 스텝 플로우 — 좌측 accent 바 + 번호 강조 */
+.proposal-page .step-flow .step {
+  border-left: 4px solid var(--proposal-accent);
+  background: color-mix(in oklab, var(--proposal-accent) 4%, #fff);
+  padding: 10px 14px;
+  border-radius: 0 8px 8px 0;
+}
+.proposal-page .step-flow .step-num { color: var(--proposal-accent); }
+
+/* 번호 리스트 */
+.proposal-page .num-list li::before { color: var(--proposal-accent); }
+
+/* 비교 표 — 헤더를 accent 배경 */
+.proposal-page .compare-table th {
+  background: color-mix(in oklab, var(--proposal-accent) 10%, #f9fafb);
+  color: var(--proposal-accent);
+  border-bottom: 2px solid var(--proposal-accent);
+}
+
+/* 타임라인 */
+.proposal-page .timeline .tl-date {
+  color: var(--proposal-accent);
+  font-weight: 700;
+}
+.proposal-page .timeline .tl-item {
+  border-left: 3px solid color-mix(in oklab, var(--proposal-accent) 30%, #e5e7eb);
+  padding-left: 14px;
+  margin-left: 4px;
+}
+
+/* 콜아웃 */
+.proposal-page .quote-callout {
+  background: color-mix(in oklab, var(--proposal-accent) 7%, #fff);
+  border-left: 5px solid var(--proposal-accent);
+  color: #1f2937;
+}
+
+/* 섹션 divider 페이지 */
+.proposal-page .divider-intro .divider-num {
+  color: var(--proposal-accent);
+  text-shadow: 0 6px 16px color-mix(in oklab, var(--proposal-accent) 25%, transparent);
+}
+.proposal-page .divider-intro .divider-title {
+  color: color-mix(in oklab, var(--proposal-accent) 85%, #111);
+}
+
+/* 배지 primary — accent 사용 */
+.proposal-page .badge-primary,
+.proposal-page .badge.badge-primary {
+  background: color-mix(in oklab, var(--proposal-accent) 15%, #fff);
+  color: var(--proposal-accent);
+  border: 1px solid color-mix(in oklab, var(--proposal-accent) 30%, transparent);
+  font-weight: 600;
+}
+
+/* Action Caption — 좌측 바 accent */
+.proposal-page .action-caption {
+  border-left: 3px solid var(--proposal-accent);
+  color: #1f2937;
+}
+
+/* 프로그레스 바 — 이미 accent 그라디언트 사용 중 */
+.proposal-page .pl-bar > span,
+.proposal-page .hbar > span {
+  background: linear-gradient(90deg,
+    var(--proposal-accent) 0%,
+    color-mix(in oklab, var(--proposal-accent) 75%, #a78bfa) 100%);
+}
+
+/* As-is → To-be 비교 — To-be에 accent 강조 */
+.proposal-page .asis-tobe .tobe {
+  background: color-mix(in oklab, var(--proposal-accent) 8%, #fff);
+  border: 1px solid color-mix(in oklab, var(--proposal-accent) 30%, #e5e7eb);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.proposal-page .asis-tobe .arrow {
+  color: var(--proposal-accent);
+  font-size: 22px;
+  font-weight: 700;
+}
+
+/* 플로우 노드 */
+.proposal-page .arrow-flow .flow-node {
+  background: color-mix(in oklab, var(--proposal-accent) 10%, #fff);
+  border: 1.5px solid color-mix(in oklab, var(--proposal-accent) 35%, #d4d4d8);
+  color: var(--proposal-accent);
+  padding: 8px 14px; border-radius: 999px;
+  font-weight: 600;
+}
+.proposal-page .arrow-flow .flow-arrow {
+  color: var(--proposal-accent);
+  font-size: 18px;
+}
+
+/* 벤다이어그램 — 원 색 accent */
+.proposal-page .venn .venn-circle {
+  background: color-mix(in oklab, var(--proposal-accent) 18%, transparent);
+  border: 2px solid var(--proposal-accent);
+  color: var(--proposal-accent);
+}
+.proposal-page .venn .venn-overlap {
+  background: var(--proposal-accent);
+  color: #fff;
+}
+
+/* 피라미드 */
+.proposal-page .pyramid .pyr-top    { background: var(--proposal-accent); color: #fff; }
+.proposal-page .pyramid .pyr-mid    { background: color-mix(in oklab, var(--proposal-accent) 60%, #fff); color: #fff; }
+.proposal-page .pyramid .pyr-base   { background: color-mix(in oklab, var(--proposal-accent) 20%, #fff); color: var(--proposal-accent); }
+
+/* 매트릭스 */
+.proposal-page .matrix .mx-cell {
+  background: color-mix(in oklab, var(--proposal-accent) 5%, #fff);
+  border: 1px solid color-mix(in oklab, var(--proposal-accent) 22%, #e5e7eb);
+}
+
+/* 페이지 자체 약한 tint — 너무 강하지 않게 */
+.proposal-page {
+  background: linear-gradient(180deg,
+    color-mix(in oklab, var(--proposal-accent) 2%, #fff) 0%,
+    #fff 40%);
 }
 .keyword-row {
   display: flex; align-items: center; justify-content: space-between;

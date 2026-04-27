@@ -1,0 +1,5 @@
+# RAG (과거 제안서 스타일 검색) 의존성 — main requirements.txt 와 분리.
+# Railway nixpacks 빌드에서 `|| true` 로 best-effort install (실패해도 빌드 통과).
+# 둘 다 설치되고 OPENAI_API_KEY 환경변수가 있을 때만 RAG 가 자동 활성화.
+openai==2.32.0
+sqlite-vec==0.1.9

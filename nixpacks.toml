@@ -6,6 +6,8 @@ cmds = [
   "python -m venv /opt/venv",
   ". /opt/venv/bin/activate && pip install --upgrade pip",
   ". /opt/venv/bin/activate && pip install -r requirements.txt",
+  # RAG (옵셔널) — 설치 실패해도 빌드 통과 (rag_retriever 가 graceful skip)
+  ". /opt/venv/bin/activate && pip install -r requirements-rag.txt || echo 'RAG deps install failed — RAG 비활성화 모드로 진행'",
 ]
 
 [phases.build]

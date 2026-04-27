@@ -327,9 +327,9 @@ async function renderSidebar(active = "clients") {
       h("button", {
         class: "sidebar-item" + (active === "clients" ? " active" : ""),
         onclick: () => navigate("/"),
-        html: `${iconHtml("users")}<span>발주처 목록</span>`,
+        html: `${iconHtml("users")}<span>과업 목록</span>`,
       }),
-      h("div", { class: "sidebar-section-title" }, "최근 발주처"),
+      h("div", { class: "sidebar-section-title" }, "최근 과업"),
       ...recent.map((c) => {
         const initial = (c.name || "?").trim().slice(0, 1);
         return h("button", {
@@ -339,7 +339,7 @@ async function renderSidebar(active = "clients") {
         });
       }),
       recent.length === 0
-        ? h("div", { class: "muted small", style: "padding: 8px 12px;" }, "등록된 발주처가 없습니다")
+        ? h("div", { class: "muted small", style: "padding: 8px 12px;" }, "등록된 과업가 없습니다")
         : null,
     ]),
   ]);
@@ -845,8 +845,8 @@ async function openCompanyDnaModal() {
     body.appendChild(h("div", { class: "onboarding-hint" }, [
       h("span", { class: "ob-emoji" }, "📂"),
       h("div", {}, [
-        h("p", { class: "ob-title" }, "발주처별로 강점을 골라두면 제안서에 자동 반영돼요"),
-        h("p", { class: "ob-desc" }, "발주처 상세의 ‘우리 회사의 강점은? 💪’ 카드에서 과업에 어울리는 분야와 세부 역량을 선택하면, 제안서 생성 시 자동으로 녹여냅니다."),
+        h("p", { class: "ob-title" }, "과업별로 강점을 골라두면 제안서에 자동 반영돼요"),
+        h("p", { class: "ob-desc" }, "과업 상세의 ‘우리 회사의 강점은? 💪’ 카드에서 과업에 어울리는 분야와 세부 역량을 선택하면, 제안서 생성 시 자동으로 녹여냅니다."),
       ]),
     ]));
   } else {
@@ -932,7 +932,7 @@ async function renderDashboard() {
     h("button", {
       class: "btn btn-primary btn-lg",
       onclick: () => navigate("/client/new"),
-      html: `${iconHtml("plus", 18)}<span>새 발주처</span>`,
+      html: `${iconHtml("plus", 18)}<span>새 과업</span>`,
     }),
   ]));
 
@@ -943,7 +943,7 @@ async function renderDashboard() {
   const winRateDisplay = stats.win_rate === null || stats.win_rate === undefined ? "—" : `${stats.win_rate}`;
   const winRateUnit = stats.win_rate === null || stats.win_rate === undefined ? "" : "%";
   const statItems = [
-    { label: "등록된 발주처", value: stats.total_clients ?? 0, unit: "곳", icon: "users", tint: "var(--primary-soft)", fg: "var(--primary)" },
+    { label: "등록된 과업", value: stats.total_clients ?? 0, unit: "개", icon: "users", tint: "var(--primary-soft)", fg: "var(--primary)" },
     { label: "작성한 제안서", value: stats.total_proposals ?? 0, unit: "건", icon: "file", tint: "var(--success-soft)", fg: "var(--success)" },
     { label: "이번 달 활동", value: stats.month_activity ?? 0, unit: "회", icon: "activity", tint: "var(--warning-soft)", fg: "var(--warning)" },
     { label: `수주율 (${stats.wins ?? 0}승 ${stats.losses ?? 0}패)`, value: winRateDisplay, unit: winRateUnit, icon: "trending", tint: "var(--accent)", fg: "var(--accent-fg)" },
@@ -965,32 +965,32 @@ async function renderDashboard() {
   });
   content.appendChild(h("section", { style: "margin-bottom: 28px;" }, statsGrid));
 
-  // ── 중단: 새 발주처 등록 큰 CTA (단일, 가운데 정렬)
-  content.appendChild(h("section", { class: "dashboard-cta-section" }, [
-    h("button", {
-      class: "btn btn-primary dashboard-mega-cta",
-      onclick: () => navigate("/client/new"),
-      html: `${iconHtml("plus", 26)}<span>새 발주처 등록하기</span>`,
-    }),
-    h("p", { class: "dashboard-cta-sub" }, "발주처 정보를 입력하고 RFP 부터 차근차근 시작해보세요 ✨"),
-  ]));
+  // ── 중단: 큰 CTA — 과업이 없을 때만 노출 (있으면 사이드바·상단 버튼으로 추가)
+  if (clients.length === 0) {
+    content.appendChild(h("section", { class: "dashboard-cta-section" }, [
+      h("button", {
+        class: "btn btn-primary dashboard-mega-cta",
+        onclick: () => navigate("/client/new"),
+        html: `${iconHtml("plus", 26)}<span>새 과업 등록하기 ✨</span>`,
+      }),
+      h("p", { class: "dashboard-cta-sub" }, "과업 정보를 입력하고 RFP 부터 차근차근 시작해보세요 😊"),
+    ]));
+  }
 
-  // ── 2열 레이아웃: 발주처 목록 + 최근 활동
+  // ── 하단: 좌(과업 목록) / 우(오늘의 팁 + 최근 활동)
   const twoCol = h("div", { class: "dashboard-two-col" });
   content.appendChild(twoCol);
 
-  // 발주처 목록
+  // [좌] 과업 목록
   const leftCol = h("section");
   leftCol.appendChild(h("div", { class: "flex-between", style: "margin-bottom: 14px;" }, [
-    h("h2", { style: "margin: 0; font-size: 18px; font-weight: 600;" }, "발주처 목록"),
-    h("span", { class: "small muted" }, `총 ${clients.length}곳`),
+    h("h2", { style: "margin: 0; font-size: 18px; font-weight: 600;" }, "과업 목록"),
+    h("span", { class: "small muted" }, `총 ${clients.length}개`),
   ]));
   if (clients.length === 0) {
+    // 빈 상태에서는 작은 안내만 (큰 CTA 가 위에 있음 — 중복 방지)
     leftCol.appendChild(h("div", { class: "card empty-state" }, [
-      h("p", {}, "등록된 발주처가 없습니다."),
-      h("div", { style: "margin-top: 12px;" }, [
-        h("button", { class: "btn btn-primary", onclick: () => navigate("/client/new") }, "첫 발주처 추가"),
-      ]),
+      h("p", { class: "muted" }, "아직 등록된 과업이 없어요. 위쪽 버튼으로 첫 과업을 시작해보세요 🙂"),
     ]));
   } else {
     const grid = h("div", { class: "client-grid client-grid-2" });
@@ -999,13 +999,18 @@ async function renderDashboard() {
   }
   twoCol.appendChild(leftCol);
 
-  // 최근 활동
-  const rightCol = h("aside", { class: "activity-feed" });
-  rightCol.appendChild(h("div", { class: "flex-between", style: "margin-bottom: 14px;" }, [
-    h("h2", { style: "margin: 0; font-size: 18px; font-weight: 600;" }, "최근 활동"),
+  // [우] 오늘의 팁 + 최근 활동
+  const rightCol = h("aside", { class: "dashboard-side-col" });
+
+  // 1) 오늘의 팁 (5초 롤링)
+  rightCol.appendChild(renderTodayTipCard());
+
+  // 2) 최근 활동
+  rightCol.appendChild(h("div", { class: "flex-between", style: "margin: 22px 0 12px;" }, [
+    h("h2", { style: "margin: 0; font-size: 16px; font-weight: 700;" }, "최근 활동"),
   ]));
   if (!activity.length) {
-    rightCol.appendChild(h("div", { class: "card empty-state", style: "font-size: 13px;" }, "활동이 아직 없습니다."));
+    rightCol.appendChild(h("div", { class: "card empty-state", style: "font-size: 13px;" }, "활동이 아직 없어요"));
   } else {
     const feed = h("div", { class: "card", style: "padding: 10px 6px;" });
     activity.forEach((ev) => {
@@ -1034,6 +1039,61 @@ async function renderDashboard() {
   content.appendChild(h("footer", { class: "dashboard-footer" },
     "NightOff · 수주를 진심으로 기원합니다 🙏"
   ));
+}
+
+// ---------- 💡 오늘의 팁 (사이드 카드 · 5초 롤링) ----------
+const PROPOSAL_TIPS = [
+  "RFP 복붙은 평가위원이 바로 알아채요. 반드시 우리 언어로 재해석하세요 ✍️",
+  "배점 30점 이상 항목은 반드시 3페이지 이상 할애하세요 📄",
+  "거버닝 메시지는 서술형이 아니라 명사형으로 끊어야 임팩트 있어요 💥",
+  "추상적 표현은 금물! '우수한 안전관리' 대신 '99.9% 무사고 운영 실적'으로 📊",
+  "페이지당 시각화 요소 최소 2개, 텍스트만 가득한 페이지는 평가위원이 안 읽어요 👀",
+  "제안서 제출 전 업체명 노출 여부 반드시 확인하세요. 실격 사유예요 ⚠️",
+  "페이지 수 초과는 아무리 잘 써도 실격이에요. 꼭 세어보세요 🔢",
+  "PT 발표는 10분 안에 끝내야 해요. 시간 초과하면 강제 종료돼요 ⏱️",
+  "평가위원은 하루에 수십 개 제안서를 봐요. 첫 페이지가 전부예요 🎯",
+  "직접생산증명서, 사업수행실적 등 자격서류 미리 준비해두세요 📁",
+  "배점이 같아도 발주처가 강조한 키워드가 있어요. RFP를 세 번 읽으세요 🔍",
+  "경쟁사보다 못한 부분은 언급 말고, 잘하는 부분을 극대화하세요 💪",
+  "발주처 담당자가 바뀌어도 기관의 방향성은 유지돼요. 과거 사업을 꼭 찾아보세요 🏛️",
+  "'우리는 ~합니다' ❌ → '발주처는 ~을 확보합니다' ✅",
+  "안전관리 계획은 얼마나 구체적이냐가 승패를 갈라요. 수치로 써주세요 🦺",
+  "마감 당일 제출은 용기가 아니라 도박이에요 🎲",
+  "나라장터 전자입찰은 마감 30분 전에 서버가 폭주해요. 일찍 제출하세요 🏃",
+  "PT 심사 날짜 확인했나요? 제안서 제출일과 다를 수 있어요 📅",
+];
+
+function renderTodayTipCard() {
+  // 시작 인덱스는 날짜 시드로 — 새로고침 시마다 약간 다르게
+  let idx = Math.floor(Math.random() * PROPOSAL_TIPS.length);
+
+  const card = h("div", { class: "tip-card" });
+  card.appendChild(h("div", { class: "tip-card-head" }, [
+    h("span", { class: "tip-emoji" }, "💡"),
+    h("span", { class: "tip-label" }, "오늘의 팁"),
+  ]));
+  const quote = h("blockquote", { class: "tip-quote" });
+  quote.textContent = PROPOSAL_TIPS[idx];
+  card.appendChild(quote);
+
+  // 5초마다 부드럽게 다음 팁으로 교체 (fade out → in)
+  const interval = setInterval(() => {
+    // DOM 에서 떠난 카드면 정리
+    if (!document.body.contains(card)) {
+      clearInterval(interval);
+      return;
+    }
+    idx = (idx + 1) % PROPOSAL_TIPS.length;
+    quote.classList.add("tip-out");
+    setTimeout(() => {
+      quote.textContent = PROPOSAL_TIPS[idx];
+      quote.classList.remove("tip-out");
+      quote.classList.add("tip-in");
+      setTimeout(() => quote.classList.remove("tip-in"), 350);
+    }, 280);
+  }, 5000);
+
+  return card;
 }
 
 function clientCard(c) {
@@ -1067,9 +1127,27 @@ function clientCard(c) {
 
 // ---------- Client Form ----------
 const INDUSTRIES = [
-  "IT/플랫폼", "IT서비스", "금융/보험", "제조업", "유통/소매",
-  "의료/헬스케어", "교육", "건설/부동산", "미디어/엔터테인먼트",
-  "물류/운송", "에너지/환경", "공공기관", "전자/반도체", "자동차/모빌리티", "이커머스", "기타",
+  "중앙행정기관",
+  "지방자치단체",
+  "공공기관/공기업",
+  "교육기관",
+  "문화/예술기관",
+  "의료/복지기관",
+  "국방/안보기관",
+  "기타 공공기관",
+  "민간기업(B2B)",
+];
+
+// 과업명 placeholder — 등록할 때마다 다른 예시 노출
+const TASK_NAME_EXAMPLES = [
+  "문화체육관광부",
+  "국립중앙박물관",
+  "한국관광공사",
+  "서울특별시청",
+  "부산광역시 남구청",
+  "한국콘텐츠진흥원",
+  "국립국악원",
+  "한국과학창의재단",
 ];
 
 async function renderClientForm(mode, id = null) {
@@ -1080,22 +1158,23 @@ async function renderClientForm(mode, id = null) {
   root.appendChild(main);
   main.appendChild(h("header", { class: "main-header" }, [
     h("div", {}, [
-      h("h1", {}, mode === "create" ? "새 발주처 추가" : "발주처 수정"),
-      h("p", {}, "발주처 기본 정보를 입력하세요"),
+      h("h1", {}, mode === "create" ? "새 과업 추가" : "과업 수정"),
+      h("p", {}, "과업 기본 정보를 입력하세요"),
     ]),
   ]));
 
   let data = { name: "", industry: "", manager: "", memo: "" };
   if (mode === "edit" && id) {
-    try { data = await api.get(`/api/clients/${id}`); } catch (e) { toast("발주처를 불러올 수 없습니다", "error"); return; }
+    try { data = await api.get(`/api/clients/${id}`); } catch (e) { toast("과업을 불러올 수 없습니다", "error"); return; }
   }
 
   const form = h("form", {}, [
     h("div", { class: "card", style: "padding: 28px; max-width: 720px;" }, [
       h("div", { class: "row-gap-18" }, [
         h("div", { class: "field" }, [
-          h("label", {}, [document.createTextNode("발주처명 "), h("span", { style: "color: var(--danger);" }, "*")]),
-          h("input", { class: "input", id: "fld-name", value: data.name, placeholder: "예: 삼성전자" }),
+          h("label", {}, [document.createTextNode("과업명 "), h("span", { style: "color: var(--danger);" }, "*")]),
+          h("input", { class: "input", id: "fld-name", value: data.name,
+            placeholder: `예: ${TASK_NAME_EXAMPLES[Math.floor(Math.random() * TASK_NAME_EXAMPLES.length)]}` }),
         ]),
         h("div", { class: "field" }, [
           h("label", {}, [document.createTextNode("업종 "), h("span", { style: "color: var(--danger);" }, "*")]),
@@ -1127,12 +1206,12 @@ async function renderClientForm(mode, id = null) {
               manager: $("#fld-manager").value.trim(),
               memo: $("#fld-memo").value.trim(),
             };
-            if (!body.name) { toast("발주처명을 입력하세요", "error"); return; }
+            if (!body.name) { toast("과업명을 입력하세요", "error"); return; }
             if (!body.industry) { toast("업종을 선택하세요", "error"); return; }
             try {
               if (mode === "create") {
                 const r = await api.post("/api/clients", body);
-                toast("발주처가 추가되었습니다", "success");
+                toast("과업이 추가되었습니다", "success");
                 navigate(`/client/${r.id}`);
               } else {
                 await api.patch(`/api/clients/${id}`, body);
@@ -1166,7 +1245,7 @@ async function renderClientDetail(cid) {
     // 진짜 404 만 "찾을 수 없음" → 홈으로 이동.
     // 그 외 (5xx, timeout, 네트워크) 는 일시적일 수 있어 인플레이스 재시도 UI 제공.
     if (e?.status === 404) {
-      toast("발주처를 찾을 수 없습니다", "error");
+      toast("과업을 찾을 수 없습니다", "error");
       navigate("/");
       return;
     }
@@ -1174,7 +1253,7 @@ async function renderClientDetail(cid) {
     main.appendChild(h("div", {
       style: "padding: 60px 28px; text-align: center; max-width: 640px; margin: 0 auto;",
     }, [
-      h("h2", { style: "margin: 0 0 8px; font-size: 18px; font-weight: 700;" }, "발주처 정보를 불러오지 못했어요"),
+      h("h2", { style: "margin: 0 0 8px; font-size: 18px; font-weight: 700;" }, "과업 정보를 불러오지 못했어요"),
       h("p", { class: "muted small", style: "margin: 0 0 16px;" }, e?.message || String(e)),
       h("div", { style: "display: flex; gap: 10px; justify-content: center;" }, [
         h("button", { class: "btn btn-primary", onclick: () => renderClientDetail(cid) }, "다시 시도"),
@@ -1207,7 +1286,7 @@ async function renderClientDetail(cid) {
   main.appendChild(content);
 
   content.appendChild(h("a", { class: "back-link", href: "/", "data-link": "" }, [
-    icon("arrowL", 14), document.createTextNode("발주처 목록으로"),
+    icon("arrowL", 14), document.createTextNode("과업 목록으로"),
   ]));
 
   const stack = h("div", { class: "row-gap-18" });
@@ -1474,7 +1553,7 @@ async function renderClientStrengthsSection(cid) {
   } else {
     introBox.innerHTML =
       `<div class="strengths-intro-title">RFP 를 분석했어요. 잘하는 분야를 골라주세요.</div>` +
-      `<div class="strengths-intro-sub">발주처 과업과 가장 잘 맞는 분야 한 가지를 먼저 고른 뒤, 세부 역량을 복수 선택할 수 있어요.</div>`;
+      `<div class="strengths-intro-sub">과업과 가장 잘 맞는 분야 한 가지를 먼저 고른 뒤, 세부 역량을 복수 선택할 수 있어요.</div>`;
   }
   body.appendChild(introBox);
 
@@ -1965,7 +2044,7 @@ function buildRadarChartSvg(items) {
   return wrap;
 }
 
-// ---------- 발주처 성향 ----------
+// ---------- 과업 성향 ----------
 async function renderProfileSection(cid) {
   const p = await api.get(`/api/clients/${cid}/profile`).catch(() => ({ exists: false }));
   const card = h("div", { class: "card" });
@@ -1974,8 +2053,8 @@ async function renderProfileSection(cid) {
     h("div", { class: "card-title-row" }, [
       h("div", { class: "card-title-icon", style: "background: var(--primary-soft); color: var(--primary);", html: iconHtml("brain", 18) }),
       h("div", {}, [
-        h("h3", { class: "card-title" }, "발주처 성향"),
-        h("p", { class: "card-subtitle" }, p.exists ? `${p.sample_count || 1}회 축적 · RFP와 대화에서 자동 학습` : "RFP를 넣고 대화할수록 NightOff이 이 발주처를 더 깊이 이해해요"),
+        h("h3", { class: "card-title" }, "과업 성향"),
+        h("p", { class: "card-subtitle" }, p.exists ? `${p.sample_count || 1}회 축적 · RFP와 대화에서 자동 학습` : "RFP를 넣고 대화할수록 NightOff이 이 과업을 더 깊이 이해해요"),
       ]),
     ]),
     p.exists ? h("span", {
@@ -1992,7 +2071,7 @@ async function renderProfileSection(cid) {
       h("span", { class: "ob-emoji" }, "✨"),
       h("div", {}, [
         h("p", { class: "ob-title" }, "다음 입찰엔 더 정확한 제안서가 나와요"),
-        h("p", { class: "ob-desc" }, "RFP를 분석하고 대화를 나눌수록 이 발주처의 선호 키워드·높은 배점 항목·반복 요구사항을 자동으로 축적해요. 쌓인 프로파일은 모든 새 제안서에 자동으로 반영됩니다."),
+        h("p", { class: "ob-desc" }, "RFP를 분석하고 대화를 나눌수록 이 과업의 선호 키워드·높은 배점 항목·반복 요구사항을 자동으로 축적해요. 쌓인 프로파일은 모든 새 제안서에 자동으로 반영됩니다."),
       ]),
     ]));
     return card;
@@ -2062,7 +2141,7 @@ async function renderMemorySection(cid) {
       h("div", { class: "card-title-icon", html: iconHtml("brain", 18) }),
       h("div", {}, [
         h("h3", { class: "card-title" }, "대화 기억"),
-        h("p", { class: "card-subtitle" }, `AI가 학습한 발주처 정보 ${mems.length}개 · 새 대화에 자동 주입됩니다`),
+        h("p", { class: "card-subtitle" }, `AI가 학습한 과업 정보 ${mems.length}개 · 새 대화에 자동 주입됩니다`),
       ]),
     ]),
     h("button", { class: "icon-btn", id: "mem-toggle", html: iconHtml("chevronD", 18) }),
@@ -2207,7 +2286,7 @@ async function renderChat(cid, convId) {
       pageLimit ? h("span", { class: "page-limit-badge" }, `최대 ${pageLimit}페이지`) : null,
       injected.memory ? h("span", { class: "nuance-badge", title: "대화 기억이 이 대화에 자동 적용됩니다" }, [
         h("span", { class: "dot" }),
-        document.createTextNode("이 발주처의 대화 기억이 적용됐어요"),
+        document.createTextNode("이 과업의 대화 기억이 적용됐어요"),
       ]) : null,
       h("div", { class: "context-badges" }, [
         injected.rfp ? h("span", { class: "badge badge-primary" }, "RFP") : null,
@@ -2215,7 +2294,7 @@ async function renderChat(cid, convId) {
       ]),
       // 포인트 컬러 피커
       h("label", {
-        class: "accent-picker", title: "발주처 포인트 컬러",
+        class: "accent-picker", title: "과업 포인트 컬러",
       }, [
         h("span", { class: "accent-dot" }),
         h("input", {
@@ -2240,7 +2319,7 @@ async function renderChat(cid, convId) {
       h("button", {
         class: "btn btn-outline", html: `${iconHtml("save", 14)}<span>대화 마치기</span>`,
         onclick: async () => {
-          if (!confirm("대화를 종료하고 기억을 저장하시겠습니까? AI가 대화에서 뉘앙스를 추출해 발주처에 저장합니다.")) return;
+          if (!confirm("대화를 종료하고 기억을 저장하시겠습니까? AI가 대화에서 뉘앙스를 추출해 과업에 저장합니다.")) return;
           toast("대화 기억 저장 중…", "");
           try {
             const r = await api.post(`/api/conversations/${convId}/end`);
@@ -2260,13 +2339,31 @@ async function renderChat(cid, convId) {
 
   // Render existing messages
   data.messages.forEach((m) => msgs.appendChild(msgElement(m.role, m.content, m.created_at)));
-  // 첫 대화면 친근한 인사 메시지
+  // 첫 대화면 친근한 인사 — RFP 분석 여부에 따라 메시지 분기
   if (!data.messages || data.messages.length === 0) {
-    msgs.appendChild(msgElement(
-      "assistant",
-      "안녕하세요! 저는 제안서 수주 도우미예요 ✨\n\nRFP 를 올려주시면 발주처 정보랑 과업 내용을 같이 살펴보고, 우리 회사 강점에 맞춰 제안서 초안을 함께 만들어 드릴게요.\n\n어떤 사업부터 시작해볼까요?",
-      new Date().toISOString(),
-    ));
+    let openerText;
+    const rfp = data.rfp_analysis || {};
+    const rfpHasRealData = rfp && (rfp.title || (rfp.key_requirements && rfp.key_requirements.length)
+                                || rfp.summary || rfp.budget || rfp.deadline);
+    if (rfpHasRealData) {
+      // RFP 가 실제 분석된 경우 — 과업 핵심을 살짝 요약
+      const lines = ["안녕하세요! 저는 제안서 수주 도우미예요 ✨", ""];
+      if (rfp.title) lines.push(`이번 과업은 **「${rfp.title}」** 이네요.`);
+      const bits = [];
+      if (rfp.budget) bits.push(`예산 ${rfp.budget}`);
+      if (rfp.deadline) bits.push(`마감 ${rfp.deadline}`);
+      if (Array.isArray(rfp.key_requirements) && rfp.key_requirements.length) {
+        bits.push(`핵심 요구사항 ${rfp.key_requirements.length}개`);
+      }
+      if (bits.length) lines.push(bits.join(" · ") + " — RFP 잘 받았어요 👀");
+      lines.push("");
+      lines.push("어떤 부분부터 함께 잡아볼까요? 전체 초안을 만들어달라고 하셔도 좋고, 특정 섹션만 먼저 의논해도 좋아요 😊");
+      openerText = lines.join("\n");
+    } else {
+      // RFP 없으면 단순 안내
+      openerText = "안녕하세요! 저는 제안서 수주 도우미예요 ✨\n\nRFP를 올려주시면 바로 시작할 수 있어요 😊";
+    }
+    msgs.appendChild(msgElement("assistant", openerText, new Date().toISOString()));
   }
 
   // Input

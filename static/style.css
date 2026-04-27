@@ -2261,13 +2261,19 @@ body.fs-loader-active {
   text-align: center;
 }
 .landing-hero-logo {
-  height: 56px; width: auto;
-  margin-bottom: 36px;
-  opacity: 0.95;
+  height: 120px; width: auto;
+  margin-bottom: 44px;
+  opacity: 1;
+  filter: drop-shadow(0 12px 36px rgba(124, 58, 237, 0.18));
+  animation: heroLogoIn .7s cubic-bezier(.22,1,.36,1);
+}
+@keyframes heroLogoIn {
+  from { opacity: 0; transform: translateY(-12px) scale(0.92); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 .landing-hero-title {
-  font-size: 56px; font-weight: 700;
-  line-height: 1.15; letter-spacing: -0.025em;
+  font-size: 64px; font-weight: 700;
+  line-height: 1.12; letter-spacing: -0.03em;
   margin: 0 0 22px;
   color: var(--fg);
 }
@@ -2397,13 +2403,81 @@ body.fs-loader-active {
 
 /* 반응형 */
 @media (max-width: 720px) {
-  .landing-hero-title { font-size: 36px; }
+  .landing-hero-logo { height: 80px; margin-bottom: 28px; }
+  .landing-hero-title { font-size: 38px; }
   .landing-hero-sub { font-size: 15px; }
   .landing-trust-grid { grid-template-columns: 1fr; }
   .landing-features-grid { grid-template-columns: 1fr; }
 }
 
-/* ===== 대시보드 중단 CTA (새 발주처 등록 큰 버튼) ===== */
+/* ===== 대시보드 사이드 컬럼 (팁 + 활동) ===== */
+.dashboard-side-col {
+  display: flex; flex-direction: column;
+  gap: 0;
+}
+.tip-card {
+  background: linear-gradient(135deg, #FFF8E1 0%, #FFFAF0 50%, #FAF5FF 100%);
+  border: 1px solid color-mix(in oklab, #F59E0B 25%, var(--border));
+  border-radius: 16px;
+  padding: 20px 22px;
+  position: relative;
+  overflow: hidden;
+}
+.tip-card::before {
+  content: ""; position: absolute;
+  top: -30px; right: -30px;
+  width: 120px; height: 120px;
+  background: radial-gradient(circle, rgba(245,158,11,0.18) 0%, transparent 70%);
+  pointer-events: none;
+}
+.tip-card-head {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 12px;
+}
+.tip-emoji {
+  font-size: 18px;
+  filter: drop-shadow(0 2px 4px rgba(245,158,11,0.3));
+}
+.tip-label {
+  font-size: 12px; font-weight: 700;
+  color: #92400E;
+  letter-spacing: 0.04em;
+}
+.tip-quote {
+  margin: 0;
+  padding: 12px 0 6px 16px;
+  border-left: 3px solid color-mix(in oklab, #F59E0B 60%, transparent);
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--fg);
+  font-weight: 500;
+  font-style: italic;
+  letter-spacing: -0.005em;
+  min-height: 70px;
+  display: flex; align-items: center;
+  position: relative;
+  transition: opacity .28s ease, transform .28s ease;
+}
+.tip-quote::before {
+  content: '"';
+  position: absolute; top: -2px; left: 4px;
+  font-size: 28px; font-weight: 800;
+  color: color-mix(in oklab, #F59E0B 50%, transparent);
+  line-height: 1;
+}
+.tip-quote.tip-out {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+.tip-quote.tip-in {
+  animation: tipFadeIn .35s ease-out;
+}
+@keyframes tipFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== 대시보드 중단 CTA (새 과업 등록 큰 버튼) ===== */
 .dashboard-cta-section {
   text-align: center;
   padding: 32px 0 36px;

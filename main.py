@@ -258,15 +258,21 @@ def init_db() -> None:
                 created_at  TEXT DEFAULT (datetime('now','localtime'))
             );
 
-            CREATE TABLE IF NOT EXISTS competitors (
-                id           TEXT PRIMARY KEY,
-                client_id    TEXT NOT NULL,
-                name         TEXT NOT NULL,
-                analysis     TEXT DEFAULT '',
-                strengths    TEXT DEFAULT '[]',
-                weaknesses   TEXT DEFAULT '[]',
-                differentiator TEXT DEFAULT '',
-                created_at   TEXT DEFAULT (datetime('now','localtime')),
+            -- 우리 회사 강점 (전사 단위, 카테고리/역량 체크박스)
+            CREATE TABLE IF NOT EXISTS our_strengths (
+                id           INTEGER PRIMARY KEY,
+                category     TEXT NOT NULL,
+                capability   TEXT NOT NULL,
+                enabled      INTEGER DEFAULT 1,
+                updated_at   TEXT DEFAULT (datetime('now','localtime')),
+                UNIQUE(category, capability)
+            );
+
+            -- 발주처 들여다보기 — RFP 업로드 시 자동 수집된 발주처 기본정보/이력/성향
+            CREATE TABLE IF NOT EXISTS client_intel (
+                client_id     TEXT PRIMARY KEY,
+                intel_json    TEXT DEFAULT '{}',
+                updated_at    TEXT DEFAULT (datetime('now','localtime')),
                 FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
             );
 
@@ -274,8 +280,13 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_msg_conv ON messages(conversation_id);
             CREATE INDEX IF NOT EXISTS idx_nuance_client ON nuance_memories(client_id);
             CREATE INDEX IF NOT EXISTS idx_ref_client ON references_lib(client_id);
-            CREATE INDEX IF NOT EXISTS idx_comp_client ON competitors(client_id);
         """)
+
+        # 구버전 competitors 테이블 흔적 제거 (있으면)
+        try:
+            db.execute("DROP TABLE IF EXISTS competitors")
+        except Exception as e:
+            log.warning("competitors drop 스킵: %s", e)
 
         # conversations에 outcome 컬럼 (없으면 추가) — ALTER 방식 마이그레이션
         try:
@@ -499,8 +510,16 @@ async def read_and_validate_upload(file: UploadFile, *, allowed_exts: set = None
 # ---------------------------------------------------------------------------
 # System prompts
 # ---------------------------------------------------------------------------
-PROPOSAL_SYSTEM_PROMPT = """너는 대한민국 최고의 B2G 공공입찰 제안서 작성 전문가다.
+PROPOSAL_SYSTEM_PROMPT = """너는 사용자의 "제안서 수주 도우미" 야.
+한국 B2G 공공입찰 제안서를 사용자와 함께 만든다. 친근하고 차분한 톤으로,
+딱딱한 격식체 대신 자연스러운 구어체를 섞어 쓴다.
 사용자가 제안서 작성을 요청하면 아래 원칙을 반드시 따른다.
+
+[페이지 완결성 — 절대 원칙]
+모든 시각화 요소·문장·표·이미지는 **반드시 한 페이지(=하나의 .proposal-page) 안에 완결**되게 기획.
+- 한 페이지 안에 너무 많이 욱여넣지 말 것. 넘칠 듯하면 다음 페이지로 분리.
+- 표·카드·리스트·이미지가 잘리거나 다음 슬라이드로 흘러넘치는 구성 금지.
+- "이어서 다음 페이지 참조" 같은 흐름 금지 — 각 페이지는 그 자체로 완결된 메시지.
 
 [형식]
 - 기본값: A4 가로형 (data-orientation="landscape")
@@ -1062,37 +1081,6 @@ JSON만 출력. 모른다/관찰 안 됨인 필드는 null 또는 빈 배열.
 JSON:"""
 
 
-COMPETITOR_ANALYSIS_PROMPT = """다음 기업을 제안 경쟁사로 분석하세요. 인포그래픽용 5줄 이내 요약.
-웹 검색 도구가 제공되면 반드시 활용해 실제 공개 정보(홈페이지·뉴스·채용 공고 등) 기반으로 분석.
-JSON 스키마:
-{
-  "strengths": ["강점 3개 이내 (각 12자 이내)"],
-  "weaknesses": ["약점 3개 이내 (각 12자 이내)"],
-  "differentiator": "우리가 이길 차별화 포인트 (한 문장, 25자 이내)",
-  "summary": "종합 분석 (2문장, 총 80자 이내)"
-}
-JSON만 출력. 인용 링크는 summary 안에 간단히 포함해도 됨.
-
-경쟁사명: {COMPANY}
-추가 컨텍스트: {CONTEXT}
-
-JSON:"""
-
-COMPETITOR_CANDIDATES_PROMPT = """사용자가 입력한 기업명 또는 유사 표현으로부터 실재 가능성이 높은
-후보 기업 3~5개를 웹 검색을 통해 찾아 주세요. 동명이인/유사명 포함, 가장 관련성 높은 순서로.
-
-JSON 배열 스키마:
-[
-  {"name": "공식 기업명", "desc": "한 줄 소개 (30자 이내)", "domain": "웹사이트 도메인 또는 빈 문자열"}
-]
-JSON만 출력. 다른 설명 금지. 가능하면 웹 검색 결과 기반으로.
-
-입력: {QUERY}
-추가 컨텍스트: {CONTEXT}
-
-JSON:"""
-
-
 CLIENT_PROFILE_PROMPT = """이 발주처의 "프로파일"을 업데이트하세요.
 - 기존 프로파일이 있으면 새 정보를 누적(중복 제거, 더 정확한 버전으로 교체).
 - RFP 분석 + 최근 대화를 함께 읽고 공통된 패턴을 추출.
@@ -1293,9 +1281,6 @@ class ChatIn(BaseModel):
     message: str
 
 
-class CompetitorIn(BaseModel):
-    name: str
-    context: str = ""
 
 
 # ---------- Settings ----------
@@ -1678,15 +1663,11 @@ def _get_rfp_aggregated(client_id: str) -> Optional[dict]:
 
 
 def _build_system_prompt(client_id: str) -> str:
-    """RFP 분석, 경쟁사, 뉘앙스, 레퍼런스를 시스템 프롬프트에 주입."""
+    """RFP 분석, 뉘앙스, 레퍼런스, 강점을 시스템 프롬프트에 주입."""
     with get_db() as db:
         client = db.execute("SELECT * FROM clients WHERE id=?", (client_id,)).fetchone()
         refs = db.execute(
             "SELECT filename,summary FROM references_lib WHERE client_id=? ORDER BY created_at",
-            (client_id,),
-        ).fetchall()
-        comps = db.execute(
-            "SELECT name,analysis,strengths,weaknesses,differentiator FROM competitors WHERE client_id=?",
             (client_id,),
         ).fetchall()
         memories = db.execute(
@@ -1807,17 +1788,29 @@ def _build_system_prompt(client_id: str) -> str:
         if plain_lines:
             parts.append("[레퍼런스 라이브러리 — 보조 패턴]\n" + "\n".join(plain_lines))
 
-    if comps:
-        lines = []
-        for c in comps:
-            s = json.loads(c["strengths"] or "[]")
-            w = json.loads(c["weaknesses"] or "[]")
-            lines.append(f"- {c['name']}: 강점={s}, 약점={w}, 차별화={c['differentiator']}")
-        parts.append("[경쟁사 분석]\n" + "\n".join(lines))
-
     if memories:
         lines = [f"- [{m['category']}] {m['content']}" for m in memories]
         parts.append("[대화 기억(뉘앙스)]\n" + "\n".join(lines))
+
+    # 우리 회사의 강점 — 활성화된 카테고리/역량 주입
+    strengths_summary = get_active_strengths_summary()
+    if strengths_summary:
+        parts.append(
+            "[우리 회사의 강점 (제안서에 반드시 자연스럽게 녹여낼 것)]\n"
+            + strengths_summary
+            + "\n→ 위 역량들이 발주처 과업과 어떻게 매칭되는지 제안서 본문 곳곳에 구체적으로 드러낼 것."
+        )
+
+    # 발주처 들여다보기 (자동 수집된 정보) — 있으면 주입
+    with get_db() as db:
+        intel_row = db.execute("SELECT intel_json FROM client_intel WHERE client_id=?", (client_id,)).fetchone()
+    if intel_row:
+        try:
+            intel = json.loads(intel_row["intel_json"] or "{}")
+        except Exception:
+            intel = {}
+        if intel and not intel.get("error"):
+            parts.append("[발주처 들여다보기]\n" + json.dumps(intel, ensure_ascii=False, indent=2))
 
     # 발주처 성향 주입
     with get_db() as db:
@@ -2232,8 +2225,16 @@ async def api_rfp_upload_multi(
         info = await _save_rfp_file(cid, f, role)
         saved.append(info)
 
+    # 갈래 1: 과업 분석 (기존 RFP 분석)
     analysis = _run_rfp_aggregate(cid)
-    return {"ok": True, "files": saved, "analysis": analysis}
+    # 갈래 2: 발주처 들여다보기 — 자동 수집 (실패해도 RFP 분석은 유지)
+    intel = {}
+    try:
+        intel = _run_client_intel(cid)
+    except Exception as e:
+        log.warning("발주처 정보 자동 수집 실패: %s", e)
+        intel = {"error": str(e)[:200]}
+    return {"ok": True, "files": saved, "analysis": analysis, "intel": intel}
 
 
 @app.get("/api/clients/{cid}/rfp")
@@ -2639,196 +2640,6 @@ def api_client_accent_get(cid: str):
     return {"accent": c or None}
 
 
-# ---------- Competitors ----------
-@app.get("/api/clients/{cid}/competitors")
-def api_comp_list(cid: str):
-    with get_db() as db:
-        rows = db.execute(
-            "SELECT * FROM competitors WHERE client_id=? ORDER BY created_at DESC", (cid,)
-        ).fetchall()
-    out = []
-    for r in rows:
-        d = dict(r)
-        d["strengths"] = json.loads(d["strengths"] or "[]")
-        d["weaknesses"] = json.loads(d["weaknesses"] or "[]")
-        out.append(d)
-    return out
-
-
-class CompetitorQueryIn(BaseModel):
-    query: str
-    context: str = ""
-
-
-WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_uses": 5}
-
-
-def _extract_text_from_resp(resp) -> str:
-    """Anthropic 응답에서 텍스트 블록만 모아 반환. tool_use/thinking 블록은 스킵.
-    빈 응답, 잘못된 구조여도 예외 없이 '' 반환."""
-    try:
-        parts = []
-        for b in (getattr(resp, "content", None) or []):
-            btype = getattr(b, "type", None)
-            if btype == "text":
-                text = getattr(b, "text", "")
-                if text:
-                    parts.append(text)
-        return "".join(parts).strip()
-    except Exception as e:
-        log.warning("응답 파싱 실패: %s", e)
-        return ""
-
-
-# ---------- 경쟁사 검색/분석 (발주처 독립) ----------
-def _do_competitor_search(query: str, context: str = "") -> list:
-    """발주처 무관 — 기업명/키워드로 실존 후보 3~5개 반환."""
-    try:
-        client = require_client()
-        prompt = (COMPETITOR_CANDIDATES_PROMPT
-                  .replace("{QUERY}", query)
-                  .replace("{CONTEXT}", context or "(없음)"))
-        fast_search_tool = {"type": "web_search_20250305", "name": "web_search", "max_uses": 2}
-        resp = client.messages.create(
-            model=MODEL_FAST,
-            max_tokens=1500,
-            tools=[fast_search_tool],
-            messages=[{"role": "user", "content": prompt}],
-        )
-        raw = _extract_text_from_resp(resp)
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```$", "", raw)
-        candidates = json.loads(raw)
-        if isinstance(candidates, list):
-            return candidates
-        return []
-    except HTTPException:
-        raise
-    except anthropic.APIError as e:
-        log.warning("경쟁사 후보 Anthropic 오류: %s", e)
-    except json.JSONDecodeError as e:
-        log.warning("경쟁사 후보 JSON 파싱 실패: %s", e)
-    except Exception as e:
-        log.exception("경쟁사 후보 예외")
-    # 실패 시에도 입력값 1건 반환 → 사용자 직접 분석 가능
-    return [{"name": query, "desc": "자동 검색을 이용할 수 없어요 — 입력한 이름 그대로 분석 가능", "domain": ""}]
-
-
-def _do_competitor_analyze(name: str, context: str = "") -> dict:
-    """발주처 무관 — 기업명으로 강점/약점/차별화 분석."""
-    try:
-        client = require_client()
-        prompt = (COMPETITOR_ANALYSIS_PROMPT
-                  .replace("{COMPANY}", name)
-                  .replace("{CONTEXT}", context or "(없음)"))
-        resp = client.messages.create(
-            model=get_setting("model", MODEL_DEFAULT),
-            max_tokens=2500,
-            tools=[WEB_SEARCH_TOOL],
-            messages=[{"role": "user", "content": prompt}],
-        )
-        raw = _extract_text_from_resp(resp)
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```$", "", raw)
-        return json.loads(raw)
-    except HTTPException:
-        raise
-    except anthropic.APIError as e:
-        log.warning("경쟁사 분석 Anthropic 오류: %s", e)
-        return {"strengths": [], "weaknesses": [], "differentiator": "",
-                "summary": translate_anthropic_error(e), "error": True}
-    except json.JSONDecodeError as e:
-        log.warning("경쟁사 분석 JSON 파싱 실패: %s", e)
-        return {"strengths": [], "weaknesses": [], "differentiator": "",
-                "summary": "AI 응답을 이해하지 못했어요. 다시 시도해 주세요.", "error": True}
-    except Exception as e:
-        log.exception("경쟁사 분석 예외")
-        return {"strengths": [], "weaknesses": [], "differentiator": "",
-                "summary": f"분석 중 문제가 생겼어요 ({type(e).__name__})", "error": True}
-
-
-# ─── 독립 엔드포인트 (발주처 ID 불필요) ───
-@app.post("/api/competitors/search")
-def api_competitors_search_standalone(body: CompetitorQueryIn):
-    """기업명/키워드 → 후보 3~5개 반환. 발주처 무관."""
-    q = (body.query or "").strip()
-    if not q:
-        raise HTTPException(400, "기업명 또는 키워드를 입력해 주세요.")
-    return {"candidates": _do_competitor_search(q, body.context)}
-
-
-class CompetitorAnalyzeIn(BaseModel):
-    name: str
-    context: str = ""
-    client_id: Optional[str] = None  # 있으면 해당 발주처에 저장, 없으면 분석만 반환
-
-
-@app.post("/api/competitors/analyze")
-def api_competitors_analyze_standalone(body: CompetitorAnalyzeIn):
-    """기업명 → 강점/약점/차별화 분석. client_id 주면 저장까지."""
-    name = (body.name or "").strip()
-    if not name:
-        raise HTTPException(400, "기업명을 입력해 주세요.")
-    data = _do_competitor_analyze(name, body.context)
-
-    saved_id = None
-    if body.client_id:
-        # 발주처가 존재할 때만 저장 (없어도 분석 결과는 반환)
-        with get_db() as db:
-            c = db.execute("SELECT id FROM clients WHERE id=?", (body.client_id,)).fetchone()
-            if c:
-                saved_id = uuid.uuid4().hex[:12]
-                db.execute(
-                    "INSERT INTO competitors(id,client_id,name,analysis,strengths,weaknesses,differentiator) "
-                    "VALUES(?,?,?,?,?,?,?)",
-                    (
-                        saved_id, body.client_id, name, data.get("summary", ""),
-                        json.dumps(data.get("strengths") or [], ensure_ascii=False),
-                        json.dumps(data.get("weaknesses") or [], ensure_ascii=False),
-                        data.get("differentiator", ""),
-                    ),
-                )
-    return {"ok": True, "id": saved_id, "data": data}
-
-
-# ─── 기존 client-scoped 엔드포인트 (하위 호환, 내부에서 동일 로직 사용) ───
-@app.post("/api/clients/{cid}/competitors/search")
-def api_comp_search(cid: str, body: CompetitorQueryIn):
-    """[하위 호환] 검색은 client_id 와 무관하므로 발주처 체크 없이 동일 로직."""
-    q = (body.query or "").strip()
-    if not q:
-        raise HTTPException(400, "기업명 또는 키워드를 입력해 주세요.")
-    return {"candidates": _do_competitor_search(q, body.context)}
-
-
-@app.post("/api/clients/{cid}/competitors")
-def api_comp_add(cid: str, body: CompetitorIn):
-    """[하위 호환] cid 없으면 분석만 반환, 있으면 저장까지."""
-    data = _do_competitor_analyze(body.name, body.context)
-    saved_id = None
-    with get_db() as db:
-        c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
-        if c:
-            saved_id = uuid.uuid4().hex[:12]
-            db.execute(
-                "INSERT INTO competitors(id,client_id,name,analysis,strengths,weaknesses,differentiator) "
-                "VALUES(?,?,?,?,?,?,?)",
-                (
-                    saved_id, cid, body.name, data.get("summary", ""),
-                    json.dumps(data.get("strengths") or [], ensure_ascii=False),
-                    json.dumps(data.get("weaknesses") or [], ensure_ascii=False),
-                    data.get("differentiator", ""),
-                ),
-            )
-    return {"ok": True, "id": saved_id, "data": data}
-
-
-@app.delete("/api/competitors/{comp_id}")
-def api_comp_delete(comp_id: str):
-    with get_db() as db:
-        db.execute("DELETE FROM competitors WHERE id=?", (comp_id,))
-    return {"ok": True}
-
 
 # ---------- Nuance Memory ----------
 @app.get("/api/clients/{cid}/memories")
@@ -2851,6 +2662,325 @@ def api_mem_delete(mem_id: str):
     with get_db() as db:
         db.execute("DELETE FROM nuance_memories WHERE id=?", (mem_id,))
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# 우리 회사의 강점은? 💪 (전사 단위 카테고리/역량 체크박스)
+# ---------------------------------------------------------------------------
+STRENGTH_CATALOG: dict[str, list[str]] = {
+    "박람회": ["전시 부스 기획/설계", "공간 연출 및 동선 설계", "참가업체 모집 및 관리",
+              "홍보/마케팅", "운영인력 구성", "부대행사 기획"],
+    "축제":   ["무대 기획/연출", "출연진 섭외", "공간/경관 연출", "체험프로그램 기획",
+              "푸드/마켓존 운영", "홍보/SNS 마케팅", "자원봉사자 운영", "야간 경관 연출"],
+    "전시":   ["전시 콘셉트 기획", "공간 설계/연출", "작품/콘텐츠 수급",
+              "도슨트 운영", "홍보/마케팅"],
+    "공연":   ["공연 기획/프로그래밍", "출연진 섭외", "무대/음향/조명 시스템",
+              "영상 중계", "관객 모객", "홍보/마케팅"],
+    "학술행사": ["행사 기획/프로그래밍", "연사/발표자 섭외", "장소 섭외 및 세팅",
+                "등록/접수 운영", "통역/번역", "홍보/참가자 모집", "온라인 중계"],
+    "경연대회": ["대회 기획/운영", "참가자 모집", "심사위원 섭외",
+                "심사 시스템 운영", "시상식 연출", "홍보/마케팅"],
+    "스포츠/이스포츠 대회": ["대회 기획/운영", "선수/팀 모집", "경기장 섭외/세팅",
+                          "심판/운영진 구성", "중계/방송", "홍보/마케팅"],
+    "시상식/기념식": ["행사 기획/연출", "식순 구성", "출연진/연사 섭외",
+                    "무대/음향/조명", "의전 운영", "영상 제작", "홍보/초청장 발송"],
+}
+
+
+@app.get("/api/strengths/catalog")
+def api_strengths_catalog():
+    """전체 카테고리·역량 목록 + 활성화 상태."""
+    with get_db() as db:
+        rows = db.execute("SELECT category,capability FROM our_strengths WHERE enabled=1").fetchall()
+    enabled = {(r["category"], r["capability"]) for r in rows}
+    out = []
+    for cat, caps in STRENGTH_CATALOG.items():
+        out.append({
+            "category": cat,
+            "capabilities": [
+                {"name": c, "enabled": (cat, c) in enabled} for c in caps
+            ],
+        })
+    return {"catalog": out, "active_count": len(enabled)}
+
+
+class StrengthsToggleIn(BaseModel):
+    category: str
+    capability: str
+    enabled: bool
+
+
+@app.post("/api/strengths/toggle")
+def api_strengths_toggle(body: StrengthsToggleIn):
+    """단일 역량 on/off 토글."""
+    cat, cap = body.category.strip(), body.capability.strip()
+    if cat not in STRENGTH_CATALOG or cap not in STRENGTH_CATALOG[cat]:
+        raise HTTPException(400, "허용되지 않은 카테고리/역량입니다.")
+    with get_db() as db:
+        if body.enabled:
+            db.execute(
+                "INSERT INTO our_strengths(category,capability,enabled) VALUES(?,?,1) "
+                "ON CONFLICT(category,capability) DO UPDATE SET enabled=1, updated_at=datetime('now','localtime')",
+                (cat, cap),
+            )
+        else:
+            db.execute(
+                "INSERT INTO our_strengths(category,capability,enabled) VALUES(?,?,0) "
+                "ON CONFLICT(category,capability) DO UPDATE SET enabled=0, updated_at=datetime('now','localtime')",
+                (cat, cap),
+            )
+    return {"ok": True}
+
+
+def get_active_strengths_summary() -> str:
+    """활성화된 역량 목록을 카테고리별 1줄로 요약 (시스템 프롬프트 주입용)."""
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT category,capability FROM our_strengths WHERE enabled=1 "
+            "ORDER BY category,capability"
+        ).fetchall()
+    if not rows:
+        return ""
+    by_cat: dict[str, list[str]] = {}
+    for r in rows:
+        by_cat.setdefault(r["category"], []).append(r["capability"])
+    lines = [f"- {cat}: {', '.join(caps)}" for cat, caps in by_cat.items()]
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# 발주처 들여다보기 👀 (RFP 업로드 시 자동 수집)
+# ---------------------------------------------------------------------------
+CLIENT_INTEL_PROMPT = """발주처에 대한 공개 정보를 web_search 도구로 조사해 정리하세요.
+사용자가 발주처와 더 효과적으로 소통할 수 있도록 실용적이고 구체적인 정보를 추출합니다.
+
+발주처: {CLIENT_NAME}
+업종/유형: {CLIENT_TYPE}
+RFP 사업명: {PROJECT_TITLE}
+
+JSON 스키마(JSON만 출력):
+{
+  "basic_info": {
+    "official_name": "공식 기관명/회사명",
+    "type": "공공기관|지자체|공기업|민간기업 등",
+    "main_role": "주요 역할/소관 분야 (한 문장)",
+    "website": "공식 사이트 URL (없으면 빈 문자열)"
+  },
+  "event_history": ["과거 진행한 유사 행사·사업 5개 이내 (각 25자 이내)"],
+  "tendency": ["성향/선호 패턴 5개 이내 — 키워드·톤·우선순위 (각 30자 이내)"],
+  "key_people": ["주요 인물·담당자 정보 3개 이내 (각 30자 이내, 알 수 있을 때만)"],
+  "communication_tips": ["이 발주처와 소통할 때 유용한 팁 3~5개 (각 40자 이내)"],
+  "summary": "이 발주처를 한 문단(3문장 이내)으로 요약"
+}
+모르는 필드는 빈 배열/빈 문자열. 추측 금지, 검색 결과 기반.
+JSON만 출력, 다른 설명 없음.
+
+JSON:"""
+
+
+def _run_client_intel(cid: str) -> dict:
+    """발주처 정보 자동 수집 — Claude + web_search 활용."""
+    with get_db() as db:
+        client = db.execute("SELECT * FROM clients WHERE id=?", (cid,)).fetchone()
+    if not client:
+        return {}
+    rfp = _get_rfp_aggregated(cid) or {}
+    project_title = rfp.get("title", "")
+
+    prompt = (CLIENT_INTEL_PROMPT
+              .replace("{CLIENT_NAME}", client["name"])
+              .replace("{CLIENT_TYPE}", client["industry"] or "")
+              .replace("{PROJECT_TITLE}", project_title))
+
+    intel: dict = {}
+    try:
+        api_client = require_client()
+        resp = api_client.messages.create(
+            model=get_setting("model", MODEL_DEFAULT),
+            max_tokens=2500,
+            messages=[{"role": "user", "content": prompt}],
+            tools=[WEB_SEARCH_TOOL],
+        )
+        raw = _extract_text_from_resp(resp)
+        raw = re.sub(r"^```(?:json)?\s*", "", raw)
+        raw = re.sub(r"\s*```$", "", raw)
+        intel = json.loads(raw)
+    except Exception as e:
+        log.warning("발주처 정보 자동 수집 실패: %s", e)
+        return {"error": f"자동 수집 실패 ({type(e).__name__})"}
+
+    with get_db() as db:
+        db.execute(
+            "INSERT INTO client_intel(client_id,intel_json,updated_at) "
+            "VALUES(?,?,datetime('now','localtime')) "
+            "ON CONFLICT(client_id) DO UPDATE SET "
+            "intel_json=excluded.intel_json, updated_at=excluded.updated_at",
+            (cid, json.dumps(intel, ensure_ascii=False)),
+        )
+    return intel
+
+
+@app.get("/api/clients/{cid}/intel")
+def api_client_intel_get(cid: str):
+    with get_db() as db:
+        row = db.execute("SELECT intel_json,updated_at FROM client_intel WHERE client_id=?", (cid,)).fetchone()
+    if not row:
+        return {"intel": {}, "updated_at": None}
+    try:
+        intel = json.loads(row["intel_json"] or "{}")
+    except Exception:
+        intel = {}
+    return {"intel": intel, "updated_at": row["updated_at"]}
+
+
+@app.post("/api/clients/{cid}/intel/rebuild")
+def api_client_intel_rebuild(cid: str):
+    with get_db() as db:
+        c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
+        if not c:
+            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
+    intel = _run_client_intel(cid)
+    return {"intel": intel}
+
+
+# ---------------------------------------------------------------------------
+# 제안서 PPTX 변환 — Claude 가 만든 제안서 HTML → 슬라이드 파일 (.pptx)
+# ---------------------------------------------------------------------------
+class PptxExportIn(BaseModel):
+    conversation_id: str
+
+
+@app.post("/api/proposals/pptx")
+def api_proposals_pptx(body: PptxExportIn):
+    """대화의 최신 제안서 HTML 을 .pptx 로 변환해 다운로드 URL 반환."""
+    try:
+        from pptx import Presentation
+        from pptx.util import Inches, Pt, Emu
+        from pptx.enum.text import PP_ALIGN
+        from pptx.dml.color import RGBColor
+    except ImportError:
+        raise HTTPException(500, "python-pptx 가 설치돼 있지 않아요. requirements.txt 를 확인해 주세요.")
+
+    with get_db() as db:
+        msg = db.execute(
+            "SELECT content FROM messages "
+            "WHERE conversation_id=? AND role='assistant' "
+            "AND content LIKE '%<div class=\"proposal\"%' "
+            "ORDER BY created_at DESC LIMIT 1",
+            (body.conversation_id,),
+        ).fetchone()
+    if not msg:
+        raise HTTPException(404, "이 대화에 제안서가 없어요. 먼저 제안서를 생성해 주세요.")
+
+    html = msg["content"]
+    # 페이지 추출
+    page_iter = re.finditer(
+        r'<div class="proposal-page[^"]*"([^>]*)>([\s\S]*?)(?=<div class="proposal-page|</div>\s*$)',
+        html,
+    )
+    title_m = re.search(r'data-title=["\']([^"\']+)', html)
+    accent_m = re.search(r'data-accent=["\']#?([0-9a-fA-F]{6})', html)
+    title = title_m.group(1).strip() if title_m else "제안서"
+    accent = accent_m.group(1) if accent_m else "6B46E5"
+    accent_rgb = RGBColor.from_string(accent)
+
+    prs = Presentation()
+    # A4 가로 (297mm × 210mm)
+    prs.slide_width = Inches(11.69)   # 297mm
+    prs.slide_height = Inches(8.27)   # 210mm
+
+    blank_layout = prs.slide_layouts[6]  # 빈 레이아웃
+
+    def strip(text: str) -> str:
+        text = re.sub(r"<br\s*/?>", "\n", text or "", flags=re.I)
+        text = re.sub(r"<[^>]+>", "", text)
+        text = (text.replace("&nbsp;", " ").replace("&amp;", "&")
+                    .replace("&lt;", "<").replace("&gt;", ">")
+                    .replace("&quot;", '"').replace("&#39;", "'"))
+        return re.sub(r"\s+", " ", text).strip()
+
+    # 표지
+    cover = prs.slides.add_slide(blank_layout)
+    tx = cover.shapes.add_textbox(Inches(1.0), Inches(3.2), Inches(9.69), Inches(2.0)).text_frame
+    tx.word_wrap = True
+    p = tx.paragraphs[0]
+    p.alignment = PP_ALIGN.CENTER
+    run = p.add_run()
+    run.text = title
+    run.font.size = Pt(36)
+    run.font.bold = True
+    run.font.color.rgb = accent_rgb
+
+    page_count = 0
+    for m in page_iter:
+        page_count += 1
+        attrs = m.group(1) or ""
+        body_html = m.group(2) or ""
+        m_section = re.search(r'data-section=["\']([^"\']+)', attrs)
+        section = m_section.group(1).strip() if m_section else ""
+        m_gov = re.search(r'<[^>]+class="[^"]*page-governing[^"]*"[^>]*>([\s\S]*?)</[^>]+>', body_html)
+        governing = strip(m_gov.group(1)) if m_gov else ""
+        m_sum = re.search(r'<[^>]+class="[^"]*page-summary[^"]*"[^>]*>([\s\S]*?)</[^>]+>', body_html)
+        summary = strip(m_sum.group(1)) if m_sum else ""
+        # 본문 — governing/summary 제외
+        body_wo = body_html
+        if m_gov: body_wo = body_wo.replace(m_gov.group(0), "")
+        if m_sum: body_wo = body_wo.replace(m_sum.group(0), "")
+        content_text = strip(body_wo)
+
+        slide = prs.slides.add_slide(blank_layout)
+        # 섹션명 (좌상단 작은 라벨)
+        if section:
+            tb = slide.shapes.add_textbox(Inches(0.5), Inches(0.3), Inches(8), Inches(0.4)).text_frame
+            r = tb.paragraphs[0].add_run()
+            r.text = section
+            r.font.size = Pt(10)
+            r.font.color.rgb = accent_rgb
+            r.font.bold = True
+        # 거버닝 메시지
+        if governing:
+            tb = slide.shapes.add_textbox(Inches(0.5), Inches(0.85), Inches(10.5), Inches(1.3)).text_frame
+            tb.word_wrap = True
+            r = tb.paragraphs[0].add_run()
+            r.text = governing
+            r.font.size = Pt(24)
+            r.font.bold = True
+        # 본문
+        if content_text:
+            tb = slide.shapes.add_textbox(Inches(0.5), Inches(2.3), Inches(10.5), Inches(5.0)).text_frame
+            tb.word_wrap = True
+            for line in content_text.split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                p = tb.add_paragraph() if tb.paragraphs[0].text else tb.paragraphs[0]
+                r = p.add_run()
+                r.text = line[:200]  # 페이지 한 장에 들어갈 수 있도록 컷
+                r.font.size = Pt(11)
+        # 요약 배너 (하단)
+        if summary:
+            tb = slide.shapes.add_textbox(Inches(0.5), Inches(7.4), Inches(10.5), Inches(0.6)).text_frame
+            r = tb.paragraphs[0].add_run()
+            r.text = "💡 " + summary
+            r.font.size = Pt(12)
+            r.font.bold = True
+            r.font.color.rgb = accent_rgb
+
+    if page_count == 0:
+        raise HTTPException(500, "제안서에서 페이지를 찾지 못했어요.")
+
+    # 저장
+    out_dir = STATIC_DIR / "exports"
+    out_dir.mkdir(exist_ok=True)
+    fname = f"proposal_{body.conversation_id[:8]}_{uuid.uuid4().hex[:6]}.pptx"
+    out_path = out_dir / fname
+    prs.save(str(out_path))
+    return {
+        "url": f"/static/exports/{fname}",
+        "filename": fname,
+        "page_count": page_count + 1,  # +1 for cover
+    }
+
 
 if __name__ == "__main__":
     import uvicorn

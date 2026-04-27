@@ -2147,3 +2147,245 @@ body.fs-loader-active {
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .client-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ============================================================
+   v0 디자인 토큰 매핑 + 새 섹션 스타일 (강점/발주처들여다보기/푸터/체크리스트)
+   ============================================================ */
+
+/* v0 토큰 — 부드러운 회색·보라 계열 미세 조정 */
+:root {
+  --primary: #7C3AED;          /* v0 oklch(0.55 0.22 285) */
+  --primary-hover: #6D28D9;
+  --primary-soft: #F3EFFF;
+  --accent: #F5F0FF;
+  --accent-fg: #5B21B6;
+  --secondary: #F4F0FC;
+  --border: #E5E5E5;           /* v0 oklch(0.92 0 0) */
+  --border-strong: #D4D4D4;
+  --bg-2: #F5F5F5;
+}
+
+/* 콘텐츠 하단 여유 패딩 (잘림 방지) */
+.main-content { padding-bottom: 80px; }
+.dashboard-footer {
+  margin-top: 40px; padding: 20px 0 32px;
+  text-align: center; font-size: 13px; color: var(--fg-2);
+  border-top: 1px solid var(--border);
+}
+
+/* ===== 우리 회사의 강점은? 💪 ===== */
+.strengths-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;
+  padding: 8px;
+}
+.strength-cat {
+  background: linear-gradient(180deg, color-mix(in oklab, var(--primary) 4%, #fff) 0%, #fff 100%);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.strength-cat-title {
+  margin: 0 0 10px;
+  font-size: 14px; font-weight: 700;
+  color: var(--primary);
+  letter-spacing: -0.01em;
+}
+.strength-cap-list {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.strength-cap {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13px; color: var(--fg);
+  cursor: pointer;
+  transition: background .12s ease;
+}
+.strength-cap:hover { background: color-mix(in oklab, var(--primary) 6%, #fff); }
+.strength-cap input[type="checkbox"] {
+  accent-color: var(--primary);
+  width: 16px; height: 16px;
+  cursor: pointer;
+}
+
+/* ===== 발주처 들여다보기 👀 ===== */
+.intel-block {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.intel-label {
+  font-size: 12px; font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 6px;
+  letter-spacing: -0.01em;
+}
+.intel-list {
+  margin: 0; padding: 0 0 0 16px;
+  font-size: 13px; line-height: 1.65;
+  color: var(--fg);
+}
+.intel-list li { margin: 2px 0; }
+.intel-tags {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.intel-tag {
+  display: inline-block;
+  padding: 4px 10px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  border-radius: 999px;
+  font-size: 12px; font-weight: 500;
+}
+.intel-summary {
+  padding: 12px 14px;
+  background: linear-gradient(135deg, var(--primary-soft) 0%, #fff 100%);
+  border-left: 4px solid var(--primary);
+  border-radius: 8px;
+  font-size: 13px; line-height: 1.6;
+  color: var(--fg);
+  font-style: italic;
+}
+
+/* ===== RFP 분석 — 배지 + 체크리스트 + 레이더 ===== */
+.rfp-badges {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.rfp-badge {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 13px;
+  min-width: 160px;
+}
+.rfp-badge .rfp-badge-label {
+  font-size: 11px; color: var(--fg-2);
+  letter-spacing: 0.04em; text-transform: uppercase;
+}
+.rfp-badge .rfp-badge-value {
+  font-size: 14px; font-weight: 700; color: var(--fg);
+  margin-top: 2px;
+}
+.rfp-grid-2 {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 18px;
+  margin-bottom: 18px;
+}
+@media (max-width: 1100px) { .rfp-grid-2 { grid-template-columns: 1fr; } }
+.rfp-radar-wrap {
+  background: #fff; border: 1px solid var(--border);
+  border-radius: 12px; padding: 18px;
+}
+.rfp-radar-title { font-size: 13px; font-weight: 700; margin: 0 0 12px; color: var(--fg); }
+.rfp-checklist-wrap {
+  background: #fff; border: 1px solid var(--border);
+  border-radius: 12px; padding: 18px;
+}
+.rfp-checklist {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.rfp-checklist li {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-2);
+  border-radius: 8px;
+  font-size: 13px; line-height: 1.5;
+  color: var(--fg);
+}
+.rfp-checklist li::before {
+  content: "☐"; flex-shrink: 0;
+  color: var(--primary); font-weight: 700;
+  font-size: 16px; line-height: 1.3;
+}
+.rfp-risks {
+  background: linear-gradient(135deg, #FEF3C7 0%, #FFFBEB 100%);
+  border: 1px solid #FCD34D;
+  border-left: 4px solid #F59E0B;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-top: 14px;
+}
+.rfp-risks-title {
+  font-size: 13px; font-weight: 700;
+  color: #92400E; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 6px;
+}
+.rfp-risks ul {
+  margin: 0; padding: 0 0 0 18px;
+  font-size: 13px; line-height: 1.6; color: #78350F;
+}
+.rfp-risks li { margin: 3px 0; }
+
+/* RFP 업로드 안내 강화 */
+.rfp-upload-guide {
+  padding: 14px 16px;
+  background: var(--primary-soft);
+  border: 1px dashed var(--primary);
+  border-radius: 10px;
+  margin-bottom: 14px;
+}
+.rfp-upload-guide-title {
+  font-size: 14px; font-weight: 700;
+  color: var(--primary);
+  margin: 0 0 4px;
+}
+.rfp-upload-guide-sub {
+  font-size: 12px; color: var(--fg-2);
+  line-height: 1.55; margin: 0 0 8px;
+}
+.rfp-upload-checklist {
+  display: flex; gap: 14px; flex-wrap: wrap;
+  font-size: 12px; color: var(--fg-2);
+}
+.rfp-upload-checklist span::before {
+  content: "☐ "; color: var(--primary); font-weight: 700;
+}
+.rfp-upload-checklist span.done::before {
+  content: "☑ "; color: var(--success);
+}
+
+/* ===== 새 대화 시작 버튼 — 가운데 정렬 ===== */
+.btn-start-conv-wrap {
+  display: flex; justify-content: center;
+  margin: 16px 0;
+}
+
+/* ===== select / dropdown 위로 펼치기 — 화면 하단 근접 시 자동 ===== */
+.dropdown-up {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  top: auto !important;
+}
+
+/* outcome-menu 가 위로 펼쳐지는 경우 */
+.outcome-menu.dropdown-up {
+  bottom: calc(100% + 4px);
+  top: auto !important;
+}
+
+/* ===== 좌우 분할 패널 (제안서 생성 시) ===== */
+.chat-split {
+  display: grid;
+  grid-template-columns: minmax(420px, 1fr) minmax(640px, 2fr);
+  gap: 0;
+}
+.chat-split .chat-shell { border-right: 1px solid var(--border); }
+.proposal-side-panel {
+  position: sticky; top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  background: var(--bg-2);
+  padding: 24px;
+}
+
+/* ===== 제안서 완료 메시지 행 — 차분 강조 ===== */
+.proposal-done-row .msg-bubble {
+  background: linear-gradient(135deg, color-mix(in oklab, var(--success) 8%, #fff) 0%, #fff 100%) !important;
+  border-color: color-mix(in oklab, var(--success) 30%, var(--border)) !important;
+  font-weight: 600;
+  color: var(--success);
+}

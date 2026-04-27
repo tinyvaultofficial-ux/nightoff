@@ -254,30 +254,22 @@ function showFullscreenLoader(steps) {
 
 const LOADER_STEPS = {
   rfp: [
-    { emoji: "📄", text: "RFP를 읽고 있어요…" },
-    { emoji: "🔍", text: "요구사항을 분석하고 있어요…" },
-    { emoji: "📊", text: "평가 기준을 파악하고 있어요…" },
-    { emoji: "🗂️", text: "목차와 페이지 수를 정리하고 있어요…" },
-  ],
-  competitor: [
-    { emoji: "🔎", text: "기업 정보를 검색하고 있어요…" },
-    { emoji: "⚡", text: "강점과 약점을 분석하고 있어요…" },
-    { emoji: "🎯", text: "차별화 포인트를 찾고 있어요…" },
+    { emoji: "👀", text: "RFP 꼼꼼히 읽고 있어요" },
+    { emoji: "📋", text: "과업 내용 정리 중이에요" },
+    { emoji: "📊", text: "평가 기준 파악 중이에요" },
+    { emoji: "🔍", text: "발주처 정보 찾아오는 중이에요" },
   ],
   reference: [
-    { emoji: "📂", text: "파일을 읽고 있어요…" },
-    { emoji: "🧠", text: "내용을 분석하고 있어요…" },
-    { emoji: "💡", text: "패턴을 추출하고 있어요…" },
+    { emoji: "📂", text: "파일 읽고 있어요" },
+    { emoji: "🧠", text: "내용 분석 중이에요" },
   ],
   proposal: [
-    { emoji: "📋", text: "RFP 요구사항을 확인하고 있어요…" },
-    { emoji: "✍️", text: "목차와 구성을 잡고 있어요…" },
-    { emoji: "🎨", text: "페이지 레이아웃을 설계하고 있어요…" },
-    { emoji: "🚀", text: "제안서를 작성하고 있어요…" },
+    { emoji: "📋", text: "요구사항 확인 중이에요" },
+    { emoji: "✍️", text: "목차 잡고 있어요" },
+    { emoji: "🚀", text: "제안서 작성 중이에요" },
   ],
   search: [
-    { emoji: "🌐", text: "웹에서 실제 정보를 찾고 있어요…" },
-    { emoji: "🔗", text: "후보를 정리하고 있어요…" },
+    { emoji: "🌐", text: "웹에서 정보 찾고 있어요" },
   ],
 };
 
@@ -826,7 +818,7 @@ async function renderDashboard() {
       h("img", { class: "header-logo", src: "/static/logo.png", alt: "NightOff", onclick: () => navigate("/") }),
       h("div", {}, [
         h("h1", {}, "대시보드"),
-        h("p", {}, "기획자가 만든 기획자를 위한 제안서 AI"),
+        h("p", {}, "제안서 수주 도우미 · 함께 만들어요 ✨"),
       ]),
     ]),
     h("button", {
@@ -864,6 +856,10 @@ async function renderDashboard() {
     ]));
   });
   content.appendChild(h("section", { style: "margin-bottom: 28px;" }, statsGrid));
+
+  // ── 우리 회사의 강점은? 💪 (대시보드 전면 배치)
+  content.appendChild(h("section", { style: "margin-bottom: 28px;" },
+    [await renderStrengthsSection()]));
 
   // ── 빠른 시작 CTA
   content.appendChild(h("section", { class: "quick-start", style: "margin-bottom: 28px;" }, [
@@ -951,7 +947,7 @@ async function renderDashboard() {
 
   // ── 푸터
   content.appendChild(h("footer", { class: "dashboard-footer" },
-    "NightOff · 기획자가 만든 기획자를 위한 제안서 AI · ver 0.1"
+    "NightOff · 수주를 진심으로 기원합니다 🙏"
   ));
 }
 
@@ -1132,12 +1128,10 @@ async function renderClientDetail(cid) {
   const stack = h("div", { class: "row-gap-18" });
   content.appendChild(stack);
 
-  // Order: History → Profile → RFP → References → Competitors
+  // 새 순서: 입찰 활동 히스토리 → 발주처 들여다보기 → RFP 분석
   stack.appendChild(await renderConvHistorySection(cid));
-  stack.appendChild(await renderProfileSection(cid));
+  stack.appendChild(await renderClientIntelSection(cid));
   stack.appendChild(await renderRfpSection(cid));
-  stack.appendChild(await renderReferenceSection(cid));
-  stack.appendChild(await renderCompetitorSection(cid));
 }
 
 // ---------- 수주/탈락 Outcome ----------
@@ -1204,11 +1198,14 @@ async function renderConvHistorySection(cid) {
       navigate(`/client/${cid}/chat/${r.id}`);
     } catch (e) { toast(String(e.message || e), "error"); }
   };
-  body.appendChild(h("button", {
-    class: "btn btn-primary big-cta",
-    onclick: startNew,
-    html: `${iconHtml("plus", 22)}<span>새 대화 시작하기</span>`,
-  }));
+  body.appendChild(h("div", { class: "btn-start-conv-wrap" }, [
+    h("button", {
+      class: "btn btn-primary big-cta",
+      style: "justify-content: center; text-align: center;",
+      onclick: startNew,
+      html: `${iconHtml("plus", 22)}<span>새 대화 시작하기</span>`,
+    }),
+  ]));
 
   if (!convs.length) {
     body.appendChild(h("div", { class: "empty-state", style: "margin-top: 14px;" }, "대화가 없습니다. 위 버튼으로 시작해보세요."));
@@ -1246,108 +1243,154 @@ async function renderConvHistorySection(cid) {
   return card;
 }
 
-// ---------- Reference Library ----------
-async function renderReferenceSection(cid) {
-  const refs = await api.get(`/api/clients/${cid}/references`).catch(() => []);
+// ---------- 발주처 들여다보기 👀 ----------
+async function renderClientIntelSection(cid) {
+  const r = await api.get(`/api/clients/${cid}/intel`).catch(() => ({ intel: {}, updated_at: null }));
+  const intel = r?.intel || {};
   const card = h("div", { class: "card" });
   card.appendChild(h("div", { class: "card-head" }, [
     h("div", { class: "card-title-row" }, [
-      h("div", { class: "card-title-icon", html: iconHtml("folder", 18) }),
-      h("div", {}, [
-        h("h3", { class: "card-title" }, "레퍼런스 라이브러리"),
-        h("p", { class: "card-subtitle" }, "올려두면 AI가 알아서 참고해요"),
+      h("div", { class: "card-title-icon", html: iconHtml("eye", 18) }),
+      h("div", { style: "flex:1; min-width:0;" }, [
+        h("h3", { class: "card-title" }, "발주처 들여다보기 👀"),
+        h("p", { class: "card-subtitle" }, "RFP 를 넣으면 발주처 정보와 과업 내용을 자동으로 파악해요"),
       ]),
+      h("button", {
+        class: "btn btn-outline btn-sm",
+        html: `${iconHtml("refresh", 14) || "↻"}<span>다시 조회</span>`,
+        onclick: async (e) => {
+          const btn = e.currentTarget;
+          btn.disabled = true; btn.textContent = "조회 중…";
+          try {
+            await api.post(`/api/clients/${cid}/intel/rebuild`, {}, { timeoutMs: 120000 });
+            toast("발주처 정보를 새로 가져왔어요 👀", "success");
+            renderClientDetail(cid);
+          } catch (err) {
+            toast("조회 실패: " + (err.message || err), "error");
+            btn.disabled = false; btn.textContent = "다시 조회";
+          }
+        },
+      }),
     ]),
   ]));
 
-  const body = h("div", { class: "card-body row-gap-14" });
+  const body = h("div", { class: "card-body row-gap-12" });
   card.appendChild(body);
 
-  // Drop area
-  const input = h("input", { type: "file", style: "display: none;", multiple: "" });
-  input.addEventListener("change", async () => {
-    for (const f of input.files) await uploadRef(f);
-    input.value = "";
-  });
-  body.appendChild(input);
+  if (!intel || Object.keys(intel).length === 0 || intel.error) {
+    body.appendChild(h("div", { class: "muted small", style: "padding: 12px 4px;" },
+      intel?.error
+        ? `자동 수집 실패: ${intel.error}`
+        : "RFP 를 업로드하면 자동으로 발주처 정보를 수집해요. 또는 [다시 조회] 버튼을 눌러 보세요."));
+    return card;
+  }
 
-  const drop = h("div", {
-    class: "drop-area",
-    onclick: () => input.click(),
-  }, [
-    h("div", { class: "drop-icon", html: iconHtml("upload", 22) }),
-    h("p", { class: "drop-title" }, "파일을 드래그하거나 클릭하여 업로드"),
-    h("p", { class: "drop-hint" }, "PDF, Word, TXT 지원 · AI가 자동 분석"),
-  ]);
-  ["dragenter","dragover"].forEach(t => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("dragover"); }));
-  ["dragleave","drop"].forEach(t => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("dragover"); }));
-  drop.addEventListener("drop", async (e) => {
-    e.preventDefault();
-    for (const f of e.dataTransfer.files) await uploadRef(f);
-  });
-  body.appendChild(drop);
+  // 기본 정보
+  const bi = intel.basic_info || {};
+  if (bi.official_name || bi.main_role) {
+    const block = h("div", { class: "intel-block" });
+    block.appendChild(h("div", { class: "intel-label" }, "📋 기본 정보"));
+    if (bi.official_name) block.appendChild(h("p", { style: "margin: 2px 0; font-weight: 600;" }, bi.official_name));
+    if (bi.type) block.appendChild(h("p", { class: "small muted", style: "margin: 2px 0;" }, bi.type));
+    if (bi.main_role) block.appendChild(h("p", { class: "small", style: "margin: 4px 0; line-height: 1.55;" }, bi.main_role));
+    if (bi.website) block.appendChild(h("a", { href: bi.website, target: "_blank", rel: "noopener", class: "small" }, bi.website));
+    body.appendChild(block);
+  }
 
-  const list = h("div", { class: "row-gap-10" });
-  body.appendChild(list);
-  refs.forEach((f) => list.appendChild(refRow(f, cid)));
-  if (!refs.length) list.appendChild(h("div", { class: "muted small", style: "padding: 4px 0;" }, "아직 업로드된 레퍼런스가 없습니다."));
+  // 행사 이력
+  if (Array.isArray(intel.event_history) && intel.event_history.length) {
+    const block = h("div", { class: "intel-block" });
+    block.appendChild(h("div", { class: "intel-label" }, "📅 과거 행사·사업 이력"));
+    const ul = h("ul", { class: "intel-list" });
+    intel.event_history.forEach((e) => ul.appendChild(h("li", {}, e)));
+    block.appendChild(ul);
+    body.appendChild(block);
+  }
 
-  async function uploadRef(file) {
-    const loader = showFullscreenLoader(LOADER_STEPS.reference);
-    try {
-      await api.upload(`/api/clients/${cid}/references`, file);
-      loader.finish("✅", "저장 완료!", 600);
-      setTimeout(() => renderClientDetail(cid), 700);
-    } catch (e) {
-      loader.stop();
-      toast("업로드 실패: " + (e.message || e), "error");
-    }
+  // 성향
+  if (Array.isArray(intel.tendency) && intel.tendency.length) {
+    const block = h("div", { class: "intel-block" });
+    block.appendChild(h("div", { class: "intel-label" }, "🎯 성향·선호 패턴"));
+    const tags = h("div", { class: "intel-tags" });
+    intel.tendency.forEach((t) => tags.appendChild(h("span", { class: "intel-tag" }, t)));
+    block.appendChild(tags);
+    body.appendChild(block);
+  }
+
+  // 소통 팁
+  if (Array.isArray(intel.communication_tips) && intel.communication_tips.length) {
+    const block = h("div", { class: "intel-block" });
+    block.appendChild(h("div", { class: "intel-label" }, "💬 소통 팁"));
+    const ul = h("ul", { class: "intel-list" });
+    intel.communication_tips.forEach((t) => ul.appendChild(h("li", {}, t)));
+    block.appendChild(ul);
+    body.appendChild(block);
+  }
+
+  // 요약
+  if (intel.summary) {
+    body.appendChild(h("div", { class: "intel-summary" }, intel.summary));
   }
 
   return card;
 }
 
-function refRow(f, cid) {
-  // summary 가 JSON 이면 사람이 읽을 부분만 뽑아서 표시
-  let summaryDisplay = "";
-  if (f.summary) {
-    const s = (f.summary || "").trim();
-    if (s.startsWith("{")) {
-      try {
-        const j = JSON.parse(s);
-        const bits = [];
-        if (j.summary) bits.push(j.summary);
-        if (Array.isArray(j.must_have_pages) && j.must_have_pages.length)
-          bits.push("필수 페이지: " + j.must_have_pages.slice(0, 4).join(", "));
-        if (Array.isArray(j.signature_elements) && j.signature_elements.length)
-          bits.push("브랜딩: " + j.signature_elements.slice(0, 3).join(", "));
-        summaryDisplay = bits.join(" · ") || s.slice(0, 200);
-      } catch {
-        summaryDisplay = s.slice(0, 200);
-      }
-    } else {
-      summaryDisplay = s;
-    }
-  }
-  return h("div", { class: "file-row" }, [
-    h("div", { class: "left" }, [
-      h("div", { class: "file-icon", html: iconHtml("file", 18) }),
-      h("div", { style: "min-width: 0; flex: 1;" }, [
-        h("p", { class: "file-name" }, f.filename),
-        h("p", { class: "file-sub" }, `${f.filetype || "FILE"} · ${fmtSize(f.filesize)} · ${fmtDate(f.created_at)}`),
-        summaryDisplay ? h("p", { class: "file-sub", style: "margin-top: 6px; color: var(--fg-2);" }, summaryDisplay) : null,
+// ---------- 우리 회사의 강점은? 💪 (대시보드 전용) ----------
+async function renderStrengthsSection() {
+  const data = await api.get("/api/strengths/catalog").catch(() => ({ catalog: [], active_count: 0 }));
+  const card = h("div", { class: "card" });
+  card.appendChild(h("div", { class: "card-head" }, [
+    h("div", { class: "card-title-row" }, [
+      h("div", { class: "card-title-icon", html: "💪" }),
+      h("div", { style: "flex:1; min-width:0;" }, [
+        h("h3", { class: "card-title" }, "우리 회사의 강점은? 💪"),
+        h("p", { class: "card-subtitle" }, "잘하는 분야를 선택하면 제안서에 자동 반영돼요"),
       ]),
+      h("span", { class: "muted small" }, `${data.active_count || 0}개 선택됨`),
     ]),
-    h("button", {
-      class: "icon-btn", title: "삭제", html: iconHtml("x", 16),
-      onclick: async () => {
-        if (!confirm("이 레퍼런스를 삭제하시겠습니까?")) return;
-        await api.del(`/api/references/${f.id}`);
-        toast("삭제되었습니다", "success");
-        renderClientDetail(cid);
-      },
-    }),
-  ]);
+  ]));
+
+  const body = h("div", { class: "card-body strengths-grid" });
+  card.appendChild(body);
+
+  (data.catalog || []).forEach((cat) => {
+    const block = h("div", { class: "strength-cat" });
+    block.appendChild(h("h4", { class: "strength-cat-title" }, cat.category));
+    const list = h("div", { class: "strength-cap-list" });
+    cat.capabilities.forEach((cap) => {
+      const id = `str-${cat.category}-${cap.name}`.replace(/[^\w가-힣-]/g, "_");
+      const cb = h("input", {
+        type: "checkbox", id, ...(cap.enabled ? { checked: "" } : {}),
+        onchange: async () => {
+          try {
+            await api.post("/api/strengths/toggle", {
+              category: cat.category,
+              capability: cap.name,
+              enabled: cb.checked,
+            });
+            // 카운트만 가볍게 갱신
+            const head = card.querySelector(".card-title-row .muted.small");
+            if (head) {
+              const r2 = await api.get("/api/strengths/catalog").catch(() => null);
+              if (r2) head.textContent = `${r2.active_count || 0}개 선택됨`;
+            }
+          } catch (e) {
+            cb.checked = !cb.checked;
+            toast("저장 실패: " + (e.message || e), "error");
+          }
+        },
+      });
+      const label = h("label", { for: id, class: "strength-cap" }, [
+        cb,
+        h("span", {}, cap.name),
+      ]);
+      list.appendChild(label);
+    });
+    block.appendChild(list);
+    body.appendChild(block);
+  });
+
+  return card;
 }
 
 // ---------- RFP Analysis ----------
@@ -1375,6 +1418,19 @@ async function renderRfpSection(cid) {
     input.value = "";
   });
   body.appendChild(input);
+
+  // 업로드 가이드 안내 (3종 체크리스트)
+  const haveRoles = new Set((rfp.files || []).map((f) => f.role));
+  const guide = h("div", { class: "rfp-upload-guide" }, [
+    h("p", { class: "rfp-upload-guide-title" }, "정확한 분석을 위해 공고문·과업지시서·제안요청서 3종을 모두 올려주세요 📎"),
+    h("p", { class: "rfp-upload-guide-sub" }, "파일이 누락되면 배점기준, 페이지 제한, 참가자격 등 핵심 정보가 부정확할 수 있어요"),
+    h("div", { class: "rfp-upload-checklist" }, [
+      h("span", { class: haveRoles.has("공고문") ? "done" : "" }, "공고문"),
+      h("span", { class: haveRoles.has("과업지시서") ? "done" : "" }, "과업지시서"),
+      h("span", { class: haveRoles.has("제안요청서") ? "done" : "" }, "제안요청서"),
+    ]),
+  ]);
+  body.appendChild(guide);
 
   const drop = h("div", { class: "drop-area", onclick: () => input.click() }, [
     h("div", { class: "drop-icon", html: iconHtml("upload", 22) }),
@@ -1652,212 +1708,6 @@ async function renderRfpSection(cid) {
   return card;
 }
 
-// ---------- Competitor Analysis ----------
-async function renderCompetitorSection(cid) {
-  const comps = await api.get(`/api/clients/${cid}/competitors`).catch(() => []);
-  const card = h("div", { class: "card" });
-  card.appendChild(h("div", { class: "card-head" }, [
-    h("div", { class: "card-title-row" }, [
-      h("div", { class: "card-title-icon", html: iconHtml("building", 18) }),
-      h("div", {}, [
-        h("h3", { class: "card-title" }, "경쟁사 분석"),
-        h("p", { class: "card-subtitle" }, "기업명만 입력하면 AI가 강점·약점·차별화 포인트를 분석합니다"),
-      ]),
-    ]),
-  ]));
-
-  const body = h("div", { class: "card-body row-gap-14" });
-  card.appendChild(body);
-
-  // Input row — 2글자 이상 입력 시 자동으로 후보 드롭다운
-  const inpWrap = h("div", { style: "position: relative;" });
-  const inp = h("input", { class: "input", placeholder: "경쟁사 기업명 (2글자+) · 쉼표로 여러 개 가능 (예: LG CNS, SK C&C)", autocomplete: "off" });
-  const ctx = { value: "" };  // 추가 컨텍스트 입력창 제거 — 빈 값으로 호환성 유지
-  const dropdown = h("div", { class: "autocomplete-dropdown hidden" });
-  inpWrap.appendChild(inp);
-  inpWrap.appendChild(dropdown);
-
-  const analysisArea = h("div");
-  body.appendChild(inpWrap);
-  body.appendChild(analysisArea);
-
-  let debounceT = null;
-  let currentQuery = "";
-  let searchAborter = null;
-
-  function closeDropdown() { dropdown.classList.add("hidden"); dropdown.innerHTML = ""; }
-  function showLoadingDropdown() {
-    dropdown.innerHTML = "";
-    dropdown.appendChild(h("div", { class: "autocomplete-loading" }, [
-      h("span", { class: "ac-spinner" }),
-      h("span", {}, "후보를 찾고 있어요…"),
-    ]));
-    dropdown.classList.remove("hidden");
-  }
-  function showCandidatesDropdown(candidates) {
-    dropdown.innerHTML = "";
-    if (!candidates || !candidates.length) {
-      dropdown.appendChild(h("div", { class: "autocomplete-empty" }, `후보를 찾지 못했어요. "${inp.value.trim()}" 그대로 분석하려면 아래 버튼을 눌러주세요.`));
-    } else {
-      candidates.slice(0, 5).forEach((c) => {
-        dropdown.appendChild(h("div", {
-          class: "autocomplete-item",
-          onclick: () => { closeDropdown(); runAnalysis(c.name, ctx.value.trim()); },
-        }, [
-          h("div", { class: "ac-name" }, c.name),
-          c.desc ? h("div", { class: "ac-desc" }, c.desc + (c.domain ? ` · ${c.domain}` : "")) : null,
-        ]));
-      });
-    }
-    const q = inp.value.trim();
-    if (q) {
-      dropdown.appendChild(h("div", {
-        class: "autocomplete-item ac-direct",
-        onclick: () => { closeDropdown(); runAnalysis(q, ctx.value.trim()); },
-      }, [
-        h("div", { class: "ac-name" }, `"${q}" 그대로 분석`),
-        h("div", { class: "ac-desc" }, "후보에 원하는 기업이 없으면 입력한 이름 그대로 진행"),
-      ]));
-    }
-    dropdown.classList.remove("hidden");
-  }
-
-  async function fetchCandidates(q) {
-    if (searchAborter) searchAborter.abort();
-    searchAborter = new AbortController();
-    showLoadingDropdown();
-    // 15초·30초 경과 시 메시지 업데이트 (웹 검색은 시간이 걸려요)
-    const hint1 = setTimeout(() => {
-      const l = dropdown.querySelector(".autocomplete-loading span:last-child");
-      if (l) l.textContent = "웹 검색이 진행 중이에요… (최대 1분)";
-    }, 15000);
-    const hint2 = setTimeout(() => {
-      const l = dropdown.querySelector(".autocomplete-loading span:last-child");
-      if (l) l.textContent = "거의 다 됐어요… 조금만 더 기다려주세요";
-    }, 35000);
-    try {
-      // 독립 엔드포인트 — 발주처 ID 불필요
-      const r = await api.post(
-        `/api/competitors/search`,
-        { query: q, context: ctx.value.trim() },
-        { signal: searchAborter.signal, timeoutMs: 90000 }
-      );
-      if (q !== currentQuery) return;
-      showCandidatesDropdown(r.candidates || []);
-    } catch (e) {
-      if (e.name === "AbortError") return;
-      dropdown.innerHTML = "";
-      const msg = /timeout|지연/.test(String(e.message || ""))
-        ? `웹 검색이 오래 걸려요. "${q}" 그대로 바로 분석하려면 아래 버튼을 눌러주세요.`
-        : (e.message || "검색 중 문제가 생겼어요.");
-      dropdown.appendChild(h("div", { class: "autocomplete-empty" }, msg));
-      // 타임아웃/실패 시 "직접" 옵션 즉시 노출
-      if (q) {
-        dropdown.appendChild(h("div", {
-          class: "autocomplete-item ac-direct",
-          onclick: () => { closeDropdown(); runAnalysis(q, ctx.value.trim()); },
-        }, [
-          h("div", { class: "ac-name" }, `"${q}" 그대로 분석`),
-          h("div", { class: "ac-desc" }, "입력한 이름 그대로 경쟁사 분석 진행"),
-        ]));
-      }
-      dropdown.classList.remove("hidden");
-    } finally {
-      clearTimeout(hint1);
-      clearTimeout(hint2);
-    }
-  }
-
-  inp.addEventListener("input", () => {
-    const q = inp.value.trim();
-    currentQuery = q;
-    clearTimeout(debounceT);
-    if (q.length < 2) { closeDropdown(); return; }
-    debounceT = setTimeout(() => { if (q === currentQuery) fetchCandidates(q); }, 450);
-  });
-  inp.addEventListener("focus", () => {
-    const q = inp.value.trim();
-    if (q.length >= 2 && dropdown.innerHTML) dropdown.classList.remove("hidden");
-  });
-  // Close dropdown when clicking outside
-  document.addEventListener("click", (e) => {
-    if (!inpWrap.contains(e.target)) closeDropdown();
-  });
-  inp.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeDropdown();
-  });
-
-  async function runAnalysis(name, context) {
-    if (!name) return;
-    const names = name.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
-    if (!names.length) return;
-
-    const loader = showFullscreenLoader(LOADER_STEPS.competitor);
-    let success = 0;
-    for (const [i, n] of names.entries()) {
-      try {
-        if (names.length > 1) {
-          loader.setStep("🔎", `${i + 1}/${names.length} — ${n} 분석 중…`);
-        }
-        // 독립 엔드포인트 — cid 는 저장 대상일 뿐 검증 통과 조건 아님
-        await api.post(`/api/competitors/analyze`, { name: n, context, client_id: cid }, { timeoutMs: 120000 });
-        success++;
-      } catch (e) {
-        toast(`${n} 분석 실패: ` + (e.message || e), "error");
-      }
-    }
-    if (success > 0) {
-      loader.finish("✅", names.length > 1 ? `${success}/${names.length}개 완료!` : "분석 완료!", 700);
-      setTimeout(() => renderClientDetail(cid), 900);
-    } else {
-      loader.stop();
-    }
-  }
-
-  if (!comps.length) {
-    body.appendChild(h("div", { class: "muted small", style: "padding: 4px 0;" }, "등록된 경쟁사가 없습니다."));
-    return card;
-  }
-
-  const grid = h("div", { style: "display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;" });
-  body.appendChild(grid);
-  comps.forEach((c) => grid.appendChild(compCard(c, cid)));
-  return card;
-}
-
-function compCard(c, cid) {
-  const col = (cls, title, items) => h("div", { class: `comp-col-card ${cls}` }, [
-    h("h5", {}, title),
-    items && items.length
-      ? h("ul", {}, items.map((x) => h("li", {}, x)))
-      : h("p", { class: "small muted", style: "margin: 0;" }, "—"),
-  ]);
-  return h("div", { class: "comp-card" }, [
-    h("div", { class: "flex-between", style: "margin-bottom: 8px;" }, [
-      h("h4", {}, c.name),
-      h("button", {
-        class: "icon-btn", title: "삭제", html: iconHtml("x", 14),
-        onclick: async () => {
-          if (!confirm(`${c.name} 분석을 삭제하시겠습니까?`)) return;
-          await api.del(`/api/competitors/${c.id}`);
-          toast("삭제되었습니다", "success");
-          renderClientDetail(cid);
-        },
-      }),
-    ]),
-    c.analysis ? h("p", { class: "comp-summary" }, c.analysis) : null,
-    // 3열 카드: 강점 / 약점 / 차별화
-    h("div", { class: "comp-3col" }, [
-      col("strengths", "강점", c.strengths),
-      col("weaknesses", "약점", c.weaknesses),
-      h("div", { class: "comp-col-card diff" }, [
-        h("h5", {}, "차별화 (우리 승부수)"),
-        c.differentiator ? h("p", {}, c.differentiator) : h("p", { class: "small muted", style: "margin:0;" }, "—"),
-      ]),
-    ]),
-  ]);
-}
-
 // ---------- 발주처 성향 ----------
 async function renderProfileSection(cid) {
   const p = await api.get(`/api/clients/${cid}/profile`).catch(() => ({ exists: false }));
@@ -2113,6 +1963,14 @@ async function renderChat(cid, convId) {
 
   // Render existing messages
   data.messages.forEach((m) => msgs.appendChild(msgElement(m.role, m.content, m.created_at)));
+  // 첫 대화면 친근한 인사 메시지
+  if (!data.messages || data.messages.length === 0) {
+    msgs.appendChild(msgElement(
+      "assistant",
+      "안녕하세요! 저는 제안서 수주 도우미예요 ✨\n\nRFP 를 올려주시면 발주처 정보랑 과업 내용을 같이 살펴보고, 우리 회사 강점에 맞춰 제안서 초안을 함께 만들어 드릴게요.\n\n어떤 사업부터 시작해볼까요?",
+      new Date().toISOString(),
+    ));
+  }
 
   // Input
   const ta = h("textarea", { placeholder: "메시지를 입력하세요… (Shift+Enter 줄바꿈, Enter 전송)", rows: 1 });
@@ -2167,6 +2025,15 @@ async function renderChat(cid, convId) {
     let rafActive = false;
     let streamDone = false;
 
+    // 사용자가 위로 스크롤하면 자동 스크롤 일시 정지 (생성 완료 시 자동 해제)
+    let userScrolledUp = false;
+    const onUserScroll = () => {
+      const distFromBottom = body.scrollHeight - body.scrollTop - body.clientHeight;
+      // 200px 이상 위로 올린 경우 자동 스크롤 멈춤
+      userScrolledUp = distFromBottom > 200;
+    };
+    body.addEventListener("scroll", onUserScroll);
+
     // 부드러운 흐름 애니메이션 — RAF 기반으로 target보다 뒤처진 displayed를 따라잡음
     const tick = () => {
       if (displayedText.length >= targetText.length) {
@@ -2180,7 +2047,8 @@ async function renderChat(cid, convId) {
       displayedText = targetText.slice(0, displayedText.length + step);
       renderAssistant(bubble, displayedText);
       progress.update(targetText);   // ← 전체 target 기준으로 진행률 업데이트
-      body.scrollTop = body.scrollHeight;
+      // 사용자가 직접 위로 스크롤한 동안엔 자동 스크롤 안 함
+      if (!userScrolledUp) body.scrollTop = body.scrollHeight;
       requestAnimationFrame(tick);
     };
     const kickTyper = () => {
@@ -2250,13 +2118,28 @@ async function renderChat(cid, convId) {
       streaming = false; sendBtn.disabled = false; ta.disabled = false;
       sendBtn.classList.remove("hidden"); stopBtn.classList.add("hidden");
       aborter = null;
+      // 자동 스크롤 잠금 해제 + 스크롤 리스너 정리
+      userScrolledUp = false;
+      body.removeEventListener("scroll", onUserScroll);
+      // 제안서가 포함된 응답이면 완료 메시지를 한 번 더 노출
+      if (/<div class="proposal"/.test(targetText)) {
+        const done = h("div", { class: "msg-row assistant proposal-done-row" }, [
+          h("div", { class: "msg-avatar", html: iconHtml("brain", 18) }),
+          h("div", { class: "msg-body" }, [
+            h("div", { class: "msg-bubble" },
+              "✅ 제안서 초안이 완성됐어요! 수정이 필요한 부분은 말씀해 주세요 😊"),
+          ]),
+        ]);
+        msgs.appendChild(done);
+        if (!userScrolledUp) body.scrollTop = body.scrollHeight;
+      }
       ta.focus();
     }
   });
 
   shell.appendChild(h("div", { class: "chat-input-wrap" }, [
     h("div", { class: "chat-input-container" }, [ta, sendBtn, stopBtn]),
-    h("p", { class: "chat-hint" }, "RFP 분석 · 레퍼런스 · 대화 기억이 자동으로 컨텍스트에 포함됩니다"),
+    h("p", { class: "chat-hint" }, "발주처 정보 · RFP 과업 · 우리 회사 강점이 자동으로 들어가요"),
   ]));
 
   // On load, re-render assistant messages to parse any embedded proposal markup
@@ -2385,12 +2268,40 @@ function renderAssistant(bubble, text, final = false) {
       }),
     ]));
     card.appendChild(thumbWrap);
-    card.appendChild(h("div", { class: "proposal-thumb-actions" }, [
+    const actionsBar = h("div", { class: "proposal-thumb-actions" }, [
+      h("button", {
+        class: "btn btn-primary",
+        html: `${iconHtml("file", 14)}<span>PPTX 다운로드</span>`,
+        title: "제안서를 .pptx 파일로 내려받기",
+        onclick: async (e) => {
+          const btn = e.currentTarget;
+          // 가장 가까운 conversation id 추적 — URL 해시에서 추출
+          const m = location.hash.match(/\/chat\/([^/?#]+)/);
+          const convId = m ? m[1] : null;
+          if (!convId) { toast("대화 정보를 찾지 못했어요", "error"); return; }
+          btn.disabled = true; btn.innerHTML = "변환 중…";
+          try {
+            const r = await api.post("/api/proposals/pptx", { conversation_id: convId }, { timeoutMs: 60000 });
+            if (r.url) {
+              const a = document.createElement("a");
+              a.href = r.url; a.download = r.filename || "proposal.pptx";
+              document.body.appendChild(a); a.click(); a.remove();
+              toast(`PPTX 다운로드 완료 (${r.page_count} 슬라이드) ✨`, "success");
+            }
+          } catch (err) {
+            toast("PPTX 변환 실패: " + (err.message || err), "error");
+          } finally {
+            btn.disabled = false;
+            btn.innerHTML = `${iconHtml("file", 14)}<span>PPTX 다운로드</span>`;
+          }
+        },
+      }),
       h("button", { class: "btn btn-outline", html: `${iconHtml("printer", 14)}<span>인쇄 / PDF</span>`,
         onclick: () => printProposal(propEl) }),
       h("button", { class: "btn btn-outline", html: `${iconHtml("eye", 14)}<span>모달로 보기</span>`,
         onclick: () => openProposalFullscreen(propEl) }),
-    ]));
+    ]);
+    card.appendChild(actionsBar);
     card.appendChild(hidden);
     hidden.style.display = "none";
   } else {

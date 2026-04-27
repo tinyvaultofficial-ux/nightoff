@@ -178,7 +178,19 @@
       "Bash(python _analyze_pdf.py)",
       "Bash(python _extract2.py)",
       "Bash(python -c \"import py_compile; py_compile.compile\\('main.py', doraise=True\\); print\\('main.py compile OK'\\)\")",
-      "Bash(python _check.py)"
+      "Bash(python _check.py)",
+      "Bash(python -m uvicorn main:app --host 127.0.0.1 --port 8000)",
+      "Bash(curl -s -o /dev/null -w \"settings: %{http_code}\\\\n\" http://127.0.0.1:8000/api/settings)",
+      "Bash(curl -s -X POST http://127.0.0.1:8000/api/clients -H \"Content-Type: application/json\" -d '{\"name\":\"테스트발주처\",\"industry\":\"공공\",\"manager\":\"테스트\",\"memo\":\"\"}')",
+      "Bash(curl -s -o /dev/null -w 'client GET: %{http_code}\\\\n' http://127.0.0.1:8000/api/clients/c185cd1e2000)",
+      "Bash(curl -s http://127.0.0.1:8000/api/clients/c185cd1e2000)",
+      "Bash(curl -s -o /dev/null -w 'status: %{http_code} | time: %{time_total}s\\\\n' --max-time 10 http://127.0.0.1:8000/api/clients/c185cd1e2000)",
+      "Bash(curl -s -o /dev/null -w 'status: %{http_code} | time: %{time_total}s\\\\n' --max-time 10 http://127.0.0.1:8000/api/clients/c185cd1e2000/rfp)",
+      "Bash(curl -s -o /dev/null -w 'status: %{http_code} | time: %{time_total}s\\\\n' --max-time 10 http://127.0.0.1:8000/api/clients/c185cd1e2000/conversations)",
+      "Bash(curl -s -o /dev/null -w 'status: %{http_code} | time: %{time_total}s\\\\n' --max-time 10 http://127.0.0.1:8000/api/clients/c185cd1e2000/references)",
+      "Bash(curl -s -o /dev/null -w 'status: %{http_code} | time: %{time_total}s\\\\n' --max-time 10 http://127.0.0.1:8000/api/clients/c185cd1e2000/competitors)",
+      "Bash(curl -s -X POST http://127.0.0.1:8000/api/clients/c185cd1e2000/conversations)",
+      "Bash(curl -s -X POST http://127.0.0.1:8000/api/settings/test)"
     ]
   }
 }

@@ -2370,6 +2370,18 @@ body, .msg-bubble, .card, .strengths-intro,
 /* 콘텐츠 하단 여유 패딩 (잘림 방지) */
 .main-content { padding-bottom: 80px; }
 
+/* env 활성 시 잠긴 입력란 — 환경변수가 우선임을 시각적으로 명확히 */
+input.locked-by-env {
+  background: var(--primary-soft) !important;
+  border: 1px dashed color-mix(in oklab, var(--primary) 40%, var(--border)) !important;
+  color: var(--primary) !important;
+  cursor: not-allowed !important;
+  font-weight: 500;
+}
+input.locked-by-env::placeholder {
+  color: color-mix(in oklab, var(--primary) 75%, transparent) !important;
+}
+
 /* ============================================================
    Landing Page (첫 진입)
    ============================================================ */

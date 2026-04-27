@@ -1228,6 +1228,16 @@ async def global_exc_handler(request: Request, exc: Exception):
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
+    # 어떤 키 출처가 활성인지 시작 시점에 명시 로깅 — Railway 디버깅 핵심 단서
+    src = get_api_key_source()
+    if src == "env":
+        env_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+        tail = env_key[-4:] if len(env_key) >= 4 else "****"
+        log.info("ANTHROPIC_API_KEY source = ENV (Railway Variables) · ···%s · DB는 폴백으로만 사용", tail)
+    elif src == "db":
+        log.info("ANTHROPIC_API_KEY source = DB (settings 테이블) · 환경변수가 비어 있어 DB 폴백 사용")
+    else:
+        log.info("ANTHROPIC_API_KEY source = NONE — 좌하단 설정에서 키 등록 필요")
     log.info("NightOff server ready — DB: %s, Uploads: %s", DB_PATH, UPLOADS_DIR)
 
 
@@ -1312,8 +1322,23 @@ def api_settings_get():
 
 @app.post("/api/settings")
 def api_settings_set(body: SettingsIn):
-    if body.api_key is not None:
+    # ⚠ 핵심 가드: Railway 환경변수가 활성 상태면 DB 키 쓰기 자체를 거부.
+    # 이 가드가 없으면 env 가 살아있는데 DB 가 옆에서 누적되고,
+    # env 가 풀리는 순간 DB 가 자동으로 선두에 서서 예측 불가능한 키가 적용됨.
+    env_active = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+    if body.api_key is not None and body.api_key.strip():
+        if env_active:
+            # 정중하게 거부 — 환경변수가 우선이라는 사실을 클라이언트에 명시
+            raise HTTPException(
+                status_code=409,
+                detail="Railway 환경변수 ANTHROPIC_API_KEY 가 활성 상태입니다. 환경변수가 항상 우선이며, "
+                       "DB 키는 환경변수가 비어있을 때만 폴백으로 사용됩니다. 키를 바꾸려면 Railway Variables 에서 수정하세요.",
+            )
         set_setting("anthropic_api_key", body.api_key.strip())
+    elif body.api_key is not None and not body.api_key.strip():
+        # 빈 값으로 명시 저장 시도 — env 활성이면 무의미하므로 그냥 무시 (no-op)
+        if not env_active:
+            set_setting("anthropic_api_key", "")
     if body.model:
         set_setting("model", body.model.strip())
     return api_settings_get()

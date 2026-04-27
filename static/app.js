@@ -3076,13 +3076,23 @@ async function openSettings() {
   const s = await api.get("/api/settings");
   const inp = $("#api-key-input");
   inp.value = "";
-  inp.placeholder = s.has_key ? s.masked_key : "sk-ant-api03-...";
-  inp.disabled = !!s.env_active;  // env 사용 중이면 입력창 비활성
+  if (s.env_active) {
+    // Railway 환경변수가 활성이면 입력창을 잠금 + 시각적으로도 비활성 분위기
+    inp.placeholder = `🔒 ${s.masked_key} (Railway 환경변수 사용 중)`;
+    inp.disabled = true;
+    inp.readOnly = true;
+    inp.classList.add("locked-by-env");
+  } else {
+    inp.placeholder = s.has_key ? s.masked_key : "sk-ant-api03-...";
+    inp.disabled = false;
+    inp.readOnly = false;
+    inp.classList.remove("locked-by-env");
+  }
   const status = $("#api-key-status");
   if (s.env_active) {
-    status.innerHTML = `<strong style="color: var(--primary);">🔒 Railway 환경변수 사용 중</strong><br><span class="muted">서버 환경변수 <code>ANTHROPIC_API_KEY</code> 가 우선 적용됩니다 (<code>${escapeHtml(s.masked_key)}</code>). 키를 바꾸려면 Railway Variables 에서 수정하세요.</span>`;
+    status.innerHTML = `<strong style="color: var(--primary);">🔒 Railway 환경변수가 항상 우선이에요</strong><br><span class="muted">서버 환경변수 <code>ANTHROPIC_API_KEY</code> (<code>${escapeHtml(s.masked_key)}</code>) 가 활성 상태입니다. 환경변수가 있는 동안엔 DB 키를 저장해도 적용되지 않아요. 키를 바꾸려면 <strong>Railway Variables</strong> 에서 직접 수정하세요.</span>`;
   } else if (s.has_key) {
-    status.innerHTML = `DB에 저장된 키 사용 중: <code>${escapeHtml(s.masked_key)}</code>`;
+    status.innerHTML = `<strong style="color: var(--success);">📦 DB 폴백 사용 중</strong><br><span class="muted">DB에 저장된 키 사용 중: <code>${escapeHtml(s.masked_key)}</code><br>환경변수가 설정되면 자동으로 우선 전환됩니다.</span>`;
   } else {
     status.textContent = "설정된 키 없음 — 입력 후 저장하거나 Railway 환경변수로 주입하세요.";
   }
@@ -3100,29 +3110,45 @@ $("#settings-modal")?.addEventListener("click", (e) => {
   if (e.target.id === "settings-modal") closeSettings();
 });
 $("#save-settings")?.addEventListener("click", async () => {
+  // 현재 env 활성 상태인지 한 번 더 조회 — 가드
+  let envActive = false;
+  try { const s = await api.get("/api/settings"); envActive = !!s.env_active; } catch {}
+
   const body = {};
-  const k = $("#api-key-input").value.trim();
-  if (k) body.api_key = k;
+  const inp = $("#api-key-input");
+  const k = (inp?.value || "").trim();
+  // env 활성이면 api_key 필드는 절대 보내지 않음 (서버도 거부하지만 클라이언트에서도 가드)
+  if (k && !envActive) body.api_key = k;
   body.model = $("#model-select").value;
   try {
     await api.post("/api/settings", body);
-    toast("설정이 저장되었습니다", "success");
+    if (k && envActive) {
+      toast("환경변수가 우선이라 키는 저장하지 않았어요 (모델만 저장됨)", "");
+    } else {
+      toast("설정이 저장되었습니다", "success");
+    }
     closeSettings();
   } catch (e) { toast(String(e.message || e), "error"); }
 });
 
 $("#test-key")?.addEventListener("click", async () => {
-  // 저장 안 된 새 키가 입력창에 있다면 먼저 저장
   const newKey = $("#api-key-input")?.value.trim() || "";
   const box = $("#settings-diagnostic");
   const btn = $("#test-key");
   btn.disabled = true; btn.textContent = "테스트 중…";
   box.classList.remove("hidden", "ok", "err");
   box.textContent = "API 연결 확인 중…";
+
+  // env 활성 여부 사전 조회 — env 활성이면 키 자동저장 시도 자체를 막음
+  let envActive = false;
+  try { const s = await api.get("/api/settings"); envActive = !!s.env_active; } catch {}
+
   try {
-    if (newKey) {
+    if (newKey && !envActive) {
+      // env 가 비어있는 경우에만 새 입력 키를 DB 에 저장
       await api.post("/api/settings", { api_key: newKey, model: $("#model-select").value });
     } else if ($("#model-select").value) {
+      // 모델 변경만 반영
       await api.post("/api/settings", { model: $("#model-select").value });
     }
     const r = await api.post("/api/settings/test");

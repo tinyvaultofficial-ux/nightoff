@@ -258,14 +258,13 @@ def init_db() -> None:
                 created_at  TEXT DEFAULT (datetime('now','localtime'))
             );
 
-            -- 우리 회사 강점 (전사 단위, 카테고리/역량 체크박스)
-            CREATE TABLE IF NOT EXISTS our_strengths (
-                id           INTEGER PRIMARY KEY,
-                category     TEXT NOT NULL,
-                capability   TEXT NOT NULL,
-                enabled      INTEGER DEFAULT 1,
+            -- 발주처별 우리 회사 강점 (RFP 과업 성격에 맞춰 사용자가 선택)
+            CREATE TABLE IF NOT EXISTS client_strengths (
+                client_id    TEXT PRIMARY KEY,
+                category     TEXT NOT NULL DEFAULT '',
+                capabilities TEXT NOT NULL DEFAULT '[]',
                 updated_at   TEXT DEFAULT (datetime('now','localtime')),
-                UNIQUE(category, capability)
+                FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
             );
 
             -- 발주처 들여다보기 — RFP 업로드 시 자동 수집된 발주처 기본정보/이력/성향
@@ -287,6 +286,11 @@ def init_db() -> None:
             db.execute("DROP TABLE IF EXISTS competitors")
         except Exception as e:
             log.warning("competitors drop 스킵: %s", e)
+        # 구버전 our_strengths (전사 단위) 테이블 제거 — 발주처별로 옮겼음
+        try:
+            db.execute("DROP TABLE IF EXISTS our_strengths")
+        except Exception as e:
+            log.warning("our_strengths drop 스킵: %s", e)
 
         # conversations에 outcome 컬럼 (없으면 추가) — ALTER 방식 마이그레이션
         try:
@@ -1792,13 +1796,14 @@ def _build_system_prompt(client_id: str) -> str:
         lines = [f"- [{m['category']}] {m['content']}" for m in memories]
         parts.append("[대화 기억(뉘앙스)]\n" + "\n".join(lines))
 
-    # 우리 회사의 강점 — 활성화된 카테고리/역량 주입
-    strengths_summary = get_active_strengths_summary()
+    # 우리 회사의 강점 — 이 발주처에 대해 사용자가 선택한 분야/역량 주입
+    strengths_summary = get_client_strengths_summary(client_id)
     if strengths_summary:
         parts.append(
-            "[우리 회사의 강점 (제안서에 반드시 자연스럽게 녹여낼 것)]\n"
+            "[우리 회사의 강점 — 이 과업에 어울리는 분야로 사용자가 선택한 역량]\n"
             + strengths_summary
-            + "\n→ 위 역량들이 발주처 과업과 어떻게 매칭되는지 제안서 본문 곳곳에 구체적으로 드러낼 것."
+            + "\n→ 이 역량들이 RFP 과업과 어떻게 매칭되는지 제안서 본문 곳곳에 자연스럽게 드러낼 것. "
+            "강제로 욱여넣지 말고, 강점이 빛나는 페이지에 집중적으로 녹여낸다."
         )
 
     # 발주처 들여다보기 (자동 수집된 정보) — 있으면 주입
@@ -2665,7 +2670,7 @@ def api_mem_delete(mem_id: str):
 
 
 # ---------------------------------------------------------------------------
-# 우리 회사의 강점은? 💪 (전사 단위 카테고리/역량 체크박스)
+# 우리 회사의 강점은? 💪  (발주처별 — RFP 과업 성격에 맞춰 사용자가 선택)
 # ---------------------------------------------------------------------------
 STRENGTH_CATALOG: dict[str, list[str]] = {
     "박람회": ["전시 부스 기획/설계", "공간 연출 및 동선 설계", "참가업체 모집 및 관리",
@@ -2686,66 +2691,128 @@ STRENGTH_CATALOG: dict[str, list[str]] = {
                     "무대/음향/조명", "의전 운영", "영상 제작", "홍보/초청장 발송"],
 }
 
+# RFP 분석의 project_domain 값에서 강점 카테고리 자동 매핑
+DOMAIN_TO_STRENGTH_CATEGORY = {
+    "festival":   "축제",
+    "exhibition": "박람회",
+    "forum":      "학술행사",
+    "education":  "학술행사",
+    "sports":     "스포츠/이스포츠 대회",
+    "campaign":   "시상식/기념식",
+    "tourism":    "축제",
+    "rnd":        "학술행사",
+    "welfare":    "시상식/기념식",
+    "other":      "",
+}
+
 
 @app.get("/api/strengths/catalog")
 def api_strengths_catalog():
-    """전체 카테고리·역량 목록 + 활성화 상태."""
+    """전체 카테고리·역량 카탈로그 (정적). 프론트에서 드롭박스 만들 때 사용."""
+    return {
+        "catalog": [
+            {"category": cat, "capabilities": list(caps)}
+            for cat, caps in STRENGTH_CATALOG.items()
+        ]
+    }
+
+
+@app.get("/api/clients/{cid}/strengths")
+def api_client_strengths_get(cid: str):
+    """이 발주처의 강점 선택 + RFP project_domain 기반 추천 카테고리."""
     with get_db() as db:
-        rows = db.execute("SELECT category,capability FROM our_strengths WHERE enabled=1").fetchall()
-    enabled = {(r["category"], r["capability"]) for r in rows}
-    out = []
-    for cat, caps in STRENGTH_CATALOG.items():
-        out.append({
-            "category": cat,
-            "capabilities": [
-                {"name": c, "enabled": (cat, c) in enabled} for c in caps
-            ],
-        })
-    return {"catalog": out, "active_count": len(enabled)}
+        c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
+        if not c:
+            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
+        row = db.execute(
+            "SELECT category,capabilities,updated_at FROM client_strengths WHERE client_id=?",
+            (cid,),
+        ).fetchone()
+
+    selected_category = ""
+    selected_caps: list[str] = []
+    updated_at = None
+    if row:
+        selected_category = row["category"] or ""
+        try:
+            selected_caps = json.loads(row["capabilities"] or "[]")
+            if not isinstance(selected_caps, list):
+                selected_caps = []
+        except Exception:
+            selected_caps = []
+        updated_at = row["updated_at"]
+
+    # RFP 분석에서 도메인·라벨 가져와 추천
+    rfp = _get_rfp_aggregated(cid) or {}
+    project_domain = (rfp.get("project_domain") or "").strip().lower()
+    project_domain_label = rfp.get("project_domain_label") or ""
+    suggested_category = DOMAIN_TO_STRENGTH_CATEGORY.get(project_domain, "")
+    if suggested_category not in STRENGTH_CATALOG:
+        suggested_category = ""
+
+    return {
+        "category": selected_category,
+        "capabilities": selected_caps,
+        "updated_at": updated_at,
+        "suggested_category": suggested_category,
+        "project_domain": project_domain,
+        "project_domain_label": project_domain_label,
+        "has_rfp": bool(rfp),
+    }
 
 
-class StrengthsToggleIn(BaseModel):
-    category: str
-    capability: str
-    enabled: bool
+class ClientStrengthsIn(BaseModel):
+    category: str = ""
+    capabilities: list[str] = []
 
 
-@app.post("/api/strengths/toggle")
-def api_strengths_toggle(body: StrengthsToggleIn):
-    """단일 역량 on/off 토글."""
-    cat, cap = body.category.strip(), body.capability.strip()
-    if cat not in STRENGTH_CATALOG or cap not in STRENGTH_CATALOG[cat]:
-        raise HTTPException(400, "허용되지 않은 카테고리/역량입니다.")
+@app.post("/api/clients/{cid}/strengths")
+def api_client_strengths_set(cid: str, body: ClientStrengthsIn):
+    """이 발주처의 강점 카테고리 + 역량 선택 저장. category="" 면 초기화."""
     with get_db() as db:
-        if body.enabled:
-            db.execute(
-                "INSERT INTO our_strengths(category,capability,enabled) VALUES(?,?,1) "
-                "ON CONFLICT(category,capability) DO UPDATE SET enabled=1, updated_at=datetime('now','localtime')",
-                (cat, cap),
-            )
-        else:
-            db.execute(
-                "INSERT INTO our_strengths(category,capability,enabled) VALUES(?,?,0) "
-                "ON CONFLICT(category,capability) DO UPDATE SET enabled=0, updated_at=datetime('now','localtime')",
-                (cat, cap),
-            )
-    return {"ok": True}
+        c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
+        if not c:
+            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
 
+    cat = (body.category or "").strip()
+    caps = list(body.capabilities or [])
+    # 검증: 빈 카테고리는 허용(미선택), 그 외엔 카탈로그 안의 값만
+    if cat and cat not in STRENGTH_CATALOG:
+        raise HTTPException(400, "알 수 없는 카테고리입니다.")
+    if cat:
+        valid = set(STRENGTH_CATALOG[cat])
+        caps = [c for c in caps if c in valid]
+    else:
+        caps = []
 
-def get_active_strengths_summary() -> str:
-    """활성화된 역량 목록을 카테고리별 1줄로 요약 (시스템 프롬프트 주입용)."""
     with get_db() as db:
-        rows = db.execute(
-            "SELECT category,capability FROM our_strengths WHERE enabled=1 "
-            "ORDER BY category,capability"
-        ).fetchall()
-    if not rows:
+        db.execute(
+            "INSERT INTO client_strengths(client_id,category,capabilities,updated_at) "
+            "VALUES(?,?,?,datetime('now','localtime')) "
+            "ON CONFLICT(client_id) DO UPDATE SET "
+            "category=excluded.category, capabilities=excluded.capabilities, "
+            "updated_at=excluded.updated_at",
+            (cid, cat, json.dumps(caps, ensure_ascii=False)),
+        )
+    return {"ok": True, "category": cat, "capabilities": caps}
+
+
+def get_client_strengths_summary(cid: str) -> str:
+    """이 발주처에 대해 선택된 강점을 시스템 프롬프트 주입용 1줄 텍스트로."""
+    with get_db() as db:
+        row = db.execute(
+            "SELECT category,capabilities FROM client_strengths WHERE client_id=?",
+            (cid,),
+        ).fetchone()
+    if not row or not row["category"]:
         return ""
-    by_cat: dict[str, list[str]] = {}
-    for r in rows:
-        by_cat.setdefault(r["category"], []).append(r["capability"])
-    lines = [f"- {cat}: {', '.join(caps)}" for cat, caps in by_cat.items()]
-    return "\n".join(lines)
+    try:
+        caps = json.loads(row["capabilities"] or "[]")
+    except Exception:
+        caps = []
+    if not caps:
+        return f"- 분야: {row['category']} (세부 역량은 미지정)"
+    return f"- 분야: {row['category']}\n- 강점 역량: {', '.join(caps)}"
 
 
 # ---------------------------------------------------------------------------

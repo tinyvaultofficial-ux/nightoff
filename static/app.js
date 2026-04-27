@@ -857,10 +857,6 @@ async function renderDashboard() {
   });
   content.appendChild(h("section", { style: "margin-bottom: 28px;" }, statsGrid));
 
-  // ── 우리 회사의 강점은? 💪 (대시보드 전면 배치)
-  content.appendChild(h("section", { style: "margin-bottom: 28px;" },
-    [await renderStrengthsSection()]));
-
   // ── 빠른 시작 CTA
   content.appendChild(h("section", { class: "quick-start", style: "margin-bottom: 28px;" }, [
     h("div", { class: "quick-card", onclick: () => navigate("/client/new") }, [
@@ -1128,10 +1124,11 @@ async function renderClientDetail(cid) {
   const stack = h("div", { class: "row-gap-18" });
   content.appendChild(stack);
 
-  // 새 순서: 입찰 활동 히스토리 → 발주처 들여다보기 → RFP 분석
+  // 새 순서: 입찰 활동 히스토리 → 발주처 들여다보기 → RFP 분석 → 우리 회사 강점
   stack.appendChild(await renderConvHistorySection(cid));
   stack.appendChild(await renderClientIntelSection(cid));
   stack.appendChild(await renderRfpSection(cid));
+  stack.appendChild(await renderClientStrengthsSection(cid));
 }
 
 // ---------- 수주/탈락 Outcome ----------
@@ -1336,60 +1333,145 @@ async function renderClientIntelSection(cid) {
 }
 
 // ---------- 우리 회사의 강점은? 💪 (대시보드 전용) ----------
-async function renderStrengthsSection() {
-  const data = await api.get("/api/strengths/catalog").catch(() => ({ catalog: [], active_count: 0 }));
+// ---------- 우리 회사의 강점은? 💪 (발주처별 — RFP 과업 성격 기반 추천) ----------
+async function renderClientStrengthsSection(cid) {
+  const [catalogR, currentR] = await Promise.all([
+    api.get("/api/strengths/catalog").catch(() => ({ catalog: [] })),
+    api.get(`/api/clients/${cid}/strengths`).catch(() => ({
+      category: "", capabilities: [], suggested_category: "", project_domain_label: "", has_rfp: false,
+    })),
+  ]);
+  const catalog = (catalogR && Array.isArray(catalogR.catalog)) ? catalogR.catalog : [];
+  const cur = currentR || {};
+  const allCategories = catalog.map((c) => c.category);
+  const capByCategory = Object.fromEntries(catalog.map((c) => [c.category, c.capabilities]));
+
   const card = h("div", { class: "card" });
   card.appendChild(h("div", { class: "card-head" }, [
     h("div", { class: "card-title-row" }, [
       h("div", { class: "card-title-icon", html: "💪" }),
       h("div", { style: "flex:1; min-width:0;" }, [
         h("h3", { class: "card-title" }, "우리 회사의 강점은? 💪"),
-        h("p", { class: "card-subtitle" }, "잘하는 분야를 선택하면 제안서에 자동 반영돼요"),
+        h("p", { class: "card-subtitle" }, "선택한 강점은 제안서 생성 시 자동으로 반영돼요"),
       ]),
-      h("span", { class: "muted small" }, `${data.active_count || 0}개 선택됨`),
     ]),
   ]));
 
-  const body = h("div", { class: "card-body strengths-grid" });
+  const body = h("div", { class: "card-body row-gap-12" });
   card.appendChild(body);
 
-  (data.catalog || []).forEach((cat) => {
-    const block = h("div", { class: "strength-cat" });
-    block.appendChild(h("h4", { class: "strength-cat-title" }, cat.category));
-    const list = h("div", { class: "strength-cap-list" });
-    cat.capabilities.forEach((cap) => {
-      const id = `str-${cat.category}-${cap.name}`.replace(/[^\w가-힣-]/g, "_");
+  // 1) RFP 분석 전 — 안내만
+  if (!cur.has_rfp) {
+    body.appendChild(h("div", { class: "muted small", style: "padding: 10px 4px; line-height: 1.6;" },
+      "RFP 를 먼저 업로드하면 과업 성격을 자동으로 파악하고 어울리는 강점 분야를 추천해 드려요."));
+    return card;
+  }
+
+  // 2) 과업 성격 안내 + 추천
+  const suggested = cur.suggested_category || "";
+  const domainLabel = cur.project_domain_label || "";
+  const introBox = h("div", { class: "strengths-intro" });
+  if (suggested) {
+    introBox.innerHTML =
+      `<div class="strengths-intro-title">이 과업은 <strong>${escapeHtml(suggested)}</strong> 성격이에요${domainLabel && domainLabel !== suggested ? ` <span class="muted small">(${escapeHtml(domainLabel)})</span>` : ""}.</div>` +
+      `<div class="strengths-intro-sub">우리 회사가 잘하는 분야를 선택해주세요. 추천 분야가 자동으로 골라져 있어요.</div>`;
+  } else {
+    introBox.innerHTML =
+      `<div class="strengths-intro-title">RFP 를 분석했어요. 잘하는 분야를 골라주세요.</div>` +
+      `<div class="strengths-intro-sub">발주처 과업과 가장 잘 맞는 분야 한 가지를 먼저 고른 뒤, 세부 역량을 복수 선택할 수 있어요.</div>`;
+  }
+  body.appendChild(introBox);
+
+  // 3) 대분류 select
+  const initialCategory = cur.category || suggested || "";
+  const categorySel = h("select", { class: "select strength-category-select" }, [
+    h("option", { value: "" }, "분야 선택…"),
+    ...allCategories.map((c) =>
+      h("option", { value: c, ...(c === initialCategory ? { selected: "" } : {}) }, c)
+    ),
+  ]);
+  body.appendChild(h("div", { class: "field" }, [
+    h("label", { class: "small muted", style: "display: block; margin-bottom: 6px;" }, "1. 분야 (대분류)"),
+    categorySel,
+  ]));
+
+  // 4) 소분류(capabilities) 멀티 체크박스 — 카테고리 선택 후 노출
+  const capWrap = h("div", { class: "field strength-capabilities-wrap" });
+  body.appendChild(capWrap);
+
+  // 5) 저장 버튼 + 상태 표시
+  const statusEl = h("span", { class: "small muted", style: "margin-left: auto;" }, "");
+  const saveBtn = h("button", { class: "btn btn-primary" }, "저장");
+  body.appendChild(h("div", { style: "display: flex; align-items: center; gap: 10px; margin-top: 4px;" }, [
+    saveBtn, statusEl,
+  ]));
+
+  let currentCategory = initialCategory;
+  let currentCaps = new Set(Array.isArray(cur.capabilities) ? cur.capabilities : []);
+
+  function renderCapabilities() {
+    capWrap.innerHTML = "";
+    if (!currentCategory) {
+      capWrap.appendChild(h("p", { class: "small muted", style: "margin: 0;" },
+        "분야를 먼저 선택하면 세부 역량이 보여요."));
+      return;
+    }
+    const caps = capByCategory[currentCategory] || [];
+    capWrap.appendChild(h("label", { class: "small muted", style: "display: block; margin-bottom: 6px;" },
+      `2. 세부 역량 (복수 선택 가능 · ${caps.length}개)`));
+    const list = h("div", { class: "strength-cap-list strength-cap-list-multi" });
+    caps.forEach((capName) => {
+      const id = `cap-${cid}-${capName}`.replace(/[^\w가-힣-]/g, "_");
       const cb = h("input", {
-        type: "checkbox", id, ...(cap.enabled ? { checked: "" } : {}),
-        onchange: async () => {
-          try {
-            await api.post("/api/strengths/toggle", {
-              category: cat.category,
-              capability: cap.name,
-              enabled: cb.checked,
-            });
-            // 카운트만 가볍게 갱신
-            const head = card.querySelector(".card-title-row .muted.small");
-            if (head) {
-              const r2 = await api.get("/api/strengths/catalog").catch(() => null);
-              if (r2) head.textContent = `${r2.active_count || 0}개 선택됨`;
-            }
-          } catch (e) {
-            cb.checked = !cb.checked;
-            toast("저장 실패: " + (e.message || e), "error");
-          }
+        type: "checkbox", id,
+        ...(currentCaps.has(capName) ? { checked: "" } : {}),
+        onchange: () => {
+          if (cb.checked) currentCaps.add(capName);
+          else currentCaps.delete(capName);
+          statusEl.textContent = "변경 사항 있음 — 저장 눌러주세요";
+          statusEl.style.color = "var(--warning)";
         },
       });
-      const label = h("label", { for: id, class: "strength-cap" }, [
+      list.appendChild(h("label", { for: id, class: "strength-cap" }, [
         cb,
-        h("span", {}, cap.name),
-      ]);
-      list.appendChild(label);
+        h("span", {}, capName),
+      ]));
     });
-    block.appendChild(list);
-    body.appendChild(block);
+    capWrap.appendChild(list);
+  }
+
+  categorySel.addEventListener("change", () => {
+    const newCat = categorySel.value;
+    if (newCat !== currentCategory) {
+      // 카테고리 바뀌면 기존 선택은 리셋
+      currentCategory = newCat;
+      currentCaps = new Set();
+      renderCapabilities();
+      statusEl.textContent = "변경 사항 있음 — 저장 눌러주세요";
+      statusEl.style.color = "var(--warning)";
+    }
   });
 
+  saveBtn.addEventListener("click", async () => {
+    saveBtn.disabled = true; saveBtn.textContent = "저장 중…";
+    try {
+      await api.post(`/api/clients/${cid}/strengths`, {
+        category: currentCategory,
+        capabilities: Array.from(currentCaps),
+      });
+      statusEl.textContent = "✅ 저장됐어요";
+      statusEl.style.color = "var(--success)";
+    } catch (e) {
+      statusEl.textContent = "저장 실패";
+      statusEl.style.color = "var(--danger)";
+      toast("저장 실패: " + (e.message || e), "error");
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = "저장";
+    }
+  });
+
+  renderCapabilities();
   return card;
 }
 

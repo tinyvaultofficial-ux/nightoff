@@ -375,31 +375,27 @@ function renderSmartLearningBanner(dna, stats) {
   } }, [
     h("span", { class: "sm-emoji" }, "✨"),
     h("div", { style: "flex: 1;" }, [
-      h("h2", {}, "NightOff은 쓸수록 똑똑해져요"),
-      h("p", {}, "RFP와 대화·과거 제안서·승패 기록이 쌓일수록 더 정확한 제안서가 나옵니다"),
+      h("h2", {}, "NightOff 의 핵심 기능 3가지"),
+      h("p", {}, "RFP 업로드부터 제안서 생성까지 하나의 흐름으로 이어집니다"),
     ]),
     toggleBtn,
   ]);
   banner.appendChild(header);
   const feats = [
     {
-      icon: "brain",
-      title: "발주처 성향",
-      desc: "RFP와 대화마다 발주처 선호 키워드, 높은 배점 항목을 자동 축적해요.",
-    },
-    {
-      icon: "folder",
-      title: "우리 회사 DNA",
-      desc: dna.exists
-        ? `레퍼런스 ${dna.ref_count}건에서 회사 고유 스타일·전략을 학습 중이에요.`
-        : "과거 제안서를 올릴수록 회사 문체·강점·전략 패턴을 학습해요.",
+      icon: "eye",
+      title: "👀 발주처 들여다보기",
+      desc: "RFP를 넣으면 발주처 정보와 과업 내용을 자동으로 파악해요",
     },
     {
       icon: "trending",
-      title: "승패 학습",
-      desc: (stats.wins || stats.losses)
-        ? `${stats.wins}승 ${stats.losses}패 기록 — 승률 ${stats.win_rate ?? "—"}% 로 전략에 반영 중`
-        : "수주/탈락 결과를 기록하면 승률 높은 전략을 우선 반영해요.",
+      title: "💪 우리 회사의 강점은?",
+      desc: "잘하는 분야를 선택하면 제안서에 자동 반영돼요",
+    },
+    {
+      icon: "activity",
+      title: "📊 입찰 활동 히스토리",
+      desc: "수주/탈락 결과를 기록하면 나의 입찰 활동을 한눈에 볼 수 있어요",
     },
   ];
   const grid = h("div", { class: "smart-grid" });
@@ -737,8 +733,8 @@ async function openCompanyDnaModal() {
     body.appendChild(h("div", { class: "onboarding-hint" }, [
       h("span", { class: "ob-emoji" }, "📂"),
       h("div", {}, [
-        h("p", { class: "ob-title" }, "과거 제안서를 올려두면 회사 스타일을 학습해요"),
-        h("p", { class: "ob-desc" }, "발주처 상세의 ‘레퍼런스 라이브러리’에 이전 제안서·회사 소개서·성공 사례를 업로드하면, NightOff이 자주 쓰는 표현·강점 키워드·전략 구조를 추출합니다. 올리면 올릴수록 새 제안서가 우리 회사답게 나와요."),
+        h("p", { class: "ob-title" }, "발주처별로 강점을 골라두면 제안서에 자동 반영돼요"),
+        h("p", { class: "ob-desc" }, "발주처 상세의 ‘우리 회사의 강점은? 💪’ 카드에서 과업에 어울리는 분야와 세부 역량을 선택하면, 제안서 생성 시 자동으로 녹여냅니다."),
       ]),
     ]));
   } else {
@@ -1252,33 +1248,40 @@ async function renderClientIntelSection(cid) {
         h("h3", { class: "card-title" }, "발주처 들여다보기 👀"),
         h("p", { class: "card-subtitle" }, "RFP 를 넣으면 발주처 정보와 과업 내용을 자동으로 파악해요"),
       ]),
-      h("button", {
-        class: "btn btn-outline btn-sm",
-        html: `${iconHtml("refresh", 14) || "↻"}<span>다시 조회</span>`,
-        onclick: async (e) => {
-          const btn = e.currentTarget;
-          btn.disabled = true; btn.textContent = "조회 중…";
-          try {
-            await api.post(`/api/clients/${cid}/intel/rebuild`, {}, { timeoutMs: 120000 });
-            toast("발주처 정보를 새로 가져왔어요 👀", "success");
-            renderClientDetail(cid);
-          } catch (err) {
-            toast("조회 실패: " + (err.message || err), "error");
-            btn.disabled = false; btn.textContent = "다시 조회";
-          }
-        },
-      }),
     ]),
   ]));
 
   const body = h("div", { class: "card-body row-gap-12" });
   card.appendChild(body);
 
+  // 인라인 재시도 버튼 — 에러 메시지 옆에 작게
+  const inlineRetry = (label = "다시 시도") => h("button", {
+    class: "btn btn-outline btn-tiny",
+    html: `${iconHtml("refresh", 12) || "↻"}<span>${label}</span>`,
+    onclick: async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true; btn.textContent = "조회 중…";
+      try {
+        await api.post(`/api/clients/${cid}/intel/rebuild`, {}, { timeoutMs: 120000 });
+        renderClientDetail(cid);
+      } catch (err) {
+        toast("조회 실패: " + (err.message || err), "error");
+        btn.disabled = false; btn.textContent = label;
+      }
+    },
+  });
+
   if (!intel || Object.keys(intel).length === 0 || intel.error) {
-    body.appendChild(h("div", { class: "muted small", style: "padding: 12px 4px;" },
-      intel?.error
-        ? `자동 수집 실패: ${intel.error}`
-        : "RFP 를 업로드하면 자동으로 발주처 정보를 수집해요. 또는 [다시 조회] 버튼을 눌러 보세요."));
+    if (intel?.error) {
+      // 에러 시에만 재시도 버튼 노출
+      body.appendChild(h("div", { class: "intel-error-row" }, [
+        h("span", { class: "muted small" }, `자동 수집 실패: ${intel.error}`),
+        inlineRetry("다시 시도"),
+      ]));
+    } else {
+      body.appendChild(h("div", { class: "muted small", style: "padding: 12px 4px;" },
+        "RFP 를 업로드하면 자동으로 발주처 정보를 수집해요."));
+    }
     return card;
   }
 
@@ -1501,11 +1504,11 @@ async function renderRfpSection(cid) {
   });
   body.appendChild(input);
 
-  // 업로드 가이드 안내 (3종 체크리스트)
+  // 업로드 가이드 — 권장 3종 체크리스트 (있으면 좋아요)
   const haveRoles = new Set((rfp.files || []).map((f) => f.role));
   const guide = h("div", { class: "rfp-upload-guide" }, [
-    h("p", { class: "rfp-upload-guide-title" }, "정확한 분석을 위해 공고문·과업지시서·제안요청서 3종을 모두 올려주세요 📎"),
-    h("p", { class: "rfp-upload-guide-sub" }, "파일이 누락되면 배점기준, 페이지 제한, 참가자격 등 핵심 정보가 부정확할 수 있어요"),
+    h("p", { class: "rfp-upload-guide-title" }, "있는 파일을 모두 올려주세요. 파일이 많을수록 분석이 정확해져요 😊"),
+    h("p", { class: "rfp-upload-guide-sub" }, "공고문 하나만 있어도 분석은 시작돼요. 권장 3종은 아래 체크리스트로 확인하세요."),
     h("div", { class: "rfp-upload-checklist" }, [
       h("span", { class: haveRoles.has("공고문") ? "done" : "" }, "공고문"),
       h("span", { class: haveRoles.has("과업지시서") ? "done" : "" }, "과업지시서"),
@@ -1517,7 +1520,7 @@ async function renderRfpSection(cid) {
   const drop = h("div", { class: "drop-area", onclick: () => input.click() }, [
     h("div", { class: "drop-icon", html: iconHtml("upload", 22) }),
     h("p", { class: "drop-title" }, (rfp.files && rfp.files.length) ? "RFP 파일 추가 업로드" : "RFP 파일 업로드 (여러 개 가능)"),
-    h("p", { class: "drop-hint" }, "PDF / Word / HWP 지원 — 드롭 또는 클릭, 여러 파일 선택 가능"),
+    h("p", { class: "drop-hint" }, "PDF / Word 지원 — 드롭 또는 클릭, 여러 파일 선택 가능"),
   ]);
   ["dragenter","dragover"].forEach(t => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("dragover"); }));
   ["dragleave","drop"].forEach(t => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("dragover"); }));
@@ -1526,6 +1529,8 @@ async function renderRfpSection(cid) {
     if (e.dataTransfer.files.length) openRoleModal(Array.from(e.dataTransfer.files));
   });
   body.appendChild(drop);
+  body.appendChild(h("p", { class: "small muted hwp-notice" },
+    "HWP 파일은 PDF로 변환 후 업로드해주세요 😊"));
 
   // Role assignment modal + upload flow
   function openRoleModal(files) {
@@ -1718,76 +1723,153 @@ async function renderRfpSection(cid) {
       ]),
     ]));
 
-    // Key info grid
-    const infoGrid = h("div", { style: "display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 16px;" });
-    const infoItems = [
-      { icon: "clock", label: "마감일", value: a.deadline || "미명시" },
-      { icon: "trending", label: "예상 예산", value: a.budget || "미명시" },
-      { icon: "file", label: "제안서 형식", value: (a.orientation === "portrait" ? "A4 세로" : "A4 가로") + (a.page_limit ? ` · ${a.page_limit}p` : "") },
-      { icon: "building", label: "발주처 성격", value: a.client_type || "미분류" },
-    ];
-    infoItems.forEach((i) => {
-      infoGrid.appendChild(h("div", { style: "display: flex; align-items: center; gap: 10px; padding: 12px; background: var(--bg-2); border-radius: 10px;" }, [
-        h("div", { class: "card-title-icon", style: "width: 36px; height: 36px;", html: iconHtml(i.icon, 16) }),
+    // ── (상단) 배지 3개 — 마감일 / 예산 / 형식
+    const formatLabel = (a.orientation === "portrait" ? "A4 세로" : "A4 가로")
+                       + (a.page_limit ? ` · ${a.page_limit}p` : "");
+    result.appendChild(h("div", { class: "rfp-badges", style: "margin-top: 16px;" }, [
+      h("div", { class: "rfp-badge" }, [
+        h("span", { style: "font-size:18px;" }, "📅"),
         h("div", {}, [
-          h("p", { class: "small muted", style: "margin: 0;" }, i.label),
-          h("p", { style: "margin: 2px 0 0; font-weight: 600; font-size: 14px;" }, i.value),
+          h("div", { class: "rfp-badge-label" }, "마감일"),
+          h("div", { class: "rfp-badge-value" }, a.deadline || "미명시"),
         ]),
-      ]));
-    });
-    result.appendChild(infoGrid);
+      ]),
+      h("div", { class: "rfp-badge" }, [
+        h("span", { style: "font-size:18px;" }, "💰"),
+        h("div", {}, [
+          h("div", { class: "rfp-badge-label" }, "예상 예산"),
+          h("div", { class: "rfp-badge-value" }, a.budget || "미명시"),
+        ]),
+      ]),
+      h("div", { class: "rfp-badge" }, [
+        h("span", { style: "font-size:18px;" }, "📐"),
+        h("div", {}, [
+          h("div", { class: "rfp-badge-label" }, "제안서 형식"),
+          h("div", { class: "rfp-badge-value" }, formatLabel),
+        ]),
+      ]),
+    ]));
 
-    // Requirements — 체크리스트 형태
-    if (a.key_requirements?.length) {
-      result.appendChild(h("div", { style: "margin-top: 18px;" }, [
-        h("p", { class: "small muted", style: "margin: 0 0 10px; font-weight: 500;" }, "주요 요구사항"),
-        h("ul", { class: "check-list" },
-          a.key_requirements.map((r) => h("li", {}, [
-            h("span", { class: "check-icon", html: iconHtml("check", 14) }),
-            h("span", {}, r),
-          ]))),
-      ]));
-    }
+    // ── (중단) 좌측 레이더 차트 + 우측 요구사항 체크리스트
+    const middleGrid = h("div", { class: "rfp-grid-2" });
 
-    // Requirements — 체크리스트 형태
-    // (앞선 key_requirements 블록을 보강: 배지 대신 체크 아이콘 리스트)
-    // 평가기준 — 배점 높은 순 프로그레스바
+    // 좌: SVG 레이더 차트 (평가 기준 배점)
     if (a.evaluation_criteria?.length) {
-      const crit = [...a.evaluation_criteria]
-        .map((ec) => {
-          const m = String(ec.weight || "").match(/(\d+(?:\.\d+)?)/);
-          return { ...ec, _w: m ? parseFloat(m[1]) : 0 };
-        })
-        .sort((x, y) => y._w - x._w);
-      const maxW = Math.max(1, ...crit.map((c) => c._w));
-      result.appendChild(h("div", { style: "margin-top: 18px;" }, [
-        h("p", { class: "small muted", style: "margin: 0 0 10px; font-weight: 500;" }, "평가 기준 (배점 높은 순)"),
-        ...crit.map((ec) => h("div", { class: "eval-bar-row" }, [
-          h("div", { class: "eval-label" }, ec.item || ""),
-          h("div", { class: "eval-bar" }, [h("span", { style: `width: ${(ec._w / maxW) * 100}%;` })]),
-          h("div", { class: "eval-weight" }, ec.weight || "—"),
-        ])),
+      const crit = [...a.evaluation_criteria].map((ec) => {
+        const m = String(ec.weight || "").match(/(\d+(?:\.\d+)?)/);
+        return { item: ec.item || "", weight: m ? parseFloat(m[1]) : 0, raw: ec.weight };
+      }).filter((c) => c.item);
+      const radarSvg = buildRadarChartSvg(crit);
+      middleGrid.appendChild(h("div", { class: "rfp-radar-wrap" }, [
+        h("p", { class: "rfp-radar-title" }, `📊 평가 기준 배점 (총 ${crit.length}개 항목)`),
+        radarSvg,
+      ]));
+    } else {
+      middleGrid.appendChild(h("div", { class: "rfp-radar-wrap" }, [
+        h("p", { class: "rfp-radar-title" }, "📊 평가 기준 배점"),
+        h("p", { class: "small muted", style: "margin: 8px 0;" }, "평가 기준 정보를 추출하지 못했어요."),
       ]));
     }
 
-    // Risk points — 빨간 경고 배지
+    // 우: 주요 요구사항 체크리스트
+    if (a.key_requirements?.length) {
+      const checklist = h("ul", { class: "rfp-checklist" },
+        a.key_requirements.map((r) => h("li", {}, r)));
+      middleGrid.appendChild(h("div", { class: "rfp-checklist-wrap" }, [
+        h("p", { class: "rfp-radar-title" }, `✅ 주요 요구사항 (${a.key_requirements.length}개)`),
+        checklist,
+      ]));
+    } else {
+      middleGrid.appendChild(h("div", { class: "rfp-checklist-wrap" }, [
+        h("p", { class: "rfp-radar-title" }, "✅ 주요 요구사항"),
+        h("p", { class: "small muted", style: "margin: 8px 0;" }, "요구사항을 추출하지 못했어요."),
+      ]));
+    }
+    result.appendChild(middleGrid);
+
+    // ── (하단) 리스크 / 주의사항 경고 배지
     if (a.risk_points?.length) {
-      result.appendChild(h("div", { style: "margin-top: 18px;" }, [
-        h("p", { class: "small muted", style: "margin: 0 0 8px; font-weight: 500;" }, "리스크 / 주의사항"),
-        h("div", { class: "risk-stack" },
-          a.risk_points.map((p) => h("div", { class: "risk-alert" }, [
-            h("span", { class: "risk-emoji" }, "⚠️"),
-            h("span", {}, p),
-          ]))),
+      result.appendChild(h("div", { class: "rfp-risks" }, [
+        h("p", { class: "rfp-risks-title" },
+          [document.createTextNode("⚠️ 리스크 / 주의사항")]),
+        h("ul", {}, a.risk_points.map((p) => h("li", {}, p))),
       ]));
     }
 
+    // 요약 (전체 한 줄)
     if (a.summary) {
-      result.appendChild(h("div", { style: "margin-top: 18px; padding: 12px 14px; background: var(--primary-soft); border-radius: 10px; font-size: 14px; color: var(--primary);" }, a.summary));
+      result.appendChild(h("div", {
+        style: "margin-top: 14px; padding: 12px 14px; background: var(--primary-soft); " +
+               "border-left: 4px solid var(--primary); border-radius: 8px; " +
+               "font-size: 14px; color: var(--fg); line-height: 1.6; font-style: italic;"
+      }, a.summary));
     }
   }
 
   return card;
+}
+
+// ---------- SVG 레이더 차트 (RFP 평가 기준 시각화) ----------
+function buildRadarChartSvg(items) {
+  // items: [{item, weight, raw}, ...]  최대 8개로 컷, 작으면 그대로
+  const data = (items || []).slice(0, 8);
+  const n = data.length;
+  if (n < 3) {
+    // 항목이 너무 적으면 단순 배지 리스트로 대체
+    const wrap = h("div", { style: "display: flex; flex-wrap: wrap; gap: 8px; padding: 8px;" });
+    data.forEach((d) => wrap.appendChild(
+      h("div", { style: "padding: 6px 12px; background: var(--primary-soft); color: var(--primary); border-radius: 999px; font-size: 12px; font-weight: 600;" },
+        `${d.item} ${d.raw || (d.weight + "점")}`)));
+    return wrap;
+  }
+  const maxW = Math.max(1, ...data.map((d) => d.weight));
+  const cx = 160, cy = 160, R = 110;
+  const angle = (i) => (Math.PI * 2 * i) / n - Math.PI / 2;
+  const point = (i, ratio) => {
+    const a = angle(i);
+    return [cx + Math.cos(a) * R * ratio, cy + Math.sin(a) * R * ratio];
+  };
+
+  // 격자(2단계)
+  const rings = [0.33, 0.66, 1].map((ratio) => {
+    const pts = data.map((_, i) => point(i, ratio).join(",")).join(" ");
+    return `<polygon points="${pts}" fill="none" stroke="#E5E5E5" stroke-width="1"/>`;
+  }).join("");
+
+  // 축 (각 항목)
+  const axes = data.map((_, i) => {
+    const [x, y] = point(i, 1);
+    return `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#E5E5E5" stroke-width="1"/>`;
+  }).join("");
+
+  // 데이터 폴리곤
+  const dataPts = data.map((d, i) => point(i, Math.max(0.08, d.weight / maxW)).join(",")).join(" ");
+  const dataPoly = `<polygon points="${dataPts}" fill="rgba(124,58,237,0.18)" stroke="#7C3AED" stroke-width="2"/>`;
+  const dataDots = data.map((d, i) => {
+    const [x, y] = point(i, Math.max(0.08, d.weight / maxW));
+    return `<circle cx="${x}" cy="${y}" r="4" fill="#7C3AED"/>`;
+  }).join("");
+
+  // 라벨
+  const labels = data.map((d, i) => {
+    const [x, y] = point(i, 1.16);
+    const anchor = (Math.abs(x - cx) < 8) ? "middle" : (x > cx ? "start" : "end");
+    const itemShort = d.item.length > 9 ? d.item.slice(0, 8) + "…" : d.item;
+    const wText = d.raw || `${d.weight}점`;
+    return `<g><text x="${x}" y="${y}" text-anchor="${anchor}" font-size="11" fill="#374151" font-weight="600">${itemShort}</text><text x="${x}" y="${y + 13}" text-anchor="${anchor}" font-size="10" fill="#7C3AED" font-weight="500">${wText}</text></g>`;
+  }).join("");
+
+  const svgHtml = `
+    <svg viewBox="0 0 320 320" width="100%" style="max-width: 360px; display: block; margin: 0 auto;">
+      ${rings}
+      ${axes}
+      ${dataPoly}
+      ${dataDots}
+      ${labels}
+    </svg>`;
+  const wrap = h("div", {});
+  wrap.innerHTML = svgHtml;
+  return wrap;
 }
 
 // ---------- 발주처 성향 ----------
@@ -1957,8 +2039,48 @@ async function renderChat(cid, convId) {
 
   root.appendChild(await renderSidebar());
 
-  const shell = h("main", { class: "chat-shell" });
-  root.appendChild(shell);
+  // 좌우 분할 컨테이너 — 좌: 대화 / 우: 제안서 미리보기 (제안서 생성 시 자동 노출)
+  const splitWrap = h("main", { class: "chat-split-wrap" });
+  root.appendChild(splitWrap);
+
+  const shell = h("section", { class: "chat-shell" });
+  splitWrap.appendChild(shell);
+
+  // 우측 사이드 패널 — 처음엔 숨김. 제안서 HTML 감지 시 활성화
+  const sidePanel = h("aside", { class: "proposal-side-panel hidden" });
+  splitWrap.appendChild(sidePanel);
+
+  // 사이드 패널 활성화/비활성화 헬퍼 — 외부에서 접근 가능
+  function activateSidePanel(propEl, isFinal) {
+    splitWrap.classList.add("split-active");
+    sidePanel.classList.remove("hidden");
+    sidePanel.innerHTML = "";
+    sidePanel.appendChild(h("div", { class: "side-panel-head" }, [
+      h("div", {}, [
+        h("p", { class: "side-panel-label" }, isFinal ? "✅ 미리보기" : "⏳ 작성 중인 제안서"),
+        h("p", { class: "side-panel-title" }, propEl?.getAttribute?.("data-title") || "제안서"),
+      ]),
+      h("button", {
+        class: "icon-btn", title: "사이드 패널 닫기",
+        html: iconHtml("x", 18),
+        onclick: () => {
+          splitWrap.classList.remove("split-active");
+          sidePanel.classList.add("hidden");
+        },
+      }),
+    ]));
+    const stage = h("div", { class: "side-panel-stage" });
+    if (propEl) {
+      const clone = propEl.cloneNode(true);
+      clone.classList.add("side-panel-mode");
+      // keyword-row 제거 — 사이드에선 군더더기
+      clone.querySelectorAll(".keyword-row, .image-credit").forEach((e) => e.remove());
+      stage.appendChild(clone);
+    }
+    sidePanel.appendChild(stage);
+  }
+  // 글로벌 노출 — renderAssistant 가 호출
+  shell._activateSidePanel = activateSidePanel;
 
   // Detect context injection flags
   const injected = {
@@ -2328,6 +2450,14 @@ function renderAssistant(bubble, text, final = false) {
 
     // 페이지에 keyword-row / figure 이미지 자동 장식 (공통)
     decorateProposalPages(propEl);
+
+    // 좌우 분할 패널 자동 활성화 — 제안서 HTML 감지되면 우측에 라이브 미리보기
+    try {
+      const shellEl = document.querySelector("main.chat-split-wrap > .chat-shell");
+      if (shellEl && typeof shellEl._activateSidePanel === "function") {
+        shellEl._activateSidePanel(propEl, !!final);
+      }
+    } catch (e) { /* 사이드 패널은 옵셔널 — 실패해도 본문은 정상 */ }
 
     // 썸네일: 축소 미리보기 (첫 2~3 페이지)
     const thumbWrap = h("div", { class: "proposal-thumb-preview" });

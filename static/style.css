@@ -2152,8 +2152,9 @@ body.fs-loader-active {
    v0 디자인 토큰 매핑 + 새 섹션 스타일 (강점/발주처들여다보기/푸터/체크리스트)
    ============================================================ */
 
-/* v0 토큰 — 부드러운 회색·보라 계열 미세 조정 */
+/* v0 디자인 토큰 적용 — Next.js shadcn 의 핵심 색·라운드·그림자만 추출 */
 :root {
+  /* 색 */
   --primary: #7C3AED;          /* v0 oklch(0.55 0.22 285) */
   --primary-hover: #6D28D9;
   --primary-soft: #F3EFFF;
@@ -2162,7 +2163,61 @@ body.fs-loader-active {
   --secondary: #F4F0FC;
   --border: #E5E5E5;           /* v0 oklch(0.92 0 0) */
   --border-strong: #D4D4D4;
-  --bg-2: #F5F5F5;
+  --bg-2: #FAFAFA;             /* v0 oklch(0.965 0 0) — 더 라이트 */
+  --bg: #FDFDFD;               /* v0 oklch(0.995 0 0) */
+  --fg: #252525;               /* v0 oklch(0.145 0 0) — 살짝 부드럽게 */
+  --fg-2: #6F6F6F;             /* v0 oklch(0.45 0 0) */
+  --muted: #A8A8A8;
+  --success: #16A34A;          /* v0 oklch(0.62 0.17 145) */
+  --warning: #D97706;          /* v0 oklch(0.78 0.14 70) */
+  --danger:  #DC2626;          /* v0 oklch(0.6 0.22 25) */
+
+  /* radius — v0 default 0.75rem */
+  --radius-sm: 0.5rem;
+  --radius:    0.75rem;        /* card / button 기본 */
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+
+  /* 그림자 — v0 의 shadcn 류 부드러운 스택 */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+  --shadow:    0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.05);
+  --shadow-md: 0 6px 14px -4px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.04);
+  --shadow-lg: 0 16px 32px -10px rgb(0 0 0 / 0.10), 0 6px 10px -4px rgb(0 0 0 / 0.05);
+}
+
+/* v0 카드 미세 튜닝 — 라운드·보더 일관성 */
+.card {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: #fff;
+}
+.card-head {
+  padding: 18px 20px 12px;
+}
+.card-body {
+  padding: 14px 20px 20px;
+}
+/* 버튼 hover 살짝 들뜨는 효과 (v0 풍) */
+.btn { transition: transform .08s ease, box-shadow .12s ease, background .12s ease; }
+.btn:hover:not(:disabled) { transform: translateY(-0.5px); }
+/* btn-tiny — 인라인 재시도 등 작은 사이즈 */
+.btn-tiny {
+  padding: 4px 10px;
+  font-size: 11.5px;
+  border-radius: 6px;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.intel-error-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 10px 12px;
+  background: var(--danger-soft); border-radius: 8px;
+}
+/* HWP 안내 */
+.hwp-notice {
+  margin: 8px 4px 0; padding: 0;
+  font-size: 12px;
+  color: var(--fg-2);
+  text-align: center;
 }
 
 /* 콘텐츠 하단 여유 패딩 (잘림 방지) */
@@ -2391,19 +2446,69 @@ body.fs-loader-active {
   top: auto !important;
 }
 
-/* ===== 좌우 분할 패널 (제안서 생성 시) ===== */
-.chat-split {
+/* ===== 좌우 분할 패널 (제안서 생성 시 자동 활성화) ===== */
+.chat-split-wrap {
+  flex: 1;
   display: grid;
-  grid-template-columns: minmax(420px, 1fr) minmax(640px, 2fr);
-  gap: 0;
+  grid-template-columns: 1fr;        /* 기본: 좌측 대화창만 풀폭 */
+  transition: grid-template-columns .35s cubic-bezier(.22,1,.36,1);
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
 }
-.chat-split .chat-shell { border-right: 1px solid var(--border); }
+.chat-split-wrap.split-active {
+  grid-template-columns: minmax(440px, 1fr) minmax(580px, 1.4fr);
+}
+.chat-split-wrap > .chat-shell {
+  display: flex; flex-direction: column;
+  min-width: 0; min-height: 0;
+  border-right: 1px solid var(--border);
+}
 .proposal-side-panel {
-  position: sticky; top: 0;
-  height: 100vh;
+  display: flex; flex-direction: column;
+  min-width: 0; min-height: 0;
+  background: linear-gradient(180deg, #f8f8fb 0%, var(--bg-2) 100%);
+  border-left: 1px solid var(--border);
+  animation: sidePanelIn .3s ease-out;
+}
+.proposal-side-panel.hidden { display: none; }
+@keyframes sidePanelIn {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.side-panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.side-panel-label {
+  font-size: 11px; font-weight: 700;
+  color: var(--primary);
+  letter-spacing: 0.04em;
+  margin: 0 0 2px;
+}
+.side-panel-title {
+  font-size: 15px; font-weight: 700;
+  color: var(--fg);
+  margin: 0; letter-spacing: -0.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 360px;
+}
+.side-panel-stage {
+  flex: 1;
   overflow-y: auto;
-  background: var(--bg-2);
-  padding: 24px;
+  padding: 24px 20px;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 18px;
+}
+.side-panel-stage .proposal {
+  width: 100%; max-width: 920px;
+  margin: 0;
+}
+.side-panel-stage .proposal-page {
+  box-shadow: 0 6px 20px -10px rgba(0,0,0,.18);
 }
 
 /* ===== 제안서 완료 메시지 행 — 차분 강조 ===== */

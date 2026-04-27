@@ -467,56 +467,34 @@ function renderLanding() {
 }
 
 // ---------- Dashboard ----------
-function renderSmartLearningBanner(dna, stats) {
-  const stored = localStorage.getItem("nightoff.smartBannerOpen");
-  // 기본: 접힘. 사용자가 한 번 열었던 적이 있다면 그 상태 유지.
-  let expanded = stored === "1";
+// 🧠 핵심 기능 히어로 배너 (대시보드 최상단) — 1 메인 + 3 서브, 상시 펼침
+function renderHeroBanner() {
+  const banner = h("section", { class: "hero-banner" });
 
-  const banner = h("section", { class: "smart-banner" + (expanded ? " expanded" : " collapsed") });
-
-  const toggleBtn = h("button", {
-    class: "smart-toggle", "aria-label": "소개 열기/닫기",
-    html: iconHtml(expanded ? "chevronD" : "chevronR", 18),
-  });
-  const header = h("div", { class: "smart-header clickable", onclick: () => {
-    expanded = !expanded;
-    banner.classList.toggle("expanded", expanded);
-    banner.classList.toggle("collapsed", !expanded);
-    toggleBtn.innerHTML = iconHtml(expanded ? "chevronD" : "chevronR", 18);
-    localStorage.setItem("nightoff.smartBannerOpen", expanded ? "1" : "0");
-  } }, [
-    h("span", { class: "sm-emoji" }, "✨"),
-    h("div", { style: "flex: 1;" }, [
-      h("h2", {}, "NightOff 의 핵심 기능 3가지"),
-      h("p", {}, "RFP 업로드부터 제안서 생성까지 하나의 흐름으로 이어집니다"),
+  // 메인 카드 — 핵심 가치 (든든한 AI 작가)
+  banner.appendChild(h("div", { class: "hero-main-card" }, [
+    h("div", { class: "hero-main-emoji" }, "🧠"),
+    h("div", { class: "hero-main-text" }, [
+      h("h2", { class: "hero-main-title" }, "든든한 AI 작가"),
+      h("p", { class: "hero-main-desc" },
+        "수백 건의 실제 수주 제안서를 학습한 AI 가, 사용자 옆에서 직접 펜을 잡고 써내려가요"),
     ]),
-    toggleBtn,
-  ]);
-  banner.appendChild(header);
+    h("div", { class: "hero-main-sparkles" }, "✨"),
+  ]));
+
+  // 서브 카드 3개 — 메인을 뒷받침하는 도구들
   const feats = [
-    {
-      icon: "eye",
-      title: "👀 발주처 들여다보기",
-      desc: "RFP를 넣으면 발주처 정보와 과업 내용을 자동으로 파악해요",
-    },
-    {
-      icon: "trending",
-      title: "💪 우리 회사의 강점은?",
-      desc: "잘하는 분야를 선택하면 제안서에 자동 반영돼요",
-    },
-    {
-      icon: "activity",
-      title: "📊 입찰 활동 히스토리",
-      desc: "수주/탈락 결과를 기록하면 나의 입찰 활동을 한눈에 볼 수 있어요",
-    },
+    { emoji: "👀", title: "발주처 들여다보기", desc: "RFP를 넣으면 발주처 정보와 과업 내용을 자동으로 파악해요" },
+    { emoji: "💪", title: "우리 회사의 강점은?", desc: "잘하는 분야를 선택하면 제안서에 자동 반영돼요" },
+    { emoji: "📊", title: "입찰 활동 히스토리", desc: "수주/탈락 결과를 기록하면 나의 입찰 활동을 한눈에 볼 수 있어요" },
   ];
-  const grid = h("div", { class: "smart-grid" });
+  const grid = h("div", { class: "hero-sub-grid" });
   feats.forEach((f) => {
-    grid.appendChild(h("div", { class: "smart-feat" }, [
-      h("div", { class: "sm-feat-icon", html: iconHtml(f.icon, 18) }),
+    grid.appendChild(h("div", { class: "hero-sub-card" }, [
+      h("div", { class: "hero-sub-emoji" }, f.emoji),
       h("div", {}, [
-        h("h4", {}, f.title),
-        h("p", {}, f.desc),
+        h("h4", { class: "hero-sub-title" }, f.title),
+        h("p", { class: "hero-sub-desc" }, f.desc),
       ]),
     ]));
   });
@@ -926,7 +904,8 @@ async function renderDashboard() {
       h("img", { class: "header-logo", src: "/static/logo.png", alt: "NightOff", onclick: () => navigate("/") }),
       h("div", {}, [
         h("h1", {}, "대시보드"),
-        h("p", {}, "제안서 수주 도우미 · 함께 만들어요 ✨"),
+        // 시간대별 인사 (item 11-C)
+        h("p", {}, getTimeBasedGreeting()),
       ]),
     ]),
     h("button", {
@@ -939,6 +918,9 @@ async function renderDashboard() {
   const content = h("div", { class: "main-content" });
   main.appendChild(content);
 
+  // ── 최상단: 핵심 기능 히어로 배너 (1 메인 + 3 서브)
+  content.appendChild(renderHeroBanner());
+
   // ── 핵심 스탯 4개 (승률 포함)
   const winRateDisplay = stats.win_rate === null || stats.win_rate === undefined ? "—" : `${stats.win_rate}`;
   const winRateUnit = stats.win_rate === null || stats.win_rate === undefined ? "" : "%";
@@ -950,19 +932,44 @@ async function renderDashboard() {
                               value: winRateDisplay,             unit: winRateUnit, icon: "trending", tint: "var(--accent)", fg: "var(--accent-fg)" },
   ];
   const statsGrid = h("div", { class: "stats-grid stats-grid-4" });
-  statItems.forEach((s) => {
-    statsGrid.appendChild(h("div", { class: "card stat-card" }, [
+  statItems.forEach((s, idx) => {
+    // stagger 진입 (item 11-A) — 카드별 50ms 지연
+    const valueNode = document.createTextNode("0");
+    const card = h("div", {
+      class: "card stat-card stagger-in",
+      style: `--stagger-delay: ${idx * 60}ms;`,
+    }, [
       h("div", { class: "flex-between", style: "align-items: flex-start;" }, [
         h("div", {}, [
           h("p", { class: "stat-label" }, s.label),
           h("p", { class: "stat-value", style: "margin: 0;" }, [
-            document.createTextNode(String(s.value)),
+            valueNode,
             h("span", { class: "stat-unit" }, s.unit),
           ]),
         ]),
         h("div", { class: "stat-icon-wrap", style: `background: ${s.tint}; color: ${s.fg};`, html: iconHtml(s.icon, 22) }),
       ]),
-    ]));
+    ]);
+    statsGrid.appendChild(card);
+    // 숫자 roll-up (item 11-B) — 0 → 실제 값 0.6s
+    const target = Number(s.value);
+    if (Number.isFinite(target) && target > 0) {
+      const dur = 600;
+      const t0 = performance.now();
+      // 진입 stagger 끝나고 시작
+      setTimeout(() => {
+        const tick = (now) => {
+          const p = Math.min(1, (now - t0) / dur);
+          const eased = 1 - Math.pow(1 - p, 3);  // easeOutCubic
+          valueNode.nodeValue = String(Math.round(target * eased));
+          if (p < 1) requestAnimationFrame(tick);
+          else valueNode.nodeValue = String(target);
+        };
+        requestAnimationFrame(tick);
+      }, idx * 60 + 80);
+    } else {
+      valueNode.nodeValue = String(s.value);
+    }
   });
   content.appendChild(h("section", { style: "margin-bottom: 28px;" }, statsGrid));
 
@@ -1009,14 +1016,17 @@ async function renderDashboard() {
   // 2) (드립) 가짜 스폰서 광고 — 닫기 버튼 눌러도 안 닫힘 ㅋㅋ
   rightCol.appendChild(renderFakeAdBanner());
 
-  // 3) 최근 활동
+  // 3) 최근 활동 — max-height + 내부 스크롤 (item 5)
   rightCol.appendChild(h("div", { class: "flex-between", style: "margin: 22px 0 12px;" }, [
     h("h2", { style: "margin: 0; font-size: 16px; font-weight: 700;" }, "최근 활동"),
   ]));
+  // 빈 상태 위트 멘트 (item 11-D)
+  const emptyMsgs = ["아직 조용하네요 🌙", "텅 빈 캔버스도 멋져요 ✨", "곧 채워질 거예요 ☕", "시작이 반이에요 🚀"];
   if (!activity.length) {
-    rightCol.appendChild(h("div", { class: "card empty-state", style: "font-size: 13px;" }, "활동이 아직 없어요"));
+    const msg = emptyMsgs[Math.floor(Math.random() * emptyMsgs.length)];
+    rightCol.appendChild(h("div", { class: "card empty-state activity-empty" }, msg));
   } else {
-    const feed = h("div", { class: "card", style: "padding: 10px 6px;" });
+    const feed = h("div", { class: "card activity-feed-card" });
     activity.forEach((ev) => {
       feed.appendChild(h("div", {
         class: "activity-item",
@@ -1025,7 +1035,7 @@ async function renderDashboard() {
           else if (ev.client_id) navigate(`/client/${ev.client_id}`);
         },
       }, [
-        h("div", { class: "activity-icon", html: iconHtml(ev.icon || "activity", 16) }),
+        h("div", { class: "activity-icon", html: iconHtml(ev.icon || "activity", 14) }),
         h("div", { class: "activity-body" }, [
           h("div", { class: "activity-title" }, ev.title),
           h("div", { class: "activity-time" }, relativeTime(ev.at)),
@@ -1036,13 +1046,25 @@ async function renderDashboard() {
   }
   twoCol.appendChild(rightCol);
 
-  // ── NightOff 소개 배너 (하단, 기본 접힌 상태) ──
-  content.appendChild(renderSmartLearningBanner(dna, stats));
+  // 핵심 기능 배너는 최상단으로 옮겨졌고 (renderHeroBanner)
+  // 푸터는 글로벌 푸터(#global-footer)로 일원화 — 대시보드 자체 푸터 제거
+}
 
-  // ── 푸터
-  content.appendChild(h("footer", { class: "dashboard-footer" },
-    "NightOff · 수주를 진심으로 기원합니다 🙏"
-  ));
+// 시간대별 인사 (item 11-C)
+function getTimeBasedGreeting() {
+  const h = new Date().getHours();
+  if (h >= 2 && h < 5)   return "💤 새벽이에요. 진짜 무리하지 마세요";
+  if (h >= 5 && h < 9)   return "☕ 일찍 일어나셨네요. 오늘도 화이팅이에요!";
+  if (h >= 9 && h < 12)  return "☀️ 오늘도 좋은 하루예요";
+  if (h >= 12 && h < 14) return "🍚 점심은 챙겨 드셨나요?";
+  if (h >= 14 && h < 18) return "✏️ 가장 집중력 좋은 시간이에요";
+  if (h >= 18 && h < 22) return "🌆 슬슬 마무리할 시간이에요";
+  return "🌙 늦게까지 수고가 많아요…";
+}
+
+// 시간대별 인사가 dnaR 등을 사용하지 않도록 만든 더미 (renderSmartLearningBanner 호환)
+function renderSmartLearningBanner() {
+  return document.createDocumentFragment();
 }
 
 // ---------- 💡 오늘의 팁 (사이드 카드 · 5초 롤링) ----------
@@ -1402,20 +1424,161 @@ async function renderTaskActionsSection(cid) {
         onclick: startConv,
         html: `<span class="ta-emoji">✨</span><div class="ta-text"><div class="ta-title">대화 시작하기</div><div class="ta-sub">AI 와 함께 제안서 초안을 만들어요</div></div>`,
       }),
-      // 5️⃣ PT 연습 — 제안서 완성 후 활성화
+      // 5️⃣ PT 연습 — 제안서 완성 후 활성화 (큐시트 + Q&A 모달)
       h("button", {
         class: "btn btn-outline task-action-cta task-action-secondary" + (hasProposal ? "" : " disabled-soft"),
         disabled: !hasProposal,
         title: hasProposal ? "PT 발표 연습을 시작합니다" : "제안서를 먼저 완성하면 활성화돼요",
-        onclick: () => {
+        onclick: async () => {
           if (!hasProposal) { toast("제안서를 먼저 완성해 주세요 🙂", ""); return; }
-          toast("PT 연습 기능은 곧 오픈될 예정이에요 🎤", "");
+          // 가장 최신 대화 ID 가져와서 PT 모달 오픈
+          try {
+            const convs = await api.get(`/api/clients/${cid}/conversations`);
+            const target = (Array.isArray(convs) ? convs : []).find((c) => (c.msg_count ?? 0) > 1);
+            if (!target) { toast("작성된 제안서를 찾지 못했어요", "error"); return; }
+            openPtPracticeModal(target.id);
+          } catch (e) { toast("대화를 불러올 수 없어요", "error"); }
         },
-        html: `<span class="ta-emoji">🎤</span><div class="ta-text"><div class="ta-title">PT 연습하기</div><div class="ta-sub">${hasProposal ? "발표 흐름·시간 연습" : "제안서 완성 후 활성화"}</div></div>`,
+        html: `<span class="ta-emoji">🎤</span><div class="ta-text"><div class="ta-title">PT 연습하기</div><div class="ta-sub">${hasProposal ? "발표 큐시트 · 예상 Q&A" : "제안서 완성 후 활성화"}</div></div>`,
       }),
     ]),
   ]);
   return card;
+}
+
+// ---------- 🎉 제안서 완성 confetti (가벼운 vanilla — 외부 라이브러리 X) ----------
+function celebrateConfetti() {
+  const colors = ['#7C3AED', '#EC4899', '#F59E0B', '#16A34A', '#3B82F6'];
+  const layer = h("div", { class: "confetti-layer" });
+  document.body.appendChild(layer);
+  for (let i = 0; i < 60; i++) {
+    const piece = document.createElement("span");
+    piece.className = "confetti-piece";
+    piece.style.background = colors[i % colors.length];
+    piece.style.left = (Math.random() * 100) + "%";
+    piece.style.animationDelay = (Math.random() * 0.3) + "s";
+    piece.style.animationDuration = (1.6 + Math.random() * 1.2) + "s";
+    piece.style.transform = `rotate(${Math.random() * 360}deg)`;
+    layer.appendChild(piece);
+  }
+  setTimeout(() => layer.remove(), 3500);
+}
+
+// ---------- 🎤 PT 연습 모달 (큐시트 + 예상 Q&A 두 탭) ----------
+function openPtPracticeModal(convId) {
+  const backdrop = h("div", { class: "modal-backdrop pt-modal-backdrop" });
+  const modal = h("div", { class: "modal pt-modal" });
+
+  // 헤더
+  modal.appendChild(h("div", { class: "modal-header" }, [
+    h("h3", {}, "🎤 PT 연습"),
+    h("button", { class: "icon-btn", onclick: () => backdrop.remove(), "aria-label": "닫기",
+      html: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>` }),
+  ]));
+
+  // 탭
+  const tabs = h("div", { class: "pt-tabs" }, [
+    h("button", { class: "pt-tab active", "data-tab": "script" }, "📝 발표 큐시트"),
+    h("button", { class: "pt-tab", "data-tab": "qa" }, "❓ 예상 Q&A"),
+  ]);
+  modal.appendChild(tabs);
+
+  // 발표 시간 셀렉터 (큐시트 탭에서만)
+  const durationRow = h("div", { class: "pt-duration-row" }, [
+    h("label", { class: "small muted" }, "발표 시간"),
+    h("select", { class: "select", id: "pt-duration" }, [
+      h("option", { value: "5" }, "5분"),
+      h("option", { value: "10", selected: "" }, "10분"),
+      h("option", { value: "15" }, "15분"),
+      h("option", { value: "20" }, "20분"),
+    ]),
+    h("button", { class: "btn btn-primary btn-sm", id: "pt-script-gen" }, "큐시트 만들기"),
+  ]);
+  modal.appendChild(durationRow);
+
+  const body = h("div", { class: "modal-body pt-body" });
+  modal.appendChild(body);
+
+  // 탭 전환
+  let currentTab = "script";
+  const renderTab = async () => {
+    body.innerHTML = '<div class="muted small" style="text-align:center; padding:30px;">선택한 탭을 보려면 위에서 액션을 시작해 주세요</div>';
+    durationRow.style.display = currentTab === "script" ? "" : "none";
+  };
+  tabs.querySelectorAll(".pt-tab").forEach((t) => {
+    t.addEventListener("click", () => {
+      tabs.querySelectorAll(".pt-tab").forEach((x) => x.classList.remove("active"));
+      t.classList.add("active");
+      currentTab = t.getAttribute("data-tab");
+      renderTab();
+      if (currentTab === "qa") generateQa();
+    });
+  });
+
+  // 큐시트 생성
+  durationRow.querySelector("#pt-script-gen").addEventListener("click", async () => {
+    const duration = parseInt(durationRow.querySelector("#pt-duration").value, 10) || 10;
+    body.innerHTML = '<div class="muted small" style="text-align:center; padding:30px;">🌙 큐시트 생성 중…</div>';
+    try {
+      const r = await api.post("/api/proposals/script", { conversation_id: convId, duration_min: duration }, { timeoutMs: 120000 });
+      body.innerHTML = "";
+      if (r.intro_tip) body.appendChild(h("div", { class: "pt-tip" }, "💡 " + r.intro_tip));
+      (r.slides || []).forEach((s) => {
+        body.appendChild(h("div", { class: "pt-slide-card" }, [
+          h("div", { class: "pt-slide-head" }, [
+            h("span", { class: "pt-slide-num" }, `Slide ${s.page}`),
+            h("span", { class: "pt-slide-section" }, s.section || ""),
+            h("span", { class: "pt-slide-time" }, s.time_range || `${s.duration_sec}초`),
+          ]),
+          h("p", { class: "pt-slide-script" }, s.script || ""),
+          ...(Array.isArray(s.highlights) && s.highlights.length
+              ? [h("div", { class: "pt-slide-highlights" },
+                   s.highlights.map((hl) => h("span", { class: "pt-hl-pill" }, hl)))]
+              : []),
+        ]));
+      });
+      if (r.closing_tip) body.appendChild(h("div", { class: "pt-tip" }, "🎯 " + r.closing_tip));
+    } catch (e) {
+      body.innerHTML = "";
+      body.appendChild(h("p", { class: "muted small", style: "text-align:center; padding:30px;" },
+        "큐시트 생성 실패: " + (e.message || e)));
+    }
+  });
+
+  // Q&A 생성
+  let qaLoaded = false;
+  async function generateQa() {
+    if (qaLoaded) return;
+    body.innerHTML = '<div class="muted small" style="text-align:center; padding:30px;">🌙 예상 질문 생성 중…</div>';
+    try {
+      const r = await api.post("/api/proposals/qa", { conversation_id: convId }, { timeoutMs: 120000 });
+      body.innerHTML = "";
+      (r.questions || []).forEach((q, i) => {
+        const card = h("div", { class: "pt-qa-card" }, [
+          h("div", { class: "pt-qa-head" }, [
+            h("span", { class: "pt-qa-cat" }, q.category || ""),
+            h("span", { class: "pt-qa-num" }, `Q${i + 1}`),
+          ]),
+          h("p", { class: "pt-qa-question" }, q.question || ""),
+          h("details", { class: "pt-qa-answer" }, [
+            h("summary", {}, "💬 모범답변 보기"),
+            h("p", { class: "pt-qa-answer-text" }, q.model_answer || ""),
+            ...(q.tip ? [h("p", { class: "pt-qa-tip" }, "🎯 " + q.tip)] : []),
+          ]),
+        ]);
+        body.appendChild(card);
+      });
+      qaLoaded = true;
+    } catch (e) {
+      body.innerHTML = "";
+      body.appendChild(h("p", { class: "muted small", style: "text-align:center; padding:30px;" },
+        "Q&A 생성 실패: " + (e.message || e)));
+    }
+  }
+
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) backdrop.remove(); });
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
 }
 
 // ---------- 수주/탈락 Outcome ----------
@@ -1475,24 +1638,11 @@ async function renderConvHistorySection(cid) {
   const body = h("div", { class: "card-body" });
   card.appendChild(body);
 
-  // 큰 "새 대화 시작" CTA — 섹션 상단 중앙에 강조 배치
-  const startNew = async () => {
-    try {
-      const r = await api.post(`/api/clients/${cid}/conversations`);
-      navigate(`/client/${cid}/chat/${r.id}`);
-    } catch (e) { toast(String(e.message || e), "error"); }
-  };
-  body.appendChild(h("div", { class: "btn-start-conv-wrap" }, [
-    h("button", {
-      class: "btn btn-primary big-cta",
-      style: "justify-content: center; text-align: center;",
-      onclick: startNew,
-      html: `${iconHtml("plus", 22)}<span>새 대화 시작하기</span>`,
-    }),
-  ]));
+  // 중복 큰 버튼 제거 — 상단 task-actions-card 의 ✨ 대화 시작하기로 일원화
 
   if (!convs.length) {
-    body.appendChild(h("div", { class: "empty-state", style: "margin-top: 14px;" }, "대화가 없습니다. 위 버튼으로 시작해보세요."));
+    body.appendChild(h("div", { class: "empty-state", style: "padding: 18px 12px;" },
+      "아직 대화가 없어요. 위 ✨ 대화 시작하기로 시작해보세요 🙂"));
     return card;
   }
 
@@ -2101,33 +2251,45 @@ async function renderRfpSection(cid) {
 }
 
 // ---------- SVG 레이더 차트 (RFP 평가 기준 시각화) ----------
+// 라벨 잘림 방지 — 차트 좌측에 도형, 우측에 번호 매겨진 범례 리스트로 분리
 function buildRadarChartSvg(items) {
-  // items: [{item, weight, raw}, ...]  최대 8개로 컷, 작으면 그대로
-  const data = (items || []).slice(0, 8);
+  const data = (items || []).slice(0, 10);
   const n = data.length;
-  if (n < 3) {
-    // 항목이 너무 적으면 단순 배지 리스트로 대체
-    const wrap = h("div", { style: "display: flex; flex-wrap: wrap; gap: 8px; padding: 8px;" });
-    data.forEach((d) => wrap.appendChild(
-      h("div", { style: "padding: 6px 12px; background: var(--primary-soft); color: var(--primary); border-radius: 999px; font-size: 12px; font-weight: 600;" },
-        `${d.item} ${d.raw || (d.weight + "점")}`)));
+
+  // 컨테이너 — 차트와 범례 가로 배치
+  const wrap = h("div", { class: "radar-wrap" });
+
+  if (n === 0) {
+    wrap.appendChild(h("p", { class: "small muted" }, "평가 기준 정보가 없어요."));
     return wrap;
   }
+
+  if (n < 3) {
+    // 2개 이하 → 단순 배지 (각도 의미 없음)
+    const list = h("div", { class: "radar-fallback" });
+    data.forEach((d) => list.appendChild(
+      h("div", { class: "radar-fallback-pill" },
+        `${d.item} · ${d.raw || d.weight + "점"}`)));
+    wrap.appendChild(list);
+    return wrap;
+  }
+
+  // n >= 3 — SVG 레이더 + 우측 범례
   const maxW = Math.max(1, ...data.map((d) => d.weight));
-  const cx = 160, cy = 160, R = 110;
+  const cx = 130, cy = 130, R = 95;
   const angle = (i) => (Math.PI * 2 * i) / n - Math.PI / 2;
   const point = (i, ratio) => {
     const a = angle(i);
     return [cx + Math.cos(a) * R * ratio, cy + Math.sin(a) * R * ratio];
   };
 
-  // 격자(2단계)
+  // 격자 3링 (33% / 66% / 100%)
   const rings = [0.33, 0.66, 1].map((ratio) => {
     const pts = data.map((_, i) => point(i, ratio).join(",")).join(" ");
     return `<polygon points="${pts}" fill="none" stroke="#E5E5E5" stroke-width="1"/>`;
   }).join("");
 
-  // 축 (각 항목)
+  // 축
   const axes = data.map((_, i) => {
     const [x, y] = point(i, 1);
     return `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#E5E5E5" stroke-width="1"/>`;
@@ -2135,31 +2297,35 @@ function buildRadarChartSvg(items) {
 
   // 데이터 폴리곤
   const dataPts = data.map((d, i) => point(i, Math.max(0.08, d.weight / maxW)).join(",")).join(" ");
-  const dataPoly = `<polygon points="${dataPts}" fill="rgba(124,58,237,0.18)" stroke="#7C3AED" stroke-width="2"/>`;
+  const dataPoly = `<polygon points="${dataPts}" fill="rgba(124,58,237,0.18)" stroke="#7C3AED" stroke-width="2" stroke-linejoin="round"/>`;
   const dataDots = data.map((d, i) => {
     const [x, y] = point(i, Math.max(0.08, d.weight / maxW));
     return `<circle cx="${x}" cy="${y}" r="4" fill="#7C3AED"/>`;
   }).join("");
 
-  // 라벨
-  const labels = data.map((d, i) => {
-    const [x, y] = point(i, 1.16);
-    const anchor = (Math.abs(x - cx) < 8) ? "middle" : (x > cx ? "start" : "end");
-    const itemShort = d.item.length > 9 ? d.item.slice(0, 8) + "…" : d.item;
-    const wText = d.raw || `${d.weight}점`;
-    return `<g><text x="${x}" y="${y}" text-anchor="${anchor}" font-size="11" fill="#374151" font-weight="600">${itemShort}</text><text x="${x}" y="${y + 13}" text-anchor="${anchor}" font-size="10" fill="#7C3AED" font-weight="500">${wText}</text></g>`;
+  // 도형 안 라벨 — 항목명 빼고 **번호만** 표시 (① ② ③ ...)
+  const numbers = data.map((d, i) => {
+    const [x, y] = point(i, 1.18);
+    const num = i + 1;
+    return `<circle cx="${x}" cy="${y}" r="11" fill="#7C3AED"/><text x="${x}" y="${y + 4}" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">${num}</text>`;
   }).join("");
 
-  const svgHtml = `
-    <svg viewBox="0 0 320 320" width="100%" style="max-width: 360px; display: block; margin: 0 auto;">
-      ${rings}
-      ${axes}
-      ${dataPoly}
-      ${dataDots}
-      ${labels}
-    </svg>`;
-  const wrap = h("div", {});
-  wrap.innerHTML = svgHtml;
+  const svgHtml = `<svg viewBox="0 0 260 260" width="260" height="260" class="radar-svg">${rings}${axes}${dataPoly}${dataDots}${numbers}</svg>`;
+  const svgBox = h("div", { class: "radar-svg-box" });
+  svgBox.innerHTML = svgHtml;
+  wrap.appendChild(svgBox);
+
+  // 우측 범례 — 번호 + 항목명 + 배점 (잘림 X, 줄바꿈 자유)
+  const legend = h("ol", { class: "radar-legend" });
+  data.forEach((d, i) => {
+    legend.appendChild(h("li", { class: "radar-legend-item" }, [
+      h("span", { class: "radar-legend-num" }, String(i + 1)),
+      h("span", { class: "radar-legend-name" }, d.item),
+      h("span", { class: "radar-legend-weight" }, d.raw || `${d.weight}점`),
+    ]));
+  });
+  wrap.appendChild(legend);
+
   return wrap;
 }
 
@@ -2341,35 +2507,128 @@ async function renderChat(cid, convId) {
   const sidePanel = h("aside", { class: "proposal-side-panel hidden" });
   splitWrap.appendChild(sidePanel);
 
-  // 사이드 패널 활성화/비활성화 헬퍼 — 외부에서 접근 가능
+  // 슬라이드쇼 상태 — splitWrap scope 에 보관
+  let slideIdx = 0;        // 현재 보고 있는 슬라이드
+  let totalSlides = 0;
+  let liveFollow = true;   // 사용자가 직접 ◀▶ 누르기 전엔 자동 라이브 따라가기
+
+  // 사이드 패널 활성화 — 슬라이드쇼 모드 (item 13)
   function activateSidePanel(propEl, isFinal) {
     splitWrap.classList.add("split-active");
     sidePanel.classList.remove("hidden");
-    sidePanel.innerHTML = "";
-    sidePanel.appendChild(h("div", { class: "side-panel-head" }, [
-      h("div", {}, [
-        h("p", { class: "side-panel-label" }, isFinal ? "✅ 미리보기" : "⏳ 작성 중인 제안서"),
-        h("p", { class: "side-panel-title" }, propEl?.getAttribute?.("data-title") || "제안서"),
-      ]),
-      h("button", {
-        class: "icon-btn", title: "사이드 패널 닫기",
-        html: iconHtml("x", 18),
-        onclick: () => {
-          splitWrap.classList.remove("split-active");
-          sidePanel.classList.add("hidden");
-        },
-      }),
-    ]));
-    const stage = h("div", { class: "side-panel-stage" });
-    if (propEl) {
-      const clone = propEl.cloneNode(true);
-      clone.classList.add("side-panel-mode");
-      // keyword-row 제거 — 사이드에선 군더더기
-      clone.querySelectorAll(".keyword-row, .image-credit").forEach((e) => e.remove());
-      stage.appendChild(clone);
+
+    if (!propEl) return;
+    const slides = Array.from(propEl.querySelectorAll(".proposal-page"));
+    totalSlides = slides.length;
+    if (totalSlides === 0) return;
+
+    // 첫 진입이면 마지막 슬라이드(라이브 따라가기) 또는 1번부터
+    if (liveFollow) {
+      slideIdx = isFinal ? 0 : totalSlides - 1;
     }
+    // 슬라이드 인덱스 보호
+    if (slideIdx >= totalSlides) slideIdx = totalSlides - 1;
+    if (slideIdx < 0) slideIdx = 0;
+
+    sidePanel.innerHTML = "";
+
+    // 헤더 — 라벨 + 제목 + 인디케이터 + 닫기
+    sidePanel.appendChild(h("div", { class: "side-panel-head" }, [
+      h("div", { class: "sp-head-left" }, [
+        h("p", { class: "side-panel-label" }, isFinal ? "✅ 미리보기" : "⏳ 작성 중"),
+        h("p", { class: "side-panel-title" }, propEl.getAttribute("data-title") || "제안서"),
+      ]),
+      h("div", { class: "sp-head-right" }, [
+        h("span", { class: "sp-page-indicator" }, `${slideIdx + 1} / ${totalSlides}`),
+        h("button", {
+          class: "icon-btn",
+          title: "사이드 패널 닫기",
+          html: iconHtml("x", 18),
+          onclick: () => {
+            splitWrap.classList.remove("split-active");
+            sidePanel.classList.add("hidden");
+          },
+        }),
+      ]),
+    ]));
+
+    // 무대 — 한 슬라이드만 풀 디스플레이
+    const stage = h("div", { class: "side-panel-stage slideshow-stage" });
+    const currentSlide = slides[slideIdx].cloneNode(true);
+    currentSlide.classList.add("side-panel-mode");
+    currentSlide.querySelectorAll(".keyword-row, .image-credit").forEach((e) => e.remove());
+    stage.appendChild(currentSlide);
     sidePanel.appendChild(stage);
+
+    // 하단 컨트롤 — ◀ ●●●○○○○○○○ ▶
+    const goTo = (newIdx, fromUser = false) => {
+      if (fromUser) liveFollow = false;
+      slideIdx = Math.max(0, Math.min(totalSlides - 1, newIdx));
+      activateSidePanel(propEl, isFinal);
+    };
+    const prevBtn = h("button", {
+      class: "sp-nav-btn", disabled: slideIdx === 0,
+      title: "이전 (←)",
+      onclick: () => goTo(slideIdx - 1, true),
+      html: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`,
+    });
+    const nextBtn = h("button", {
+      class: "sp-nav-btn", disabled: slideIdx === totalSlides - 1,
+      title: "다음 (→)",
+      onclick: () => goTo(slideIdx + 1, true),
+      html: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`,
+    });
+    const dotsRow = h("div", { class: "sp-dots" });
+    slides.forEach((_, i) => {
+      dotsRow.appendChild(h("span", {
+        class: "sp-dot" + (i === slideIdx ? " active" : ""),
+        title: `${i + 1} 페이지`,
+        onclick: () => goTo(i, true),
+      }));
+    });
+    // 라이브 모드 토글 — 사용자가 ◀▶ 직접 눌러서 liveFollow=false 인 경우 복귀 옵션
+    const liveBtn = h("button", {
+      class: "sp-live-btn" + (liveFollow ? " active" : ""),
+      title: liveFollow ? "라이브 따라가기 ON" : "라이브 따라가기 OFF — 클릭 시 최신으로 점프",
+      onclick: () => {
+        liveFollow = !liveFollow;
+        if (liveFollow) goTo(totalSlides - 1, false);
+        else activateSidePanel(propEl, isFinal);
+      },
+    }, liveFollow ? "🔴 LIVE" : "📌 고정");
+
+    sidePanel.appendChild(h("div", { class: "side-panel-controls" }, [
+      prevBtn,
+      h("div", { style: "flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;" }, [
+        dotsRow,
+        liveBtn,
+      ]),
+      nextBtn,
+    ]));
   }
+
+  // 키보드 ← → 단축키
+  const onKey = (e) => {
+    if (sidePanel.classList.contains("hidden")) return;
+    if (document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+    if (e.key === "ArrowLeft" && slideIdx > 0) {
+      liveFollow = false;
+      const propEl = document.querySelector(".proposal-hidden .proposal");
+      if (propEl) {
+        slideIdx--;
+        activateSidePanel(propEl, false);
+      }
+    } else if (e.key === "ArrowRight" && slideIdx < totalSlides - 1) {
+      liveFollow = false;
+      const propEl = document.querySelector(".proposal-hidden .proposal");
+      if (propEl) {
+        slideIdx++;
+        activateSidePanel(propEl, false);
+      }
+    }
+  };
+  document.addEventListener("keydown", onKey);
+
   // 글로벌 노출 — renderAssistant 가 호출
   shell._activateSidePanel = activateSidePanel;
 
@@ -2634,7 +2893,7 @@ async function renderChat(cid, convId) {
       // 자동 스크롤 잠금 해제 + 스크롤 리스너 정리
       userScrolledUp = false;
       body.removeEventListener("scroll", onUserScroll);
-      // 제안서가 포함된 응답이면 완료 메시지를 한 번 더 노출
+      // 제안서가 포함된 응답이면 완료 메시지 + confetti 축하 (item 12)
       if (/<div class="proposal"/.test(targetText)) {
         const done = h("div", { class: "msg-row assistant proposal-done-row" }, [
           h("div", { class: "msg-avatar", html: iconHtml("brain", 18) }),
@@ -2644,6 +2903,7 @@ async function renderChat(cid, convId) {
           ]),
         ]);
         msgs.appendChild(done);
+        try { celebrateConfetti(); } catch {}
         if (!userScrolledUp) body.scrollTop = body.scrollHeight;
       }
       ta.focus();
@@ -2768,61 +3028,49 @@ function renderAssistant(bubble, text, final = false) {
       }
     } catch (e) { /* 사이드 패널은 옵셔널 — 실패해도 본문은 정상 */ }
 
-    // 썸네일: 축소 미리보기 (첫 2~3 페이지)
-    const thumbWrap = h("div", { class: "proposal-thumb-preview" });
-    const thumbInner = h("div", { class: "proposal-thumb-stage", style: `--proposal-accent: ${accent};` });
-    const propClone = propEl.cloneNode(true);
-    propClone.classList.add("proposal-thumb-mode");
-    thumbInner.appendChild(propClone);
-    thumbWrap.appendChild(thumbInner);
-
-    card.appendChild(h("div", { class: "proposal-thumb-header" }, [
-      h("div", { style: "flex:1; min-width:0;" }, [
-        h("div", { class: "thumb-label" }, final ? "✅ 제안서 완성" : "📝 제안서 생성 중"),
+    // 썸네일/모달/전체화면 보기 모두 제거 — 우측 사이드 패널이 미리보기 책임 100% 가져감
+    // 컴팩트 카드: 라벨 + 메타 1줄 + 2버튼 ([PPTX][인쇄/PDF])
+    const completed = !!final;
+    card.appendChild(h("div", { class: "proposal-compact" }, [
+      h("div", { class: "proposal-compact-info" }, [
+        h("div", { class: "thumb-label" }, completed ? "✅ 제안서 완성" : "📝 제안서 작성 중"),
         h("h4", { class: "thumb-title" }, title),
-        h("div", { class: "thumb-meta" }, `${orientation === "portrait" ? "A4 세로" : "A4 가로"} · 총 ${pageCount}페이지`),
+        h("div", { class: "thumb-meta" },
+          `${orientation === "portrait" ? "A4 세로" : "A4 가로"} · 총 ${pageCount}페이지${completed ? "" : " · 우측에서 미리보기"}`),
       ]),
-      h("button", {
-        class: "btn btn-primary btn-lg thumb-open",
-        html: `${iconHtml("eye", 16)}<span>전체화면으로 보기</span>`,
-        onclick: () => openProposalInNewTab(propEl),
-      }),
-    ]));
-    card.appendChild(thumbWrap);
-    const actionsBar = h("div", { class: "proposal-thumb-actions" }, [
-      h("button", {
-        class: "btn btn-primary",
-        html: `${iconHtml("file", 14)}<span>PPTX 다운로드</span>`,
-        title: "제안서를 .pptx 파일로 내려받기",
-        onclick: async (e) => {
-          const btn = e.currentTarget;
-          // 가장 가까운 conversation id 추적 — URL 해시에서 추출
-          const m = location.hash.match(/\/chat\/([^/?#]+)/);
-          const convId = m ? m[1] : null;
-          if (!convId) { toast("대화 정보를 찾지 못했어요", "error"); return; }
-          btn.disabled = true; btn.innerHTML = "변환 중…";
-          try {
-            const r = await api.post("/api/proposals/pptx", { conversation_id: convId }, { timeoutMs: 60000 });
-            if (r.url) {
-              const a = document.createElement("a");
-              a.href = r.url; a.download = r.filename || "proposal.pptx";
-              document.body.appendChild(a); a.click(); a.remove();
-              toast(`PPTX 다운로드 완료 (${r.page_count} 슬라이드) ✨`, "success");
+      h("div", { class: "proposal-compact-actions" }, [
+        h("button", {
+          class: "btn btn-primary",
+          html: `${iconHtml("file", 14)}<span>PPTX 다운로드</span>`,
+          title: "제안서를 .pptx 파일로 내려받기",
+          disabled: !completed,
+          onclick: async (e) => {
+            const btn = e.currentTarget;
+            const m = location.hash.match(/\/chat\/([^/?#]+)/);
+            const convId = m ? m[1] : null;
+            if (!convId) { toast("대화 정보를 찾지 못했어요", "error"); return; }
+            btn.disabled = true; btn.innerHTML = "변환 중…";
+            try {
+              const r = await api.post("/api/proposals/pptx", { conversation_id: convId }, { timeoutMs: 60000 });
+              if (r.url) {
+                const a = document.createElement("a");
+                a.href = r.url; a.download = r.filename || "proposal.pptx";
+                document.body.appendChild(a); a.click(); a.remove();
+                toast(`PPTX 다운로드 완료 (${r.page_count} 슬라이드) ✨`, "success");
+              }
+            } catch (err) {
+              toast("PPTX 변환 실패: " + (err.message || err), "error");
+            } finally {
+              btn.disabled = false;
+              btn.innerHTML = `${iconHtml("file", 14)}<span>PPTX 다운로드</span>`;
             }
-          } catch (err) {
-            toast("PPTX 변환 실패: " + (err.message || err), "error");
-          } finally {
-            btn.disabled = false;
-            btn.innerHTML = `${iconHtml("file", 14)}<span>PPTX 다운로드</span>`;
-          }
-        },
-      }),
-      h("button", { class: "btn btn-outline", html: `${iconHtml("printer", 14)}<span>인쇄 / PDF</span>`,
-        onclick: () => printProposal(propEl) }),
-      h("button", { class: "btn btn-outline", html: `${iconHtml("eye", 14)}<span>모달로 보기</span>`,
-        onclick: () => openProposalFullscreen(propEl) }),
-    ]);
-    card.appendChild(actionsBar);
+          },
+        }),
+        h("button", { class: "btn btn-outline", html: `${iconHtml("printer", 14)}<span>인쇄 / PDF</span>`,
+          disabled: !completed,
+          onclick: () => printProposal(propEl) }),
+      ]),
+    ]));
     card.appendChild(hidden);
     hidden.style.display = "none";
   } else {

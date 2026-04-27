@@ -275,7 +275,9 @@ const LOADER_STEPS = {
 
 // ---------- Router ----------
 const routes = [
-  { re: /^\/$/, handler: renderDashboard },
+  { re: /^\/$/, handler: renderRootRoute },
+  { re: /^\/landing$/, handler: renderLanding },
+  { re: /^\/dashboard$/, handler: renderDashboard },
   { re: /^\/client\/new$/, handler: () => renderClientForm("create") },
   { re: /^\/client\/([^/]+)\/edit$/, handler: (m) => renderClientForm("edit", m[1]) },
   { re: /^\/client\/([^/]+)\/chat\/([^/]+)$/, handler: (m) => renderChat(m[1], m[2]) },
@@ -295,7 +297,14 @@ function route() {
       return;
     }
   }
-  renderDashboard();
+  renderRootRoute();
+}
+
+// 루트("/") 진입 시 — 랜딩을 본 적 있는 사용자는 바로 대시보드, 아니면 랜딩
+function renderRootRoute() {
+  const seen = localStorage.getItem("nightoff.landing_seen") === "1";
+  if (seen) return renderDashboard();
+  return renderLanding();
 }
 window.addEventListener("popstate", route);
 document.addEventListener("click", (e) => {
@@ -352,6 +361,109 @@ function fmtSize(bytes) {
   const u = ["B","KB","MB","GB"]; let i = 0;
   while (bytes >= 1024 && i < 3) { bytes /= 1024; i++; }
   return `${bytes.toFixed(i ? 1 : 0)}${u[i]}`;
+}
+
+// ---------- Landing Page (첫 진입 시) ----------
+function renderLanding() {
+  const root = $("#app-root");
+  if (!root) return;
+  root.innerHTML = "";
+  // 사이드바 없는 풀스크린 랜딩
+  root.classList.add("landing-active");
+
+  const wrap = h("div", { class: "landing-wrap" });
+  root.appendChild(wrap);
+
+  // ── Top Nav
+  wrap.appendChild(h("nav", { class: "landing-nav" }, [
+    h("div", { class: "landing-nav-inner" }, [
+      h("img", { class: "landing-logo", src: "/static/logo.png", alt: "NightOff" }),
+      h("button", {
+        class: "btn btn-ghost",
+        onclick: () => {
+          localStorage.setItem("nightoff.landing_seen", "1");
+          root.classList.remove("landing-active");
+          navigate("/dashboard");
+        },
+      }, "대시보드 →"),
+    ]),
+  ]));
+
+  // ── Hero
+  wrap.appendChild(h("section", { class: "landing-hero" }, [
+    h("div", { class: "landing-hero-inner" }, [
+      h("img", { class: "landing-hero-logo", src: "/static/logo.png", alt: "NightOff" }),
+      h("h1", { class: "landing-hero-title" }, "밤새지 말자고 만들었습니다"),
+      h("p", { class: "landing-hero-sub" },
+        "기획자가 만든, 기획자만을 위한 제안서 AI"),
+      h("button", {
+        class: "btn btn-primary landing-cta-btn",
+        onclick: () => {
+          localStorage.setItem("nightoff.landing_seen", "1");
+          root.classList.remove("landing-active");
+          navigate("/dashboard");
+        },
+        html: `<span>지금 시작하기 ✨</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left:6px;"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`,
+      }),
+    ]),
+  ]));
+
+  // ── 신뢰 배지 섹션
+  const trustItems = [
+    { emoji: "✅", text: "기획자가 만든, 기획자를 위한 도구예요" },
+    { emoji: "✅", text: "수백 건의 실제 수주 제안서를 학습했어요" },
+    { emoji: "✅", text: "경쟁입찰 제안의 언어를 알아요" },
+    { emoji: "✅", text: "RFP 넣으면 바로 시작해요" },
+  ];
+  wrap.appendChild(h("section", { class: "landing-trust" }, [
+    h("div", { class: "landing-trust-inner" }, [
+      h("h2", { class: "landing-section-title" }, "왜 NightOff 인가요?"),
+      h("div", { class: "landing-trust-grid" },
+        trustItems.map((t) => h("div", { class: "landing-trust-item" }, [
+          h("span", { class: "landing-trust-emoji" }, t.emoji),
+          h("span", { class: "landing-trust-text" }, t.text),
+        ]))
+      ),
+    ]),
+  ]));
+
+  // ── 핵심 기능 3가지
+  const features = [
+    { emoji: "👀", title: "발주처 들여다보기", desc: "RFP를 넣으면 발주처 정보와 과업 내용을 자동으로 파악해요" },
+    { emoji: "💪", title: "우리 회사의 강점은?", desc: "잘하는 분야를 선택하면 제안서에 자동 반영돼요" },
+    { emoji: "📊", title: "입찰 활동 히스토리", desc: "수주/탈락 결과를 기록하면 나의 입찰 활동을 한눈에 볼 수 있어요" },
+  ];
+  wrap.appendChild(h("section", { class: "landing-features" }, [
+    h("div", { class: "landing-features-inner" }, [
+      h("h2", { class: "landing-section-title" }, "핵심 기능 3가지"),
+      h("div", { class: "landing-features-grid" },
+        features.map((f) => h("div", { class: "landing-feature-card" }, [
+          h("div", { class: "landing-feature-emoji" }, f.emoji),
+          h("h3", { class: "landing-feature-title" }, f.title),
+          h("p", { class: "landing-feature-desc" }, f.desc),
+        ]))
+      ),
+    ]),
+  ]));
+
+  // ── 푸터 CTA
+  wrap.appendChild(h("section", { class: "landing-bottom-cta" }, [
+    h("h2", { class: "landing-bottom-title" }, "오늘은 정시 퇴근하실래요? ☕"),
+    h("p", { class: "landing-bottom-sub" }, "RFP 한 장이면 충분해요. 함께 시작해봐요."),
+    h("button", {
+      class: "btn btn-primary landing-cta-btn",
+      onclick: () => {
+        localStorage.setItem("nightoff.landing_seen", "1");
+        root.classList.remove("landing-active");
+        navigate("/dashboard");
+      },
+      html: `<span>지금 시작하기 ✨</span>`,
+    }),
+  ]));
+
+  // ── 푸터
+  wrap.appendChild(h("footer", { class: "landing-footer" },
+    "NightOff · 수주를 진심으로 기원합니다 🙏"));
 }
 
 // ---------- Dashboard ----------
@@ -853,33 +965,14 @@ async function renderDashboard() {
   });
   content.appendChild(h("section", { style: "margin-bottom: 28px;" }, statsGrid));
 
-  // ── 빠른 시작 CTA
-  content.appendChild(h("section", { class: "quick-start", style: "margin-bottom: 28px;" }, [
-    h("div", { class: "quick-card", onclick: () => navigate("/client/new") }, [
-      h("div", { class: "quick-icon", html: iconHtml("plus", 22) }),
-      h("div", {}, [
-        h("h4", {}, "새 발주처 등록"),
-        h("p", {}, "발주처 정보를 입력하고 대화를 시작하세요"),
-      ]),
-    ]),
-    h("div", { class: "quick-card", onclick: async () => {
-      if (!clients.length) { toast("먼저 발주처를 등록해 주세요", "error"); navigate("/client/new"); return; }
-      // 가장 최근 발주처로 이동하면서 RFP 섹션까지 스크롤 유도는 단순히 detail로
-      navigate(`/client/${clients[0].id}`);
-    } }, [
-      h("div", { class: "quick-icon", html: iconHtml("fileSearch", 22) }),
-      h("div", {}, [
-        h("h4", {}, "RFP 바로 분석"),
-        h("p", {}, "최근 발주처로 이동해 문서를 업로드하세요"),
-      ]),
-    ]),
-    h("div", { class: "quick-card", onclick: () => openCompanyDnaModal() }, [
-      h("div", { class: "quick-icon", html: iconHtml("brain", 22) }),
-      h("div", {}, [
-        h("h4", {}, "우리 회사 DNA"),
-        h("p", {}, dna.exists ? `레퍼런스 ${dna.ref_count}건 학습 중` : "과거 제안서 올리면 회사 스타일 학습"),
-      ]),
-    ]),
+  // ── 중단: 새 발주처 등록 큰 CTA (단일, 가운데 정렬)
+  content.appendChild(h("section", { class: "dashboard-cta-section" }, [
+    h("button", {
+      class: "btn btn-primary dashboard-mega-cta",
+      onclick: () => navigate("/client/new"),
+      html: `${iconHtml("plus", 26)}<span>새 발주처 등록하기</span>`,
+    }),
+    h("p", { class: "dashboard-cta-sub" }, "발주처 정보를 입력하고 RFP 부터 차근차근 시작해보세요 ✨"),
   ]));
 
   // ── 2열 레이아웃: 발주처 목록 + 최근 활동

@@ -202,7 +202,8 @@
       "Bash(sleep 3 echo \"=== 서버 부팅 ===\" curl -s -o /dev/null -w \"settings: %{http_code}\\\\n\" http://127.0.0.1:8000/api/settings curl -s -o /dev/null -w \"stats: %{http_code}\\\\n\" http://127.0.0.1:8000/api/stats curl -s -o /dev/null -w \"clients: %{http_code}\\\\n\" http://127.0.0.1:8000/api/clients echo \"\" echo \"=== 로그 ===\" head -7 /tmp/nightoff.log taskkill //F //IM python.exe)",
       "Bash(echo \"PID: $!\" sleep 3 echo \"\" echo \"=== 서버 상태 ===\" curl -s -o /dev/null -w \" /api/settings : %{http_code}\\\\n\" http://127.0.0.1:8000/api/settings curl -s -o /dev/null -w \" / : %{http_code}\\\\n\" http://127.0.0.1:8000/ echo \"\" echo \"=== 시작 로그 ===\" head -8 /tmp/nightoff.log)",
       "Bash(curl -s http://127.0.0.1:8000/api/clients)",
-      "Bash(curl -s http://127.0.0.1:8000/api/stats)"
+      "Bash(curl -s http://127.0.0.1:8000/api/stats)",
+      "Bash(curl -s -o /dev/null -w \"DELETE 8a083bb2cda1: %{http_code}\\\\n\" -X DELETE http://127.0.0.1:8000/api/clients/8a083bb2cda1)"
     ]
   }
 }

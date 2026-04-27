@@ -943,10 +943,11 @@ async function renderDashboard() {
   const winRateDisplay = stats.win_rate === null || stats.win_rate === undefined ? "—" : `${stats.win_rate}`;
   const winRateUnit = stats.win_rate === null || stats.win_rate === undefined ? "" : "%";
   const statItems = [
-    { label: "등록된 과업", value: stats.total_clients ?? 0, unit: "개", icon: "users", tint: "var(--primary-soft)", fg: "var(--primary)" },
-    { label: "작성한 제안서", value: stats.total_proposals ?? 0, unit: "건", icon: "file", tint: "var(--success-soft)", fg: "var(--success)" },
-    { label: "이번 달 활동", value: stats.month_activity ?? 0, unit: "회", icon: "activity", tint: "var(--warning-soft)", fg: "var(--warning)" },
-    { label: `수주율 (${stats.wins ?? 0}승 ${stats.losses ?? 0}패)`, value: winRateDisplay, unit: winRateUnit, icon: "trending", tint: "var(--accent)", fg: "var(--accent-fg)" },
+    { label: "등록 과업",    value: stats.total_clients ?? 0,    unit: "개", icon: "users",    tint: "var(--primary-soft)", fg: "var(--primary)" },
+    { label: "작성 제안서",  value: stats.total_proposals ?? 0,  unit: "건", icon: "file",     tint: "var(--success-soft)", fg: "var(--success)" },
+    { label: "이번 달 활동", value: stats.month_activity ?? 0,   unit: "회", icon: "activity", tint: "var(--warning-soft)", fg: "var(--warning)" },
+    { label: `수주율 (${stats.wins ?? 0}승 ${stats.losses ?? 0}패)`,
+                              value: winRateDisplay,             unit: winRateUnit, icon: "trending", tint: "var(--accent)", fg: "var(--accent-fg)" },
   ];
   const statsGrid = h("div", { class: "stats-grid stats-grid-4" });
   statItems.forEach((s) => {
@@ -1005,7 +1006,10 @@ async function renderDashboard() {
   // 1) 오늘의 팁 (5초 롤링)
   rightCol.appendChild(renderTodayTipCard());
 
-  // 2) 최근 활동
+  // 2) (드립) 가짜 스폰서 광고 — 닫기 버튼 눌러도 안 닫힘 ㅋㅋ
+  rightCol.appendChild(renderFakeAdBanner());
+
+  // 3) 최근 활동
   rightCol.appendChild(h("div", { class: "flex-between", style: "margin: 22px 0 12px;" }, [
     h("h2", { style: "margin: 0; font-size: 16px; font-weight: 700;" }, "최근 활동"),
   ]));
@@ -1092,6 +1096,63 @@ function renderTodayTipCard() {
       setTimeout(() => quote.classList.remove("tip-in"), 350);
     }, 280);
   }, 5000);
+
+  return card;
+}
+
+// ---------- 📢 가짜 스폰서 광고 (드립용) ----------
+const FAKE_AD_LINES = [
+  { copy: "오늘도 야근?\n\nNightOff가 있잖아요 😊",          tone: "midnight" },
+  { copy: "밤새지 말자고\n만들었습니다 🌙",                   tone: "indigo" },
+  { copy: "RFP 복붙하다\n걸리셨나요? ㅋㅋ",                   tone: "yellow" },
+  { copy: "개찰결과 뜨면\n대표자 이름부터\n확인하시죠? 🏆",   tone: "violet" },
+  { copy: "애매하게 썼으면\n전화는 잘 받아주세요,\n공뭔님들 📞", tone: "rose" },
+];
+
+function renderFakeAdBanner() {
+  const pick = FAKE_AD_LINES[Math.floor(Math.random() * FAKE_AD_LINES.length)];
+  const card = h("div", { class: `fake-ad fake-ad-${pick.tone}` });
+
+  // 상단 라벨 + 가짜 닫기 버튼 (눌러도 안 닫힘 ㅋ)
+  card.appendChild(h("div", { class: "fake-ad-head" }, [
+    h("span", { class: "fake-ad-label" }, "스폰서 광고"),
+    h("button", {
+      class: "fake-ad-close", title: "닫기",
+      "aria-label": "닫기",
+      onclick: (e) => {
+        e.stopPropagation();
+        // 흔들리면서 토스트 — 안 닫혀요 ㅋㅋ
+        card.classList.remove("ad-shake");
+        // 강제 reflow → 다시 추가 시 애니메이션 재시작
+        void card.offsetWidth;
+        card.classList.add("ad-shake");
+        const msgs = [
+          "어... 안 닫히네요? 😏",
+          "광고는 열심히 일하는 중이에요 😅",
+          "닫는 척만 했어요 ㅋ",
+          "스폰서가 너무 소중해서요 💸",
+        ];
+        toast(msgs[Math.floor(Math.random() * msgs.length)], "");
+      },
+      html: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+    }),
+  ]));
+
+  // 본문 — 줄바꿈 보존
+  const copy = h("div", { class: "fake-ad-copy" });
+  copy.textContent = pick.copy;
+  card.appendChild(copy);
+
+  // 가짜 CTA — 눌러봐도 닫기와 같은 운명 ㅋ
+  card.appendChild(h("button", {
+    class: "fake-ad-cta",
+    onclick: () => {
+      toast("이 광고는 제가 만든 거예요 ㅋㅋ", "");
+    },
+  }, "더 알아보기 →"));
+
+  // 푸터 — 진짜 광고 같은 마이크로 텍스트
+  card.appendChild(h("div", { class: "fake-ad-footer" }, "Sponsored · NightOff"));
 
   return card;
 }

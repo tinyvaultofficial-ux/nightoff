@@ -196,7 +196,9 @@
       "Bash(mkdir -p /tmp/v0_design)",
       "Bash(unzip -o /c/Users/00/Downloads/b_QpWRZ65xOWs.zip)",
       "Bash(cat)",
-      "Bash(rm _check.py)"
+      "Bash(rm _check.py)",
+      "Bash(grep -nE \"unit: \\\\\"곳\\\\\"|총 \\\\\\\\\\\\$\\\\\\\\{clients\\\\.length\\\\\\\\}곳\" static/app.js)",
+      "Bash(python _balance.py)"
     ]
   }
 }

@@ -1077,8 +1077,31 @@ async function renderClientDetail(cid) {
   const main = h("main", { class: "main" });
   root.appendChild(main);
 
-  const client = await api.get(`/api/clients/${cid}`).catch(() => null);
-  if (!client) { toast("발주처를 찾을 수 없습니다", "error"); navigate("/"); return; }
+  let client = null;
+  try {
+    client = await api.get(`/api/clients/${cid}`);
+  } catch (e) {
+    console.error("[renderClientDetail] api/clients/:cid failed:", e);
+    // 진짜 404 만 "찾을 수 없음" → 홈으로 이동.
+    // 그 외 (5xx, timeout, 네트워크) 는 일시적일 수 있어 인플레이스 재시도 UI 제공.
+    if (e?.status === 404) {
+      toast("발주처를 찾을 수 없습니다", "error");
+      navigate("/");
+      return;
+    }
+    // 인플레이스 에러 카드 + 재시도 버튼
+    main.appendChild(h("div", {
+      style: "padding: 60px 28px; text-align: center; max-width: 640px; margin: 0 auto;",
+    }, [
+      h("h2", { style: "margin: 0 0 8px; font-size: 18px; font-weight: 700;" }, "발주처 정보를 불러오지 못했어요"),
+      h("p", { class: "muted small", style: "margin: 0 0 16px;" }, e?.message || String(e)),
+      h("div", { style: "display: flex; gap: 10px; justify-content: center;" }, [
+        h("button", { class: "btn btn-primary", onclick: () => renderClientDetail(cid) }, "다시 시도"),
+        h("button", { class: "btn btn-outline", onclick: () => navigate("/") }, "홈으로"),
+      ]),
+    ]));
+    return;
+  }
 
   main.appendChild(h("header", { class: "main-header" }, [
     h("div", {}, [
@@ -1285,13 +1308,34 @@ async function renderReferenceSection(cid) {
 }
 
 function refRow(f, cid) {
+  // summary 가 JSON 이면 사람이 읽을 부분만 뽑아서 표시
+  let summaryDisplay = "";
+  if (f.summary) {
+    const s = (f.summary || "").trim();
+    if (s.startsWith("{")) {
+      try {
+        const j = JSON.parse(s);
+        const bits = [];
+        if (j.summary) bits.push(j.summary);
+        if (Array.isArray(j.must_have_pages) && j.must_have_pages.length)
+          bits.push("필수 페이지: " + j.must_have_pages.slice(0, 4).join(", "));
+        if (Array.isArray(j.signature_elements) && j.signature_elements.length)
+          bits.push("브랜딩: " + j.signature_elements.slice(0, 3).join(", "));
+        summaryDisplay = bits.join(" · ") || s.slice(0, 200);
+      } catch {
+        summaryDisplay = s.slice(0, 200);
+      }
+    } else {
+      summaryDisplay = s;
+    }
+  }
   return h("div", { class: "file-row" }, [
     h("div", { class: "left" }, [
       h("div", { class: "file-icon", html: iconHtml("file", 18) }),
       h("div", { style: "min-width: 0; flex: 1;" }, [
         h("p", { class: "file-name" }, f.filename),
         h("p", { class: "file-sub" }, `${f.filetype || "FILE"} · ${fmtSize(f.filesize)} · ${fmtDate(f.created_at)}`),
-        f.summary ? h("p", { class: "file-sub", style: "margin-top: 6px; color: var(--fg-2);" }, f.summary) : null,
+        summaryDisplay ? h("p", { class: "file-sub", style: "margin-top: 6px; color: var(--fg-2);" }, summaryDisplay) : null,
       ]),
     ]),
     h("button", {
@@ -1965,8 +2009,19 @@ async function renderChat(cid, convId) {
   const root = $("#app-root");
   root.innerHTML = "";
 
-  const data = await api.get(`/api/conversations/${convId}`).catch(() => null);
-  if (!data) { toast("대화를 불러올 수 없습니다", "error"); navigate(`/client/${cid}`); return; }
+  let data = null;
+  try {
+    data = await api.get(`/api/conversations/${convId}`);
+  } catch (e) {
+    if (e?.status === 404) {
+      toast("대화를 찾을 수 없습니다", "error");
+    } else {
+      toast(`대화 로드 실패: ${e?.message || e}`, "error");
+      console.error("[renderChat] api/conversations/:id failed:", e);
+    }
+    navigate(`/client/${cid}`);
+    return;
+  }
 
   root.appendChild(await renderSidebar());
 

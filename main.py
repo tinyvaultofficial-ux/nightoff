@@ -1700,7 +1700,12 @@ def _build_system_prompt(client_id: str) -> str:
         parts.append(f"[현재 발주처]\n- 이름: {client['name']}\n- 업종: {client['industry']}\n- 담당자: {client['manager']}\n- 메모: {client['memo']}")
 
     rfp_analysis = _get_rfp_aggregated(client_id)
-    if rfp_analysis:
+    # 에러 블록(실제 정보 없음) 은 시스템 프롬프트에 주입하지 않음
+    rfp_has_real_data = bool(rfp_analysis) and any(rfp_analysis.get(k) for k in (
+        "title", "key_requirements", "evaluation_criteria", "deliverables",
+        "summary", "project_domain", "budget", "deadline",
+    ))
+    if rfp_analysis and rfp_has_real_data:
         # orientation 기본값 강제 주입
         if not rfp_analysis.get("orientation"):
             rfp_analysis["orientation"] = "landscape"
@@ -1999,12 +2004,19 @@ def _run_rfp_aggregate(cid: str) -> dict:
     if not analysis.get("orientation") or analysis.get("orientation") not in ("landscape", "portrait"):
         analysis["orientation"] = "landscape"
 
-    with get_db() as db:
-        db.execute(
-            "INSERT INTO rfp_aggregated(client_id,analysis_json,updated_at) VALUES(?,?,datetime('now','localtime')) "
-            "ON CONFLICT(client_id) DO UPDATE SET analysis_json=excluded.analysis_json, updated_at=excluded.updated_at",
-            (cid, json.dumps(analysis, ensure_ascii=False)),
-        )
+    # 에러만 있는 분석(실제 정보 없음)은 DB 저장 시 기존 좋은 분석을 덮어쓰지 않도록 가드.
+    # 실제 정보 한 가지라도 있어야 저장 — 실패 시엔 메모리에서만 반환하고 DB 는 그대로.
+    has_real_data = any(analysis.get(k) for k in (
+        "title", "key_requirements", "evaluation_criteria", "deliverables",
+        "summary", "project_domain", "budget", "deadline",
+    ))
+    if has_real_data:
+        with get_db() as db:
+            db.execute(
+                "INSERT INTO rfp_aggregated(client_id,analysis_json,updated_at) VALUES(?,?,datetime('now','localtime')) "
+                "ON CONFLICT(client_id) DO UPDATE SET analysis_json=excluded.analysis_json, updated_at=excluded.updated_at",
+                (cid, json.dumps(analysis, ensure_ascii=False)),
+            )
 
     # 프로파일 자동 업데이트 (best-effort, 실패해도 RFP 분석은 유지)
     try:
@@ -2100,7 +2112,36 @@ def _rebuild_company_dna() -> dict:
             db.execute("DELETE FROM company_dna WHERE id=1")
         return {}
 
-    summaries_text = "\n".join(f"- {r['filename']}: {r['summary']}" for r in refs)[:8000]
+    # summary 컬럼은 새 포맷이면 JSON, 구 포맷이면 평문.
+    # DNA 추출 프롬프트에는 사람이 읽을 수 있는 요약만 추려서 넣는다.
+    summary_lines: list[str] = []
+    for r in refs:
+        s = (r["summary"] or "").strip()
+        if not s:
+            continue
+        plain = s
+        if s.startswith("{"):
+            try:
+                parsed = json.loads(s)
+                if isinstance(parsed, dict):
+                    bits = []
+                    if parsed.get("summary"):
+                        bits.append(parsed["summary"])
+                    patterns = parsed.get("reusable_patterns") or []
+                    if patterns:
+                        bits.append("패턴: " + " / ".join(patterns[:3]))
+                    sigs = parsed.get("signature_elements") or []
+                    if sigs:
+                        bits.append("브랜딩: " + ", ".join(sigs[:4]))
+                    plain = " | ".join(bits) or s[:200]
+            except Exception:
+                plain = s[:200]
+        summary_lines.append(f"- {r['filename']}: {plain}")
+    summaries_text = "\n".join(summary_lines)[:8000]
+    if not summaries_text:
+        with get_db() as db:
+            db.execute("DELETE FROM company_dna WHERE id=1")
+        return {}
     try:
         client = require_client()
         prompt = (COMPANY_DNA_PROMPT

@@ -534,6 +534,23 @@ async def read_and_validate_upload(file: UploadFile, *, allowed_exts: set = None
 WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_uses": 5}
 
 
+def _extract_text_from_resp(resp) -> str:
+    """Anthropic messages.create 응답에서 text 블록만 골라 결합.
+    web_search / tool_use / server_tool_use 블록이 섞여 있어도 안전하게 처리."""
+    if resp is None:
+        return ""
+    parts: list[str] = []
+    content = getattr(resp, "content", None) or []
+    for b in content:
+        # block 이 객체 또는 dict 둘 다 가능 — 양쪽 호환
+        btype = getattr(b, "type", None) if not isinstance(b, dict) else b.get("type")
+        if btype == "text":
+            text = getattr(b, "text", None) if not isinstance(b, dict) else b.get("text")
+            if text:
+                parts.append(str(text))
+    return "".join(parts).strip()
+
+
 # ---------------------------------------------------------------------------
 # System prompts
 # ---------------------------------------------------------------------------

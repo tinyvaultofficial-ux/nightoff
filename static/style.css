@@ -2370,6 +2370,129 @@ body, .msg-bubble, .card, .strengths-intro,
 /* 콘텐츠 하단 여유 패딩 (잘림 방지) */
 .main-content { padding-bottom: 80px; }
 
+/* ============================================================
+   전역 하단 푸터 (item 9)
+   ============================================================ */
+.global-footer {
+  background: linear-gradient(180deg, #ffffff 0%, #FAFAFA 100%);
+  border-top: 1px solid var(--border);
+  padding: 28px 24px 22px;
+  margin-top: auto;
+  font-size: 12.5px;
+  color: var(--fg-2);
+  letter-spacing: -0.005em;
+}
+.global-footer-inner {
+  max-width: 1200px; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.gf-row {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 8px;
+}
+.gf-row a {
+  color: var(--fg-2);
+  text-decoration: none;
+  transition: color .12s;
+}
+.gf-row a:hover { color: var(--primary); }
+.gf-sep { color: var(--border-strong); user-select: none; }
+.gf-links a { font-weight: 500; color: var(--fg); }
+.gf-info { font-size: 12px; opacity: 0.85; }
+.gf-bottom {
+  margin-top: 6px; padding-top: 12px;
+  border-top: 1px dashed var(--border);
+  justify-content: space-between;
+}
+.gf-tag {
+  font-size: 12.5px; font-weight: 500;
+  color: var(--primary);
+}
+.gf-social { display: flex; gap: 10px; align-items: center; }
+.gf-social a {
+  display: grid; place-items: center;
+  width: 30px; height: 30px;
+  border-radius: 8px;
+  background: var(--bg-2);
+  color: var(--fg-2);
+}
+.gf-social a:hover { background: var(--primary-soft); color: var(--primary); }
+
+/* 랜딩 페이지·채팅에서는 자체 푸터/구조가 있어 전역 푸터 숨김 */
+#app-root.landing-active ~ #global-footer { display: none; }
+body:has(.chat-split-wrap) #global-footer { display: none; }
+
+/* ============================================================
+   과업 상세 핵심 CTA 카드 (item 8)
+   ============================================================ */
+.task-actions-card {
+  background: linear-gradient(135deg, var(--primary-soft) 0%, #FFFFFF 70%);
+  border: 1px solid color-mix(in oklab, var(--primary) 25%, var(--border));
+  border-radius: var(--radius-lg);
+  padding: 24px 22px;
+  position: relative;
+  overflow: hidden;
+}
+.task-actions-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.task-action-cta {
+  height: auto !important;
+  padding: 18px 20px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 14px !important;
+  text-align: left;
+  justify-content: flex-start !important;
+  border-radius: 14px !important;
+  transition: transform .12s ease, box-shadow .15s ease;
+}
+.task-action-primary {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%) !important;
+  color: #fff !important;
+  border: none !important;
+  box-shadow: 0 10px 24px -10px color-mix(in oklab, var(--primary) 60%, transparent);
+}
+.task-action-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px -10px color-mix(in oklab, var(--primary) 65%, transparent);
+}
+.task-action-secondary {
+  background: #fff !important;
+  border: 1px solid var(--border) !important;
+  color: var(--fg) !important;
+}
+.task-action-secondary:hover:not(:disabled) {
+  border-color: color-mix(in oklab, var(--primary) 30%, var(--border)) !important;
+  transform: translateY(-2px);
+}
+.task-action-cta.disabled-soft {
+  opacity: 0.55;
+  cursor: not-allowed !important;
+}
+.task-action-cta .ta-emoji {
+  font-size: 28px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.08));
+}
+.task-action-cta .ta-text {
+  display: flex; flex-direction: column; gap: 2px;
+  min-width: 0; flex: 1;
+}
+.task-action-cta .ta-title {
+  font-size: 16px; font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+.task-action-cta .ta-sub {
+  font-size: 12px;
+  font-weight: 400;
+  opacity: 0.85;
+  letter-spacing: -0.005em;
+}
+
 /* env 활성 시 잠긴 입력란 — 환경변수가 우선임을 시각적으로 명확히 */
 input.locked-by-env {
   background: var(--primary-soft) !important;

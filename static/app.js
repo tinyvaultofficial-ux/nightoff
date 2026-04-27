@@ -1353,11 +1353,69 @@ async function renderClientDetail(cid) {
   const stack = h("div", { class: "row-gap-18" });
   content.appendChild(stack);
 
-  // 새 순서: 입찰 활동 히스토리 → 발주처 들여다보기 → RFP 분석 → 우리 회사 강점
-  stack.appendChild(await renderConvHistorySection(cid));
-  stack.appendChild(await renderClientIntelSection(cid));
-  stack.appendChild(await renderRfpSection(cid));
-  stack.appendChild(await renderClientStrengthsSection(cid));
+  // 사용자 요청 순서 (item 8):
+  //  1️⃣ RFP 분석 (필수 첫 단계)
+  //  2️⃣ 발주처 들여다보기 👀 (RFP 분석 후 자동 채워짐)
+  //  3️⃣ 우리 회사의 강점은? 💪 (선택)
+  //  4️⃣ ✨ 대화 시작하기 (보라 큰 버튼)
+  //  5️⃣ 🎤 PT 연습하기 (제안서 완성 후 활성화)
+  //  📋 대화 기록 (하단)
+  // ── 4개 섹션을 병렬로 가져와 렌더 시간 단축 (성능 최적화 item 10)
+  const [rfpSec, intelSec, strengthsSec, historySec] = await Promise.all([
+    renderRfpSection(cid),
+    renderClientIntelSection(cid),
+    renderClientStrengthsSection(cid),
+    renderConvHistorySection(cid),
+  ]);
+  stack.appendChild(rfpSec);
+  stack.appendChild(intelSec);
+  stack.appendChild(strengthsSec);
+
+  // 4️⃣ + 5️⃣ — 핵심 CTA 묶음 (대화 시작 + PT 연습)
+  stack.appendChild(await renderTaskActionsSection(cid));
+
+  // 📋 대화 기록 (하단)
+  stack.appendChild(historySec);
+}
+
+// ---------- 핵심 CTA: 대화 시작 + PT 연습 ----------
+async function renderTaskActionsSection(cid) {
+  // 제안서 1건 이상 작성됐는지 확인 — PT 연습 활성화 조건
+  let hasProposal = false;
+  try {
+    const convs = await api.get(`/api/clients/${cid}/conversations`);
+    hasProposal = Array.isArray(convs) && convs.some((c) => (c.msg_count ?? 0) > 1);
+  } catch {}
+
+  const startConv = async () => {
+    try {
+      const r = await api.post(`/api/clients/${cid}/conversations`);
+      navigate(`/client/${cid}/chat/${r.id}`);
+    } catch (e) { toast(String(e.message || e), "error"); }
+  };
+
+  const card = h("section", { class: "task-actions-card" }, [
+    h("div", { class: "task-actions-row" }, [
+      // 4️⃣ 대화 시작 — 보라 큰 강조 버튼
+      h("button", {
+        class: "btn btn-primary task-action-cta task-action-primary",
+        onclick: startConv,
+        html: `<span class="ta-emoji">✨</span><div class="ta-text"><div class="ta-title">대화 시작하기</div><div class="ta-sub">AI 와 함께 제안서 초안을 만들어요</div></div>`,
+      }),
+      // 5️⃣ PT 연습 — 제안서 완성 후 활성화
+      h("button", {
+        class: "btn btn-outline task-action-cta task-action-secondary" + (hasProposal ? "" : " disabled-soft"),
+        disabled: !hasProposal,
+        title: hasProposal ? "PT 발표 연습을 시작합니다" : "제안서를 먼저 완성하면 활성화돼요",
+        onclick: () => {
+          if (!hasProposal) { toast("제안서를 먼저 완성해 주세요 🙂", ""); return; }
+          toast("PT 연습 기능은 곧 오픈될 예정이에요 🎤", "");
+        },
+        html: `<span class="ta-emoji">🎤</span><div class="ta-text"><div class="ta-title">PT 연습하기</div><div class="ta-sub">${hasProposal ? "발표 흐름·시간 연습" : "제안서 완성 후 활성화"}</div></div>`,
+      }),
+    ]),
+  ]);
+  return card;
 }
 
 // ---------- 수주/탈락 Outcome ----------

@@ -125,6 +125,16 @@ def get_db():
     else:
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
+        # ⚠ SQLite 는 기본값으로 외래키를 강제하지 않음 — CASCADE 가 동작하려면
+        # 매 connection 마다 PRAGMA 를 켜줘야 함.
+        conn.execute("PRAGMA foreign_keys = ON")
+        # 약간의 성능 — WAL 모드 + 적당한 캐시 (성능 최적화)
+        try:
+            conn.execute("PRAGMA journal_mode = WAL")
+            conn.execute("PRAGMA synchronous = NORMAL")
+            conn.execute("PRAGMA cache_size = -8000")  # ~8MB
+        except sqlite3.OperationalError:
+            pass
         try:
             yield conn
             conn.commit()
@@ -279,6 +289,13 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_msg_conv ON messages(conversation_id);
             CREATE INDEX IF NOT EXISTS idx_nuance_client ON nuance_memories(client_id);
             CREATE INDEX IF NOT EXISTS idx_ref_client ON references_lib(client_id);
+
+            -- 성능 인덱스 (item 10) — 자주 쓰는 정렬/필터 가속
+            CREATE INDEX IF NOT EXISTS idx_msg_conv_created ON messages(conversation_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_conv_outcome    ON conversations(outcome);
+            CREATE INDEX IF NOT EXISTS idx_conv_updated    ON conversations(updated_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_msg_created     ON messages(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_clients_updated ON clients(updated_at DESC);
         """)
 
         # 구버전 competitors 테이블 흔적 제거 (있으면)

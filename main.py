@@ -23,6 +23,12 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+# RAG (선택적) — rag_kb.db + OPENAI_API_KEY 가 있을 때만 동작
+try:
+    import rag_retriever  # type: ignore
+except Exception as _rag_imp_err:  # pragma: no cover
+    rag_retriever = None  # type: ignore
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -1803,6 +1809,24 @@ def _build_system_prompt(client_id: str) -> str:
             "레퍼런스 스타일 가이드가 함께 있으면 그 가이드가 LAYER 2 보다 우선."
         )
         parts.append("\n".join(tone_signal))
+
+        # ── RAG: 17개 과거 제안서에서 도메인·요구사항 기반 스타일 신호 주입 ──
+        # rag_kb.db + OPENAI_API_KEY 가 있을 때만 동작 (둘 중 하나라도 없으면 자연 스킵)
+        try:
+            if rag_retriever is not None and rag_retriever.is_available():
+                rag_query = rag_retriever.build_query_from_rfp(rfp_analysis)
+                if rag_query:
+                    rag_hints = rag_retriever.retrieve_style_hints(rag_query, top_k=8)
+                    if rag_hints:
+                        rag_block = rag_retriever.format_hints_for_prompt(rag_hints)
+                        if rag_block:
+                            parts.append(rag_block)
+                            log.info("RAG hints injected · query=%r · visuals=%s · endings=%s",
+                                     rag_query[:60],
+                                     [v[0] for v in rag_hints["visual_top"][:3]],
+                                     [e[0] for e in rag_hints["ending_top"][:3]])
+        except Exception as _rag_err:
+            log.warning("RAG hint 주입 실패 (무시): %s", _rag_err)
 
     # 발주처별 사용자 지정 포인트 컬러 (없으면 AI 선택)
     accent_override = get_setting(f"accent:{client_id}", "")

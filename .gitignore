@@ -7,5 +7,20 @@ uploads/
 *.db-journal
 *.db-shm
 *.db-wal
+# 단, RAG 학습 결과 DB 는 깃 트래킹 대상 (Railway 배포 시 동봉)
+!rag_kb.db
 .DS_Store
 server.log
+
+# Claude Code 로컬 설정 (사용자 허용 명령 저장 — API 키가 들어갈 수 있음)
+.claude/settings.local.json
+
+# RAG 학습 원본/디버그 — 발주처/회사명/금액 평문 포함 → 깃 제외
+_rag_extracted/
+_rag_chunks.json
+_rag_quality.json
+_rag_report.txt
+_rag_search_report.txt
+_rag_build_report.txt
+_rag_style.json
+_rag_style_guide.md

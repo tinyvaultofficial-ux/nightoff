@@ -351,67 +351,6 @@ def get_api_key_source() -> str:
     return ""
 
 
-# ---------------------------------------------------------------------------
-# Gamma API key — 동일 env 우선 전략
-# ---------------------------------------------------------------------------
-GAMMA_API_BASE = "https://public-api.gamma.app/v1.0"
-
-
-def get_gamma_api_key() -> str:
-    """Railway 환경변수 GAMMA_API_KEY 우선, 없으면 DB(settings) 조회."""
-    env_key = os.environ.get("GAMMA_API_KEY", "").strip()
-    if env_key:
-        return env_key
-    return get_setting("gamma_api_key", "")
-
-
-def get_gamma_api_key_source() -> str:
-    if os.environ.get("GAMMA_API_KEY", "").strip():
-        return "env"
-    if get_setting("gamma_api_key", ""):
-        return "db"
-    return ""
-
-
-# ---------------------------------------------------------------------------
-# Gemini (Nano Banana) — 이미지 생성용. 모델 ID는 ENV 로 변경 가능.
-# ---------------------------------------------------------------------------
-GEMINI_IMAGE_MODEL = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image").strip() or "gemini-2.5-flash-image"
-GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
-AI_IMAGE_DIR = STATIC_DIR / "ai_images"
-AI_IMAGE_DIR.mkdir(exist_ok=True)
-
-
-def get_gemini_api_key() -> str:
-    env_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if env_key:
-        return env_key
-    return get_setting("gemini_api_key", "")
-
-
-def get_gemini_api_key_source() -> str:
-    if os.environ.get("GEMINI_API_KEY", "").strip():
-        return "env"
-    if get_setting("gemini_api_key", ""):
-        return "db"
-    return ""
-
-
-def get_unsplash_access_key() -> str:
-    env_key = os.environ.get("UNSPLASH_ACCESS_KEY", "").strip()
-    if env_key:
-        return env_key
-    return get_setting("unsplash_access_key", "")
-
-
-def get_unsplash_access_key_source() -> str:
-    if os.environ.get("UNSPLASH_ACCESS_KEY", "").strip():
-        return "env"
-    if get_setting("unsplash_access_key", ""):
-        return "db"
-    return ""
-
-
 def require_client() -> anthropic.Anthropic:
     key = get_api_key()
     if not key:
@@ -640,35 +579,26 @@ PROPOSAL_SYSTEM_PROMPT = """너는 대한민국 최고의 B2G 공공입찰 제�
   ● 섹션 divider        <div class="divider-intro"><div class="divider-num">02</div><div class="divider-title">...</div></div>
   ● 행사장 평면도(필요 시) <div class="floor-plan"><svg class="floor-plan-svg" viewBox="0 0 600 380">...</svg><div class="floor-plan-legend">...</div></div>
 
-[이미지 — 두 모드 자동 선택 (서버가 Gemini Nano Banana / Unsplash 호출)]
-맥락에 맞는 실제 이미지가 필요한 곳(장소·시설·포토존·인물·제품·시스템 등)에는
-아래 <figure class="ai-image"> 블록을 배치한다. **src 는 비워두고** 서버가 자동 채운다.
+[이미지 — web_search 도구로 실제 URL 직접 삽입]
+맥락에 맞는 실제 이미지가 필요한 곳(장소·시설·인물·제품·풍경 등)에는
+**web_search 도구를 호출해 실제 공개 이미지 URL 을 직접 찾고 그대로 src 에 넣는다.**
+서버가 자동으로 채워주지 않으므로, 본인이 검색·확인·기입까지 책임진다.
 
-■ data-type="ai" (Gemini Nano Banana 로 **창작** — 실존하지 않는 컨셉 이미지)
-  용도: 포토존 시안, 무대연출 컨셉, 홍보물 시안/포스터 시안, 인포그래픽, 아이콘 세트,
-        행사장 렌더링, 일러스트레이션, 가상 렌더 등 "아직 존재하지 않는 것의 시각화"
-  data-prompt 에 **영문 상세 프롬프트** (스타일·색감·분위기·레이아웃 포함) 를 쓴다.
-
-  <figure class="ai-image" data-type="ai"
-          data-prompt="Clean modern infographic showing public procurement process with 4 steps, flat illustration, isometric, blue and purple gradient, professional corporate style, white background">
-    <div class="ai-image-placeholder">🎨 AI 이미지 생성 중…</div>
+  <figure class="ai-image">
+    <img src="https://example.com/found-image.jpg" alt="[한국어 설명]" />
     <figcaption>참고 이미지 · [한국어 한 줄 설명]</figcaption>
   </figure>
 
-■ data-type="stock" (Unsplash 로 **실사 검색** — 실제 존재하는 사진)
-  용도: 사람(인물·팀·회의), 실제 장소(서울시청, 코엑스, 건물 외관), 제품 사진, 자연·풍경,
-        실내 행사 사진, 도시/교통 실사 등 "실제 사진이 더 어울리는 맥락"
-  data-keyword 에 **영문 검색 키워드** (2~5 단어) 를 쓴다.
-
-  <figure class="ai-image" data-type="stock" data-keyword="modern conference hall audience">
-    <div class="ai-image-placeholder">📷 사진 검색 중…</div>
-    <figcaption>참고 이미지 · [한국어 한 줄 설명]</figcaption>
-  </figure>
-
-- src 를 절대 직접 채우지 말고 placeholder div 유지 — 서버가 Gemini/Unsplash 호출 후 주입
-- figcaption 은 반드시 "참고 이미지 · " 로 시작
-- 페이지당 이미지는 2개 이하 (텍스트·시각화가 주, 이미지는 보조)
-- 공공/B2G 제안서라 신뢰감이 중요 → 인물·실제 시설·제품은 stock, 컨셉·시안·인포그래픽은 ai
+검색·삽입 원칙:
+- 우선순위: 위키미디어 커먼즈(commons.wikimedia.org) · 정부 보도자료(.go.kr / press.) ·
+            공공기관·언론 보도사진 등 저작권 안전 출처를 우선.
+- src 에는 **반드시 직접 접근 가능한 .jpg / .png / .webp 같은 이미지 파일 URL** 을 기입.
+  검색 결과 페이지·HTML 페이지 URL 을 src 에 넣지 말 것.
+- 검색해도 신뢰할 만한 이미지 URL 을 못 찾으면 figure 블록 자체를 생략 — 깨진 이미지를 노출 X.
+- figcaption 은 반드시 "참고 이미지 · " 로 시작.
+- 페이지당 이미지는 2개 이하 (텍스트·시각화가 주, 이미지는 보조).
+- 인포그래픽·도식·차트는 이미지 대신 본 시스템의 시각화 블록(card-grid·step-flow·donut 등)으로
+  직접 그릴 것 — 외부 이미지 의존 금지.
 
 [렌더링 — 엄격 HTML 실행]
 - 반드시 단 하나의 <div class="proposal" data-orientation="landscape|portrait"
@@ -1350,9 +1280,6 @@ def spa_fallback_client(rest: str):
 class SettingsIn(BaseModel):
     api_key: Optional[str] = None
     model: Optional[str] = None
-    gamma_api_key: Optional[str] = None
-    gemini_api_key: Optional[str] = None
-    unsplash_access_key: Optional[str] = None
 
 
 class ClientIn(BaseModel):
@@ -1379,46 +1306,12 @@ def api_settings_get():
     masked = ""
     if key:
         masked = f"{key[:10]}...{key[-4:]}" if len(key) > 16 else "********"
-    # Gamma
-    g_key = get_gamma_api_key()
-    g_src = get_gamma_api_key_source()
-    g_masked = ""
-    if g_key:
-        g_masked = f"{g_key[:10]}...{g_key[-4:]}" if len(g_key) > 16 else "********"
-    # Gemini
-    gm_key = get_gemini_api_key()
-    gm_src = get_gemini_api_key_source()
-    gm_masked = ""
-    if gm_key:
-        gm_masked = f"{gm_key[:8]}...{gm_key[-4:]}" if len(gm_key) > 14 else "********"
-    # Unsplash
-    un_key = get_unsplash_access_key()
-    un_src = get_unsplash_access_key_source()
-    un_masked = ""
-    if un_key:
-        un_masked = f"{un_key[:6]}...{un_key[-4:]}" if len(un_key) > 12 else "********"
     return {
         "has_key": bool(key),
         "masked_key": masked,
         "source": source,  # 'env' | 'db' | ''
         "env_active": source == "env",
         "model": get_setting("model", MODEL_DEFAULT),
-        # Gamma
-        "has_gamma_key": bool(g_key),
-        "masked_gamma_key": g_masked,
-        "gamma_source": g_src,
-        "gamma_env_active": g_src == "env",
-        # Gemini (이미지 생성)
-        "has_gemini_key": bool(gm_key),
-        "masked_gemini_key": gm_masked,
-        "gemini_source": gm_src,
-        "gemini_env_active": gm_src == "env",
-        "gemini_image_model": GEMINI_IMAGE_MODEL,
-        # Unsplash (스톡 이미지)
-        "has_unsplash_key": bool(un_key),
-        "masked_unsplash_key": un_masked,
-        "unsplash_source": un_src,
-        "unsplash_env_active": un_src == "env",
     }
 
 
@@ -1428,12 +1321,6 @@ def api_settings_set(body: SettingsIn):
         set_setting("anthropic_api_key", body.api_key.strip())
     if body.model:
         set_setting("model", body.model.strip())
-    if body.gamma_api_key is not None:
-        set_setting("gamma_api_key", body.gamma_api_key.strip())
-    if body.gemini_api_key is not None:
-        set_setting("gemini_api_key", body.gemini_api_key.strip())
-    if body.unsplash_access_key is not None:
-        set_setting("unsplash_access_key", body.unsplash_access_key.strip())
     return api_settings_get()
 
 
@@ -2711,207 +2598,6 @@ def api_client_accent_get(cid: str):
     return {"accent": c or None}
 
 
-# ---------------------------------------------------------------------------
-# 이미지 파이프라인
-#   - kind="ai"    → Gemini Nano Banana 로 생성 (포토존/시안/인포그래픽/홍보물)
-#   - kind="stock" → Unsplash 검색 (사람/실제 장소/제품 사진)
-#   각 단계 실패 시 순차 폴백: Gemini → Unsplash → pollinations
-# ---------------------------------------------------------------------------
-import hashlib
-import base64
-
-
-def _gemini_generate_image(prompt: str) -> Optional[dict]:
-    """Gemini Nano Banana(gemini-2.5-flash-image 등) 로 이미지 생성.
-    같은 프롬프트는 디스크 캐시 재사용. 실패 시 None 반환."""
-    import urllib.request
-    import urllib.error
-
-    key = get_gemini_api_key()
-    if not key:
-        return None
-    if not prompt or not prompt.strip():
-        return None
-
-    # 파일 캐시 키 (model + prompt)
-    cache_id = hashlib.md5(f"{GEMINI_IMAGE_MODEL}::{prompt}".encode("utf-8")).hexdigest()[:16]
-    for ext in ("png", "jpg"):
-        cached = AI_IMAGE_DIR / f"{cache_id}.{ext}"
-        if cached.exists() and cached.stat().st_size > 100:
-            return {"url": f"/static/ai_images/{cached.name}", "source": f"gemini-cache ({GEMINI_IMAGE_MODEL})"}
-
-    url = f"{GEMINI_API_BASE}/models/{GEMINI_IMAGE_MODEL}:generateContent"
-    payload = json.dumps({
-        "contents": [{"parts": [{"text": prompt[:3500]}]}],
-        # 이미지 + 텍스트 응답 허용 — 일부 모델에서 필요
-        "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]},
-    }).encode("utf-8")
-    req = urllib.request.Request(url, data=payload, method="POST")
-    req.add_header("Content-Type", "application/json")
-    req.add_header("x-goog-api-key", key)
-    try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        raw = ""
-        try:
-            raw = e.read().decode("utf-8", errors="ignore")[:400]
-        except Exception:
-            pass
-        log.warning("Gemini image %s HTTP %s: %s", GEMINI_IMAGE_MODEL, e.code, raw)
-        return None
-    except urllib.error.URLError as e:
-        log.warning("Gemini image network: %s", e)
-        return None
-    except Exception as e:
-        log.warning("Gemini image error: %s", e)
-        return None
-
-    # 응답에서 inline_data 찾기
-    for cand in (data.get("candidates") or []):
-        content = cand.get("content") or {}
-        for part in (content.get("parts") or []):
-            inline = part.get("inline_data") or part.get("inlineData")
-            if not inline or "data" not in inline:
-                continue
-            mime = (inline.get("mimeType") or inline.get("mime_type") or "image/png").lower()
-            ext = "jpg" if "jpeg" in mime or "jpg" in mime else "png"
-            try:
-                img_bytes = base64.b64decode(inline["data"])
-            except Exception as e:
-                log.warning("Gemini base64 decode fail: %s", e)
-                continue
-            out = AI_IMAGE_DIR / f"{cache_id}.{ext}"
-            try:
-                out.write_bytes(img_bytes)
-            except Exception as e:
-                log.warning("Gemini image write fail: %s", e)
-                continue
-            return {"url": f"/static/ai_images/{out.name}", "source": f"gemini ({GEMINI_IMAGE_MODEL})"}
-    log.info("Gemini image no inline_data in response (maybe safety-blocked): %s", str(data)[:200])
-    return None
-
-
-def _unsplash_search(keyword: str, *, orientation: str = "landscape") -> Optional[dict]:
-    """Unsplash 실사 이미지 검색. 실패 시 None."""
-    access = get_unsplash_access_key()
-    if not access:
-        return None
-    if not keyword or not keyword.strip():
-        return None
-    try:
-        import httpx
-        r = httpx.get(
-            "https://api.unsplash.com/search/photos",
-            params={"query": keyword, "per_page": 3, "orientation": orientation},
-            headers={"Authorization": f"Client-ID {access}", "Accept-Version": "v1"},
-            timeout=10.0,
-        )
-        if r.status_code in (401, 403):
-            log.warning("Unsplash 인증 실패 (%s): Access Key 를 확인해 주세요", r.status_code)
-            return None
-        r.raise_for_status()
-        results = r.json().get("results") or []
-        if results:
-            pick = results[0]
-            return {
-                "url": pick["urls"].get("regular") or pick["urls"].get("full") or pick["urls"].get("small"),
-                "source": "unsplash",
-                "credit": {
-                    "photographer": (pick.get("user") or {}).get("name"),
-                    "photographer_url": (pick.get("user") or {}).get("links", {}).get("html"),
-                    "source_url": pick.get("links", {}).get("html"),
-                },
-            }
-    except httpx.HTTPError as e:
-        log.warning("Unsplash 검색 실패: %s", e)
-    except Exception as e:
-        log.warning("Unsplash 예외: %s", e)
-    return None
-
-
-def _pollinations_url(prompt_or_keyword: str) -> dict:
-    """최후 폴백 — pollinations.ai 공개 엔드포인트 (무료, 인증 X)."""
-    import urllib.parse as up
-    safe = up.quote(prompt_or_keyword)[:280]
-    return {"url": f"https://image.pollinations.ai/prompt/{safe}?width=1024&height=640&nologo=true", "source": "pollinations"}
-
-
-@app.get("/api/images/search")
-def api_images_search(
-    keyword: str = "",
-    kind: str = "stock",
-    prompt: str = "",
-    orientation: str = "landscape",
-):
-    """제안서 내 이미지 컨텍스트 감지 시 호출되는 통합 이미지 엔드포인트.
-
-    kind:
-      - "ai"    : Gemini Nano Banana 로 창작 이미지 생성
-                  (포토존 시안·무대연출·홍보물·인포그래픽 등)
-                  폴백: Unsplash(키워드) → pollinations
-      - "stock" : Unsplash 실사 이미지 검색
-                  (사람·실제 장소·제품 사진 등)
-                  폴백: pollinations
-
-    쿼리 파라미터:
-      - prompt  : AI 이미지용 상세 프롬프트 (없으면 keyword 사용)
-      - keyword : 폴백·스톡 검색용 키워드 (영문 권장)
-      - orientation: landscape | portrait | squarish (Unsplash 전용)
-    """
-    prompt = (prompt or "").strip()
-    keyword = (keyword or "").strip()
-    query = prompt or keyword
-    if not query:
-        raise HTTPException(status_code=400, detail="keyword 또는 prompt 중 하나는 필요합니다.")
-
-    kind = (kind or "stock").lower()
-    if kind == "ai":
-        # 1) Gemini 생성
-        g = _gemini_generate_image(prompt or keyword)
-        if g:
-            return g
-        # 2) 키워드가 있으면 Unsplash 로 의미 있는 실사 대체
-        if keyword:
-            u = _unsplash_search(keyword, orientation=orientation)
-            if u:
-                return u
-        # 3) 최후: pollinations
-        return _pollinations_url(query)
-
-    # kind == "stock"
-    u = _unsplash_search(query, orientation=orientation)
-    if u:
-        return u
-    # 키 없으면 Unsplash 공개 featured (구 API, 일부 환경에서 막힘)
-    import urllib.parse as up
-    safe = up.quote(query)[:120]
-    return {
-        "url": f"https://source.unsplash.com/featured/?{safe}",
-        "source": "unsplash-featured",
-    }
-
-
-# 직접 프롬프트 → 이미지 생성 엔드포인트 (디버그/수동 사용)
-class ImageGenerateIn(BaseModel):
-    prompt: str
-    kind: str = "ai"  # "ai" | "stock"
-
-
-@app.post("/api/images/generate")
-def api_images_generate(body: ImageGenerateIn):
-    if body.kind == "ai":
-        g = _gemini_generate_image(body.prompt)
-        if g:
-            return g
-        raise HTTPException(status_code=502, detail="Gemini 이미지 생성에 실패했어요. 키/모델/프롬프트를 확인해 주세요.")
-    # stock
-    u = _unsplash_search(body.prompt)
-    if u:
-        return u
-    raise HTTPException(status_code=502, detail="Unsplash 검색 결과가 없어요. 다른 키워드를 시도해 주세요.")
-
-
 # ---------- Competitors ----------
 @app.get("/api/clients/{cid}/competitors")
 def api_comp_list(cid: str):
@@ -3124,250 +2810,6 @@ def api_mem_delete(mem_id: str):
     with get_db() as db:
         db.execute("DELETE FROM nuance_memories WHERE id=?", (mem_id,))
     return {"ok": True}
-
-
-# ---------------------------------------------------------------------------
-# Gamma API 연동 — Claude 가 만든 내용 + 구조를 Gamma 로 넘겨 디자인된 제안서 생성
-# ---------------------------------------------------------------------------
-def _gamma_request(method: str, path: str, body: Optional[dict] = None, *, timeout: float = 60.0) -> dict:
-    """Gamma Public API 호출 헬퍼 — urllib 기반 (추가 의존성 없음).
-    X-API-KEY 헤더로 인증. 에러는 HTTPException 으로 재포장."""
-    import urllib.request
-    import urllib.error
-
-    key = get_gamma_api_key()
-    if not key:
-        raise HTTPException(
-            status_code=400,
-            detail="Gamma API 키가 설정되지 않았어요. 좌하단 설정에서 등록하거나 Railway 환경변수 GAMMA_API_KEY 를 설정해 주세요.",
-        )
-    url = GAMMA_API_BASE + path
-    data = json.dumps(body).encode("utf-8") if body is not None else None
-    req = urllib.request.Request(url, data=data, method=method)
-    req.add_header("X-API-KEY", key)
-    req.add_header("Content-Type", "application/json")
-    req.add_header("Accept", "application/json")
-    req.add_header("User-Agent", "NightOff/1.0 (+gamma-integration)")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read().decode("utf-8")
-            return json.loads(raw) if raw else {}
-    except urllib.error.HTTPError as e:
-        raw = ""
-        try:
-            raw = e.read().decode("utf-8", errors="ignore")
-        except Exception:
-            pass
-        msg = raw[:600] or str(e)
-        try:
-            parsed = json.loads(raw)
-            msg = parsed.get("message") or parsed.get("error") or msg
-        except Exception:
-            pass
-        log.warning("Gamma API %s %s → %s: %s", method, path, e.code, msg[:300])
-        if e.code in (401, 403):
-            raise HTTPException(status_code=401, detail=f"Gamma API 인증 실패 — X-API-KEY 를 확인해 주세요. ({msg})")
-        if e.code == 429:
-            raise HTTPException(status_code=429, detail="Gamma API 사용량 한도에 도달했어요. 잠시 후 다시 시도해 주세요.")
-        raise HTTPException(status_code=e.code, detail=f"Gamma API 오류 ({e.code}): {msg}")
-    except urllib.error.URLError as e:
-        log.exception("Gamma 네트워크 오류")
-        raise HTTPException(status_code=502, detail=f"Gamma API 연결 실패: {e}")
-
-
-def _strip_html_to_text(s: str) -> str:
-    """아주 단순한 HTML → 텍스트 변환 (Gamma inputText 용)."""
-    if not s:
-        return ""
-    s = re.sub(r"<br\s*/?>", "\n", s, flags=re.I)
-    s = re.sub(r"</(p|div|h[1-6]|section|article|tr|li)\s*>", "\n", s, flags=re.I)
-    s = re.sub(r"<li[^>]*>", "- ", s, flags=re.I)
-    s = re.sub(r"<(td|th)[^>]*>", " | ", s, flags=re.I)
-    s = re.sub(r"<[^>]+>", "", s)
-    # HTML entity decode (최소)
-    s = (s.replace("&nbsp;", " ")
-           .replace("&amp;", "&")
-           .replace("&lt;", "<").replace("&gt;", ">")
-           .replace("&quot;", '"').replace("&#39;", "'"))
-    s = re.sub(r"\n{3,}", "\n\n", s)
-    s = re.sub(r"[ \t]{2,}", " ", s)
-    return s.strip()
-
-
-def _html_proposal_to_gamma_text(html: str) -> tuple[str, str]:
-    """Claude 의 <div class="proposal"> HTML 을 Gamma inputText(마크다운/텍스트) 로 변환.
-    각 .proposal-page 를 '---' 로 구분 → Gamma cardSplit="inputTextBreaks" 와 매칭.
-    반환: (title, gamma_input_text)
-    """
-    if not html:
-        return "제안서", ""
-
-    # 제목
-    m_title = re.search(r'<div class="proposal"[^>]*data-title=["\']([^"\']+)', html)
-    title = (m_title.group(1).strip() if m_title else "제안서")
-
-    # .proposal-page 블록 추출 (data-section 포함)
-    page_iter = re.finditer(
-        r'<div class="proposal-page[^"]*"([^>]*)>([\s\S]*?)(?=<div class="proposal-page|</div>\s*(?:$|(?=<div class="proposal)))',
-        html,
-    )
-    cards: list[str] = []
-    for m in page_iter:
-        attrs = m.group(1) or ""
-        body = m.group(2) or ""
-        m_section = re.search(r'data-section=["\']([^"\']+)', attrs)
-        section = m_section.group(1).strip() if m_section else ""
-
-        # governing headline
-        m_gov = re.search(
-            r'<[^>]+class="[^"]*page-governing[^"]*"[^>]*>([\s\S]*?)</[^>]+>',
-            body,
-        )
-        governing = _strip_html_to_text(m_gov.group(1)) if m_gov else ""
-
-        # summary
-        m_sum = re.search(
-            r'<[^>]+class="[^"]*page-summary[^"]*"[^>]*>([\s\S]*?)</[^>]+>',
-            body,
-        )
-        summary = _strip_html_to_text(m_sum.group(1)) if m_sum else ""
-
-        # body without governing/summary
-        body_wo = body
-        if m_gov:
-            body_wo = body_wo.replace(m_gov.group(0), "")
-        if m_sum:
-            body_wo = body_wo.replace(m_sum.group(0), "")
-        content_text = _strip_html_to_text(body_wo)
-
-        parts: list[str] = []
-        header = governing or section or "제안서 페이지"
-        parts.append(f"# {header}")
-        if governing and section and section.lower() != governing.lower():
-            parts.append(f"_{section}_")
-        if content_text:
-            parts.append(content_text)
-        if summary:
-            parts.append(f"> **핵심 요약:** {summary}")
-
-        cards.append("\n\n".join(parts))
-
-    if not cards:
-        # fallback: 전체를 텍스트로
-        return title, _strip_html_to_text(html)
-
-    # Gamma 는 cardSplit="inputTextBreaks" 에서 '---' 로 카드를 분리
-    return title, "\n\n---\n\n".join(cards)
-
-
-class GammaGenerateIn(BaseModel):
-    conversation_id: Optional[str] = None
-    input_text: Optional[str] = None
-    format: str = "presentation"        # presentation | document | social | webpage
-    text_mode: str = "generate"         # generate | condense | preserve
-    num_cards: Optional[int] = None
-    export_as: Optional[str] = None     # pptx | pdf | png | None(=Gamma 링크만)
-    additional_instructions: Optional[str] = None
-    theme_id: Optional[str] = None
-    tone: Optional[str] = None
-    audience: Optional[str] = None
-
-
-@app.post("/api/gamma/generate")
-def api_gamma_generate(body: GammaGenerateIn):
-    """Claude 가 생성한 제안서를 Gamma 로 넘겨 디자인된 버전 생성 요청.
-    - input_text 가 제공되면 그대로 사용
-    - 아니면 conversation_id 로 최신 assistant 메시지 중 제안서 HTML 을 자동 추출
-    """
-    text = (body.input_text or "").strip()
-    title = "제안서"
-    if not text:
-        if not body.conversation_id:
-            raise HTTPException(status_code=400, detail="input_text 또는 conversation_id 중 하나는 필요합니다.")
-        with get_db() as db:
-            rows = db.execute(
-                "SELECT content FROM messages WHERE conversation_id=? AND role='assistant' "
-                "ORDER BY created_at DESC",
-                (body.conversation_id,),
-            ).fetchall()
-        for r in rows:
-            content = r["content"] or ""
-            if '<div class="proposal"' in content:
-                title, text = _html_proposal_to_gamma_text(content)
-                break
-        if not text:
-            raise HTTPException(
-                status_code=404,
-                detail="이 대화에서 Claude 가 생성한 제안서를 찾지 못했어요. 먼저 제안서를 생성한 뒤 다시 시도해 주세요.",
-            )
-
-    # Gamma API 는 inputText 최대 400,000 자 — 안전하게 cap
-    if len(text) > 395000:
-        text = text[:395000] + "\n\n(이하 생략)"
-
-    payload: dict = {
-        "inputText": text,
-        "textMode": body.text_mode if body.text_mode in {"generate", "condense", "preserve"} else "generate",
-        "format": body.format if body.format in {"presentation", "document", "social", "webpage"} else "presentation",
-        # 우리가 '---' 로 카드를 구분해 넘기므로 명시적 브레이크 분할 사용
-        "cardSplit": "inputTextBreaks",
-    }
-    if body.num_cards and body.num_cards > 0:
-        payload["numCards"] = int(body.num_cards)
-    if body.export_as in {"pptx", "pdf", "png"}:
-        payload["exportAs"] = body.export_as
-    if body.additional_instructions:
-        payload["additionalInstructions"] = body.additional_instructions[:5000]
-    if body.theme_id:
-        payload["themeId"] = body.theme_id
-    # tone / audience
-    text_options: dict = {}
-    if body.tone:
-        text_options["tone"] = body.tone[:200]
-    if body.audience:
-        text_options["audience"] = body.audience[:200]
-    if text_options:
-        payload["textOptions"] = text_options
-
-    resp = _gamma_request("POST", "/generations", payload, timeout=60.0)
-    gen_id = resp.get("generationId") or resp.get("id")
-    if not gen_id:
-        raise HTTPException(status_code=502, detail=f"Gamma 응답에 generationId 가 없어요: {resp}")
-
-    return {
-        "generation_id": gen_id,
-        "warnings": resp.get("warnings"),
-        "title": title,
-        "card_count_hint": text.count("\n---\n") + 1,
-    }
-
-
-@app.get("/api/gamma/status/{generation_id}")
-def api_gamma_status(generation_id: str):
-    """Gamma 생성 상태 폴링. 프론트가 2~5 초 간격으로 호출."""
-    resp = _gamma_request("GET", f"/generations/{generation_id}", timeout=30.0)
-    status_raw = resp.get("status")
-    # 스펙상 'status' 가 문자열일 수도, 객체일 수도 있음 — 둘 다 처리
-    if isinstance(status_raw, dict):
-        status = (
-            status_raw.get("status")
-            or status_raw.get("name")
-            or status_raw.get("state")
-            or "unknown"
-        )
-    else:
-        status = status_raw or "unknown"
-    status = str(status).lower()
-
-    return {
-        "status": status,
-        "gamma_id": resp.get("gammaId"),
-        "gamma_url": resp.get("gammaUrl"),
-        "export_url": resp.get("exportUrl"),
-        "credits": resp.get("credits"),
-        "error": resp.get("error"),
-    }
-
 
 if __name__ == "__main__":
     import uvicorn

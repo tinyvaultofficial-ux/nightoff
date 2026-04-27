@@ -198,7 +198,8 @@
       "Bash(cat)",
       "Bash(rm _check.py)",
       "Bash(grep -nE \"unit: \\\\\"곳\\\\\"|총 \\\\\\\\\\\\$\\\\\\\\{clients\\\\.length\\\\\\\\}곳\" static/app.js)",
-      "Bash(python _balance.py)"
+      "Bash(python _balance.py)",
+      "Bash(sleep 3 echo \"=== 서버 부팅 ===\" curl -s -o /dev/null -w \"settings: %{http_code}\\\\n\" http://127.0.0.1:8000/api/settings curl -s -o /dev/null -w \"stats: %{http_code}\\\\n\" http://127.0.0.1:8000/api/stats curl -s -o /dev/null -w \"clients: %{http_code}\\\\n\" http://127.0.0.1:8000/api/clients echo \"\" echo \"=== 로그 ===\" head -7 /tmp/nightoff.log taskkill //F //IM python.exe)"
     ]
   }
 }

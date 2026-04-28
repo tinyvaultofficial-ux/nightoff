@@ -231,6 +231,169 @@ def remove_slides_keep(prs: Presentation, keep_indices: list[int]):
                 log.warning("슬라이드 %d 삭제 실패: %s", idx, e)
 
 
+# ─── 미디어 garbage collection (PPTX 사이즈 축소) ────────────
+
+import zipfile
+import shutil as _shutil
+import xml.etree.ElementTree as ET
+
+
+def garbage_collect_media(pptx_path: str | Path) -> dict:
+    """PPTX 안의 사용 안 하는 미디어 (이미지/동영상) 제거.
+
+    PPTX = ZIP. 슬라이드 삭제 후엔 ppt/media/ 안 일부 파일이 더 이상
+    어떤 슬라이드에도 참조 안 됨. 이걸 ZIP 에서 빼서 사이즈 축소.
+
+    참조 추적:
+      - ppt/slides/_rels/slideN.xml.rels 안의 Target → ppt/media/imageX.*
+      - 살아있는 슬라이드들이 참조하는 미디어만 keep
+    """
+    pptx_path = Path(pptx_path)
+    if not pptx_path.exists():
+        raise FileNotFoundError(pptx_path)
+
+    tmp_path = pptx_path.with_suffix(".tmp.pptx")
+    used_media: set[str] = set()
+    live_slide_xml: set[str] = set()      # ppt/slides/slideN.xml — 살아있는 것만
+    live_slide_rel: set[str] = set()      # ppt/slides/_rels/slideN.xml.rels — 살아있는 것만
+
+    # 0. presentation.xml 의 sldIdLst → 살아있는 r:id 들 → presentation.xml.rels 의 Target 매핑
+    NS_R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+    NS_P = "{http://schemas.openxmlformats.org/presentationml/2006/main}"
+    NS_PKG = "{http://schemas.openxmlformats.org/package/2006/relationships}"
+
+    with zipfile.ZipFile(pptx_path, "r") as zin:
+        all_names = set(zin.namelist())
+        live_rids: set[str] = set()
+        # 1단계 — presentation.xml 의 sldIdLst 안 sldId 의 r:id
+        try:
+            with zin.open("ppt/presentation.xml") as f:
+                pres_root = ET.fromstring(f.read())
+            for sld_id in pres_root.iter(f"{NS_P}sldId"):
+                rid = sld_id.attrib.get(f"{NS_R}id")
+                if rid:
+                    live_rids.add(rid)
+        except Exception as e:
+            log.warning("presentation.xml 파싱 실패: %s", e)
+
+        # 2단계 — presentation.xml.rels 에서 r:id → Target 매핑 (살아있는 r:id 만)
+        try:
+            with zin.open("ppt/_rels/presentation.xml.rels") as f:
+                rels_root = ET.fromstring(f.read())
+            for el in rels_root.iter(f"{NS_PKG}Relationship"):
+                rel_id = el.attrib.get("Id", "")
+                target = el.attrib.get("Target", "")
+                if rel_id in live_rids and target.startswith("slides/slide"):
+                    full = "ppt/" + target  # "ppt/slides/slide1.xml"
+                    live_slide_xml.add(full)
+                    rel_name = "ppt/slides/_rels/" + target.split("/")[-1] + ".rels"
+                    live_slide_rel.add(rel_name)
+        except Exception as e:
+            log.warning("presentation.xml.rels 파싱 실패: %s", e)
+
+        # 폴백 — 살아있는 슬라이드 못 찾으면 모든 슬라이드 keep
+        if not live_slide_xml:
+            log.warning("살아있는 슬라이드 추적 실패 — 전체 keep")
+            live_slide_xml = {n for n in all_names
+                              if n.startswith("ppt/slides/slide") and n.endswith(".xml")}
+            live_slide_rel = {n for n in all_names
+                              if n.startswith("ppt/slides/_rels/") and n.endswith(".xml.rels")}
+
+    log.info("살아있는 슬라이드: %d (xml) / %d (rel)", len(live_slide_xml), len(live_slide_rel))
+
+    # 1차 스캔 — 살아있는 슬라이드의 rel 들만 참조하는 media 파일 수집
+    with zipfile.ZipFile(pptx_path, "r") as zin:
+        for rel_name in sorted(live_slide_rel):
+            if rel_name not in all_names:
+                continue
+            try:
+                with zin.open(rel_name) as f:
+                    content = f.read()
+                # XML 파싱 — Target 속성이 미디어 가리키는 것 수집
+                try:
+                    root = ET.fromstring(content)
+                    for el in root.iter():
+                        target = el.attrib.get("Target", "")
+                        if "media/" in target:
+                            # 상대경로 → 절대 zip path
+                            # 예: "../media/image1.jpg" → "ppt/media/image1.jpg"
+                            media_name = target.split("media/")[-1]
+                            used_media.add(f"ppt/media/{media_name}")
+                except ET.ParseError:
+                    pass
+            except Exception as e:
+                log.warning("rel 스캔 실패 %s: %s", rel_name, e)
+
+        # slideLayout / slideMaster 의 rels 도 추가 (테마 이미지)
+        for rel_name in [n for n in all_names
+                         if (n.startswith("ppt/slideLayouts/_rels/")
+                             or n.startswith("ppt/slideMasters/_rels/")
+                             or n.startswith("ppt/theme/_rels/"))
+                         and n.endswith(".xml.rels")]:
+            try:
+                with zin.open(rel_name) as f:
+                    content = f.read()
+                try:
+                    root = ET.fromstring(content)
+                    for el in root.iter():
+                        target = el.attrib.get("Target", "")
+                        if "media/" in target:
+                            media_name = target.split("media/")[-1]
+                            used_media.add(f"ppt/media/{media_name}")
+                except ET.ParseError:
+                    pass
+            except Exception:
+                pass
+
+    # 2차 — keep 할 미디어 + 살아있는 슬라이드 XML/rel 만 남기고 ZIP 다시 쓰기
+    removed_media = []
+    removed_slides = []
+    kept_media = []
+    with zipfile.ZipFile(pptx_path, "r") as zin:
+        with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zout:
+            for item in zin.infolist():
+                name = item.filename
+                # 죽은 슬라이드 XML 제거
+                if name.startswith("ppt/slides/slide") and name.endswith(".xml"):
+                    if live_slide_xml and name not in live_slide_xml:
+                        removed_slides.append(name)
+                        continue
+                # 죽은 슬라이드 .rels 제거
+                if name.startswith("ppt/slides/_rels/") and name.endswith(".xml.rels"):
+                    if live_slide_rel and name not in live_slide_rel:
+                        removed_slides.append(name)
+                        continue
+                # 미디어 GC
+                if name.startswith("ppt/media/"):
+                    if name in used_media:
+                        zout.writestr(item, zin.read(name))
+                        kept_media.append(name)
+                    else:
+                        removed_media.append(name)
+                        continue
+                else:
+                    zout.writestr(item, zin.read(name))
+
+    # 원본을 GC된 사본으로 교체
+    orig_size = pptx_path.stat().st_size
+    _shutil.move(str(tmp_path), str(pptx_path))
+    new_size = pptx_path.stat().st_size
+
+    log.info("GC · 미디어 제거 %d, 슬라이드 제거 %d · %.1fMB → %.1fMB (%.0f%% ↓)",
+             len(removed_media), len(removed_slides),
+             orig_size / 1024 / 1024, new_size / 1024 / 1024,
+             100 * (1 - new_size / orig_size) if orig_size else 0)
+
+    return {
+        "media_removed": len(removed_media),
+        "media_kept": len(kept_media),
+        "slides_removed": len(removed_slides),
+        "size_before_mb": round(orig_size / 1024 / 1024, 1),
+        "size_after_mb": round(new_size / 1024 / 1024, 1),
+        "size_reduction_pct": round(100 * (1 - new_size / orig_size), 1) if orig_size else 0,
+    }
+
+
 # ─── 메인 함수 ──────────────────────────────────────────────
 
 def generate_from_master(
@@ -290,14 +453,22 @@ def generate_from_master(
     prs.save(str(output_path))
 
     final_count = len(prs.slides)
-    log.info("완료 · %d 슬라이드 / %d 치환 / %d 에러",
+    log.info("저장 · %d 슬라이드 / %d 치환 / %d 에러",
              final_count, replaced_total, len(errors_total))
+
+    # 6. 미디어 garbage collection — 사용 안 하는 이미지/동영상 제거 (사이즈 축소)
+    gc_result = {}
+    try:
+        gc_result = garbage_collect_media(output_path)
+    except Exception as e:
+        log.warning("미디어 GC 실패 (무시): %s", e)
 
     return {
         "slide_count": final_count,
         "replaced_total": replaced_total,
         "errors": errors_total[:10],
         "output_path": str(output_path),
+        "media_gc": gc_result,
     }
 
 

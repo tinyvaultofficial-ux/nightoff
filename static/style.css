@@ -944,16 +944,40 @@ body.right-panel-off .right-panel { display: none; }
 .chat-header {
   position: sticky; top: 0; z-index: 10;
   background: #fff; border-bottom: 1px solid var(--border);
-  padding: 14px 40px; display: flex; align-items: center; justify-content: space-between;
-  min-height: 68px;
+  padding: 12px 20px;        /* 14/40 → 12/20 좁은 영역 대응 */
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;           /* 한 줄에 못 들어가면 두 줄로 */
+  min-height: 60px;
+  row-gap: 6px;
 }
-.chat-header .left { display: flex; align-items: center; gap: 18px; }
-.chat-header .client-name { font-size: 12px; color: var(--fg-2); }
-.chat-header .chat-title { font-size: 17px; font-weight: 600; margin: 0; }
-.chat-header .context-badges { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--fg-2); }
+.chat-header .left {
+  display: flex; align-items: center;
+  gap: 10px;                 /* 18 → 10 */
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.chat-header .client-name { font-size: 12px; color: var(--fg-soft); }
+.chat-header .chat-title {
+  font-size: 16px;           /* 17 → 16 살짝 작게 */
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  margin: 0;
+  white-space: nowrap;       /* 제목이 한 글자씩 줄바뀌던 것 방지 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+.chat-header .context-badges {
+  display: flex; gap: 6px; align-items: center;
+  font-size: 12px; color: var(--fg-soft);
+  flex-wrap: wrap;
+}
 .chat-header .page-limit-badge {
   background: var(--warning-soft); color: var(--warning);
-  padding: 5px 12px; border-radius: 999px; font-weight: 600; font-size: 12px;
+  padding: 4px 10px; border-radius: var(--radius-pill);
+  font-weight: 700; font-size: 11.5px;
+  white-space: nowrap;
 }
 
 .chat-body {
@@ -965,9 +989,9 @@ body.right-panel-off .right-panel { display: none; }
   max-width: 780px;
   width: 100%;
   margin: 0 auto;
-  padding: 0 40px;
+  padding: 0 24px;          /* 40 → 24 가로 스크롤 해소 */
   display: flex; flex-direction: column; gap: 22px;
-  box-sizing: content-box;
+  box-sizing: border-box;   /* content-box → border-box 안전 */
 }
 .msg-row { display: flex; gap: 14px; align-items: flex-start; }
 .msg-row.user { flex-direction: row-reverse; }
@@ -1017,9 +1041,9 @@ body.right-panel-off .right-panel { display: none; }
   max-width: 780px;
   width: 100%;
   margin: 0 auto;
-  padding: 0 40px;
-  display: flex; gap: 12px; align-items: flex-end;
-  box-sizing: content-box;
+  padding: 0 24px;          /* 40 → 24 채팅 영역과 통일 */
+  display: flex; gap: 10px; align-items: flex-end;
+  box-sizing: border-box;
 }
 .chat-input-container textarea {
   flex: 1; min-height: 52px; max-height: 160px; resize: none;
@@ -3593,7 +3617,20 @@ input.locked-by-env::placeholder {
   background: var(--bg);
 }
 .chat-split-wrap.split-active {
-  grid-template-columns: minmax(440px, 1fr) minmax(580px, 1.4fr);
+  /* 채팅이 살짝 더 넓게 (1.1 : 1) — 입력/대화가 답답하지 않게 */
+  grid-template-columns: minmax(480px, 1.1fr) minmax(520px, 1fr);
+}
+@media (max-width: 1400px) {
+  .chat-split-wrap.split-active {
+    grid-template-columns: minmax(440px, 1fr) minmax(480px, 1fr);
+  }
+}
+@media (max-width: 1100px) {
+  /* 좁아지면 미리보기 자동 숨김 — 우측 토글로 다시 열기 */
+  .chat-split-wrap.split-active {
+    grid-template-columns: 1fr;
+  }
+  .chat-split-wrap.split-active > .proposal-side-panel { display: none; }
 }
 .chat-split-wrap > .chat-shell {
   display: flex; flex-direction: column;

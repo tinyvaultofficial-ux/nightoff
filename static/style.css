@@ -1096,12 +1096,12 @@ body.right-panel-off .right-panel { display: none; }
   aspect-ratio: 1.4142 / 1 !important;
   width: 100%;
   max-width: 1240px;
-  padding: 38px 48px 48px;
+  padding: 28px 36px 32px;        /* 38/48/48 → 28/36/32 콘텐츠 영역 확보 */
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  font-size: 15px;
+  gap: 10px;                      /* 14 → 10 */
+  font-size: 13px;                /* 15 → 13 */
   page-break-inside: avoid;
 }
 /* 가로형 명시 또는 기본 (data-orientation 없음) 모두 landscape 강제 */
@@ -1128,20 +1128,21 @@ body.right-panel-off .right-panel { display: none; }
 .proposal-page .page-content { grid-template-columns: minmax(0, 1fr); }
 .proposal-page::before {
   content: attr(data-section);
-  position: absolute; top: 24px; left: 48px;
-  font-size: 11px; font-weight: 300; letter-spacing: 0.08em;
+  position: absolute; top: 18px; left: 36px;
+  font-size: 10px; font-weight: 400; letter-spacing: 0.08em;
   color: #9ca3af; text-transform: uppercase;
-  grid-row: 1;  /* 첫 줄 자리 holder */
+  grid-row: 1;
 }
-.proposal[data-orientation="portrait"] .proposal-page::before { left: 40px; }
+.proposal[data-orientation="portrait"] .proposal-page::before { left: 32px; }
 .proposal-page .page-section-name { display: none; }
 .proposal-page .page-governing {
-  font-size: 34px; font-weight: 800; line-height: 1.25; letter-spacing: -0.02em;
+  font-size: 24px;                /* 34 → 24 (사용자: '폰트 너무 큼') */
+  font-weight: 800; line-height: 1.22; letter-spacing: -0.025em;
   color: var(--proposal-accent);
   max-width: 95%;
-  margin-top: 22px;
-  padding-bottom: 16px;
-  border-bottom: 4px solid var(--proposal-accent);
+  margin-top: 14px;               /* 22 → 14 */
+  padding-bottom: 10px;           /* 16 → 10 */
+  border-bottom: 3px solid var(--proposal-accent);
   display: inline-block;
   align-self: flex-start;
 }

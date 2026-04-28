@@ -21,36 +21,36 @@
 }
 .viz-step {
   position: relative;
-  padding: 18px 18px 16px;
+  padding: 12px 14px 12px;
   background: var(--viz-card-bg);
-  border-radius: 14px;
+  border-radius: 12px;
   box-shadow: var(--viz-shadow);
-  display: flex; flex-direction: column; gap: 6px;
+  display: flex; flex-direction: column; gap: 4px;
 }
 .viz-step-num {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px;
+  width: 26px; height: 26px;
   background: linear-gradient(135deg, var(--viz-accent), #FF8E5C);
   color: #fff;
-  border-radius: 8px;
-  font-weight: 800; font-size: 14px;
+  border-radius: 7px;
+  font-weight: 800; font-size: 12px;
   letter-spacing: -0.02em;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 .viz-step-title {
-  font-size: 15px; font-weight: 700;
+  font-size: 13px; font-weight: 700;
   color: var(--fg-strong, #1F1A14);
   letter-spacing: -0.015em;
   margin: 0;
 }
 .viz-step-desc {
-  font-size: 13px; color: var(--fg, #3C342B);
-  line-height: 1.55; margin: 0;
+  font-size: 11.5px; color: var(--fg, #3C342B);
+  line-height: 1.45; margin: 0;
 }
 .viz-step-list {
-  margin: 6px 0 0; padding-left: 14px;
-  font-size: 12.5px; color: var(--fg-soft, #6E6458);
-  line-height: 1.55;
+  margin: 4px 0 0; padding-left: 12px;
+  font-size: 11px; color: var(--fg-soft, #6E6458);
+  line-height: 1.45;
 }
 .viz-step-list li { margin: 2px 0; }
 .viz-step:not(:last-child)::after {
@@ -77,22 +77,22 @@
   margin: 14px 0;
 }
 .viz-card {
-  padding: 16px 18px;
+  padding: 12px 14px;
   background: var(--viz-card-bg);
-  border-radius: 14px;
+  border-radius: 12px;
   box-shadow: var(--viz-shadow);
   border-top: 3px solid var(--viz-accent);
 }
-.viz-card-emoji { font-size: 24px; line-height: 1; margin-bottom: 8px; }
+.viz-card-emoji { font-size: 20px; line-height: 1; margin-bottom: 5px; }
 .viz-card-title {
-  font-size: 15px; font-weight: 700;
+  font-size: 13px; font-weight: 700;
   color: var(--fg-strong, #1F1A14);
-  margin: 0 0 4px;
+  margin: 0 0 3px;
   letter-spacing: -0.015em;
 }
 .viz-card-desc {
-  font-size: 13px; color: var(--fg, #3C342B);
-  line-height: 1.55; margin: 0;
+  font-size: 11.5px; color: var(--fg, #3C342B);
+  line-height: 1.45; margin: 0;
 }
 
 /* ③ AS-IS vs TO-BE 비교 ─────────────── */
@@ -139,27 +139,27 @@
   margin: 14px 0;
 }
 .viz-kpi {
-  padding: 18px 16px;
+  padding: 12px 12px;
   background: var(--viz-card-bg);
-  border-radius: 14px;
+  border-radius: 12px;
   box-shadow: var(--viz-shadow);
   text-align: center;
 }
 .viz-kpi-num {
-  font-size: 36px; font-weight: 800;
+  font-size: 28px; font-weight: 800;
   color: var(--viz-accent);
   letter-spacing: -0.03em;
   line-height: 1;
   font-variant-numeric: tabular-nums;
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
-.viz-kpi-num small { font-size: 16px; opacity: 0.7; }
+.viz-kpi-num small { font-size: 13px; opacity: 0.7; }
 .viz-kpi-label {
-  font-size: 13px; font-weight: 600;
+  font-size: 11.5px; font-weight: 600;
   color: var(--fg, #3C342B);
   margin: 0;
-  line-height: 1.4;
+  line-height: 1.35;
 }
 
 /* ⑤ 표 (구분/항목/세부내용/비고) ─────────────── */

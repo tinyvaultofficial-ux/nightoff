@@ -189,21 +189,29 @@ def get_pptx_slide_texts(pptx_path: Path) -> list[str]:
 
 
 def convert_pptx_to_pngs(pptx_path: Path, out_dir: Path, soffice: str) -> list[Path]:
-    """LibreOffice 로 PPTX → PNG 변환 (모든 슬라이드)."""
+    """LibreOffice 로 PPTX → PNG 변환 (모든 슬라이드). 60초 timeout."""
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
         cmd = [
-            soffice, "--headless", "--convert-to", "png",
+            soffice, "--headless", "--norestore", "--nologo", "--nofirststartwizard",
+            "--convert-to", "png",
             "--outdir", str(tmp_dir),
             str(pptx_path),
         ]
         try:
-            r = subprocess.run(cmd, capture_output=True, timeout=120)
+            # 60초 안에 안 끝나면 강제 kill 후 다음 파일로 (멈춘 PPTX 우회)
+            r = subprocess.run(cmd, capture_output=True, timeout=60)
             if r.returncode != 0:
-                print(f"  [LibreOffice 오류] {pptx_path.name}: {r.stderr.decode('utf-8', errors='replace')[:200]}")
+                print(f"  [LibreOffice 오류] {pptx_path.name}: {r.stderr.decode('utf-8', errors='replace')[:200]}", flush=True)
                 return []
         except subprocess.TimeoutExpired:
-            print(f"  [타임아웃] {pptx_path.name}")
+            print(f"  [타임아웃 60s] {pptx_path.name} — 다음 파일로 이동", flush=True)
+            # 멈춘 soffice 프로세스 강제 정리 (다음 파일이 영향 안 받게)
+            try:
+                subprocess.run(["taskkill", "/F", "/IM", "soffice.bin"],
+                              capture_output=True, timeout=10)
+            except Exception:
+                pass
             return []
         # LibreOffice 는 첫 슬라이드만 PNG 로 변환함 (--convert-to png).
         # 모든 슬라이드 추출하려면 PDF → PNG 분할이 필요.
@@ -250,11 +258,10 @@ def crop_to_a4(img_path: Path) -> bool:
 
 
 def init_db():
-    if DB_PATH.exists():
-        DB_PATH.unlink()
+    """resume 모드 — 기존 DB 보존, 누락 테이블·인덱스만 추가."""
     db = sqlite3.connect(str(DB_PATH))
     db.executescript("""
-        CREATE TABLE backgrounds (
+        CREATE TABLE IF NOT EXISTS backgrounds (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             source_pptx TEXT NOT NULL,
             slide_idx   INTEGER NOT NULL,
@@ -266,12 +273,23 @@ def init_db():
             width       INTEGER, height INTEGER,
             created_at  TEXT DEFAULT (datetime('now','localtime'))
         );
-        CREATE INDEX idx_bg_domain ON backgrounds(domain);
-        CREATE INDEX idx_bg_section ON backgrounds(section);
-        CREATE INDEX idx_bg_domain_section ON backgrounds(domain, section);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_bg_unique
+          ON backgrounds(source_pptx, slide_idx);
+        CREATE INDEX IF NOT EXISTS idx_bg_domain ON backgrounds(domain);
+        CREATE INDEX IF NOT EXISTS idx_bg_section ON backgrounds(section);
+        CREATE INDEX IF NOT EXISTS idx_bg_domain_section ON backgrounds(domain, section);
     """)
     db.commit()
     return db
+
+
+def already_processed(db, pptx_name: str) -> bool:
+    """이미 DB 에 들어가 있는 PPTX 인지 확인 (resume 용)."""
+    r = db.execute(
+        "SELECT 1 FROM backgrounds WHERE source_pptx=? LIMIT 1",
+        (pptx_name,),
+    ).fetchone()
+    return bool(r)
 
 
 def main():
@@ -300,60 +318,62 @@ def main():
     print(f"[OK] PPTX 파일: {len(pptx_files)}개")
 
     saved = 0
+    skipped = 0
     failed = 0
+    already_extracted_imgs = {f.stem.replace("_slide01", "")
+                              for f in OUT_IMG_DIR.glob("*.jpg")}
+    print(f"[OK] 기존 이미지: {len(already_extracted_imgs)}개 (resume)")
+
     for idx, pptx in enumerate(pptx_files, 1):
-        print(f"\n[{idx:3d}/{len(pptx_files)}] {pptx.name[:60]}")
+        # resume — 이미 DB 에 있으면 스킵
+        if already_processed(db, pptx.name):
+            skipped += 1
+            continue
+        print(f"[{idx:3d}/{len(pptx_files)}] {pptx.name[:60]}", flush=True)
+
         try:
             texts = get_pptx_slide_texts(pptx)
-            if not texts:
-                continue
+            slide_text = texts[0] if texts else ""
 
-            # 표지(1번째) + 섹션 헤더로 추정되는 슬라이드 1~3개 추가 추출
-            # 단순 휴리스틱: 텍스트가 짧은(1~3줄, 100자 미만) 슬라이드 = 섹션 헤더 가능성
-            target_indices = [0]   # 표지
-            for i, t in enumerate(texts[1:], 1):
-                lines = [l for l in t.split("\n") if l.strip()]
-                if 1 <= len(lines) <= 3 and 5 < len(t.strip()) < 80:
-                    target_indices.append(i)
-                    if len(target_indices) >= 4:
-                        break
-
-            # LibreOffice 변환 — 첫 슬라이드만 가능. 전체 슬라이드 추출은
-            # PDF 변환 후 pdf2image 분할이 필요하지만, 우선 표지(1번)만 처리.
-            pngs = convert_pptx_to_pngs(pptx, OUT_IMG_DIR, soffice)
-            if not pngs:
-                failed += 1
-                continue
-
-            # 첫 PNG (표지) 만 처리
-            cover_png = pngs[0]
-            crop_ok = crop_to_a4(cover_png)
-            if not crop_ok:
-                failed += 1
-                continue
-            cover_jpg = cover_png.with_suffix(".jpg") if cover_png.suffix == ".png" else cover_png
+            # 이미지가 이미 있으면 LibreOffice 호출 스킵 (가장 큰 시간 절약)
+            existing_jpg = OUT_IMG_DIR / f"{pptx.stem}_slide01.jpg"
+            cover_jpg: Path | None = None
+            if existing_jpg.exists():
+                cover_jpg = existing_jpg
+                print(f"  -> 기존 이미지 사용 (LibreOffice 스킵)", flush=True)
+            else:
+                pngs = convert_pptx_to_pngs(pptx, OUT_IMG_DIR, soffice)
+                if not pngs:
+                    failed += 1
+                    continue
+                cover_png = pngs[0]
+                if not crop_to_a4(cover_png):
+                    failed += 1
+                    continue
+                cover_jpg = cover_png.with_suffix(".jpg") if cover_png.suffix == ".png" else cover_png
 
             # 메타 분류
-            slide_text = texts[0] if texts else ""
-            domain, conf = classify_domain(pptx.stem, slide_text)
+            domain, _ = classify_domain(pptx.stem, slide_text)
             section = classify_section(slide_text, 0)
             layout = classify_layout(slide_text)
 
-            db.execute(
-                "INSERT INTO backgrounds(source_pptx, slide_idx, domain, section, layout, "
-                "text_excerpt, img_path, width, height) "
-                "VALUES (?,?,?,?,?,?,?,?,?)",
-                (pptx.name, 1, domain, section, layout,
-                 slide_text[:300], str(cover_jpg).replace("\\", "/"),
-                 FULL_W, int(FULL_W / A4_RATIO)),
-            )
-            saved += 1
-            print(f"  -> 저장: {section} · {domain} · {layout}")
-
-            # 표지 외 다른 슬라이드는 전체 PDF 분할이 필요 — 별도 작업
-            # 지금은 표지만으로 시작 (나중에 PDF 변환 + 분할 추가 가능)
+            try:
+                db.execute(
+                    "INSERT INTO backgrounds(source_pptx, slide_idx, domain, section, layout, "
+                    "text_excerpt, img_path, width, height) "
+                    "VALUES (?,?,?,?,?,?,?,?,?)",
+                    (pptx.name, 1, domain, section, layout,
+                     slide_text[:300], str(cover_jpg).replace("\\", "/"),
+                     FULL_W, int(FULL_W / A4_RATIO)),
+                )
+                db.commit()           # ⭐ 파일별 즉시 commit (도중에 죽어도 결과 보존)
+                saved += 1
+                print(f"  -> 저장: {section} · {domain} · {layout}", flush=True)
+            except sqlite3.IntegrityError:
+                # unique 제약 — 이미 들어가 있는 케이스. 정상 스킵.
+                skipped += 1
         except Exception as e:
-            print(f"  [예외] {e}")
+            print(f"  [예외] {e}", flush=True)
             failed += 1
             continue
 
@@ -366,7 +386,7 @@ def main():
     db.close()
 
     print(f"\n=== 완료 ===")
-    print(f"  처리: {len(pptx_files)} / 저장: {saved} / 실패: {failed}")
+    print(f"  대상: {len(pptx_files)} / 저장: {saved} / 스킵: {skipped} / 실패: {failed}")
     print(f"  DB: {DB_PATH} ({total}건)")
     print(f"  이미지: {OUT_IMG_DIR}/")
     print(f"  분야별:")

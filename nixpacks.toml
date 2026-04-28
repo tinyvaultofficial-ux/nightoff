@@ -13,5 +13,12 @@ cmds = [
 [phases.build]
 # static assets — no build step needed
 
+# venv 의 bin 을 PATH 에 박아 컨테이너 시작 시 uvicorn/python 이 venv 의 것을 사용
+# (Dockerfile 의 ENV PATH 로 변환됨 — sh -c 환경에서도 적용)
+[variables]
+PATH = "/opt/venv/bin:${PATH}"
+PYTHONUNBUFFERED = "1"
+
+# 절대경로로 venv python 호출 — PATH 가 안 잡혀도 안전하게 동작
 [start]
-cmd = ". /opt/venv/bin/activate && python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"
+cmd = "/opt/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"

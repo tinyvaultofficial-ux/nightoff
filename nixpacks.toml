@@ -1,5 +1,6 @@
 [phases.setup]
-nixPkgs = ["python312", "gcc"]
+# libreoffice 추가 — PPTX → PDF → PNG 미리보기에 필요 (Phase 3-C)
+nixPkgs = ["python312", "gcc", "libreoffice", "fontconfig"]
 
 [phases.install]
 cmds = [

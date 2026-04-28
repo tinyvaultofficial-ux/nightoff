@@ -3253,6 +3253,75 @@ def api_budget_generate(body: BudgetRequest):
     return data
 
 
+# ---------- PPTX 미리보기 (PNG 슬라이드 캐러셀) ----------
+@app.get("/api/proposals/{conv_id}/preview")
+def api_proposals_preview(conv_id: str, regen: int = 0):
+    """저장된 PPTX 의 PNG 미리보기.
+    LibreOffice 로 PPTX → PDF → 페이지별 PNG 변환 후 URL 리스트 반환.
+    PNG 가 이미 있으면 재사용 (regen=1 이면 강제 재생성).
+    """
+    with get_db() as db:
+        cv = db.execute(
+            "SELECT pptx_path FROM conversations WHERE id=?", (conv_id,)
+        ).fetchone()
+    if not cv or not cv["pptx_path"]:
+        # PPTX 가 아직 없음 — 클라이언트가 먼저 PPTX 생성하라
+        return JSONResponse(
+            {"slides": [], "status": "no_pptx",
+             "message": "제안서가 아직 생성되지 않았어요. PPTX 다운로드 버튼을 먼저 눌러 생성해 주세요."},
+            status_code=200,
+        )
+
+    # PPTX 디스크 경로 (URL 의 /static/ 을 STATIC_DIR 로 변환)
+    pptx_url = cv["pptx_path"]
+    pptx_disk = STATIC_DIR / pptx_url.replace("/static/", "", 1)
+    if not pptx_disk.exists():
+        return JSONResponse(
+            {"slides": [], "status": "pptx_missing",
+             "message": "저장된 PPTX 파일을 찾지 못했어요."},
+            status_code=200,
+        )
+
+    preview_dir = STATIC_DIR / "exports" / "preview" / conv_id
+    existing = sorted(preview_dir.glob("slide_*.png")) if preview_dir.exists() else []
+
+    # 캐시 — PNG 가 있고 PPTX 보다 새것이면 재사용
+    if not regen and existing and pptx_disk.stat().st_mtime <= existing[0].stat().st_mtime:
+        slides = [
+            {"idx": i + 1, "url": f"/static/exports/preview/{conv_id}/{p.name}"}
+            for i, p in enumerate(existing)
+        ]
+        return {"slides": slides, "status": "cached", "count": len(slides)}
+
+    # 새로 변환
+    try:
+        import pptx_generator
+        # 기존 캐시 정리
+        if preview_dir.exists():
+            import shutil as _sh
+            _sh.rmtree(preview_dir, ignore_errors=True)
+        pngs = pptx_generator.pptx_to_png_previews(
+            pptx_disk, preview_dir, width=1280, timeout_sec=120,
+        )
+        if not pngs:
+            return JSONResponse(
+                {"slides": [], "status": "convert_failed",
+                 "message": "미리보기 생성 실패 — LibreOffice 미설치 또는 변환 오류."},
+                status_code=200,
+            )
+        slides = [
+            {"idx": i + 1, "url": f"/static/exports/preview/{conv_id}/{p.name}"}
+            for i, p in enumerate(pngs)
+        ]
+        return {"slides": slides, "status": "generated", "count": len(slides)}
+    except Exception as e:
+        log.exception("미리보기 생성 예외: %s", e)
+        return JSONResponse(
+            {"slides": [], "status": "error", "message": f"미리보기 생성 중 오류: {str(e)[:120]}"},
+            status_code=200,
+        )
+
+
 # ---------- 포인트 컬러 관리 ----------
 class AccentIn(BaseModel):
     accent: str

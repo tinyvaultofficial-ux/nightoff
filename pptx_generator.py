@@ -472,6 +472,128 @@ def generate_from_master(
     }
 
 
+# ─── PPTX → PNG 미리보기 변환 ────────────────────────────────
+
+LIBREOFFICE_CANDIDATES = [
+    r"C:\Program Files\LibreOffice\program\soffice.exe",
+    r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+    "/usr/bin/libreoffice",
+    "/usr/bin/soffice",
+    "soffice",
+]
+
+
+def _find_soffice() -> Optional[str]:
+    """LibreOffice 실행파일 자동 탐색."""
+    import subprocess as sp
+    for c in LIBREOFFICE_CANDIDATES:
+        p = Path(c)
+        if p.exists():
+            return str(p)
+        try:
+            r = sp.run([c, "--version"], capture_output=True, timeout=5)
+            if r.returncode == 0:
+                return c
+        except Exception:
+            continue
+    return None
+
+
+def pptx_to_png_previews(
+    pptx_path: str | Path,
+    out_dir: str | Path,
+    *,
+    width: int = 1280,
+    timeout_sec: int = 90,
+) -> list[Path]:
+    """PPTX → PDF (LibreOffice) → 페이지별 PNG (pypdfium2).
+
+    Args:
+      pptx_path: 입력 PPTX
+      out_dir: PNG 저장 디렉토리 — slide_01.png, slide_02.png, ...
+      width: PNG 가로 픽셀 (높이는 종횡비 유지)
+      timeout_sec: LibreOffice 변환 타임아웃
+
+    Returns:
+      생성된 PNG 경로 리스트 (slide_idx 순)
+    """
+    import subprocess as sp
+    import tempfile
+
+    pptx_path = Path(pptx_path)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    soffice = _find_soffice()
+    if not soffice:
+        log.warning("LibreOffice 못 찾음 — PNG 미리보기 생성 불가")
+        return []
+
+    # 1. PPTX → PDF (LibreOffice headless)
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = Path(tmp)
+        # 임시 user-profile (다른 soffice 인스턴스와 충돌 방지)
+        profile_dir = tmp_dir / "profile"
+        profile_dir.mkdir()
+        cmd = [
+            soffice, "--headless", "--norestore", "--nologo", "--nofirststartwizard",
+            f"-env:UserInstallation=file:///{str(profile_dir).replace(chr(92), '/')}",
+            "--convert-to", "pdf",
+            "--outdir", str(tmp_dir),
+            str(pptx_path),
+        ]
+        try:
+            r = sp.run(cmd, capture_output=True, timeout=timeout_sec)
+            if r.returncode != 0:
+                log.warning("LibreOffice PDF 변환 실패: %s",
+                            r.stderr.decode("utf-8", errors="replace")[:200])
+                return []
+        except sp.TimeoutExpired:
+            log.warning("LibreOffice PDF 변환 타임아웃 (%ds)", timeout_sec)
+            try:
+                sp.run(["taskkill", "/F", "/IM", "soffice.bin"],
+                       capture_output=True, timeout=10)
+            except Exception:
+                pass
+            return []
+
+        pdf_files = list(tmp_dir.glob("*.pdf"))
+        if not pdf_files:
+            log.warning("PDF 출력 못 찾음")
+            return []
+        pdf_path = pdf_files[0]
+
+        # 2. PDF → PNG 페이지별 (pypdfium2)
+        try:
+            import pypdfium2 as pdfium
+        except ImportError:
+            log.warning("pypdfium2 미설치 — pip install pypdfium2")
+            return []
+
+        png_paths: list[Path] = []
+        try:
+            pdf = pdfium.PdfDocument(str(pdf_path))
+            n_pages = len(pdf)
+            for i in range(n_pages):
+                page = pdf[i]
+                # 1280px 너비 기준 scale 계산 (PDF 1pt = 1/72인치)
+                pdf_w_pt = page.get_width()
+                scale = width / pdf_w_pt if pdf_w_pt else 2.0
+                bitmap = page.render(scale=scale)
+                pil = bitmap.to_pil()
+                out_path = out_dir / f"slide_{i+1:02d}.png"
+                # JPEG 가 PNG 보다 작지만 미리보기는 PNG 가 무손실
+                pil.save(out_path, "PNG", optimize=True)
+                png_paths.append(out_path)
+            pdf.close()
+        except Exception as e:
+            log.exception("PDF → PNG 변환 실패: %s", e)
+            return []
+
+    log.info("PNG 미리보기 생성 · %d 슬라이드 → %s", len(png_paths), out_dir)
+    return png_paths
+
+
 def find_master_template(domain: Optional[str] = None) -> Optional[Path]:
     """분야에 맞는 마스터 PPTX 파일 찾기.
     현재는 단일 마스터 (dmz_default.pptx) 반환. 차후 분야별 매핑 확장.

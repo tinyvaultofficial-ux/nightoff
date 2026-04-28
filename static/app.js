@@ -1584,6 +1584,101 @@ function celebrateConfetti() {
   setTimeout(() => layer.remove(), 3500);
 }
 
+// ---------- 🖼 PPTX PNG 미리보기 모달 (Phase 3-C) ----------
+function openPptxPreviewModal(slides) {
+  if (!slides || !slides.length) {
+    toast("미리보기 슬라이드가 없어요", "error");
+    return;
+  }
+  const backdrop = h("div", { class: "modal-backdrop pptx-preview-backdrop" });
+  const modal = h("div", { class: "modal pptx-preview-modal" });
+
+  let cur = 0;
+  const total = slides.length;
+
+  // 헤더
+  modal.appendChild(h("div", { class: "modal-header" }, [
+    h("h3", {}, "🖼 슬라이드 미리보기"),
+    h("div", { class: "flex-row", style: "gap: 14px; align-items: center;" }, [
+      h("span", { class: "pptx-preview-counter" }, `${cur + 1} / ${total}`),
+      h("button", {
+        class: "icon-btn", onclick: () => backdrop.remove(),
+        "aria-label": "닫기",
+        html: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+      }),
+    ]),
+  ]));
+
+  // 본문 — 큰 슬라이드 + 좌우 ◀▶
+  const stage = h("div", { class: "pptx-preview-stage" });
+  const img = h("img", { class: "pptx-preview-img", src: slides[0].url, alt: "슬라이드 1" });
+  stage.appendChild(img);
+
+  const goTo = (newIdx) => {
+    cur = Math.max(0, Math.min(total - 1, newIdx));
+    img.src = slides[cur].url;
+    img.alt = `슬라이드 ${cur + 1}`;
+    modal.querySelector(".pptx-preview-counter").textContent = `${cur + 1} / ${total}`;
+    modal.querySelector(".pptx-preview-prev").disabled = cur === 0;
+    modal.querySelector(".pptx-preview-next").disabled = cur === total - 1;
+    // 썸네일 active 표시
+    modal.querySelectorAll(".pptx-thumb").forEach((t, i) => {
+      t.classList.toggle("active", i === cur);
+    });
+  };
+
+  // 좌우 navigation 버튼 (overlay)
+  stage.appendChild(h("button", {
+    class: "pptx-preview-prev pptx-preview-nav",
+    title: "이전 (←)", disabled: cur === 0,
+    onclick: () => goTo(cur - 1),
+    html: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`,
+  }));
+  stage.appendChild(h("button", {
+    class: "pptx-preview-next pptx-preview-nav",
+    title: "다음 (→)", disabled: cur === total - 1,
+    onclick: () => goTo(cur + 1),
+    html: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`,
+  }));
+  modal.appendChild(stage);
+
+  // 하단 — 썸네일 strip
+  const thumbStrip = h("div", { class: "pptx-thumb-strip" });
+  slides.forEach((s, i) => {
+    thumbStrip.appendChild(h("button", {
+      class: "pptx-thumb" + (i === cur ? " active" : ""),
+      title: `슬라이드 ${i + 1}`,
+      onclick: () => goTo(i),
+    }, [
+      h("img", { src: s.url, alt: `Thumb ${i + 1}` }),
+      h("span", { class: "pptx-thumb-num" }, String(i + 1)),
+    ]));
+  });
+  modal.appendChild(thumbStrip);
+
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
+
+  // 키보드 좌우 navigation
+  const keyHandler = (e) => {
+    if (e.key === "ArrowLeft") goTo(cur - 1);
+    else if (e.key === "ArrowRight") goTo(cur + 1);
+    else if (e.key === "Escape") backdrop.remove();
+  };
+  document.addEventListener("keydown", keyHandler);
+  // 모달 제거 시 keyHandler 정리
+  const origRemove = backdrop.remove.bind(backdrop);
+  backdrop.remove = () => {
+    document.removeEventListener("keydown", keyHandler);
+    origRemove();
+  };
+  // 백드롭 클릭 시 닫기 (모달 내부 클릭은 X)
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop) backdrop.remove();
+  });
+}
+
+
 // ---------- 🎤 PT 연습 모달 (큐시트 + 예상 Q&A 두 탭) ----------
 function openPtPracticeModal(convId) {
   const backdrop = h("div", { class: "modal-backdrop pt-modal-backdrop" });
@@ -3104,6 +3199,35 @@ function renderAssistant(bubble, text, final = false) {
             } finally {
               btn.disabled = false;
               btn.innerHTML = `${iconHtml("file", 14)}<span>PPTX 다운로드</span>`;
+            }
+          },
+        }),
+        h("button", {
+          class: "btn btn-outline",
+          html: `${iconHtml("eye", 14)}<span>🖼 미리보기</span>`,
+          title: "PPTX 슬라이드 PNG 미리보기",
+          disabled: !completed,
+          onclick: async (e) => {
+            const btn = e.currentTarget;
+            const m = location.hash.match(/\/chat\/([^/?#]+)/);
+            const convId = m ? m[1] : null;
+            if (!convId) { toast("대화 정보를 찾지 못했어요", "error"); return; }
+            btn.disabled = true; btn.innerHTML = "변환 중…";
+            try {
+              // 먼저 PPTX 가 없으면 생성
+              await api.post("/api/proposals/pptx", { conversation_id: convId }, { timeoutMs: 60000 });
+              // PNG 미리보기 가져오기
+              const r = await api.get(`/api/proposals/${convId}/preview`, { timeoutMs: 180000 });
+              if (r.status !== "cached" && r.status !== "generated") {
+                toast(r.message || "미리보기 생성 실패", "error");
+                return;
+              }
+              openPptxPreviewModal(r.slides || []);
+            } catch (err) {
+              toast("미리보기 실패: " + (err.message || err), "error");
+            } finally {
+              btn.disabled = false;
+              btn.innerHTML = `${iconHtml("eye", 14)}<span>🖼 미리보기</span>`;
             }
           },
         }),

@@ -1317,18 +1317,30 @@ async def global_exc_handler(request: Request, exc: Exception):
 
 @app.on_event("startup")
 def _startup() -> None:
-    init_db()
-    # 어떤 키 출처가 활성인지 시작 시점에 명시 로깅 — Railway 디버깅 핵심 단서
-    src = get_api_key_source()
-    if src == "env":
-        env_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-        tail = env_key[-4:] if len(env_key) >= 4 else "****"
-        log.info("ANTHROPIC_API_KEY source = ENV (Railway Variables) · ···%s · DB는 폴백으로만 사용", tail)
-    elif src == "db":
-        log.info("ANTHROPIC_API_KEY source = DB (settings 테이블) · 환경변수가 비어 있어 DB 폴백 사용")
-    else:
-        log.info("ANTHROPIC_API_KEY source = NONE — 좌하단 설정에서 키 등록 필요")
-    log.info("NightOff server ready — DB: %s, Uploads: %s", DB_PATH, UPLOADS_DIR)
+    """startup 단계는 절대 raise 하지 말 것.
+    init_db() 또는 키 조회가 실패해도 / 는 응답해야 healthcheck 통과 → 후속 디버깅 가능.
+    """
+    log.info("=== NightOff startup 시작 ===")
+    log.info("DATABASE_URL set? %s · USE_PG=%s · DB_PATH=%s", bool(DATABASE_URL), USE_PG, DB_PATH)
+    try:
+        init_db()
+        log.info("init_db OK")
+    except Exception as e:
+        log.exception("init_db 실패 — DB 의존 기능은 비활성, / 는 계속 응답: %s", e)
+    # 키 출처 로깅 (실패해도 startup 종료 안 함)
+    try:
+        src = get_api_key_source()
+        if src == "env":
+            env_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+            tail = env_key[-4:] if len(env_key) >= 4 else "****"
+            log.info("ANTHROPIC_API_KEY source = ENV · ···%s", tail)
+        elif src == "db":
+            log.info("ANTHROPIC_API_KEY source = DB (settings 테이블)")
+        else:
+            log.info("ANTHROPIC_API_KEY source = NONE")
+    except Exception as e:
+        log.warning("API key source 조회 실패 (무시): %s", e)
+    log.info("=== NightOff server ready (uvicorn 응답 시작) ===")
 
 
 # ---------- Static ----------
@@ -1361,6 +1373,13 @@ def _render_index() -> str:
 @app.get("/")
 def index():
     return HTMLResponse(_render_index())
+
+
+# ---- 헬스체크 전용 ---- DB / 정적 / 외부 의존 모두 회피 (Railway healthcheckPath)
+@app.get("/healthz")
+def healthz():
+    """가벼운 healthcheck — 의존성 0. 컨테이너가 살아만 있으면 200."""
+    return JSONResponse({"ok": True, "service": "nightoff"})
 
 
 @app.get("/favicon.ico")

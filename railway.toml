@@ -4,7 +4,7 @@ builder = "NIXPACKS"
 [deploy]
 # venv 의 절대경로 python — PATH 가 컨테이너 startCommand 환경에 안 잡혀있어도 안전
 startCommand = "/opt/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"
-healthcheckPath = "/"
-healthcheckTimeout = 60
+healthcheckPath = "/healthz"
+healthcheckTimeout = 90
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3

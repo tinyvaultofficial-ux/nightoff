@@ -1284,11 +1284,39 @@ async def validation_handler(request: Request, exc: RequestValidationError):
     return JSONResponse({"error": friendly, "status": 422}, status_code=422)
 
 
+_INIT_DB_RECOVERY_ATTEMPTED = False
+
+
 @app.exception_handler(sqlite3.OperationalError)
 async def sqlite_op_handler(request: Request, exc: sqlite3.OperationalError):
-    log.exception("[DB OperationalError] %s %s", request.method, request.url.path)
+    """SQLite OperationalError 자가복구.
+    'no such table' / 'no such column' 에러면 startup 의 init_db 가 실패한 상태일 가능성 큼
+    → 1회 자동 재초기화 시도 후 사용자에게 안내.
+    """
+    global _INIT_DB_RECOVERY_ATTEMPTED
+    err_msg = str(exc).lower()
+    schema_missing = ("no such table" in err_msg or "no such column" in err_msg)
+
+    log.exception("[DB OperationalError] %s %s | schema_missing=%s",
+                  request.method, request.url.path, schema_missing)
+
+    if schema_missing and not _INIT_DB_RECOVERY_ATTEMPTED:
+        _INIT_DB_RECOVERY_ATTEMPTED = True
+        log.warning("DB 스키마 누락 감지 — init_db 자가복구 시도")
+        try:
+            init_db()
+            log.info("init_db 자가복구 성공 — 사용자가 다시 시도하면 통과 예상")
+            return JSONResponse(
+                {"error": "DB 초기화를 방금 마쳤어요. 같은 동작을 한 번 더 시도해 주세요 🙏",
+                 "status": 503, "recovered": True},
+                status_code=503,
+            )
+        except Exception as e2:
+            log.exception("init_db 재시도 실패: %s", e2)
+
     return JSONResponse(
-        {"error": "데이터를 저장하는 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요.", "status": 500},
+        {"error": "데이터를 저장하는 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요.",
+         "status": 500, "detail": str(exc)[:200]},
         status_code=500,
     )
 

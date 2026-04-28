@@ -2717,10 +2717,20 @@ body.fs-loader-active {
   max-width: 320px;
 }
 
-/* 사이드 컬럼 폭 고정 — 1.5fr ~ 360px 안정 */
+/* 사이드 컬럼 폭 고정 — 1fr ~ 320px 안정 + 좌우 높이 정렬 */
 .dashboard-two-col {
   grid-template-columns: minmax(0, 1fr) 320px;
   gap: 22px;
+  align-items: stretch;   /* 좌우 컬럼 같은 높이 */
+}
+.dashboard-two-col > section,
+.dashboard-two-col > aside {
+  display: flex; flex-direction: column; min-width: 0;
+}
+.dashboard-two-col > section > .card.empty-state,
+.dashboard-two-col > section > .card.empty-state-lg {
+  flex: 1;                /* 좌측 빈 상태 카드가 우측 길이에 맞춰 늘어남 */
+  justify-content: center;
 }
 .dashboard-side-col { min-width: 0; }
 

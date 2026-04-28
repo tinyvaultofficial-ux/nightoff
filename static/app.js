@@ -3511,6 +3511,48 @@ function bootBodyCharacter() {
   setInterval(tickBody, 30 * 1000);
 }
 
+// ---------- 햄버거 사이드바 토글 (반응형: 1024px 미만) ----------
+function bootNavToggle() {
+  const btn = document.getElementById("nav-toggle");
+  const backdrop = document.getElementById("nav-backdrop");
+  if (!btn) return;
+  const close = () => {
+    document.body.classList.remove("nav-open");
+    btn.setAttribute("aria-expanded", "false");
+  };
+  const open = () => {
+    document.body.classList.add("nav-open");
+    btn.setAttribute("aria-expanded", "true");
+  };
+  const toggle = () => {
+    if (document.body.classList.contains("nav-open")) close();
+    else open();
+  };
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggle();
+  });
+  if (backdrop) backdrop.addEventListener("click", close);
+  // 사이드바 안 항목 클릭 시 자동으로 닫기 (네비게이션 후)
+  document.addEventListener("click", (e) => {
+    const target = e.target;
+    if (!target || !target.closest) return;
+    if (target.closest(".sidebar a, .sidebar button, .sidebar-item, .sidebar-recent-item")) {
+      // 모바일/태블릿일 때만 닫기 (메뉴가 열려 있는 상태일 때)
+      if (document.body.classList.contains("nav-open")) {
+        setTimeout(close, 80);
+      }
+    }
+  });
+  // ESC 로 닫기
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && document.body.classList.contains("nav-open")) close();
+  });
+  // 화면 사이즈 커지면 자동 닫기 (1024px 이상)
+  const mq = window.matchMedia("(min-width: 1024px)");
+  mq.addEventListener("change", (e) => { if (e.matches) close(); });
+}
+
 // ---------- Boot ----------
 // 최초 방문 체크
 window.addEventListener("DOMContentLoaded", () => {
@@ -3520,6 +3562,8 @@ window.addEventListener("DOMContentLoaded", () => {
   }
   // 체류시간 인체 캐릭터 시작
   bootBodyCharacter();
+  // 반응형 햄버거 토글
+  bootNavToggle();
 });
 
 route();

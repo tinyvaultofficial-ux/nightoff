@@ -14,6 +14,18 @@
 <body>
   <div id="app-root" class="app-shell"></div>
 
+  <!-- 햄버거 (좁은 화면에서만 보임) -->
+  <button id="nav-toggle" class="nav-toggle" aria-label="메뉴" aria-expanded="false">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <line x1="4" y1="6" x2="20" y2="6"/>
+      <line x1="4" y1="12" x2="20" y2="12"/>
+      <line x1="4" y1="18" x2="20" y2="18"/>
+    </svg>
+  </button>
+
+  <!-- 사이드바 백드롭 (모바일 메뉴 열림 시) -->
+  <div id="nav-backdrop" class="nav-backdrop" aria-hidden="true"></div>
+
   <!-- 설정 아이콘 (좌하단 고정) -->
   <button id="settings-btn" class="settings-fab" aria-label="설정" title="설정">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

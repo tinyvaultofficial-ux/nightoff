@@ -4030,3 +4030,135 @@ input.locked-by-env::placeholder {
   color: var(--warning);
   font-style: italic;
 }
+
+/* ============================================================
+   ░░░  반응형 통합 시스템 (표준 breakpoint)  ░░░
+   • ≥1280px  데스크톱   3단 (사이드바 + 메인 + 우측 패널)
+   • 1024~1279px  좁은 데스크톱  2단 (사이드바 + 메인, 우측 숨김)
+   • 768~1023px  태블릿  햄버거 (사이드바 슬라이드 인, 메인 풀폭)
+   • <768px  모바일      햄버거 + 카드 1열 + padding 축소
+   ============================================================ */
+
+/* 햄버거 버튼 — 기본은 숨김, 1024px 미만에서만 보임 */
+.nav-toggle {
+  position: fixed;
+  top: 14px; left: 14px;
+  z-index: 60;
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  display: none;
+  align-items: center; justify-content: center;
+  color: var(--fg);
+  cursor: pointer;
+  transition: transform .12s ease, background .12s;
+}
+.nav-toggle:hover { background: var(--bg-2); }
+.nav-toggle:active { transform: scale(0.94); }
+
+/* 사이드바 백드롭 (모바일 메뉴 오버레이) */
+.nav-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.42);
+  z-index: 38;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s ease;
+}
+body.nav-open .nav-backdrop { opacity: 1; pointer-events: auto; }
+
+/* ===== ≤1280px: 우측 패널 숨김 (이미 위에 있지만 통일) ===== */
+@media (max-width: 1279px) {
+  .main { margin-right: 0 !important; }
+  .right-panel { display: none !important; }
+  .global-footer { margin-right: 0 !important; }
+}
+
+/* ===== ≤1024px: 사이드바 햄버거화 ===== */
+@media (max-width: 1023px) {
+  .nav-toggle { display: inline-flex; }
+  /* 사이드바 off-canvas */
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform .25s ease;
+    box-shadow: 0 0 0 transparent;
+  }
+  body.nav-open .sidebar {
+    transform: translateX(0);
+    box-shadow: 0 22px 60px -16px rgba(0,0,0,0.25);
+  }
+  /* 메인은 풀폭 */
+  .main { margin-left: 0 !important; }
+  .global-footer { margin-left: 0 !important; }
+  /* 헤더 좌측에 햄버거 자리 확보 */
+  .main-header {
+    padding-left: 70px;
+  }
+  /* 좌하단 설정 FAB 도 햄버거와 안 겹치게 살짝 우측으로 */
+  .settings-fab { left: 16px; bottom: 16px; }
+}
+
+/* ===== ≤768px: 모바일 ===== */
+@media (max-width: 767px) {
+  /* 메인 패딩 축소 */
+  .main-content {
+    padding: 18px 14px !important;
+    max-width: 100%;
+  }
+  .main-header {
+    padding: 14px 16px 14px 60px !important;
+    min-height: 60px;
+  }
+  .main-header h1 { font-size: 18px !important; }
+  .main-header p { font-size: 13px !important; }
+
+  /* 카드 grid 들 1열 */
+  .rfp-grid-2 { grid-template-columns: 1fr !important; }
+  .score-grid { grid-template-columns: 1fr !important; }
+  .task-actions-row { grid-template-columns: 1fr !important; }
+  .cards-grid, .clients-grid { grid-template-columns: 1fr !important; }
+
+  /* 카드 padding 축소 */
+  .card { padding: 16px 14px !important; }
+  .card-head { padding: 14px 14px 0 !important; }
+  .card-body { padding: 12px 14px 14px !important; }
+  .task-actions-card { padding: 18px 14px !important; }
+
+  /* 푸터 간소화 */
+  .global-footer { padding: 18px 14px 14px !important; font-size: 11.5px !important; }
+  .global-footer-inner { gap: 6px !important; }
+  .gf-row { font-size: 11.5px; }
+  .gf-bottom { flex-direction: column; align-items: flex-start !important; gap: 8px !important; }
+  .gf-info { font-size: 11px !important; }
+
+  /* 햄버거 / 설정 위치 */
+  .nav-toggle { width: 40px; height: 40px; top: 10px; left: 10px; border-radius: 10px; }
+  .settings-fab { width: 44px; height: 44px; }
+
+  /* 사이드바 폭 — 모바일에선 화면의 80% 정도 */
+  .sidebar { width: min(82vw, 320px) !important; }
+
+  /* 모달/토스트 모바일 보정 */
+  .modal { max-width: 92vw !important; max-height: 88vh !important; }
+  .toast-root { left: 12px; right: 12px; bottom: 16px; }
+
+  /* 우측 패널의 인체 캐릭터 — 모바일 데스크탑에선 안 보이지만 혹시 모를 케이스 대응 */
+  .rp-body-svg { max-width: 100px; }
+}
+
+/* ===== ≤480px: 매우 작은 모바일 ===== */
+@media (max-width: 479px) {
+  body { font-size: 14px; }
+  .main-header h1 { font-size: 16px !important; }
+  .btn { font-size: 13px; padding: 8px 12px; }
+}
+
+/* ===== 인쇄 시 햄버거/우측 패널/FAB 숨김 ===== */
+@media print {
+  .nav-toggle, .nav-backdrop, .right-panel, .settings-fab,
+  .global-footer { display: none !important; }
+  .main { margin: 0 !important; }
+  .sidebar { display: none !important; }
+}

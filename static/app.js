@@ -3603,17 +3603,17 @@ function applyBodyStage(stageIdx) {
 
 function typeBodyMessage(el, msg) {
   if (_bodyTypingTimer) clearInterval(_bodyTypingTimer);
-  el.innerHTML = "<span class=\"typing-cursor\"></span>";
+  el.textContent = "";
   let i = 0;
   _bodyTypingTimer = setInterval(() => {
     if (i >= msg.length) {
       clearInterval(_bodyTypingTimer);
       _bodyTypingTimer = null;
-      el.innerHTML = msg + "<span class=\"typing-cursor\"></span>";
+      el.textContent = msg;   // 커서 없이 깔끔하게 마무리
       return;
     }
     i++;
-    el.innerHTML = msg.slice(0, i) + "<span class=\"typing-cursor\"></span>";
+    el.textContent = msg.slice(0, i);
   }, 35);
 }
 

@@ -374,14 +374,6 @@ body.right-panel-off .right-panel { display: none; }
   font-weight: 500;
   word-break: keep-all;
 }
-.rp-body-msg .typing-cursor {
-  display: inline-block;
-  width: 2px; height: 1em; background: var(--primary);
-  margin-left: 2px;
-  animation: blink-cursor 0.8s step-end infinite;
-  vertical-align: text-bottom;
-}
-@keyframes blink-cursor { 50% { opacity: 0; } }
 .rp-body-time {
   font-size: 10.5px; color: var(--fg-2);
   font-variant-numeric: tabular-nums;

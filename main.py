@@ -3438,15 +3438,141 @@ def _safe_filename(s: str, default: str = "제안서") -> str:
 
 
 @app.post("/api/proposals/pptx")
+def _extract_pages_from_html(html: str) -> list[dict]:
+    """제안서 HTML 에서 page-by-page 콘텐츠 추출 — 마스터 PPTX 치환에 사용.
+
+    각 page → {"section": str, "거버닝": str, "소제목": str, "본문": [str, ...], "summary": str}
+    """
+    pages = []
+    page_iter = re.finditer(
+        r'<div class="proposal-page[^"]*"([^>]*)>([\s\S]*?)(?=<div class="proposal-page|</div>\s*$)',
+        html,
+    )
+
+    def strip(t: str) -> str:
+        t = re.sub(r"<br\s*/?>", "\n", t or "", flags=re.I)
+        t = re.sub(r"<[^>]+>", "", t)
+        t = (t.replace("&nbsp;", " ").replace("&amp;", "&")
+              .replace("&lt;", "<").replace("&gt;", ">")
+              .replace("&quot;", '"').replace("&#39;", "'"))
+        return re.sub(r"\s+", " ", t).strip()
+
+    for m in page_iter:
+        attrs = m.group(1) or ""
+        body_html = m.group(2) or ""
+        m_section = re.search(r'data-section=["\']([^"\']+)', attrs)
+        section = m_section.group(1).strip() if m_section else ""
+        # 거버닝
+        m_gov = re.search(r'<[^>]+class="[^"]*page-governing[^"]*"[^>]*>([\s\S]*?)</[^>]+>', body_html)
+        governing = strip(m_gov.group(1)) if m_gov else ""
+        # 요약
+        m_sum = re.search(r'<[^>]+class="[^"]*page-summary[^"]*"[^>]*>([\s\S]*?)</[^>]+>', body_html)
+        summary = strip(m_sum.group(1)) if m_sum else ""
+        # 본문 — governing/summary 제외하고 li 들 추출
+        body_wo = body_html
+        if m_gov: body_wo = body_wo.replace(m_gov.group(0), "")
+        if m_sum: body_wo = body_wo.replace(m_sum.group(0), "")
+        # li 또는 p 단위로 분리
+        body_blocks = []
+        for li in re.finditer(r"<li[^>]*>([\s\S]*?)</li>", body_wo):
+            t = strip(li.group(1))
+            if t:
+                body_blocks.append(t[:120])
+        if not body_blocks:
+            # li 없으면 p 단위
+            for p in re.finditer(r"<p[^>]*>([\s\S]*?)</p>", body_wo):
+                t = strip(p.group(1))
+                if t:
+                    body_blocks.append(t[:120])
+        # 소제목 — h2/h3 또는 viz-card-title 첫 번째
+        m_h = re.search(r"<(h[2-4]|[^>]*class=\"[^\"]*viz-(?:card-title|step-title)[^\"]*\")[^>]*>([\s\S]*?)</[^>]+>", body_wo)
+        subtitle = strip(m_h.group(2)) if m_h else ""
+
+        pages.append({
+            "section": section,
+            "거버닝": governing,
+            "소제목": subtitle,
+            "본문": body_blocks[:6],
+            "summary": summary,
+        })
+    return pages
+
+
+def _build_pptx_fallback(html: str, client_name: str, output_path: Path,
+                        conversation_id: str) -> int:
+    """마스터 매칭 실패 시 폴백 — HTML 직접 PPTX 변환 (기존 방식).
+    반환: 슬라이드 수.
+    """
+    from pptx import Presentation
+    from pptx.util import Inches, Pt
+    from pptx.enum.text import PP_ALIGN
+    from pptx.dml.color import RGBColor
+
+    title_m = re.search(r'data-title=["\']([^"\']+)', html)
+    accent_m = re.search(r'data-accent=["\']#?([0-9a-fA-F]{6})', html)
+    title = title_m.group(1).strip() if title_m else (client_name + " 제안서")
+    accent = accent_m.group(1) if accent_m else "6B46E5"
+    accent_rgb = RGBColor.from_string(accent)
+
+    prs = Presentation()
+    prs.slide_width = Inches(11.69)
+    prs.slide_height = Inches(8.27)
+    blank_layout = prs.slide_layouts[6]
+
+    pages = _extract_pages_from_html(html)
+    if not pages:
+        raise HTTPException(500, "제안서에서 페이지를 찾지 못했어요.")
+
+    # 표지
+    cover = prs.slides.add_slide(blank_layout)
+    tx = cover.shapes.add_textbox(Inches(1.0), Inches(3.2), Inches(9.69), Inches(2.0)).text_frame
+    tx.word_wrap = True
+    p = tx.paragraphs[0]
+    p.alignment = PP_ALIGN.CENTER
+    run = p.add_run()
+    run.text = title
+    run.font.size = Pt(36)
+    run.font.bold = True
+    run.font.color.rgb = accent_rgb
+
+    for page in pages:
+        slide = prs.slides.add_slide(blank_layout)
+        if page["section"]:
+            tb = slide.shapes.add_textbox(Inches(0.5), Inches(0.3), Inches(8), Inches(0.4)).text_frame
+            r = tb.paragraphs[0].add_run()
+            r.text = page["section"]
+            r.font.size = Pt(10); r.font.color.rgb = accent_rgb; r.font.bold = True
+        if page["거버닝"]:
+            tb = slide.shapes.add_textbox(Inches(0.5), Inches(0.85), Inches(10.5), Inches(1.3)).text_frame
+            tb.word_wrap = True
+            r = tb.paragraphs[0].add_run()
+            r.text = page["거버닝"]
+            r.font.size = Pt(24); r.font.bold = True
+        if page["본문"]:
+            tb = slide.shapes.add_textbox(Inches(0.5), Inches(2.3), Inches(10.5), Inches(5.0)).text_frame
+            tb.word_wrap = True
+            for line in page["본문"]:
+                pa = tb.add_paragraph() if tb.paragraphs[0].text else tb.paragraphs[0]
+                r = pa.add_run()
+                r.text = line[:200]
+                r.font.size = Pt(11)
+        if page["summary"]:
+            tb = slide.shapes.add_textbox(Inches(0.5), Inches(7.4), Inches(10.5), Inches(0.6)).text_frame
+            r = tb.paragraphs[0].add_run()
+            r.text = "💡 " + page["summary"]
+            r.font.size = Pt(12); r.font.bold = True
+            r.font.color.rgb = accent_rgb
+
+    prs.save(str(output_path))
+    return len(prs.slides)
+
+
 def api_proposals_pptx(body: PptxExportIn):
-    """대화의 최신 제안서 HTML 을 .pptx 로 변환해 다운로드 URL 반환.
-    파일명은 '{발주처명}_제안서.pptx' 형식, /static/exports/ 에 영구 보관.
+    """대화의 최신 제안서 → .pptx (마스터 템플릿 우선, 없으면 폴백).
+    파일명: '{발주처명}_제안서.pptx', /static/exports/ 영구 보관.
     """
     try:
         from pptx import Presentation
-        from pptx.util import Inches, Pt, Emu
-        from pptx.enum.text import PP_ALIGN
-        from pptx.dml.color import RGBColor
     except ImportError:
         raise HTTPException(500, "python-pptx 가 설치돼 있지 않아요. requirements.txt 를 확인해 주세요.")
 
@@ -3470,113 +3596,63 @@ def api_proposals_pptx(body: PptxExportIn):
         raise HTTPException(404, "이 대화에 제안서가 없어요. 먼저 제안서를 생성해 주세요.")
 
     html = msg["content"]
-    # 페이지 추출
-    page_iter = re.finditer(
-        r'<div class="proposal-page[^"]*"([^>]*)>([\s\S]*?)(?=<div class="proposal-page|</div>\s*$)',
-        html,
-    )
-    title_m = re.search(r'data-title=["\']([^"\']+)', html)
-    accent_m = re.search(r'data-accent=["\']#?([0-9a-fA-F]{6})', html)
-    title = title_m.group(1).strip() if title_m else "제안서"
-    accent = accent_m.group(1) if accent_m else "6B46E5"
-    accent_rgb = RGBColor.from_string(accent)
 
-    prs = Presentation()
-    # A4 가로 (297mm × 210mm)
-    prs.slide_width = Inches(11.69)   # 297mm
-    prs.slide_height = Inches(8.27)   # 210mm
-
-    blank_layout = prs.slide_layouts[6]  # 빈 레이아웃
-
-    def strip(text: str) -> str:
-        text = re.sub(r"<br\s*/?>", "\n", text or "", flags=re.I)
-        text = re.sub(r"<[^>]+>", "", text)
-        text = (text.replace("&nbsp;", " ").replace("&amp;", "&")
-                    .replace("&lt;", "<").replace("&gt;", ">")
-                    .replace("&quot;", '"').replace("&#39;", "'"))
-        return re.sub(r"\s+", " ", text).strip()
-
-    # 표지
-    cover = prs.slides.add_slide(blank_layout)
-    tx = cover.shapes.add_textbox(Inches(1.0), Inches(3.2), Inches(9.69), Inches(2.0)).text_frame
-    tx.word_wrap = True
-    p = tx.paragraphs[0]
-    p.alignment = PP_ALIGN.CENTER
-    run = p.add_run()
-    run.text = title
-    run.font.size = Pt(36)
-    run.font.bold = True
-    run.font.color.rgb = accent_rgb
-
-    page_count = 0
-    for m in page_iter:
-        page_count += 1
-        attrs = m.group(1) or ""
-        body_html = m.group(2) or ""
-        m_section = re.search(r'data-section=["\']([^"\']+)', attrs)
-        section = m_section.group(1).strip() if m_section else ""
-        m_gov = re.search(r'<[^>]+class="[^"]*page-governing[^"]*"[^>]*>([\s\S]*?)</[^>]+>', body_html)
-        governing = strip(m_gov.group(1)) if m_gov else ""
-        m_sum = re.search(r'<[^>]+class="[^"]*page-summary[^"]*"[^>]*>([\s\S]*?)</[^>]+>', body_html)
-        summary = strip(m_sum.group(1)) if m_sum else ""
-        # 본문 — governing/summary 제외
-        body_wo = body_html
-        if m_gov: body_wo = body_wo.replace(m_gov.group(0), "")
-        if m_sum: body_wo = body_wo.replace(m_sum.group(0), "")
-        content_text = strip(body_wo)
-
-        slide = prs.slides.add_slide(blank_layout)
-        # 섹션명 (좌상단 작은 라벨)
-        if section:
-            tb = slide.shapes.add_textbox(Inches(0.5), Inches(0.3), Inches(8), Inches(0.4)).text_frame
-            r = tb.paragraphs[0].add_run()
-            r.text = section
-            r.font.size = Pt(10)
-            r.font.color.rgb = accent_rgb
-            r.font.bold = True
-        # 거버닝 메시지
-        if governing:
-            tb = slide.shapes.add_textbox(Inches(0.5), Inches(0.85), Inches(10.5), Inches(1.3)).text_frame
-            tb.word_wrap = True
-            r = tb.paragraphs[0].add_run()
-            r.text = governing
-            r.font.size = Pt(24)
-            r.font.bold = True
-        # 본문
-        if content_text:
-            tb = slide.shapes.add_textbox(Inches(0.5), Inches(2.3), Inches(10.5), Inches(5.0)).text_frame
-            tb.word_wrap = True
-            for line in content_text.split("\n"):
-                line = line.strip()
-                if not line:
-                    continue
-                p = tb.add_paragraph() if tb.paragraphs[0].text else tb.paragraphs[0]
-                r = p.add_run()
-                r.text = line[:200]  # 페이지 한 장에 들어갈 수 있도록 컷
-                r.font.size = Pt(11)
-        # 요약 배너 (하단)
-        if summary:
-            tb = slide.shapes.add_textbox(Inches(0.5), Inches(7.4), Inches(10.5), Inches(0.6)).text_frame
-            r = tb.paragraphs[0].add_run()
-            r.text = "💡 " + summary
-            r.font.size = Pt(12)
-            r.font.bold = True
-            r.font.color.rgb = accent_rgb
-
-    if page_count == 0:
-        raise HTTPException(500, "제안서에서 페이지를 찾지 못했어요.")
-
-    # 저장 — 발주처명_제안서.pptx (영구 보관)
+    # 출력 경로
     out_dir = STATIC_DIR / "exports"
     out_dir.mkdir(exist_ok=True)
     safe_client = _safe_filename(client_name)
     download_name = f"{safe_client}_제안서.pptx"
-    # 디스크 저장명은 충돌 방지 위해 hash suffix
     disk_fname = f"{safe_client}_{body.conversation_id[:8]}.pptx"
     out_path = out_dir / disk_fname
-    prs.save(str(out_path))
 
-    # conversations 테이블에 마지막 PPTX 경로 기록 (재열람용)
+    # 1. 마스터 템플릿 우선 시도
+    used_master = False
+    slide_count = 0
+    try:
+        import pptx_generator
+        master = pptx_generator.find_master_template()
+        if master and master.exists():
+            log.info("PPTX 생성: 마스터 모드 (%s)", master.name)
+            pages = _extract_pages_from_html(html)
+            if pages:
+                # HTML 페이지 N개 → 마스터의 첫 N개 슬라이드에 1:1 매핑
+                # 마스터의 슬라이드 0(표지) 부터 순서대로 사용
+                content_per_slide = {}
+                # 표지 — 마스터 0번
+                content_per_slide[0] = {
+                    "거버닝": pages[0].get("거버닝") or client_name + " 정성 제안서",
+                    "본문": [client_name],
+                }
+                # 본문 — 마스터 1번부터
+                for idx, page in enumerate(pages, 1):
+                    if idx >= 90:  # 마스터 94장 한계 가까이
+                        break
+                    content_per_slide[idx] = {
+                        "거버닝": page.get("거버닝") or "",
+                        "소제목": page.get("소제목") or page.get("section") or "",
+                        "본문": page.get("본문") or [],
+                    }
+                keep = list(content_per_slide.keys())
+                result = pptx_generator.generate_from_master(
+                    master_path=master,
+                    content_per_slide=content_per_slide,
+                    output_path=out_path,
+                    keep_indices=keep,
+                )
+                slide_count = result["slide_count"]
+                used_master = True
+                log.info("마스터 모드 성공 · %d 슬라이드 / %d 치환",
+                         slide_count, result["replaced_total"])
+    except Exception as e:
+        log.exception("마스터 모드 실패 — 폴백으로 전환: %s", e)
+        used_master = False
+
+    # 2. 폴백 — 마스터 못 쓸 때 HTML 직접 PPTX 변환
+    if not used_master:
+        log.info("PPTX 생성: 폴백 모드 (HTML → PPTX 직접 그리기)")
+        slide_count = _build_pptx_fallback(html, client_name, out_path, body.conversation_id)
+
+    # 3. conversations 에 PPTX 경로 기록
     try:
         with get_db() as db:
             db.execute(
@@ -3589,8 +3665,9 @@ def api_proposals_pptx(body: PptxExportIn):
 
     return {
         "url": f"/static/exports/{disk_fname}",
-        "filename": download_name,   # 브라우저가 다운로드할 때 표시되는 이름
-        "page_count": page_count + 1,  # +1 for cover
+        "filename": download_name,
+        "page_count": slide_count,
+        "mode": "master" if used_master else "fallback",
     }
 
 

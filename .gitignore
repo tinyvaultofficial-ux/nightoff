@@ -39,3 +39,8 @@ static/fonts/*.woff2
 static/fonts/*.woff
 static/fonts/*.ttf
 static/fonts/*.otf
+
+# 마스터 PPTX 템플릿 — 88MB+ 라 깃 트래킹 X (운영은 외부 스토리지 또는 Volume)
+master_templates/*.pptx
+master_template_analysis.json
+master_template_analysis_report.txt

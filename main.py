@@ -1418,7 +1418,74 @@ other:        "분야별 N년 경력의 전문가들이 함께합니다"
 - 제안서 본문 바깥의 설명문·요약·목차 텍스트 출력 금지
 - RFP 복붙·추상 형용사·여백 방치 금지
 - 일반 대화 모드에서 .proposal 블록 출력 금지 (사용자가 제안서 요청 시에만)
-- 사용자 채팅 응답에서 'HTML' 단어 등장 금지
+
+
+═══════════════════════════════════════════════════
+⚠⚠⚠ 출력 형식 — 제안서 생성 요청 시 JSON 만 출력 ⚠⚠⚠
+═══════════════════════════════════════════════════
+
+위의 모든 정책 (5부 구조 / 페이지 밀도 / em-dash 금지 / 도메인 매트릭스 /
+RAG 신호 / 시각화 가이드 / 컴플라이언스·Red Team 페이지) 을 100% 따르되,
+**최종 출력 형식은 반드시 다음 JSON 한 가지** — HTML 절대 출력 금지.
+
+```json
+{
+  "title": "발주처명 + 사업명 + 정성 제안서",
+  "domain": "festival|forum|exhibition|education|sports|campaign|tourism|rnd|welfare|other",
+  "accent": "#RRGGBB",
+  "summary": "전체 한 줄 요약 (제안서 핵심 가치)",
+  "slides": [
+    {
+      "section": "표지|목차|사업이해|추진전략|수행조직|일정|예산|프로그램|홍보|안전관리|기대효과|컴플라이언스|Red Team|기타",
+      "거버닝": "한 줄 큰 제목 (30자 이내, em-dash 금지)",
+      "소제목": "부제 (50자 이내, 선택)",
+      "본문": ["핵심 메시지 1 (50~120자)", "핵심 메시지 2", "핵심 메시지 3", "핵심 메시지 4"],
+      "summary": "페이지 한 줄 요약 (선택)",
+      "viz_type": "step|cards|compare|kpi|table|flow|org|timeline|callout|none"
+    }
+  ]
+}
+```
+
+[규칙 — 절대 준수]
+1. 출력 시작 = `{`, 끝 = `}`. 다른 텍스트·설명·코드블록·주석·"```json" 등 모두 금지.
+2. 슬라이드 수: 최소 8장, 권장 25~50장 (RFP 분량에 따라).
+3. 각 슬라이드 본문 = list[str], 항목 4~6개, 각 50~120자 (페이지 밀도 정책 그대로).
+4. 거버닝 메시지에 em-dash(—) / hyphen(-) / 콜론(:) / 슬래시(/) 모두 금지.
+   콤마(,) 와 × 기호는 허용.
+5. domain 값은 RFP 분석의 project_domain 그대로 사용.
+6. accent 는 RFP 의 data-accent 또는 도메인 어울리는 #RRGGBB 자율 선택.
+7. viz_type 매핑 가이드:
+   · step    — 절차/단계 (1→2→3→4)
+   · cards   — 4개 강점/특징 병렬
+   · compare — AS-IS vs TO-BE
+   · kpi     — 큰 숫자 강조 (3~4개)
+   · table   — 표 (구분/항목/내용)
+   · flow    — 화살표 프로세스
+   · org     — 조직도
+   · timeline — D-60 ~ D+30 마일스톤
+   · callout — 인용/강조 박스
+   · none    — 일반 텍스트 (본문만)
+8. 컴플라이언스 페이지 (이전엔 HTML 표) → JSON 으로:
+   {"section":"컴플라이언스","거버닝":"RFP 요구사항 100% 반영 확인",
+    "viz_type":"table","본문":["1. 청년 의견 수렴 — 표지·사업이해 페이지","2. 안전관리 — 안전관리 페이지","..."]}
+9. Red Team 페이지 (이전엔 HTML 점수표) → JSON 으로 동일 형식.
+
+[채팅 응답 — 두 모드]
+
+A) 일반 대화 (제안서 요청 아님): 자연어로 친근하게 응답. JSON 출력 X.
+B) 제안서 생성 요청 ("제안서 써줘", "이 RFP 로 제안서 만들어" 등):
+   → 출력 = 위 JSON 한 가지만. 어떤 자연어 설명도 앞뒤에 붙이지 X.
+   → 출력 시작 첫 글자 = `{`, 끝 글자 = `}`.
+
+⚠ 채팅에서 사용자가 한 페이지만 수정 요청 시 → JSON 의 해당 slide 만 다시 출력.
+   전체 JSON 다시 출력해도 OK.
+
+⚠ 만약 분석할 RFP 가 부족해 슬라이드 못 만들면 → JSON 이 아닌 자연어로
+   "RFP 정보가 부족해요. 어떤 부분 채워주실래요?" 같은 안내. JSON 거짓 출력 X.
+
+⚠ 사용자 채팅 응답에서 'HTML', '<div>', 'CSS' 등 출력 형식 단어 등장 금지.
+   사용자가 받는 것은 .pptx 파일이고, 시스템이 JSON 을 PPTX 로 변환합니다.
 """
 
 
@@ -3498,30 +3565,23 @@ def _extract_pages_from_html(html: str) -> list[dict]:
     return pages
 
 
-def _build_pptx_fallback(html: str, client_name: str, output_path: Path,
-                        conversation_id: str) -> int:
-    """마스터 매칭 실패 시 폴백 — HTML 직접 PPTX 변환 (기존 방식).
-    반환: 슬라이드 수.
+def _build_pptx_from_pages(pages: list[dict], title: str, output_path: Path,
+                            accent_hex: str = "6B46E5") -> int:
+    """폴백 — pages list (JSON 또는 HTML 추출 결과) → PPTX 직접 그리기.
+    pages 형식: [{"section":..., "거버닝":..., "소제목":..., "본문":[...], "summary":..., "viz_type":...}]
     """
     from pptx import Presentation
     from pptx.util import Inches, Pt
     from pptx.enum.text import PP_ALIGN
     from pptx.dml.color import RGBColor
 
-    title_m = re.search(r'data-title=["\']([^"\']+)', html)
-    accent_m = re.search(r'data-accent=["\']#?([0-9a-fA-F]{6})', html)
-    title = title_m.group(1).strip() if title_m else (client_name + " 제안서")
-    accent = accent_m.group(1) if accent_m else "6B46E5"
-    accent_rgb = RGBColor.from_string(accent)
-
+    accent_rgb = RGBColor.from_string(accent_hex.lstrip("#") if accent_hex else "6B46E5")
     prs = Presentation()
     prs.slide_width = Inches(11.69)
     prs.slide_height = Inches(8.27)
     blank_layout = prs.slide_layouts[6]
-
-    pages = _extract_pages_from_html(html)
     if not pages:
-        raise HTTPException(500, "제안서에서 페이지를 찾지 못했어요.")
+        raise HTTPException(500, "제안서 슬라이드가 없어요.")
 
     # 표지
     cover = prs.slides.add_slide(blank_layout)
@@ -3577,10 +3637,12 @@ def api_proposals_pptx(body: PptxExportIn):
         raise HTTPException(500, "python-pptx 가 설치돼 있지 않아요. requirements.txt 를 확인해 주세요.")
 
     with get_db() as db:
+        # JSON 또는 HTML 형식 제안서 메시지 찾기 (둘 다 지원)
         msg = db.execute(
             "SELECT content FROM messages "
             "WHERE conversation_id=? AND role='assistant' "
-            "AND content LIKE '%<div class=\"proposal\"%' "
+            "AND (content LIKE '{%\"slides\"%' "
+            "     OR content LIKE '%<div class=\"proposal\"%') "
             "ORDER BY created_at DESC LIMIT 1",
             (body.conversation_id,),
         ).fetchone()
@@ -3595,7 +3657,24 @@ def api_proposals_pptx(body: PptxExportIn):
     if not msg:
         raise HTTPException(404, "이 대화에 제안서가 없어요. 먼저 제안서를 생성해 주세요.")
 
-    html = msg["content"]
+    raw_content = msg["content"]
+    # JSON 우선 파싱 — 응답이 JSON 이면 슬라이드 데이터 직접 사용
+    proposal_json = None
+    try:
+        cleaned = raw_content.strip()
+        # 코드펜스 제거
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+        # 첫 { 부터 마지막 } 까지 추출
+        json_match = re.search(r"\{[\s\S]*\}", cleaned)
+        if json_match:
+            parsed = json.loads(json_match.group(0))
+            if isinstance(parsed, dict) and isinstance(parsed.get("slides"), list):
+                proposal_json = parsed
+    except Exception:
+        proposal_json = None
+
+    html = raw_content if proposal_json is None else ""
 
     # 출력 경로
     out_dir = STATIC_DIR / "exports"
@@ -3605,6 +3684,33 @@ def api_proposals_pptx(body: PptxExportIn):
     disk_fname = f"{safe_client}_{body.conversation_id[:8]}.pptx"
     out_path = out_dir / disk_fname
 
+    # 슬라이드 데이터 준비 — JSON 우선, HTML fallback
+    if proposal_json is not None:
+        log.info("PPTX 생성: JSON 입력 (slides=%d)", len(proposal_json.get("slides", [])))
+        pages = []
+        for s in proposal_json["slides"]:
+            if not isinstance(s, dict):
+                continue
+            본문 = s.get("본문") or s.get("body") or []
+            if isinstance(본문, str):
+                본문 = [본문]
+            pages.append({
+                "section": s.get("section", ""),
+                "거버닝": s.get("거버닝") or s.get("governing") or "",
+                "소제목": s.get("소제목") or s.get("subtitle") or "",
+                "본문": [str(b)[:120] for b in 본문][:6],
+                "summary": s.get("summary", ""),
+                "viz_type": s.get("viz_type", ""),
+            })
+        title_for_cover = proposal_json.get("title") or (client_name + " 정성 제안서")
+    else:
+        log.info("PPTX 생성: HTML 입력 (legacy)")
+        pages = _extract_pages_from_html(html)
+        title_for_cover = client_name + " 정성 제안서"
+
+    if not pages:
+        raise HTTPException(500, "제안서 슬라이드 데이터를 추출하지 못했어요.")
+
     # 1. 마스터 템플릿 우선 시도
     used_master = False
     slide_count = 0
@@ -3612,45 +3718,42 @@ def api_proposals_pptx(body: PptxExportIn):
         import pptx_generator
         master = pptx_generator.find_master_template()
         if master and master.exists():
-            log.info("PPTX 생성: 마스터 모드 (%s)", master.name)
-            pages = _extract_pages_from_html(html)
-            if pages:
-                # HTML 페이지 N개 → 마스터의 첫 N개 슬라이드에 1:1 매핑
-                # 마스터의 슬라이드 0(표지) 부터 순서대로 사용
-                content_per_slide = {}
-                # 표지 — 마스터 0번
-                content_per_slide[0] = {
-                    "거버닝": pages[0].get("거버닝") or client_name + " 정성 제안서",
-                    "본문": [client_name],
+            log.info("마스터 모드 (%s, pages=%d)", master.name, len(pages))
+            content_per_slide = {}
+            # 표지 — 마스터 0번
+            content_per_slide[0] = {
+                "거버닝": pages[0].get("거버닝") or title_for_cover,
+                "본문": [client_name],
+            }
+            # 본문 — 마스터 1번부터
+            for idx, page in enumerate(pages, 1):
+                if idx >= 90:
+                    break
+                content_per_slide[idx] = {
+                    "거버닝": page.get("거버닝") or "",
+                    "소제목": page.get("소제목") or page.get("section") or "",
+                    "본문": page.get("본문") or [],
                 }
-                # 본문 — 마스터 1번부터
-                for idx, page in enumerate(pages, 1):
-                    if idx >= 90:  # 마스터 94장 한계 가까이
-                        break
-                    content_per_slide[idx] = {
-                        "거버닝": page.get("거버닝") or "",
-                        "소제목": page.get("소제목") or page.get("section") or "",
-                        "본문": page.get("본문") or [],
-                    }
-                keep = list(content_per_slide.keys())
-                result = pptx_generator.generate_from_master(
-                    master_path=master,
-                    content_per_slide=content_per_slide,
-                    output_path=out_path,
-                    keep_indices=keep,
-                )
-                slide_count = result["slide_count"]
-                used_master = True
-                log.info("마스터 모드 성공 · %d 슬라이드 / %d 치환",
-                         slide_count, result["replaced_total"])
+            keep = list(content_per_slide.keys())
+            result = pptx_generator.generate_from_master(
+                master_path=master,
+                content_per_slide=content_per_slide,
+                output_path=out_path,
+                keep_indices=keep,
+            )
+            slide_count = result["slide_count"]
+            used_master = True
+            log.info("마스터 모드 성공 · %d 슬라이드 / %d 치환 / size %.1fMB",
+                     slide_count, result["replaced_total"],
+                     (result.get("media_gc") or {}).get("size_after_mb", 0))
     except Exception as e:
         log.exception("마스터 모드 실패 — 폴백으로 전환: %s", e)
         used_master = False
 
-    # 2. 폴백 — 마스터 못 쓸 때 HTML 직접 PPTX 변환
+    # 2. 폴백 — 마스터 못 쓸 때 직접 PPTX 그리기 (JSON pages 또는 HTML)
     if not used_master:
-        log.info("PPTX 생성: 폴백 모드 (HTML → PPTX 직접 그리기)")
-        slide_count = _build_pptx_fallback(html, client_name, out_path, body.conversation_id)
+        log.info("PPTX 생성: 폴백 모드")
+        slide_count = _build_pptx_from_pages(pages, title_for_cover, out_path)
 
     # 3. conversations 에 PPTX 경로 기록
     try:

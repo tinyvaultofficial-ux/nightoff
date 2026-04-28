@@ -2191,11 +2191,15 @@ function buildScoreBarChart(items) {
   });
   wrap.appendChild(grid);
 
-  // 합계 footer (있으면 도움됨)
+  // 합계 footer
   const total = groups.reduce((s, g) => s + (g.parent.weight || 0), 0);
   if (total > 0) {
-    wrap.appendChild(h("p", { class: "score-total small muted" },
-      `합계 ${total}점 · 부모 ${groups.length}개 / 항목 ${items.length}개`));
+    // 자식이 있는 케이스 (계층 구조) 와 평면 리스트 케이스를 구분해 자연스럽게 표기
+    const hasChildren = groups.some((g) => g.children && g.children.length > 0);
+    const label = hasChildren
+      ? `합계 ${total}점 · 대분류 ${groups.length}개 / 세부 ${items.length}개`
+      : `합계 ${total}점 · 평가 항목 ${items.length}개`;
+    wrap.appendChild(h("p", { class: "score-total small muted" }, label));
   }
   return wrap;
 }

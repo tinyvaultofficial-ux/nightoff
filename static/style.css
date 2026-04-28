@@ -95,9 +95,9 @@
   --duration:    240ms;
   --duration-fast: 160ms;
 
-  /* ─── 폰트 — Paperlogy 우선 (페이퍼/노션 결 따뜻한 산세리프) ─── */
-  --sans: 'Paperlogy', 'Gowun Dodum', 'Pretendard Variable', 'Pretendard',
-          -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  /* ─── 폰트 — SUIT Variable 우선 (페이퍼/노션 결, 가독성 검증) ─── */
+  --sans: 'SUIT Variable', 'SUIT', 'Pretendard Variable', 'Pretendard',
+          -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', sans-serif;
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 
@@ -138,11 +138,19 @@
 .t-num { font-variant-numeric: tabular-nums; }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg); color: var(--fg);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
 body {
-  font-size: 16px;     /* 15 → 16 한 단계 키움 */
+  font-size: 16px;
   line-height: 1.6;
-  letter-spacing: -0.005em;
+  letter-spacing: -0.01em;       /* SUIT 와 어울리는 자간 */
+  font-feature-settings: "ss01", "ss02";
 }
 a { color: inherit; text-decoration: none; }
 button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
@@ -4620,34 +4628,32 @@ body.landing-fullscreen .main {
 }
 
 /* ============================================================
-   제안서 슬라이드 폰트 — 거버닝(Paperlogy) + 본문(Presentation)
+   제안서 슬라이드 폰트 — 거버닝/본문 모두 SUIT (검증된 한국 폰트)
    사용자 요청: 거버닝 28~32pt / 소제목 18~20pt / 본문 14~16pt
    ============================================================ */
 .proposal-page {
-  /* 본문 기본 — Presentation → Paperlogy → 시스템 sans */
-  font-family: 'Presentation Local', 'Paperlogy Local', 'Paperlogy',
-               'Gowun Dodum', 'Pretendard Variable', 'Pretendard', sans-serif;
+  font-family: 'SUIT Variable', 'SUIT', 'Pretendard Variable', 'Pretendard', sans-serif;
 }
 .proposal-page .page-governing,
 .proposal-page h1,
 .proposal-page .governing {
-  font-family: 'Paperlogy Local', 'Paperlogy', 'Gowun Dodum', sans-serif;
   font-weight: 800;
   font-size: clamp(24pt, 2.6vw, 32pt);
-  letter-spacing: -0.025em;
-  line-height: 1.2;
+  letter-spacing: -0.03em;
+  line-height: 1.18;
 }
 .proposal-page h2,
 .proposal-page .page-section-title {
-  font-family: 'Paperlogy Local', 'Paperlogy', 'Gowun Dodum', sans-serif;
   font-weight: 700;
   font-size: clamp(16pt, 1.5vw, 20pt);
-  letter-spacing: -0.015em;
+  letter-spacing: -0.022em;
+  line-height: 1.25;
 }
 .proposal-page h3 {
-  font-family: 'Paperlogy Local', 'Paperlogy', 'Gowun Dodum', sans-serif;
   font-weight: 700;
   font-size: clamp(14pt, 1.2vw, 18pt);
+  letter-spacing: -0.018em;
+  line-height: 1.3;
 }
 .proposal-page p,
 .proposal-page li,

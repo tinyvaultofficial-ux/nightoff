@@ -1,42 +1,140 @@
-/* ===== NightOff — Design tokens (v0 b_wk142EhjHEv) ===== */
+/* ============================================================
+   NightOff Design System — "야근 OFF · 퇴근 동료" 토큰
+   ============================================================ */
 :root {
-  /* 라이트 배경 — oklch(0.995 0 0) 상응 */
-  --bg: #fdfdfd;
-  --bg-2: #f5f5f5;
-  --card: #ffffff;
-  --fg: #171717;
-  --fg-2: #656565;
-  --muted: #a3a3a3;
-  --border: #e7e7e7;
-  --border-strong: #d1d1d1;
-  /* 새 v0 primary — oklch(0.55 0.22 285) 상응, 기존보다 약간 밝고 생기있는 퍼플 */
-  --primary: #6b46e5;
-  --primary-soft: #eee8ff;
-  --primary-hover: #5a38d1;
-  --primary-fg: #ffffff;
-  --accent: #f4f0ff;
-  --accent-fg: #5a38d1;
-  --secondary: #f3f0fc;
-  --secondary-fg: #4e31bf;
-  --success: #16a34a;
-  --success-soft: #dcfce7;
-  --warning: #d97706;
-  --warning-soft: #fef3c7;
-  --danger: #dc2626;
-  --danger-soft: #fee2e2;
-  --radius-sm: 0.5rem;
-  --radius: 0.75rem;
-  --radius-lg: 1rem;
-  --radius-xl: 1.25rem;
-  --shadow-sm: 0 1px 2px 0 rgba(0,0,0,.04);
-  --shadow: 0 1px 3px 0 rgba(0,0,0,.07), 0 1px 2px -1px rgba(0,0,0,.04);
-  --shadow-md: 0 6px 14px -4px rgba(0,0,0,.08), 0 2px 4px -2px rgba(0,0,0,.05);
-  --shadow-lg: 0 24px 48px -14px rgba(0,0,0,.16);
-  --shadow-primary: 0 10px 30px -10px rgba(107, 70, 229, 0.28);
-  --sidebar-w: 280px;
-  --right-panel-w: 280px;
+  /* ─── 배경 (따뜻한 화이트 — 노을 직전 거실 톤) ─── */
+  --bg:           #FAF8F5;   /* 화면 전체 — warm white */
+  --bg-2:         #F3EFE9;   /* 섹션 배경 — warm cream */
+  --bg-3:         #EBE5DC;   /* 비활성/구분 — warm beige */
+  --card:         #FFFFFF;   /* 카드 — pure white (대비) */
+
+  /* ─── 글자 4단계 ─── */
+  --fg-strong:    #1F1A14;   /* 헤드라인, 강조 (warm black) */
+  --fg:           #3C342B;   /* 본문 (warm slate) */
+  --fg-soft:      #6E6458;   /* 메타, 라벨 */
+  --fg-muted:     #A89E91;   /* placeholder, 비활성 */
+  /* 호환 alias (기존 코드) */
+  --fg-2:         #6E6458;
+  --muted:        #A89E91;
+
+  /* ─── 보더 ─── */
+  --border:       #E9E2D6;   /* warm light */
+  --border-strong:#D6CCB8;
+  --border-card:  rgba(0,0,0,0.04);   /* 카드용 미세 보더 */
+
+  /* ─── 메인 컬러 — 보라 (저녁 황혼색) ─── */
+  --primary:      #6B46E5;
+  --primary-hover:#5A38D1;
+  --primary-soft: #EDE7FF;
+  --primary-fg:   #FFFFFF;
+
+  /* ─── 노을 액센트 (퇴근 시간 / 마감 임박) ─── */
+  --sunset:       #FF8E5C;   /* 노을 오렌지 */
+  --sunset-soft:  #FFE8DA;
+  --peach:        #FFB4A2;   /* 살구 — 위로/캐릭터 메시지 */
+  --peach-soft:   #FFEEE8;
+  --gold:         #FFCB77;   /* 황금시간 / 마감 임박 */
+  --gold-soft:    #FFF3DD;
+
+  /* ─── 보조 (의미별) ─── */
+  --accent:       #F4F0FF;
+  --accent-fg:    #5A38D1;
+  --secondary:    #F3F0FC;
+  --secondary-fg: #4E31BF;
+  --success:      #2D9D78;   /* 따뜻한 민트 */
+  --success-soft: #D6F0E6;
+  --warning:      #E8843D;   /* 노을빛 */
+  --warning-soft: #FFE8D6;
+  --danger:       #D9534A;   /* 따뜻한 적 */
+  --danger-soft:  #FBE0DC;
+
+  /* ─── 라운드 (의미별) ─── */
+  --radius-xs:    6px;       /* 배지, 작은 버튼 */
+  --radius-sm:    10px;      /* 인풋, 칩 */
+  --radius:       14px;      /* 카드 (메인) */
+  --radius-lg:    20px;      /* 모달, 큰 배너 */
+  --radius-xl:    24px;
+  --radius-pill:  999px;
+
+  /* ─── 그림자 (다층 — 종이 위 종이 느낌) ─── */
+  --shadow-sm:
+    0 0 0 1px var(--border-card),
+    0 1px 2px rgba(0,0,0,0.04);
+  --shadow:
+    0 0 0 1px var(--border-card),
+    0 1px 3px rgba(0,0,0,0.04),
+    0 4px 12px -4px rgba(0,0,0,0.05);
+  --shadow-md:
+    0 0 0 1px var(--border-card),
+    0 2px 6px rgba(0,0,0,0.04),
+    0 12px 28px -8px rgba(0,0,0,0.07);
+  --shadow-lg:
+    0 0 0 1px var(--border-card),
+    0 4px 12px rgba(0,0,0,0.05),
+    0 24px 48px -16px rgba(0,0,0,0.12);
+  --shadow-primary: 0 12px 32px -12px rgba(107, 70, 229, 0.32);
+  --shadow-sunset:  0 12px 32px -12px rgba(255, 142, 92, 0.30);
+
+  /* ─── 8pt 간격 시스템 ─── */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  24px;
+  --space-6:  32px;
+  --space-7:  48px;
+  --space-8:  64px;
+
+  /* ─── 레이아웃 ─── */
+  --sidebar-w:      280px;
+  --right-panel-w:  280px;
+
+  /* ─── 모션 ─── */
+  --ease:        cubic-bezier(0.32, 0.72, 0, 1);    /* 토스/애플식 부드러움 */
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --duration:    240ms;
+  --duration-fast: 160ms;
+
+  /* ─── 폰트 ─── */
   --sans: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
+
+/* ─── 타이포 위계 (전역 helper 클래스) ─── */
+.t-hero {
+  font-size: 44px; font-weight: 800;
+  letter-spacing: -0.03em; line-height: 1.12;
+  color: var(--fg-strong);
+}
+.t-h1 {
+  font-size: 32px; font-weight: 800;
+  letter-spacing: -0.025em; line-height: 1.18;
+  color: var(--fg-strong);
+}
+.t-h2 {
+  font-size: 22px; font-weight: 700;
+  letter-spacing: -0.02em; line-height: 1.25;
+  color: var(--fg-strong);
+}
+.t-h3 {
+  font-size: 17px; font-weight: 700;
+  letter-spacing: -0.015em; line-height: 1.3;
+  color: var(--fg-strong);
+}
+.t-body {
+  font-size: 15px; font-weight: 400;
+  line-height: 1.65; color: var(--fg);
+}
+.t-small {
+  font-size: 13px; font-weight: 400;
+  line-height: 1.55; color: var(--fg-soft);
+}
+.t-label {
+  font-size: 11.5px; font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--fg-soft);
+}
+.t-num { font-variant-numeric: tabular-nums; }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
@@ -115,9 +213,9 @@ input, select, textarea { font-family: inherit; color: inherit; }
 /* 사이드바 하단 — 최근 활동 (3줄) */
 .sidebar-recent {
   margin-top: auto;       /* 사이드바 하단으로 밀어붙임 */
-  padding: 14px 12px 16px;
+  padding: var(--space-4) var(--space-3) var(--space-4);
   border-top: 1px solid var(--border);
-  background: var(--bg-1, #fff);
+  background: linear-gradient(180deg, #fff 0%, var(--bg) 100%);
 }
 .sidebar-recent-title {
   margin: 0 0 8px;
@@ -211,43 +309,57 @@ body.right-panel-off .right-panel { display: none; }
 }
 .rp-coming-list { display: flex; flex-direction: column; gap: 8px; }
 .rp-coming-card {
-  background: var(--bg-2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 12px 12px;
-  display: flex; flex-direction: column; gap: 4px;
-  transition: transform .12s, box-shadow .15s;
+  background: var(--card);
+  border: none;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-3) var(--space-3);
+  display: flex; flex-direction: column; gap: var(--space-1);
+  transition: box-shadow var(--duration) var(--ease),
+              transform var(--duration-fast) var(--ease);
 }
-.rp-coming-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.rp-coming-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+}
 .rp-coming-head {
   display: flex; align-items: center; gap: 6px;
-  font-size: 13px; font-weight: 600; color: var(--fg);
+  font-size: 13px; font-weight: 700;
+  color: var(--fg-strong);
+  letter-spacing: -0.01em;
 }
-.rp-coming-emoji { font-size: 16px; }
+.rp-coming-emoji { font-size: 15px; }
 .rp-coming-badge {
   display: inline-flex; align-items: center; gap: 3px;
   margin-left: auto;
-  padding: 2px 7px; border-radius: 999px;
-  background: rgba(124, 58, 237, 0.10); color: var(--primary);
-  font-size: 10.5px; font-weight: 700;
+  padding: 2px 8px; border-radius: var(--radius-pill);
+  background: var(--peach-soft); color: var(--sunset);
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.02em;
 }
 .rp-coming-desc {
-  font-size: 11.5px; color: var(--fg-2); line-height: 1.5;
+  font-size: 11.5px;
+  color: var(--fg-soft);
+  line-height: 1.5;
   margin: 0;
 }
 .rp-coming-tagline {
-  margin-top: 6px;
-  font-size: 11.5px; color: var(--fg-2); text-align: center;
+  margin-top: var(--space-2);
+  font-size: 11.5px;
+  color: var(--fg-soft);
+  text-align: center;
   font-style: italic;
+  line-height: 1.6;
 }
 
-/* ===== 체류시간 인체 캐릭터 ===== */
+/* ===== 체류시간 인체 캐릭터 (퇴근 마스코트) ===== */
 .rp-body-card {
-  background: linear-gradient(180deg, #FAFAFA 0%, #F5F3FF 100%);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 14px 12px 16px;
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  background: linear-gradient(180deg, #FFF8F0 0%, #FFEEE0 100%);   /* 노을 톤 */
+  border: none;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-4) var(--space-3) var(--space-4);
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
 }
 .rp-body-svg {
   width: 100%; max-width: 130px; height: auto;
@@ -297,8 +409,10 @@ body.right-panel-off .right-panel { display: none; }
 .main-header {
   position: sticky; top: 0; z-index: 30;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 20px 32px; border-bottom: 1px solid var(--border);
-  background: rgba(250,250,250,.85); backdrop-filter: blur(8px);
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--border);
+  background: rgba(250, 248, 245, 0.85);   /* warm white 반투명 */
+  backdrop-filter: blur(10px);
   min-height: 72px;
 }
 .main-header h1 { font-size: 22px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
@@ -332,31 +446,81 @@ body.right-panel-off .right-panel { display: none; }
 }
 .icon-btn:hover { background: var(--bg-2); color: var(--fg); }
 
-/* ===== Card ===== */
+/* ===== Card — Kinship 식 부드러운 카드 (다층 그림자 + 미세 보더) ===== */
 .card {
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: var(--radius); box-shadow: var(--shadow-sm);
+  background: var(--card);
+  border: none;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transition: box-shadow var(--duration) var(--ease),
+              transform var(--duration-fast) var(--ease);
 }
-.card-head { padding: 18px 22px 10px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.card-title-row { display: flex; align-items: center; gap: 12px; }
+.card-head {
+  padding: var(--space-5) var(--space-5) var(--space-3);
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-4);
+}
+.card-title-row { display: flex; align-items: center; gap: var(--space-3); }
 .card-title-icon {
-  width: 40px; height: 40px; border-radius: 10px;
+  width: 40px; height: 40px;
+  border-radius: var(--radius-sm);
   background: var(--primary-soft); color: var(--primary);
   display: grid; place-items: center;
+  flex-shrink: 0;
 }
-.card-title { font-size: 17px; font-weight: 600; margin: 0; }
-.card-subtitle { font-size: 14px; color: var(--fg-2); margin: 2px 0 0; }
-.card-body { padding: 12px 22px 22px; }
+.card-title {
+  font-size: 17px; font-weight: 700;
+  letter-spacing: -0.015em;
+  margin: 0;
+  color: var(--fg-strong);
+}
+.card-subtitle {
+  font-size: 13.5px;
+  color: var(--fg-soft);
+  margin: 2px 0 0;
+  line-height: 1.5;
+}
+.card-body { padding: var(--space-3) var(--space-5) var(--space-5); }
 
-/* ===== Stats ===== */
-.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
-.stat-card { padding: 22px; }
-.stat-label { font-size: 14px; color: var(--fg-2); margin: 0 0 10px; }
-.stat-value { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; }
-.stat-unit { font-size: 16px; font-weight: 500; color: var(--muted); margin-left: 4px; }
+/* ===== Stats (Kinship 식 — 큰 숫자 + 작은 변화량) ===== */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+}
+.stat-card {
+  padding: var(--space-5);
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  display: flex; flex-direction: column; gap: var(--space-3);
+  transition: box-shadow var(--duration) var(--ease);
+}
+.stat-card:hover { box-shadow: var(--shadow); }
+.stat-label {
+  font-size: 12px; font-weight: 600;
+  color: var(--fg-soft);
+  margin: 0;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.stat-value {
+  font-size: 36px; font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--fg-strong);
+  font-variant-numeric: tabular-nums;
+}
+.stat-unit {
+  font-size: 15px; font-weight: 500;
+  color: var(--fg-muted);
+  margin-left: 3px;
+}
 .stat-icon-wrap {
-  width: 46px; height: 46px; border-radius: 12px;
+  width: 38px; height: 38px;
+  border-radius: var(--radius-sm);
   display: grid; place-items: center;
+  flex-shrink: 0;
 }
 
 /* ===== Smart learning banner (쓸수록 똑똑해져요) ===== */
@@ -631,20 +795,56 @@ body.right-panel-off .right-panel { display: none; }
 }
 
 /* ===== Client Cards Grid ===== */
-.client-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-.client-grid-2 { grid-template-columns: repeat(2, 1fr); }
-.client-card { padding: 22px; cursor: pointer; transition: all .18s ease; }
-.client-card:hover { border-color: color-mix(in oklab, var(--primary) 30%, var(--border)); box-shadow: var(--shadow-md); transform: translateY(-1px); }
-.client-logo {
-  width: 48px; height: 48px; border-radius: 12px; background: var(--bg-2);
-  display: grid; place-items: center; color: var(--primary); font-weight: 700; font-size: 18px;
+.client-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-4);
 }
-.client-card h3 { font-size: 17px; font-weight: 600; margin: 0; }
-.client-card .client-sub { font-size: 14px; color: var(--fg-2); margin: 2px 0 0; }
+.client-grid-2 { grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 900px) { .client-grid, .client-grid-2 { grid-template-columns: 1fr; } }
+.client-card {
+  padding: var(--space-5);
+  cursor: pointer;
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  border: none;
+  transition: box-shadow var(--duration) var(--ease),
+              transform var(--duration-fast) var(--ease);
+  display: flex; flex-direction: column; gap: var(--space-4);
+}
+.client-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+.client-logo {
+  width: 44px; height: 44px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, var(--primary-soft) 0%, var(--peach-soft) 100%);
+  display: grid; place-items: center;
+  color: var(--primary); font-weight: 800; font-size: 17px;
+  letter-spacing: -0.02em;
+  flex-shrink: 0;
+}
+.client-card h3 {
+  font-size: 16px; font-weight: 700;
+  letter-spacing: -0.015em;
+  margin: 0;
+  color: var(--fg-strong);
+  line-height: 1.3;
+}
+.client-card .client-sub {
+  font-size: 13px;
+  color: var(--fg-soft);
+  margin: 2px 0 0;
+}
 .client-card .client-meta {
   display: flex; justify-content: space-between; align-items: center;
-  border-top: 1px solid var(--border); padding-top: 14px; margin-top: 16px;
-  font-size: 13px; color: var(--fg-2);
+  padding-top: var(--space-3);
+  margin-top: auto;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px; color: var(--fg-soft);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ===== Badges ===== */
@@ -3839,14 +4039,15 @@ input.locked-by-env::placeholder {
   display: flex; flex-direction: column; gap: 14px;
 }
 .hero-main-card {
-  display: flex; align-items: center; gap: 18px;
-  padding: 20px 24px;
-  background: linear-gradient(135deg, #7C3AED 0%, #A855F7 50%, #EC4899 100%);
+  display: flex; align-items: center; gap: var(--space-4);
+  padding: var(--space-5) var(--space-5);
+  /* 보라 → 노을 그라데이션 — "야근 OFF" 시그니처 */
+  background: linear-gradient(135deg, #6B46E5 0%, #A855F7 45%, #FF8E5C 100%);
   border-radius: var(--radius-lg);
   color: #fff;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 14px 28px -14px rgba(124, 58, 237, 0.4);
+  box-shadow: 0 14px 32px -14px rgba(107, 70, 229, 0.45);
 }
 /* 더 컴팩트한 변형 — 사용자 요청 (item 6) */
 .hero-main-card.hero-main-compact {

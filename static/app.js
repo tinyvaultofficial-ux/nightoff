@@ -2052,8 +2052,8 @@ async function renderRfpSection(cid) {
       ]),
     ]));
 
-    // ── (중단) 좌측 평가 배점 (가로 막대 + 부모-자식 그룹) + 우측 요구사항 체크리스트
-    const middleGrid = h("div", { class: "rfp-grid-2" });
+    // ── (중단) 평가 배점 (풀폭) → 그 아래 요구사항 (풀폭) — 1열 스택으로 가독성 ↑
+    const middleGrid = h("div", { class: "rfp-grid-stack" });
 
     // 좌: 평가 기준 배점 — 부모 카드 2열 grid + 자식 들여쓰기 + 가로 막대
     if (a.evaluation_criteria?.length) {

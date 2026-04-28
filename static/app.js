@@ -321,7 +321,35 @@ document.addEventListener("click", (e) => {
 
 // ---------- Sidebar ----------
 async function renderSidebar(active = "clients") {
-  // 사이드바 — 로고 + 핵심 메뉴만 (최근 과업 섹션 제거)
+  // 사이드바 — 로고 + 메뉴 + (하단) 최근 활동 3줄
+  let activity = [];
+  try { activity = await api.get("/api/activity"); } catch {}
+  if (!Array.isArray(activity)) activity = [];
+
+  const recentBlock = h("div", { class: "sidebar-recent" }, [
+    h("p", { class: "sidebar-recent-title" }, "최근 활동"),
+    activity.length === 0
+      ? h("p", { class: "sidebar-recent-empty" }, "아직 활동이 없어요 🌙")
+      : h("div", { class: "sidebar-recent-list" },
+          activity.slice(0, 3).map((ev) =>
+            h("button", {
+              class: "sidebar-recent-row",
+              onclick: () => {
+                if (ev.conv_id && ev.client_id) navigate(`/client/${ev.client_id}/chat/${ev.conv_id}`);
+                else if (ev.client_id) navigate(`/client/${ev.client_id}`);
+              },
+              title: ev.title,
+            }, [
+              h("span", { class: "sidebar-recent-icon", html: iconHtml(ev.icon || "activity", 12) }),
+              h("span", { class: "sidebar-recent-text" }, [
+                h("span", { class: "sidebar-recent-text-title" }, ev.title || ""),
+                h("span", { class: "sidebar-recent-text-time" }, relativeTime(ev.at)),
+              ]),
+            ])
+          )
+        ),
+  ]);
+
   const side = h("aside", { class: "sidebar" }, [
     h("div", { class: "sidebar-logo", role: "button", tabindex: "0", title: "메인으로", onclick: () => navigate("/"), onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } } }, [
       h("img", { class: "sidebar-logo-img", src: "/static/logo.png", alt: "NightOff" }),
@@ -333,6 +361,7 @@ async function renderSidebar(active = "clients") {
         html: `${iconHtml("users")}<span>과업 목록</span>`,
       }),
     ]),
+    recentBlock,
   ]);
   return side;
 }
@@ -998,7 +1027,7 @@ async function renderDashboard() {
   }
   twoCol.appendChild(leftCol);
 
-  // [우] 오늘의 팁 + 최근 활동
+  // [우] 오늘의 팁 + 가짜 광고 (최근 활동은 좌측 사이드바 하단으로 이동됨)
   const rightCol = h("aside", { class: "dashboard-side-col" });
 
   // 1) 오늘의 팁 (5초 롤링)
@@ -1007,34 +1036,6 @@ async function renderDashboard() {
   // 2) (드립) 가짜 스폰서 광고 — 닫기 버튼 눌러도 안 닫힘 ㅋㅋ
   rightCol.appendChild(renderFakeAdBanner());
 
-  // 3) 최근 활동 — max-height + 내부 스크롤 (item 5)
-  rightCol.appendChild(h("div", { class: "flex-between", style: "margin: 22px 0 12px;" }, [
-    h("h2", { style: "margin: 0; font-size: 16px; font-weight: 700;" }, "최근 활동"),
-  ]));
-  // 빈 상태 위트 멘트 (item 11-D)
-  const emptyMsgs = ["아직 조용하네요 🌙", "텅 빈 캔버스도 멋져요 ✨", "곧 채워질 거예요 ☕", "시작이 반이에요 🚀"];
-  if (!activity.length) {
-    const msg = emptyMsgs[Math.floor(Math.random() * emptyMsgs.length)];
-    rightCol.appendChild(h("div", { class: "card empty-state activity-empty" }, msg));
-  } else {
-    const feed = h("div", { class: "card activity-feed-card" });
-    activity.forEach((ev) => {
-      feed.appendChild(h("div", {
-        class: "activity-item",
-        onclick: () => {
-          if (ev.conv_id && ev.client_id) navigate(`/client/${ev.client_id}/chat/${ev.conv_id}`);
-          else if (ev.client_id) navigate(`/client/${ev.client_id}`);
-        },
-      }, [
-        h("div", { class: "activity-icon", html: iconHtml(ev.icon || "activity", 14) }),
-        h("div", { class: "activity-body" }, [
-          h("div", { class: "activity-title" }, ev.title),
-          h("div", { class: "activity-time" }, relativeTime(ev.at)),
-        ]),
-      ]));
-    });
-    rightCol.appendChild(feed);
-  }
   twoCol.appendChild(rightCol);
 
   // 핵심 기능 배너는 최상단으로 옮겨졌고 (renderHeroBanner)

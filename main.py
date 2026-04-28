@@ -174,6 +174,7 @@ def init_db() -> None:
                 client_id  TEXT NOT NULL,
                 title      TEXT DEFAULT '새 대화',
                 ended      INTEGER DEFAULT 0,
+                outcome    TEXT DEFAULT '',
                 created_at TEXT DEFAULT (datetime('now','localtime')),
                 updated_at TEXT DEFAULT (datetime('now','localtime')),
                 FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
@@ -315,14 +316,7 @@ def init_db() -> None:
         except Exception as e:
             log.warning("our_strengths drop 스킵: %s", e)
 
-        # conversations에 outcome 컬럼 (없으면 추가) — ALTER 방식 마이그레이션
-        try:
-            cols = db.execute("PRAGMA table_info(conversations)").fetchall()
-            col_names = [c["name"] for c in cols]
-            if "outcome" not in col_names:
-                db.execute("ALTER TABLE conversations ADD COLUMN outcome TEXT DEFAULT ''")
-        except sqlite3.OperationalError as e:
-            log.warning("outcome 컬럼 추가 스킵: %s", e)
+        # 컬럼 자동 마이그레이션은 init_db 끝나고 _migrate_db() 가 일괄 처리.
 
         # One-time migration: 기존 rfp_docs → rfp_files (role=제안요청서)
         # 고아 레코드(client 삭제됨)는 건너뜀
@@ -353,6 +347,81 @@ def init_db() -> None:
                     continue
         except sqlite3.OperationalError:
             pass
+
+
+# ── 누락된 컬럼 자동 추가 (멱등) — SQLite + PostgreSQL 양쪽 동작 ─────
+# CREATE TABLE IF NOT EXISTS 만으로는 기존 테이블에 컬럼 추가 못 하므로
+# 새 컬럼이 추가될 때마다 여기에 한 줄씩 등록하면 운영 DB 자동 마이그레이션.
+COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
+    # (table, column, ddl_type_with_default)
+    ("conversations", "outcome", "TEXT DEFAULT ''"),
+    # 향후 신규 컬럼은 여기 추가만 하면 됨 (예시):
+    # ("clients",   "tier",     "TEXT DEFAULT 'normal'"),
+    # ("messages",  "tokens",   "INTEGER DEFAULT 0"),
+]
+
+
+def _existing_columns(db, table: str) -> set[str]:
+    """SQLite 와 PostgreSQL 양쪽에서 동작하는 컬럼 목록 조회."""
+    if USE_PG:
+        try:
+            rows = db.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name=%s",
+                (table,),
+            ).fetchall()
+            return {r["column_name"] for r in rows}
+        except Exception as e:
+            log.warning("PG 컬럼 조회 실패 (%s): %s", table, e)
+            return set()
+    # SQLite — PRAGMA 는 _adapt_sql 영향 안 받게 raw connection 사용
+    try:
+        # get_db() 의 wrapper 가 _adapt_sql 적용하므로, PRAGMA 는 raw conn 으로
+        raw = getattr(db, "conn", None) or db
+        cur = raw.execute(f"PRAGMA table_info({table})")
+        rows = cur.fetchall()
+        # SQLite Row: index 1 이 name
+        names: set[str] = set()
+        for r in rows:
+            try:
+                names.add(r["name"])
+            except (TypeError, IndexError, KeyError):
+                try:
+                    names.add(r[1])
+                except Exception:
+                    pass
+        return names
+    except Exception as e:
+        log.warning("SQLite 컬럼 조회 실패 (%s): %s", table, e)
+        return set()
+
+
+def _migrate_db() -> dict:
+    """누락된 컬럼을 ALTER TABLE 로 추가. 각 마이그레이션 개별 try/except.
+    반환: {"added": [...], "skipped": [...], "failed": [...]}
+    """
+    added: list[str] = []
+    skipped: list[str] = []
+    failed: list[str] = []
+    with get_db() as db:
+        for table, col, ddl in COLUMN_MIGRATIONS:
+            try:
+                cols = _existing_columns(db, table)
+                if col in cols:
+                    skipped.append(f"{table}.{col} (이미 존재)")
+                    continue
+                db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
+                added.append(f"{table}.{col}")
+                log.info("마이그레이션 성공: %s.%s ADD %s", table, col, ddl)
+            except Exception as e:
+                msg = str(e).lower()
+                # 이미 존재한다는 류의 에러는 정상 — skipped 로 분류
+                if "already exists" in msg or "duplicate column" in msg:
+                    skipped.append(f"{table}.{col} (이미 존재)")
+                else:
+                    failed.append(f"{table}.{col}: {str(e)[:120]}")
+                    log.exception("마이그레이션 실패: %s.%s", table, col)
+    return {"added": added, "skipped": skipped, "failed": failed}
 
 
 def get_setting(key: str, default: str = "") -> str:
@@ -1302,17 +1371,19 @@ async def sqlite_op_handler(request: Request, exc: sqlite3.OperationalError):
 
     if schema_missing and not _INIT_DB_RECOVERY_ATTEMPTED:
         _INIT_DB_RECOVERY_ATTEMPTED = True
-        log.warning("DB 스키마 누락 감지 — init_db 자가복구 시도")
+        log.warning("DB 스키마 누락 감지 — init_db + _migrate_db 자가복구 시도")
         try:
             init_db()
-            log.info("init_db 자가복구 성공 — 사용자가 다시 시도하면 통과 예상")
+            mig = _migrate_db()
+            log.info("자가복구 완료 · added=%s · failed=%s", mig.get("added"), mig.get("failed"))
             return JSONResponse(
                 {"error": "DB 초기화를 방금 마쳤어요. 같은 동작을 한 번 더 시도해 주세요 🙏",
-                 "status": 503, "recovered": True},
+                 "status": 503, "recovered": True,
+                 "migrations_added": mig.get("added", [])},
                 status_code=503,
             )
         except Exception as e2:
-            log.exception("init_db 재시도 실패: %s", e2)
+            log.exception("init_db/_migrate_db 재시도 실패: %s", e2)
 
     return JSONResponse(
         {"error": "데이터를 저장하는 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요.",
@@ -1355,6 +1426,17 @@ def _startup() -> None:
         log.info("init_db OK")
     except Exception as e:
         log.exception("init_db 실패 — DB 의존 기능은 비활성, / 는 계속 응답: %s", e)
+    # 컬럼 자동 마이그레이션 (init_db 가 raise 했어도 별도로 시도)
+    try:
+        result = _migrate_db()
+        if result["added"]:
+            log.info("DB 마이그레이션 added: %s", result["added"])
+        if result["skipped"]:
+            log.info("DB 마이그레이션 skipped: %s", result["skipped"])
+        if result["failed"]:
+            log.warning("DB 마이그레이션 failed: %s", result["failed"])
+    except Exception as e:
+        log.exception("DB 마이그레이션 자체 실패 (무시): %s", e)
     # 키 출처 로깅 (실패해도 startup 종료 안 함)
     try:
         src = get_api_key_source()

@@ -290,6 +290,8 @@ function navigate(path) {
 }
 function route() {
   const path = location.pathname;
+  // 페이지 전환 시 우측 패널은 기본 ON (renderChat 안에서 OFF 토글)
+  document.body.classList.remove("right-panel-off");
   for (const r of routes) {
     const m = path.match(r.re);
     if (m) {
@@ -430,7 +432,7 @@ function renderLanding() {
   // ── 핵심 기능 3가지
   const features = [
     { emoji: "👀", title: "발주처 들여다보기", desc: "RFP를 넣으면 발주처 정보와 과업 내용을 자동으로 파악해요" },
-    { emoji: "💪", title: "우리 회사의 강점은?", desc: "잘하는 분야를 선택하면 제안서에 자동 반영돼요" },
+    { emoji: "📚", title: "RAG 학습 제안서", desc: "414개 과거 제안서로 학습한 글투·시각화 패턴이 자동 반영돼요" },
     { emoji: "📊", title: "입찰 활동 히스토리", desc: "수주/탈락 결과를 기록하면 나의 입찰 활동을 한눈에 볼 수 있어요" },
   ];
   wrap.appendChild(h("section", { class: "landing-features" }, [
@@ -485,7 +487,7 @@ function renderHeroBanner() {
   // 서브 카드 3개 — 메인을 뒷받침하는 도구들
   const feats = [
     { emoji: "👀", title: "발주처 들여다보기", desc: "RFP를 넣으면 발주처 정보와 과업 내용을 자동으로 파악해요" },
-    { emoji: "💪", title: "우리 회사의 강점은?", desc: "잘하는 분야를 선택하면 제안서에 자동 반영돼요" },
+    { emoji: "📚", title: "RAG 학습 제안서", desc: "414개 과거 제안서로 학습한 글투·시각화 패턴이 자동 반영돼요" },
     { emoji: "📊", title: "입찰 활동 히스토리", desc: "수주/탈락 결과를 기록하면 나의 입찰 활동을 한눈에 볼 수 있어요" },
   ];
   const grid = h("div", { class: "hero-sub-grid" });
@@ -823,8 +825,8 @@ async function openCompanyDnaModal() {
     body.appendChild(h("div", { class: "onboarding-hint" }, [
       h("span", { class: "ob-emoji" }, "📂"),
       h("div", {}, [
-        h("p", { class: "ob-title" }, "과업별로 강점을 골라두면 제안서에 자동 반영돼요"),
-        h("p", { class: "ob-desc" }, "과업 상세의 ‘우리 회사의 강점은? 💪’ 카드에서 과업에 어울리는 분야와 세부 역량을 선택하면, 제안서 생성 시 자동으로 녹여냅니다."),
+        h("p", { class: "ob-title" }, "RFP 만 넣어도 과거 제안서 414개로 학습한 글투·시각화가 자동 반영돼요"),
+        h("p", { class: "ob-desc" }, "발주처를 추가하고 RFP를 업로드하면 과업 분석과 발주처 들여다보기가 자동으로 진행됩니다. 대화로 본문을 다듬는 동안 RAG 가 적절한 시각화 블록을 추천해 드려요."),
       ]),
     ]));
   } else {
@@ -1375,25 +1377,22 @@ async function renderClientDetail(cid) {
   const stack = h("div", { class: "row-gap-18" });
   content.appendChild(stack);
 
-  // 사용자 요청 순서 (item 8):
+  // 화면 순서 (사용자 요청 / item 4):
   //  1️⃣ RFP 분석 (필수 첫 단계)
   //  2️⃣ 발주처 들여다보기 👀 (RFP 분석 후 자동 채워짐)
-  //  3️⃣ 우리 회사의 강점은? 💪 (선택)
-  //  4️⃣ ✨ 대화 시작하기 (보라 큰 버튼)
-  //  5️⃣ 🎤 PT 연습하기 (제안서 완성 후 활성화)
+  //  3️⃣ ✨ 대화 시작하기 (보라 큰 CTA 버튼)
+  //  4️⃣ 🎤 PT 연습하기 (제안서 완성 후 활성화 / 지금은 비활성)
   //  📋 대화 기록 (하단)
-  // ── 4개 섹션을 병렬로 가져와 렌더 시간 단축 (성능 최적화 item 10)
-  const [rfpSec, intelSec, strengthsSec, historySec] = await Promise.all([
+  // ── 강점 기능은 의도적으로 제거됨 (추상적 신호라 제안서 품질에 역효과)
+  const [rfpSec, intelSec, historySec] = await Promise.all([
     renderRfpSection(cid),
     renderClientIntelSection(cid),
-    renderClientStrengthsSection(cid),
     renderConvHistorySection(cid),
   ]);
   stack.appendChild(rfpSec);
   stack.appendChild(intelSec);
-  stack.appendChild(strengthsSec);
 
-  // 4️⃣ + 5️⃣ — 핵심 CTA 묶음 (대화 시작 + PT 연습)
+  // 3️⃣ + 4️⃣ — 핵심 CTA 묶음 (대화 시작 + PT 연습)
   stack.appendChild(await renderTaskActionsSection(cid));
 
   // 📋 대화 기록 (하단)
@@ -1716,7 +1715,10 @@ async function renderClientIntelSection(cid) {
     if (intel?.error) {
       // 에러 시에만 재시도 버튼 노출
       body.appendChild(h("div", { class: "intel-error-row" }, [
-        h("span", { class: "muted small" }, `자동 수집 실패: ${intel.error}`),
+        h("div", { class: "intel-error-msg" }, [
+          h("span", { class: "intel-error-badge" }, "⚠"),
+          h("span", { class: "muted small" }, intel.error),
+        ]),
         inlineRetry("다시 시도"),
       ]));
     } else {
@@ -1725,6 +1727,19 @@ async function renderClientIntelSection(cid) {
     }
     return card;
   }
+
+  // 정상 응답이지만 일부 필드 없을 수 있음 — 채워진 필드만 카운트해서 사용자에게 알림
+  const filledCount = [
+    (intel.basic_info || {}).official_name || (intel.basic_info || {}).main_role,
+    Array.isArray(intel.event_history) && intel.event_history.length,
+    Array.isArray(intel.tendency) && intel.tendency.length,
+    Array.isArray(intel.communication_tips) && intel.communication_tips.length,
+    intel.summary,
+  ].filter(Boolean).length;
+  body.appendChild(h("div", { class: "intel-status-row" }, [
+    h("span", { class: "intel-status-dot" }),
+    h("span", { class: "small muted" }, `자동 수집 완료 · 채워진 항목 ${filledCount}/5`),
+  ]));
 
   // 기본 정보
   const bi = intel.basic_info || {};
@@ -1773,149 +1788,6 @@ async function renderClientIntelSection(cid) {
     body.appendChild(h("div", { class: "intel-summary" }, intel.summary));
   }
 
-  return card;
-}
-
-// ---------- 우리 회사의 강점은? 💪 (대시보드 전용) ----------
-// ---------- 우리 회사의 강점은? 💪 (발주처별 — RFP 과업 성격 기반 추천) ----------
-async function renderClientStrengthsSection(cid) {
-  const [catalogR, currentR] = await Promise.all([
-    api.get("/api/strengths/catalog").catch(() => ({ catalog: [] })),
-    api.get(`/api/clients/${cid}/strengths`).catch(() => ({
-      category: "", capabilities: [], suggested_category: "", project_domain_label: "", has_rfp: false,
-    })),
-  ]);
-  const catalog = (catalogR && Array.isArray(catalogR.catalog)) ? catalogR.catalog : [];
-  const cur = currentR || {};
-  const allCategories = catalog.map((c) => c.category);
-  const capByCategory = Object.fromEntries(catalog.map((c) => [c.category, c.capabilities]));
-
-  const card = h("div", { class: "card" });
-  card.appendChild(h("div", { class: "card-head" }, [
-    h("div", { class: "card-title-row" }, [
-      h("div", { class: "card-title-icon", html: "💪" }),
-      h("div", { style: "flex:1; min-width:0;" }, [
-        h("h3", { class: "card-title" }, "우리 회사의 강점은? 💪"),
-        h("p", { class: "card-subtitle" }, "선택한 강점은 제안서 생성 시 자동으로 반영돼요"),
-      ]),
-    ]),
-  ]));
-
-  const body = h("div", { class: "card-body row-gap-12" });
-  card.appendChild(body);
-
-  // 1) RFP 분석 전 — 안내만
-  if (!cur.has_rfp) {
-    body.appendChild(h("div", { class: "muted small", style: "padding: 10px 4px; line-height: 1.6;" },
-      "RFP 를 먼저 업로드하면 과업 성격을 자동으로 파악하고 어울리는 강점 분야를 추천해 드려요."));
-    return card;
-  }
-
-  // 2) 과업 성격 안내 + 추천
-  const suggested = cur.suggested_category || "";
-  const domainLabel = cur.project_domain_label || "";
-  const introBox = h("div", { class: "strengths-intro" });
-  if (suggested) {
-    introBox.innerHTML =
-      `<div class="strengths-intro-title">이 과업은 <strong>${escapeHtml(suggested)}</strong> 성격이에요${domainLabel && domainLabel !== suggested ? ` <span class="muted small">(${escapeHtml(domainLabel)})</span>` : ""}.</div>` +
-      `<div class="strengths-intro-sub">우리 회사가 잘하는 분야를 선택해주세요. 추천 분야가 자동으로 골라져 있어요.</div>`;
-  } else {
-    introBox.innerHTML =
-      `<div class="strengths-intro-title">RFP 를 분석했어요. 잘하는 분야를 골라주세요.</div>` +
-      `<div class="strengths-intro-sub">과업과 가장 잘 맞는 분야 한 가지를 먼저 고른 뒤, 세부 역량을 복수 선택할 수 있어요.</div>`;
-  }
-  body.appendChild(introBox);
-
-  // 3) 대분류 select
-  const initialCategory = cur.category || suggested || "";
-  const categorySel = h("select", { class: "select strength-category-select" }, [
-    h("option", { value: "" }, "분야 선택…"),
-    ...allCategories.map((c) =>
-      h("option", { value: c, ...(c === initialCategory ? { selected: "" } : {}) }, c)
-    ),
-  ]);
-  body.appendChild(h("div", { class: "field" }, [
-    h("label", { class: "small muted", style: "display: block; margin-bottom: 6px;" }, "1. 분야 (대분류)"),
-    categorySel,
-  ]));
-
-  // 4) 소분류(capabilities) 멀티 체크박스 — 카테고리 선택 후 노출
-  const capWrap = h("div", { class: "field strength-capabilities-wrap" });
-  body.appendChild(capWrap);
-
-  // 5) 저장 버튼 + 상태 표시
-  const statusEl = h("span", { class: "small muted", style: "margin-left: auto;" }, "");
-  const saveBtn = h("button", { class: "btn btn-primary" }, "저장");
-  body.appendChild(h("div", { style: "display: flex; align-items: center; gap: 10px; margin-top: 4px;" }, [
-    saveBtn, statusEl,
-  ]));
-
-  let currentCategory = initialCategory;
-  let currentCaps = new Set(Array.isArray(cur.capabilities) ? cur.capabilities : []);
-
-  function renderCapabilities() {
-    capWrap.innerHTML = "";
-    if (!currentCategory) {
-      capWrap.appendChild(h("p", { class: "small muted", style: "margin: 0;" },
-        "분야를 먼저 선택하면 세부 역량이 보여요."));
-      return;
-    }
-    const caps = capByCategory[currentCategory] || [];
-    capWrap.appendChild(h("label", { class: "small muted", style: "display: block; margin-bottom: 6px;" },
-      `2. 세부 역량 (복수 선택 가능 · ${caps.length}개)`));
-    const list = h("div", { class: "strength-cap-list strength-cap-list-multi" });
-    caps.forEach((capName) => {
-      const id = `cap-${cid}-${capName}`.replace(/[^\w가-힣-]/g, "_");
-      const cb = h("input", {
-        type: "checkbox", id,
-        ...(currentCaps.has(capName) ? { checked: "" } : {}),
-        onchange: () => {
-          if (cb.checked) currentCaps.add(capName);
-          else currentCaps.delete(capName);
-          statusEl.textContent = "변경 사항 있음 — 저장 눌러주세요";
-          statusEl.style.color = "var(--warning)";
-        },
-      });
-      list.appendChild(h("label", { for: id, class: "strength-cap" }, [
-        cb,
-        h("span", {}, capName),
-      ]));
-    });
-    capWrap.appendChild(list);
-  }
-
-  categorySel.addEventListener("change", () => {
-    const newCat = categorySel.value;
-    if (newCat !== currentCategory) {
-      // 카테고리 바뀌면 기존 선택은 리셋
-      currentCategory = newCat;
-      currentCaps = new Set();
-      renderCapabilities();
-      statusEl.textContent = "변경 사항 있음 — 저장 눌러주세요";
-      statusEl.style.color = "var(--warning)";
-    }
-  });
-
-  saveBtn.addEventListener("click", async () => {
-    saveBtn.disabled = true; saveBtn.textContent = "저장 중…";
-    try {
-      await api.post(`/api/clients/${cid}/strengths`, {
-        category: currentCategory,
-        capabilities: Array.from(currentCaps),
-      });
-      statusEl.textContent = "✅ 저장됐어요";
-      statusEl.style.color = "var(--success)";
-    } catch (e) {
-      statusEl.textContent = "저장 실패";
-      statusEl.style.color = "var(--danger)";
-      toast("저장 실패: " + (e.message || e), "error");
-    } finally {
-      saveBtn.disabled = false;
-      saveBtn.textContent = "저장";
-    }
-  });
-
-  renderCapabilities();
   return card;
 }
 
@@ -2191,19 +2063,19 @@ async function renderRfpSection(cid) {
       ]),
     ]));
 
-    // ── (중단) 좌측 레이더 차트 + 우측 요구사항 체크리스트
+    // ── (중단) 좌측 평가 배점 (가로 막대 + 부모-자식 그룹) + 우측 요구사항 체크리스트
     const middleGrid = h("div", { class: "rfp-grid-2" });
 
-    // 좌: SVG 레이더 차트 (평가 기준 배점)
+    // 좌: 평가 기준 배점 — 부모 카드 2열 grid + 자식 들여쓰기 + 가로 막대
     if (a.evaluation_criteria?.length) {
       const crit = [...a.evaluation_criteria].map((ec) => {
         const m = String(ec.weight || "").match(/(\d+(?:\.\d+)?)/);
         return { item: ec.item || "", weight: m ? parseFloat(m[1]) : 0, raw: ec.weight };
       }).filter((c) => c.item);
-      const radarSvg = buildRadarChartSvg(crit);
+      const chart = buildScoreBarChart(crit);
       middleGrid.appendChild(h("div", { class: "rfp-radar-wrap" }, [
         h("p", { class: "rfp-radar-title" }, `📊 평가 기준 배점 (총 ${crit.length}개 항목)`),
-        radarSvg,
+        chart,
       ]));
     } else {
       middleGrid.appendChild(h("div", { class: "rfp-radar-wrap" }, [
@@ -2250,82 +2122,92 @@ async function renderRfpSection(cid) {
   return card;
 }
 
-// ---------- SVG 레이더 차트 (RFP 평가 기준 시각화) ----------
-// 라벨 잘림 방지 — 차트 좌측에 도형, 우측에 번호 매겨진 범례 리스트로 분리
-function buildRadarChartSvg(items) {
-  const data = (items || []).slice(0, 10);
-  const n = data.length;
-
-  // 컨테이너 — 차트와 범례 가로 배치
-  const wrap = h("div", { class: "radar-wrap" });
-
-  if (n === 0) {
+// ---------- 평가 기준 배점 (가로 막대 차트) ----------
+// 부모-자식 관계 자동 추출(자식은 "- " "· " "ㅇ " "○ " 등 prefix), 부모는 점수 큰 순 정렬,
+// 카드 2열 grid, 자식은 부모 아래 들여쓰기. 13개 등 모든 항목 표시 (제한 없음).
+function buildScoreBarChart(items) {
+  const wrap = h("div", { class: "score-chart-wrap" });
+  if (!items || items.length === 0) {
     wrap.appendChild(h("p", { class: "small muted" }, "평가 기준 정보가 없어요."));
     return wrap;
   }
 
-  if (n < 3) {
-    // 2개 이하 → 단순 배지 (각도 의미 없음)
-    const list = h("div", { class: "radar-fallback" });
-    data.forEach((d) => list.appendChild(
-      h("div", { class: "radar-fallback-pill" },
-        `${d.item} · ${d.raw || d.weight + "점"}`)));
-    wrap.appendChild(list);
-    return wrap;
+  // ── 1) 부모/자식 분리: 이름 앞 prefix 로 판별
+  const CHILD_PREFIX_RE = /^\s*[-·•◦∙ㅇ○]\s+/;
+  const stripPrefix = (s) => String(s || "").replace(CHILD_PREFIX_RE, "").trim();
+  const isChild = (s) => CHILD_PREFIX_RE.test(String(s || ""));
+
+  // 평면 배열을 순서대로 훑어 부모 그룹으로 묶음
+  const groups = [];   // [{parent: {item, weight, raw}, children: [...]}]
+  let curParent = null;
+  for (const it of items) {
+    if (isChild(it.item)) {
+      const child = { ...it, item: stripPrefix(it.item) };
+      if (!curParent) {
+        // 부모 없이 자식 먼저 — 가상 부모 생성
+        curParent = { parent: { item: "기타", weight: 0, raw: "" }, children: [] };
+        groups.push(curParent);
+      }
+      curParent.children.push(child);
+    } else {
+      curParent = { parent: { ...it }, children: [] };
+      groups.push(curParent);
+    }
   }
 
-  // n >= 3 — SVG 레이더 + 우측 범례
-  const maxW = Math.max(1, ...data.map((d) => d.weight));
-  const cx = 130, cy = 130, R = 95;
-  const angle = (i) => (Math.PI * 2 * i) / n - Math.PI / 2;
-  const point = (i, ratio) => {
-    const a = angle(i);
-    return [cx + Math.cos(a) * R * ratio, cy + Math.sin(a) * R * ratio];
-  };
+  // ── 2) 부모는 점수 큰 순으로 정렬 (자식 순서는 원본 유지)
+  groups.sort((a, b) => (b.parent.weight || 0) - (a.parent.weight || 0));
 
-  // 격자 3링 (33% / 66% / 100%)
-  const rings = [0.33, 0.66, 1].map((ratio) => {
-    const pts = data.map((_, i) => point(i, ratio).join(",")).join(" ");
-    return `<polygon points="${pts}" fill="none" stroke="#E5E5E5" stroke-width="1"/>`;
-  }).join("");
+  // 각 그룹별 자식 정규화 max (부모 안에서만 비교)
+  const maxParentW = Math.max(1, ...groups.map((g) => g.parent.weight || 0));
 
-  // 축
-  const axes = data.map((_, i) => {
-    const [x, y] = point(i, 1);
-    return `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#E5E5E5" stroke-width="1"/>`;
-  }).join("");
+  // ── 3) 부모 카드 2열 grid 렌더
+  const grid = h("div", { class: "score-grid" });
+  groups.forEach((g) => {
+    const card = h("div", { class: "score-card" });
 
-  // 데이터 폴리곤
-  const dataPts = data.map((d, i) => point(i, Math.max(0.08, d.weight / maxW)).join(",")).join(" ");
-  const dataPoly = `<polygon points="${dataPts}" fill="rgba(124,58,237,0.18)" stroke="#7C3AED" stroke-width="2" stroke-linejoin="round"/>`;
-  const dataDots = data.map((d, i) => {
-    const [x, y] = point(i, Math.max(0.08, d.weight / maxW));
-    return `<circle cx="${x}" cy="${y}" r="4" fill="#7C3AED"/>`;
-  }).join("");
+    // 부모 헤더 — 큰 막대
+    const parentRow = h("div", { class: "score-row score-row-parent" });
+    parentRow.appendChild(h("div", { class: "score-name" }, g.parent.item));
+    const pBarBox = h("div", { class: "score-bar-box" });
+    const pBarFill = h("div", { class: "score-bar-fill score-bar-parent" });
+    const pRatio = (g.parent.weight || 0) / maxParentW;
+    pBarFill.style.width = `${Math.max(2, pRatio * 100)}%`;
+    pBarBox.appendChild(pBarFill);
+    parentRow.appendChild(pBarBox);
+    parentRow.appendChild(h("div", { class: "score-weight score-weight-parent" },
+      g.parent.raw || `${g.parent.weight}점`));
+    card.appendChild(parentRow);
 
-  // 도형 안 라벨 — 항목명 빼고 **번호만** 표시 (① ② ③ ...)
-  const numbers = data.map((d, i) => {
-    const [x, y] = point(i, 1.18);
-    const num = i + 1;
-    return `<circle cx="${x}" cy="${y}" r="11" fill="#7C3AED"/><text x="${x}" y="${y + 4}" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">${num}</text>`;
-  }).join("");
-
-  const svgHtml = `<svg viewBox="0 0 260 260" width="260" height="260" class="radar-svg">${rings}${axes}${dataPoly}${dataDots}${numbers}</svg>`;
-  const svgBox = h("div", { class: "radar-svg-box" });
-  svgBox.innerHTML = svgHtml;
-  wrap.appendChild(svgBox);
-
-  // 우측 범례 — 번호 + 항목명 + 배점 (잘림 X, 줄바꿈 자유)
-  const legend = h("ol", { class: "radar-legend" });
-  data.forEach((d, i) => {
-    legend.appendChild(h("li", { class: "radar-legend-item" }, [
-      h("span", { class: "radar-legend-num" }, String(i + 1)),
-      h("span", { class: "radar-legend-name" }, d.item),
-      h("span", { class: "radar-legend-weight" }, d.raw || `${d.weight}점`),
-    ]));
+    // 자식 행들 — 부모 아래 들여쓰기 + 얇은 막대
+    if (g.children.length) {
+      const childMaxW = Math.max(1, ...g.children.map((c) => c.weight || 0));
+      const childList = h("div", { class: "score-children" });
+      g.children.forEach((c) => {
+        const row = h("div", { class: "score-row score-row-child" });
+        row.appendChild(h("div", { class: "score-name score-name-child" }, c.item));
+        const barBox = h("div", { class: "score-bar-box" });
+        const barFill = h("div", { class: "score-bar-fill score-bar-child" });
+        const ratio = (c.weight || 0) / childMaxW;
+        barFill.style.width = `${Math.max(3, ratio * 100)}%`;
+        barBox.appendChild(barFill);
+        row.appendChild(barBox);
+        row.appendChild(h("div", { class: "score-weight score-weight-child" },
+          c.raw || `${c.weight}점`));
+        childList.appendChild(row);
+      });
+      card.appendChild(childList);
+    }
+    grid.appendChild(card);
   });
-  wrap.appendChild(legend);
+  wrap.appendChild(grid);
 
+  // 합계 footer (있으면 도움됨)
+  const total = groups.reduce((s, g) => s + (g.parent.weight || 0), 0);
+  if (total > 0) {
+    wrap.appendChild(h("p", { class: "score-total small muted" },
+      `합계 ${total}점 · 부모 ${groups.length}개 / 항목 ${items.length}개`));
+  }
   return wrap;
 }
 
@@ -2479,6 +2361,8 @@ async function renderMemorySection(cid) {
 async function renderChat(cid, convId) {
   const root = $("#app-root");
   root.innerHTML = "";
+  // 채팅 화면은 우측 패널 숨김 (메인 영역 꽉 사용)
+  document.body.classList.add("right-panel-off");
 
   let data = null;
   try {
@@ -2912,7 +2796,7 @@ async function renderChat(cid, convId) {
 
   shell.appendChild(h("div", { class: "chat-input-wrap" }, [
     h("div", { class: "chat-input-container" }, [ta, sendBtn, stopBtn]),
-    h("p", { class: "chat-hint" }, "발주처 정보 · RFP 과업 · 우리 회사 강점이 자동으로 들어가요"),
+    h("p", { class: "chat-hint" }, "발주처 정보 · RFP 과업 · RAG 스타일 신호가 자동으로 들어가요"),
   ]));
 
   // On load, re-render assistant messages to parse any embedded proposal markup
@@ -3514,6 +3398,119 @@ function ensureSignup(onDone) {
   setTimeout(() => emailIn.focus(), 100);
 }
 
+// ---------- 체류시간 인체 캐릭터 ----------
+// 단계: [분 임계값, 알림 zone, 메시지, 색 단계]
+//   alert/warn 은 body-zone 클래스에 .alert / .warn 적용
+//   pulse-* 클래스는 SVG 전체 호흡 속도
+const BODY_STAGES = [
+  { upTo: 30,    pulse: "pulse-slow", warn: [],          alert: [],          face: "happy",   msg: "오늘도 화이팅! 💪 좋은 제안서 써봐요!" },
+  { upTo: 120,   pulse: "pulse-mid",  warn: ["torso", "head", "arm-l", "arm-r", "leg-l", "leg-r", "waist", "neck"], alert: [], face: "happy", msg: "잘 하고 있어요! 😊" },
+  { upTo: 240,   pulse: "pulse-mid",  warn: ["torso", "head", "arm-l", "arm-r", "leg-l", "leg-r", "waist", "neck"], alert: ["wrist"], face: "tired", msg: "손목 좀 쉬어줘요~ 스트레칭 어때요? 🤸" },
+  { upTo: 360,   pulse: "pulse-mid",  warn: ["torso", "head", "arm-l", "arm-r", "leg-l", "leg-r", "waist"],          alert: ["neck", "wrist"], face: "tired", msg: "목 돌려줘요! 밤새면 안돼요 😅" },
+  { upTo: 480,   pulse: "pulse-mid",  warn: ["torso", "head", "arm-l", "arm-r", "leg-l", "leg-r"],                   alert: ["waist", "neck", "wrist"], face: "tired", msg: "일어나서 걸어요!! 제발요 🚶" },
+  { upTo: Infinity, pulse: "pulse-mid", warn: [], alert: ["head","torso","waist","neck","wrist","arm-l","arm-r","leg-l","leg-r","feet"], face: "exhausted", msg: "지금 당장 자야 해요. 나이트오프가 명령합니다 😤" },
+];
+
+const BODY_FACES = {
+  happy:     { eyeL: "M 41 30 q 2 -1.5 4 0", eyeR: "M 55 30 q 2 -1.5 4 0", mouth: "M 45 38 q 5 4 10 0" },
+  tired:     { eyeL: "M 41 30 l 4 0",         eyeR: "M 55 30 l 4 0",         mouth: "M 45 39 q 5 -2 10 0" },
+  exhausted: { eyeL: "M 40 30 l 6 2 m 0 -2 l -6 2", eyeR: "M 54 30 l 6 2 m 0 -2 l -6 2", mouth: "M 45 40 q 5 -3 10 0" },
+};
+
+let _bodyStartedAt = null;
+let _bodyTypingTimer = null;
+let _bodyLastStageIdx = -1;
+
+function ensureBodyClock() {
+  // localStorage 에 세션 시작 시각 저장 (브라우저 세션 단위)
+  let t = sessionStorage.getItem("nightoff.bodyStartedAt");
+  if (!t) {
+    t = String(Date.now());
+    sessionStorage.setItem("nightoff.bodyStartedAt", t);
+  }
+  _bodyStartedAt = parseInt(t, 10);
+}
+
+function pickBodyStage(elapsedMin) {
+  for (let i = 0; i < BODY_STAGES.length; i++) {
+    if (elapsedMin <= BODY_STAGES[i].upTo) return i;
+  }
+  return BODY_STAGES.length - 1;
+}
+
+function applyBodyStage(stageIdx) {
+  const svg = document.getElementById("rp-body-svg");
+  const msgEl = document.getElementById("rp-body-msg");
+  if (!svg || !msgEl) return;
+  const stage = BODY_STAGES[stageIdx];
+  // pulse 클래스 토글
+  svg.classList.remove("pulse-slow", "pulse-mid");
+  svg.classList.add(stage.pulse);
+  // 모든 zone 초기화
+  svg.querySelectorAll(".body-zone").forEach((g) => {
+    g.classList.remove("warn", "alert", "alert-blink");
+  });
+  stage.warn.forEach((zone) => {
+    svg.querySelectorAll(`.zone-${zone}`).forEach((g) => g.classList.add("warn"));
+  });
+  stage.alert.forEach((zone) => {
+    svg.querySelectorAll(`.zone-${zone}`).forEach((g) => {
+      g.classList.add("alert", "alert-blink");
+    });
+  });
+  // 표정 변경
+  const face = BODY_FACES[stage.face] || BODY_FACES.happy;
+  const eyeL = document.getElementById("rp-eye-l");
+  const eyeR = document.getElementById("rp-eye-r");
+  const mouth = document.getElementById("rp-mouth");
+  if (eyeL) eyeL.setAttribute("d", face.eyeL);
+  if (eyeR) eyeR.setAttribute("d", face.eyeR);
+  if (mouth) mouth.setAttribute("d", face.mouth);
+  // 메시지 타이핑 효과 — 단계 변할 때만 재타이핑
+  if (stageIdx !== _bodyLastStageIdx) {
+    _bodyLastStageIdx = stageIdx;
+    typeBodyMessage(msgEl, stage.msg);
+  }
+}
+
+function typeBodyMessage(el, msg) {
+  if (_bodyTypingTimer) clearInterval(_bodyTypingTimer);
+  el.innerHTML = "<span class=\"typing-cursor\"></span>";
+  let i = 0;
+  _bodyTypingTimer = setInterval(() => {
+    if (i >= msg.length) {
+      clearInterval(_bodyTypingTimer);
+      _bodyTypingTimer = null;
+      el.innerHTML = msg + "<span class=\"typing-cursor\"></span>";
+      return;
+    }
+    i++;
+    el.innerHTML = msg.slice(0, i) + "<span class=\"typing-cursor\"></span>";
+  }, 35);
+}
+
+function tickBody() {
+  if (!_bodyStartedAt) return;
+  const elapsedMs = Date.now() - _bodyStartedAt;
+  const elapsedMin = elapsedMs / 60000;
+  const stageIdx = pickBodyStage(elapsedMin);
+  applyBodyStage(stageIdx);
+  // 시간 표시
+  const timeEl = document.getElementById("rp-body-time");
+  if (timeEl) {
+    const h = Math.floor(elapsedMin / 60);
+    const m = Math.floor(elapsedMin % 60);
+    timeEl.textContent = h > 0 ? `${h}시간 ${m}분 째 작업 중` : `${m}분 째 작업 중`;
+  }
+}
+
+function bootBodyCharacter() {
+  ensureBodyClock();
+  tickBody();
+  // 30초마다 갱신
+  setInterval(tickBody, 30 * 1000);
+}
+
 // ---------- Boot ----------
 // 최초 방문 체크
 window.addEventListener("DOMContentLoaded", () => {
@@ -3521,6 +3518,8 @@ window.addEventListener("DOMContentLoaded", () => {
     // 비동기 — 페이지 렌더 후 모달
     setTimeout(() => ensureSignup(), 400);
   }
+  // 체류시간 인체 캐릭터 시작
+  bootBodyCharacter();
 });
 
 route();

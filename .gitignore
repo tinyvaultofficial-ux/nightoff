@@ -17,10 +17,15 @@ server.log
 
 # RAG 학습 원본/디버그 — 발주처/회사명/금액 평문 포함 → 깃 제외
 _rag_extracted/
+_rag_extracted_*/
 _rag_chunks.json
+_rag_chunks_*.json
 _rag_quality.json
 _rag_report.txt
 _rag_search_report.txt
 _rag_build_report.txt
+_rag_build_report_*.txt
+_rag_append_report.txt
+_rag_append_report_*.txt
 _rag_style.json
 _rag_style_guide.md

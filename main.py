@@ -741,7 +741,7 @@ B) Red Team 스코어 페이지 — 평가기준별 예상 점수
   │ LAYER 1  고정 원칙 (도메인 무관 항상 유지)       │
   │   · 5부 구조 / 페이지 breadcrumb                │
   │   · 숫자·단위 극도 상세 (스펙 원칙)              │
-  │   · 7종 레이아웃 라이브러리 자동 선택           │
+  │   · 15종 시각화 라이브러리 자동 선택            │
   │   · 제안사 소개 포맷 (N년 경력 · 학력 · 실적)     │
   │   · 컴플라이언스·Red Team 마지막 두 페이지        │
   ├─────────────────────────────────────────────┤
@@ -775,10 +775,44 @@ LAYER 1 — 고정 원칙 (항상 유지)
    단위(㎡ · m · nit · mm · m/s · ㎍/㎥ · 명 · 원 · % · °C · MB · Gbps · 건 · 명/시간)까지 명시.
    추상 형용사("뛰어난", "최고의") 금지. 정량으로만 말할 것.
 
-▸ 7종 레이아웃 선택 규칙 (도메인 무관)
-   전략·특장점 → strategy-4cards · 절차·순서 → step-process · 여정·단계 → timeline-4step
-   일정 → gantt-d-day · 매뉴얼·배치 → manual-table · 임계치 대응 → threshold-table
-   타깃팅 → target-matrix
+▸ 15종 시각화 라이브러리 — 섹션 성격에 맞게 자동 선택 (RAG 신호와 연동)
+   사용자가 RAG 학습 결과로 어떤 시각화 패턴을 즐겨 쓰는지 신호가 들어오면, 그 신호를 우선 적용.
+   본문 = 글덩어리만 줄줄 금지. 한 페이지에 최소 1~2개 시각 블록 필수.
+
+   ① strategy-4cards          전략·특장점·차별화 (4 카드 grid, 각 카드 = 아이콘 + 한 줄 헤드 + 2~3 bullet)
+   ② step-process             절차·순서·단계 (STEP 1 → 2 → 3 → 4, 화살표 connector, 각 step = 헤드 + 짧은 설명)
+   ③ timeline-4step           여정·단계 변화 (D-60 → D-30 → D-7 → D+30, 가로 타임라인, 각 노드별 활동)
+   ④ gantt-d-day              일정·로드맵 (간트차트, 가로축 = 주/월, 세로축 = 활동, 막대로 기간 표시)
+   ⑤ manual-table             안전관리·운영 매뉴얼 (구분|상황|조치|담당 4열 표, 행 구분선 굵게, 색상으로 위험도)
+   ⑥ threshold-table          임계치 대응 (수치 구간별 색상 신호등 — 정상=녹/주의=황/위험=적, 각 구간별 행동)
+   ⑦ target-matrix            타깃팅 (타깃 × 메시지 × 채널 매트릭스, 헤더 강조, 셀 안 짧은 카피)
+   ⑧ infographic-numbers      인포그래픽형 숫자 강조 (1~3개 큰 숫자 + 작은 라벨, 거대 폰트 60~100px, 컬러 emphasis)
+   ⑨ icon-text-grid           아이콘 + 텍스트 카드 grid (3~6개, 아이콘 SVG/이모지 + 헤드 + 1~2줄 설명)
+   ⑩ process-flow-arrows      프로세스 플로우 (화살표 connector, 박스→박스→박스, 분기 가능, 시각적 흐름 강조)
+   ⑪ comparison-table         비교표 (AS-IS vs TO-BE, 또는 우리사 vs 경쟁사, 좌·우 2열 또는 3열, 핵심 차이 강조)
+   ⑫ org-chart                조직도 (PM 최상위 / 부문장 → 팀원 트리 구조, 각 노드 = 이름 + 역할 + 경력)
+   ⑬ chart-bar-pie            막대/원형 차트 (점유율·비중 시각화, SVG 인라인, %·수치 라벨 부착)
+   ⑭ image-text-layout        이미지 + 텍스트 레이아웃 (좌 이미지 / 우 본문 또는 상하, web_search 로 실제 이미지 URL)
+   ⑮ budget-table             예산·산출내역 (구분/항목/단가/수량/기간/금액 6열, 합계행 강조, 일반관리비·이윤 분리)
+   ⑯ kpi-card                 성과 지표 카드 (3~5개 KPI, 각 카드 = 지표명 + 목표값 + 측정방법, 큰 숫자)
+
+   섹션 성격 → 시각화 매핑 가이드 (예시):
+   · "사업 추진 배경"       → ⑧ infographic-numbers + ⑪ comparison (현황 vs 목표)
+   · "전략·차별화"          → ① strategy-4cards + ⑨ icon-text-grid
+   · "추진 절차/단계"       → ② step-process + ⑩ process-flow-arrows
+   · "추진 일정"            → ③ timeline-4step (큰 단계) 또는 ④ gantt-d-day (세부 일정)
+   · "운영 인력 / 조직도"   → ⑫ org-chart + ⑨ icon-text-grid (핵심 인력 카드)
+   · "안전 관리 매뉴얼"     → ⑤ manual-table + ⑥ threshold-table
+   · "예산 집행 계획"       → ⑮ budget-table (필수)
+   · "성과 측정 지표"       → ⑯ kpi-card + ⑬ chart-bar-pie
+   · "홍보 전략·계획"       → ⑦ target-matrix + ③ timeline-4step + ⑭ image-text-layout
+   · "체험 부스 운영"       → ⑨ icon-text-grid + ⑭ image-text-layout
+
+   ※ RAG 가 "이 도메인엔 stat_emph(숫자강조), bullet, table, safety 패턴이 자주 등장한다" 라고 신호를
+     주면, ⑧ infographic-numbers / ⑤ manual-table / ⑥ threshold-table 을 우선 적용.
+
+   ※ 한 페이지에 같은 종류의 시각 블록 반복 금지. 다른 종류 2~3개 조합으로 풍부함을 만들 것.
+   ※ 글머리표(bullet)만 줄줄 늘어놓는 페이지 금지 — 반드시 위 ①~⑯ 중 하나의 구조적 시각 블록을 동반.
 
 ▸ 제안사 소개 포맷 (Ⅱ. 일반 부문)
    · 개인 카드: 이름 / 직함 / N년 경력 / 과거 소속 bullet / 학력 / 담당 프로젝트
@@ -1804,7 +1838,7 @@ def _build_system_prompt(client_id: str) -> str:
         tone_signal.append(
             f"\n→ PROPOSAL_SYSTEM_PROMPT 의 LAYER 2 도메인 매트릭스 중 **{domain}** 블록의 "
             "어미·어휘·레지스터·거버닝 예시·필수 페이지·Ⅳ·Ⅴ 명칭을 그대로 적용.\n"
-            "LAYER 1 고정 원칙(5부 구조·숫자 상세·7종 레이아웃·breadcrumb·제안사 소개)은 "
+            "LAYER 1 고정 원칙(5부 구조·숫자 상세·15종 시각화·breadcrumb·제안사 소개)은 "
             "도메인과 무관하게 동일 유지.\n"
             "레퍼런스 스타일 가이드가 함께 있으면 그 가이드가 LAYER 2 보다 우선."
         )
@@ -1901,15 +1935,7 @@ def _build_system_prompt(client_id: str) -> str:
         lines = [f"- [{m['category']}] {m['content']}" for m in memories]
         parts.append("[대화 기억(뉘앙스)]\n" + "\n".join(lines))
 
-    # 우리 회사의 강점 — 이 발주처에 대해 사용자가 선택한 분야/역량 주입
-    strengths_summary = get_client_strengths_summary(client_id)
-    if strengths_summary:
-        parts.append(
-            "[우리 회사의 강점 — 이 과업에 어울리는 분야로 사용자가 선택한 역량]\n"
-            + strengths_summary
-            + "\n→ 이 역량들이 RFP 과업과 어떻게 매칭되는지 제안서 본문 곳곳에 자연스럽게 드러낼 것. "
-            "강제로 욱여넣지 말고, 강점이 빛나는 페이지에 집중적으로 녹여낸다."
-        )
+    # [제거됨] 우리 회사의 강점 주입 — 추상적 신호라 제안서 품질에 역효과 → 의도적 제외
 
     # 발주처 들여다보기 (자동 수집된 정보) — 있으면 주입
     with get_db() as db:
@@ -2790,149 +2816,29 @@ def api_mem_delete(mem_id: str):
 
 
 # ---------------------------------------------------------------------------
-# 우리 회사의 강점은? 💪  (발주처별 — RFP 과업 성격에 맞춰 사용자가 선택)
+# [DEPRECATED] 우리 회사의 강점은? — 기능 완전 제거됨
+# 사유: 추상적 신호라 제안서 본문에 녹이면 "혁신적인/최적의" 류 빈말 증가 역효과.
+# 의도적 분리 유지. 이전 클라이언트 호환을 위해 GET API 만 stub 으로 남기고
+# 카탈로그/POST/시스템프롬프트 주입은 모두 제거.
+# DB 테이블(client_strengths) 은 데이터 보존 위해 유지 (수동 쿼리 가능).
 # ---------------------------------------------------------------------------
-STRENGTH_CATALOG: dict[str, list[str]] = {
-    "박람회": ["전시 부스 기획/설계", "공간 연출 및 동선 설계", "참가업체 모집 및 관리",
-              "홍보/마케팅", "운영인력 구성", "부대행사 기획"],
-    "축제":   ["무대 기획/연출", "출연진 섭외", "공간/경관 연출", "체험프로그램 기획",
-              "푸드/마켓존 운영", "홍보/SNS 마케팅", "자원봉사자 운영", "야간 경관 연출"],
-    "전시":   ["전시 콘셉트 기획", "공간 설계/연출", "작품/콘텐츠 수급",
-              "도슨트 운영", "홍보/마케팅"],
-    "공연":   ["공연 기획/프로그래밍", "출연진 섭외", "무대/음향/조명 시스템",
-              "영상 중계", "관객 모객", "홍보/마케팅"],
-    "학술행사": ["행사 기획/프로그래밍", "연사/발표자 섭외", "장소 섭외 및 세팅",
-                "등록/접수 운영", "통역/번역", "홍보/참가자 모집", "온라인 중계"],
-    "경연대회": ["대회 기획/운영", "참가자 모집", "심사위원 섭외",
-                "심사 시스템 운영", "시상식 연출", "홍보/마케팅"],
-    "스포츠/이스포츠 대회": ["대회 기획/운영", "선수/팀 모집", "경기장 섭외/세팅",
-                          "심판/운영진 구성", "중계/방송", "홍보/마케팅"],
-    "시상식/기념식": ["행사 기획/연출", "식순 구성", "출연진/연사 섭외",
-                    "무대/음향/조명", "의전 운영", "영상 제작", "홍보/초청장 발송"],
-}
-
-# RFP 분석의 project_domain 값에서 강점 카테고리 자동 매핑
-DOMAIN_TO_STRENGTH_CATEGORY = {
-    "festival":   "축제",
-    "exhibition": "박람회",
-    "forum":      "학술행사",
-    "education":  "학술행사",
-    "sports":     "스포츠/이스포츠 대회",
-    "campaign":   "시상식/기념식",
-    "tourism":    "축제",
-    "rnd":        "학술행사",
-    "welfare":    "시상식/기념식",
-    "other":      "",
-}
 
 
 @app.get("/api/strengths/catalog")
 def api_strengths_catalog():
-    """전체 카테고리·역량 카탈로그 (정적). 프론트에서 드롭박스 만들 때 사용."""
-    return {
-        "catalog": [
-            {"category": cat, "capabilities": list(caps)}
-            for cat, caps in STRENGTH_CATALOG.items()
-        ]
-    }
+    """[DEPRECATED] 강점 기능 제거됨. 빈 카탈로그 반환."""
+    return {"catalog": [], "deprecated": True}
 
 
 @app.get("/api/clients/{cid}/strengths")
 def api_client_strengths_get(cid: str):
-    """이 발주처의 강점 선택 + RFP project_domain 기반 추천 카테고리."""
-    with get_db() as db:
-        c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
-        if not c:
-            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
-        row = db.execute(
-            "SELECT category,capabilities,updated_at FROM client_strengths WHERE client_id=?",
-            (cid,),
-        ).fetchone()
-
-    selected_category = ""
-    selected_caps: list[str] = []
-    updated_at = None
-    if row:
-        selected_category = row["category"] or ""
-        try:
-            selected_caps = json.loads(row["capabilities"] or "[]")
-            if not isinstance(selected_caps, list):
-                selected_caps = []
-        except Exception:
-            selected_caps = []
-        updated_at = row["updated_at"]
-
-    # RFP 분석에서 도메인·라벨 가져와 추천
-    rfp = _get_rfp_aggregated(cid) or {}
-    project_domain = (rfp.get("project_domain") or "").strip().lower()
-    project_domain_label = rfp.get("project_domain_label") or ""
-    suggested_category = DOMAIN_TO_STRENGTH_CATEGORY.get(project_domain, "")
-    if suggested_category not in STRENGTH_CATALOG:
-        suggested_category = ""
-
+    """[DEPRECATED] 강점 기능 제거됨. 빈 응답."""
     return {
-        "category": selected_category,
-        "capabilities": selected_caps,
-        "updated_at": updated_at,
-        "suggested_category": suggested_category,
-        "project_domain": project_domain,
-        "project_domain_label": project_domain_label,
-        "has_rfp": bool(rfp),
+        "category": "", "capabilities": [], "updated_at": None,
+        "suggested_category": "", "project_domain": "",
+        "project_domain_label": "", "has_rfp": False, "deprecated": True,
     }
 
-
-class ClientStrengthsIn(BaseModel):
-    category: str = ""
-    capabilities: list[str] = []
-
-
-@app.post("/api/clients/{cid}/strengths")
-def api_client_strengths_set(cid: str, body: ClientStrengthsIn):
-    """이 발주처의 강점 카테고리 + 역량 선택 저장. category="" 면 초기화."""
-    with get_db() as db:
-        c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
-        if not c:
-            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
-
-    cat = (body.category or "").strip()
-    caps = list(body.capabilities or [])
-    # 검증: 빈 카테고리는 허용(미선택), 그 외엔 카탈로그 안의 값만
-    if cat and cat not in STRENGTH_CATALOG:
-        raise HTTPException(400, "알 수 없는 카테고리입니다.")
-    if cat:
-        valid = set(STRENGTH_CATALOG[cat])
-        caps = [c for c in caps if c in valid]
-    else:
-        caps = []
-
-    with get_db() as db:
-        db.execute(
-            "INSERT INTO client_strengths(client_id,category,capabilities,updated_at) "
-            "VALUES(?,?,?,datetime('now','localtime')) "
-            "ON CONFLICT(client_id) DO UPDATE SET "
-            "category=excluded.category, capabilities=excluded.capabilities, "
-            "updated_at=excluded.updated_at",
-            (cid, cat, json.dumps(caps, ensure_ascii=False)),
-        )
-    return {"ok": True, "category": cat, "capabilities": caps}
-
-
-def get_client_strengths_summary(cid: str) -> str:
-    """이 발주처에 대해 선택된 강점을 시스템 프롬프트 주입용 1줄 텍스트로."""
-    with get_db() as db:
-        row = db.execute(
-            "SELECT category,capabilities FROM client_strengths WHERE client_id=?",
-            (cid,),
-        ).fetchone()
-    if not row or not row["category"]:
-        return ""
-    try:
-        caps = json.loads(row["capabilities"] or "[]")
-    except Exception:
-        caps = []
-    if not caps:
-        return f"- 분야: {row['category']} (세부 역량은 미지정)"
-    return f"- 분야: {row['category']}\n- 강점 역량: {', '.join(caps)}"
 
 
 # ---------------------------------------------------------------------------
@@ -2966,7 +2872,10 @@ JSON:"""
 
 
 def _run_client_intel(cid: str) -> dict:
-    """발주처 정보 자동 수집 — Claude + web_search 활용."""
+    """발주처 정보 자동 수집 — Claude + web_search 활용.
+
+    실패 케이스를 명확히 분류해 사용자에게 의미있는 에러 메시지를 돌려줌.
+    """
     with get_db() as db:
         client = db.execute("SELECT * FROM clients WHERE id=?", (cid,)).fetchone()
     if not client:
@@ -2979,22 +2888,82 @@ def _run_client_intel(cid: str) -> dict:
               .replace("{CLIENT_TYPE}", client["industry"] or "")
               .replace("{PROJECT_TITLE}", project_title))
 
+    log.info("발주처 들여다보기 시작 · client=%s · project=%r", client["name"], project_title[:40])
+
     intel: dict = {}
+    raw_text = ""
+    stop_reason = None
     try:
         api_client = require_client()
+        # max_tokens 4000 — web_search 결과 + JSON 둘 다 충분히 담기게 (이전 2500 부족 가능)
         resp = api_client.messages.create(
             model=get_setting("model", MODEL_DEFAULT),
-            max_tokens=2500,
+            max_tokens=4000,
             messages=[{"role": "user", "content": prompt}],
             tools=[WEB_SEARCH_TOOL],
         )
-        raw = _extract_text_from_resp(resp)
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```$", "", raw)
-        intel = json.loads(raw)
+        stop_reason = getattr(resp, "stop_reason", None)
+        raw_text = _extract_text_from_resp(resp)
+        log.info("발주처 들여다보기 응답 · stop_reason=%s · text_len=%d", stop_reason, len(raw_text))
+
+        if not raw_text.strip():
+            return {"error": "Claude 응답이 비어있어요 (web_search 검색 결과를 못 찾았을 가능성)"}
+
+        # JSON 추출 — 코드펜스 제거 + 첫 { ~ 마지막 } 매칭으로 강건하게
+        cleaned = raw_text.strip()
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+        # 자연어 문장 + JSON 섞여있으면 첫 { ~ 마지막 } 추출
+        json_match = re.search(r"\{[\s\S]*\}", cleaned)
+        if json_match:
+            cleaned = json_match.group(0)
+        intel = json.loads(cleaned)
+        if not isinstance(intel, dict):
+            return {"error": "응답 형식이 dict 가 아니에요"}
+
+    except json.JSONDecodeError as e:
+        # max_tokens 잘림이면 "Unterminated string" / "Expecting value" 등
+        log.warning("발주처 들여다보기 JSON 파싱 실패: %s · stop_reason=%s · text=%r",
+                    e, stop_reason, raw_text[:200])
+        if stop_reason == "max_tokens":
+            err_msg = "응답이 잘렸어요 (max_tokens 부족) — 다시 시도하면 보통 성공해요"
+        else:
+            err_msg = f"JSON 형식 오류: {str(e)[:80]}"
+        intel = {"error": err_msg}
+
+    except anthropic.AuthenticationError:
+        intel = {"error": "Anthropic API 키가 유효하지 않아요. 좌하단 설정에서 키를 다시 확인해 주세요."}
+    except anthropic.RateLimitError:
+        intel = {"error": "Anthropic API 호출 한도 초과 — 잠시 후 다시 시도해 주세요."}
+    except anthropic.BadRequestError as e:
+        msg = str(e)
+        if "credit balance" in msg.lower() or "billing" in msg.lower():
+            intel = {"error": "Anthropic 크레딧 잔액 부족 — console.anthropic.com 에서 확인"}
+        elif "web_search" in msg.lower() or "tool" in msg.lower():
+            intel = {"error": f"web_search 도구 사용 불가 — 모델/플랜 확인 필요 ({str(e)[:80]})"}
+        else:
+            intel = {"error": f"요청 형식 오류: {str(e)[:100]}"}
+    except (anthropic.APIConnectionError, anthropic.APITimeoutError):
+        intel = {"error": "Anthropic 서버와 통신 실패 — 네트워크 또는 API 일시 장애"}
     except Exception as e:
-        log.warning("발주처 정보 자동 수집 실패: %s", e)
-        return {"error": f"자동 수집 실패 ({type(e).__name__})"}
+        log.exception("발주처 들여다보기 예외 · client=%s", client["name"])
+        intel = {"error": f"자동 수집 실패 ({type(e).__name__}: {str(e)[:80]})"}
+
+    # 정상 응답인데 모든 필드가 비어있는 경우 — 검색 결과 부재로 분류
+    if "error" not in intel:
+        has_any = bool(
+            (intel.get("basic_info") or {}).get("official_name")
+            or (intel.get("basic_info") or {}).get("main_role")
+            or intel.get("event_history")
+            or intel.get("tendency")
+            or intel.get("communication_tips")
+            or intel.get("summary")
+        )
+        if not has_any:
+            intel["error"] = (
+                "발주처 정보를 거의 찾지 못했어요. "
+                f"이름이 정확한지 확인해 보세요 (검색어: {client['name']})."
+            )
 
     with get_db() as db:
         db.execute(
@@ -3004,6 +2973,13 @@ def _run_client_intel(cid: str) -> dict:
             "intel_json=excluded.intel_json, updated_at=excluded.updated_at",
             (cid, json.dumps(intel, ensure_ascii=False)),
         )
+    if "error" in intel:
+        log.warning("발주처 들여다보기 결과 = error: %s", intel["error"])
+    else:
+        log.info("발주처 들여다보기 성공 · official_name=%r · history=%d · tips=%d",
+                 (intel.get("basic_info") or {}).get("official_name", "")[:30],
+                 len(intel.get("event_history") or []),
+                 len(intel.get("communication_tips") or []))
     return intel
 
 

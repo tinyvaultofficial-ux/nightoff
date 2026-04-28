@@ -25,6 +25,119 @@
   <!-- 토스트 -->
   <div id="toast-root" class="toast-root"></div>
 
+  <!-- 우측 고정 패널 (업데이트 예정 + 체류시간 인체 캐릭터) -->
+  <aside id="right-panel" class="right-panel" aria-label="업데이트 예정 및 건강 알림">
+    <!-- 업데이트 예정 -->
+    <section class="rp-section" id="rp-coming">
+      <p class="rp-title">업데이트 예정</p>
+      <div class="rp-coming-list">
+        <div class="rp-coming-card">
+          <div class="rp-coming-head">
+            <span class="rp-coming-emoji">👀</span>
+            <span>발주처 성향 자동학습</span>
+            <span class="rp-coming-badge">준비중 🔨</span>
+          </div>
+          <p class="rp-coming-desc">RFP 쌓일수록 더 정확해져요</p>
+        </div>
+        <div class="rp-coming-card">
+          <div class="rp-coming-head">
+            <span class="rp-coming-emoji">🎤</span>
+            <span>PT 연습하기</span>
+            <span class="rp-coming-badge">준비중 🔨</span>
+          </div>
+          <p class="rp-coming-desc">AI 평가위원과 발표 연습</p>
+        </div>
+        <div class="rp-coming-card">
+          <div class="rp-coming-head">
+            <span class="rp-coming-emoji">🏢</span>
+            <span>나라장터 공고 매칭</span>
+            <span class="rp-coming-badge">준비중 🔨</span>
+          </div>
+          <p class="rp-coming-desc">오늘 들어갈 수 있는 공고만 쏙!</p>
+        </div>
+        <div class="rp-coming-card">
+          <div class="rp-coming-head">
+            <span class="rp-coming-emoji">🏆</span>
+            <span>우리 회사만의 제안서</span>
+            <span class="rp-coming-badge">준비중 🔨</span>
+          </div>
+          <p class="rp-coming-desc">데이터가 쌓일수록 우리 회사에 딱 맞는 제안서가 나와요</p>
+        </div>
+      </div>
+      <p class="rp-coming-tagline">열심히 만들고 있어요 🔨<br>조금만 기다려줘요!</p>
+    </section>
+
+    <!-- 체류시간 인체 캐릭터 -->
+    <section class="rp-section" id="rp-body-section">
+      <p class="rp-title">건강 체크</p>
+      <div class="rp-body-card">
+        <!-- SVG 인체 캐릭터 (귀엽고 위트있는 2~3등신) — JS 가 클래스 토글로 색상/애니 제어 -->
+        <svg id="rp-body-svg" class="rp-body-svg pulse-slow" viewBox="0 0 100 160" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="bodyGrad" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#ffffff" stop-opacity="0.6"/>
+              <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+          <!-- 머리 (큰 동글동글) -->
+          <g class="body-zone zone-head" data-zone="head">
+            <circle cx="50" cy="32" r="22"/>
+            <!-- 광택 -->
+            <circle cx="42" cy="24" r="6" fill="url(#bodyGrad)"/>
+          </g>
+          <!-- 표정 (눈 + 입 — JS 가 표정 바꿈) -->
+          <g id="rp-face" stroke="#1f2937" stroke-width="1.6" stroke-linecap="round" fill="none">
+            <!-- 눈 -->
+            <path id="rp-eye-l" d="M 41 30 q 2 -1.5 4 0"/>
+            <path id="rp-eye-r" d="M 55 30 q 2 -1.5 4 0"/>
+            <!-- 입 (행복) -->
+            <path id="rp-mouth" d="M 45 38 q 5 4 10 0"/>
+          </g>
+          <!-- 목 -->
+          <g class="body-zone zone-neck" data-zone="neck">
+            <rect x="46" y="50" width="8" height="8" rx="2"/>
+          </g>
+          <!-- 몸통 (둥글둥글) -->
+          <g class="body-zone zone-torso" data-zone="torso">
+            <rect x="32" y="58" width="36" height="42" rx="14"/>
+          </g>
+          <!-- 허리 (몸통 아래쪽) -->
+          <g class="body-zone zone-waist" data-zone="waist">
+            <rect x="34" y="92" width="32" height="14" rx="7"/>
+          </g>
+          <!-- 왼팔 -->
+          <g class="body-zone zone-arm-l" data-zone="arm-l">
+            <rect x="20" y="62" width="10" height="32" rx="5"/>
+          </g>
+          <!-- 오른팔 -->
+          <g class="body-zone zone-arm-r" data-zone="arm-r">
+            <rect x="70" y="62" width="10" height="32" rx="5"/>
+          </g>
+          <!-- 손목 (양쪽) -->
+          <g class="body-zone zone-wrist" data-zone="wrist">
+            <circle cx="25" cy="98" r="6"/>
+            <circle cx="75" cy="98" r="6"/>
+          </g>
+          <!-- 다리 -->
+          <g class="body-zone zone-leg-l" data-zone="leg-l">
+            <rect x="36" y="106" width="11" height="40" rx="5.5"/>
+          </g>
+          <g class="body-zone zone-leg-r" data-zone="leg-r">
+            <rect x="53" y="106" width="11" height="40" rx="5.5"/>
+          </g>
+          <!-- 발 -->
+          <g class="body-zone zone-feet" data-zone="feet">
+            <ellipse cx="40" cy="150" rx="8" ry="5"/>
+            <ellipse cx="60" cy="150" rx="8" ry="5"/>
+          </g>
+        </svg>
+        <p id="rp-body-msg" class="rp-body-msg">오늘도 화이팅! 💪</p>
+        <p id="rp-body-time" class="rp-body-time">0분</p>
+      </div>
+    </section>
+  </aside>
+
+
   <!-- 설정 모달 -->
   <div id="settings-modal" class="modal-backdrop hidden">
     <div class="modal">

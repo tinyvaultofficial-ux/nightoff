@@ -29,3 +29,13 @@ _rag_append_report.txt
 _rag_append_report_*.txt
 _rag_style.json
 _rag_style_guide.md
+
+# 슬라이드 배경 추출 결과 (로컬에서 만들고 운영엔 별도 업로드)
+slide_backgrounds.db
+static/slide_bg/
+
+# 자체 호스팅 폰트 파일 (라이선스 직접 처리)
+static/fonts/*.woff2
+static/fonts/*.woff
+static/fonts/*.ttf
+static/fonts/*.otf

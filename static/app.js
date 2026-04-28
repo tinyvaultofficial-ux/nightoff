@@ -1770,9 +1770,49 @@ async function renderConvHistorySection(cid) {
   }
 
   convs.forEach((cv) => {
+    // 저장된 PPTX 가 있으면 다운로드 + "저장된 제안서 보기" 버튼
+    const hasPptx = !!(cv.pptx_path);
+    const actionBtns = [];
+    if (hasPptx) {
+      actionBtns.push(h("button", {
+        class: "btn btn-tiny btn-outline",
+        title: "저장된 제안서 다운로드",
+        html: `${iconHtml("file", 12)}<span>PPTX</span>`,
+        onclick: (e) => {
+          e.stopPropagation();
+          const a = document.createElement("a");
+          a.href = cv.pptx_path;
+          a.download = "";  // 서버 Content-Disposition 따름
+          document.body.appendChild(a); a.click(); a.remove();
+        },
+      }));
+      actionBtns.push(h("button", {
+        class: "btn btn-tiny btn-ghost",
+        title: "저장된 제안서 다시 열람",
+        html: `${iconHtml("eye", 12)}<span>제안서</span>`,
+        onclick: (e) => {
+          e.stopPropagation();
+          navigate(`/client/${cid}/chat/${cv.id}`);
+        },
+      }));
+    }
+    actionBtns.push(h("button", {
+      class: "icon-btn", title: "삭제", html: iconHtml("trash", 16),
+      onclick: async (e) => {
+        e.stopPropagation();
+        if (!confirm("이 대화를 삭제하시겠습니까?")) return;
+        await api.del(`/api/conversations/${cv.id}`);
+        toast("삭제되었습니다", "success");
+        renderClientDetail(cid);
+      },
+    }));
+
     const item = h("div", { class: "conv-item" }, [
       h("div", { class: "conv-main", onclick: () => navigate(`/client/${cid}/chat/${cv.id}`) }, [
-        h("h4", {}, cv.title),
+        h("div", { class: "flex-row", style: "gap: 8px; align-items: center; flex-wrap: wrap;" }, [
+          h("h4", { style: "margin: 0; flex: 1; min-width: 0;" }, cv.title),
+          hasPptx ? h("span", { class: "badge badge-success", title: "저장된 제안서가 있어요" }, "💾 보관됨") : null,
+        ]),
         cv.preview ? h("p", { class: "conv-preview" }, cv.preview) : null,
         h("div", { class: "conv-meta" }, [
           h("span", { class: "flex-row", html: `${iconHtml("calendar", 12)}<span>${fmtDate(cv.created_at)}</span>` }),
@@ -1781,18 +1821,7 @@ async function renderConvHistorySection(cid) {
           outcomeChip(cv, cid),
         ]),
       ]),
-      h("div", { class: "conv-actions" }, [
-        h("button", {
-          class: "icon-btn", title: "삭제", html: iconHtml("trash", 16),
-          onclick: async (e) => {
-            e.stopPropagation();
-            if (!confirm("이 대화를 삭제하시겠습니까?")) return;
-            await api.del(`/api/conversations/${cv.id}`);
-            toast("삭제되었습니다", "success");
-            renderClientDetail(cid);
-          },
-        }),
-      ]),
+      h("div", { class: "conv-actions" }, actionBtns),
     ]);
     body.appendChild(item);
   });

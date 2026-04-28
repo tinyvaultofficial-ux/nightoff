@@ -354,10 +354,9 @@ def init_db() -> None:
 # 새 컬럼이 추가될 때마다 여기에 한 줄씩 등록하면 운영 DB 자동 마이그레이션.
 COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     # (table, column, ddl_type_with_default)
-    ("conversations", "outcome", "TEXT DEFAULT ''"),
-    # 향후 신규 컬럼은 여기 추가만 하면 됨 (예시):
-    # ("clients",   "tier",     "TEXT DEFAULT 'normal'"),
-    # ("messages",  "tokens",   "INTEGER DEFAULT 0"),
+    ("conversations", "outcome",          "TEXT DEFAULT ''"),
+    ("conversations", "pptx_path",        "TEXT DEFAULT ''"),    # 마지막 PPTX 다운로드 경로
+    ("conversations", "pptx_updated_at",  "TEXT DEFAULT ''"),    # PPTX 생성 시각
 ]
 
 
@@ -1986,6 +1985,12 @@ def _build_system_prompt(client_id: str) -> str:
             "도메인과 무관하게 동일 유지.\n"
             "레퍼런스 스타일 가이드가 함께 있으면 그 가이드가 LAYER 2 보다 우선."
         )
+        # 슬라이드 배경 자동 매칭용 — 각 .proposal-page 에 data-domain 속성 주입
+        tone_signal.append(
+            f"\n[⚠ 필수 준수] 모든 <div class=\"proposal-page\"> 에 data-domain=\"{domain}\" 속성을 추가.\n"
+            "  → CSS 가 자동으로 분야별 노을빛 그라데이션 배경을 적용함 (festival/forum/exhibition 등).\n"
+            "  → 표지 슬라이드는 추가로 data-section=\"표지\" 도 함께 (보라→오렌지 강조 배경)."
+        )
         parts.append("\n".join(tone_signal))
 
         # ── RAG: 17개 과거 제안서에서 도메인·요구사항 기반 스타일 신호 주입 ──
@@ -3157,9 +3162,19 @@ class PptxExportIn(BaseModel):
     conversation_id: str
 
 
+def _safe_filename(s: str, default: str = "제안서") -> str:
+    """파일명 안전화 — 운영체제 금지 문자 제거 + 길이 제한."""
+    s = (s or default).strip()
+    s = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '', s)
+    s = re.sub(r'\s+', '_', s)
+    return (s[:60] if s else default) or default
+
+
 @app.post("/api/proposals/pptx")
 def api_proposals_pptx(body: PptxExportIn):
-    """대화의 최신 제안서 HTML 을 .pptx 로 변환해 다운로드 URL 반환."""
+    """대화의 최신 제안서 HTML 을 .pptx 로 변환해 다운로드 URL 반환.
+    파일명은 '{발주처명}_제안서.pptx' 형식, /static/exports/ 에 영구 보관.
+    """
     try:
         from pptx import Presentation
         from pptx.util import Inches, Pt, Emu
@@ -3176,6 +3191,14 @@ def api_proposals_pptx(body: PptxExportIn):
             "ORDER BY created_at DESC LIMIT 1",
             (body.conversation_id,),
         ).fetchone()
+        # 발주처명 가져오기 (파일명용)
+        cli_row = db.execute(
+            "SELECT c.name FROM clients c "
+            "JOIN conversations cv ON cv.client_id=c.id "
+            "WHERE cv.id=?",
+            (body.conversation_id,),
+        ).fetchone()
+        client_name = (cli_row["name"] if cli_row else "") or "제안서"
     if not msg:
         raise HTTPException(404, "이 대화에 제안서가 없어요. 먼저 제안서를 생성해 주세요.")
 
@@ -3276,15 +3299,30 @@ def api_proposals_pptx(body: PptxExportIn):
     if page_count == 0:
         raise HTTPException(500, "제안서에서 페이지를 찾지 못했어요.")
 
-    # 저장
+    # 저장 — 발주처명_제안서.pptx (영구 보관)
     out_dir = STATIC_DIR / "exports"
     out_dir.mkdir(exist_ok=True)
-    fname = f"proposal_{body.conversation_id[:8]}_{uuid.uuid4().hex[:6]}.pptx"
-    out_path = out_dir / fname
+    safe_client = _safe_filename(client_name)
+    download_name = f"{safe_client}_제안서.pptx"
+    # 디스크 저장명은 충돌 방지 위해 hash suffix
+    disk_fname = f"{safe_client}_{body.conversation_id[:8]}.pptx"
+    out_path = out_dir / disk_fname
     prs.save(str(out_path))
+
+    # conversations 테이블에 마지막 PPTX 경로 기록 (재열람용)
+    try:
+        with get_db() as db:
+            db.execute(
+                "UPDATE conversations SET pptx_path=?, pptx_updated_at=datetime('now','localtime') "
+                "WHERE id=?",
+                (f"/static/exports/{disk_fname}", body.conversation_id),
+            )
+    except Exception as e:
+        log.warning("conversations.pptx_path 기록 실패 (무시): %s", e)
+
     return {
-        "url": f"/static/exports/{fname}",
-        "filename": fname,
+        "url": f"/static/exports/{disk_fname}",
+        "filename": download_name,   # 브라우저가 다운로드할 때 표시되는 이름
         "page_count": page_count + 1,  # +1 for cover
     }
 

@@ -4541,3 +4541,120 @@ body.landing-fullscreen .main {
   0%, 100% { transform: scale(1); }
   50%      { transform: scale(1.04); }
 }
+
+/* ============================================================
+   자체 호스팅 폰트 — /static/fonts/ (파일 있으면 사용, 없으면 CDN 폴백)
+   ============================================================ */
+@font-face {
+  font-family: 'Paperlogy Local';
+  src: url('/static/fonts/Paperlogy-4Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Paperlogy Local';
+  src: url('/static/fonts/Paperlogy-7Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Paperlogy Local';
+  src: url('/static/fonts/Paperlogy-8ExtraBold.woff2') format('woff2');
+  font-weight: 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Presentation Local';
+  src: url('/static/fonts/Presentation-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Presentation Local';
+  src: url('/static/fonts/Presentation-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Presentation Local';
+  src: url('/static/fonts/Presentation-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-display: swap;
+}
+
+/* ============================================================
+   제안서 슬라이드 폰트 — 거버닝(Paperlogy) + 본문(Presentation)
+   사용자 요청: 거버닝 28~32pt / 소제목 18~20pt / 본문 14~16pt
+   ============================================================ */
+.proposal-page {
+  /* 본문 기본 — Presentation → Paperlogy → 시스템 sans */
+  font-family: 'Presentation Local', 'Paperlogy Local', 'Paperlogy',
+               'Gowun Dodum', 'Pretendard Variable', 'Pretendard', sans-serif;
+}
+.proposal-page .page-governing,
+.proposal-page h1,
+.proposal-page .governing {
+  font-family: 'Paperlogy Local', 'Paperlogy', 'Gowun Dodum', sans-serif;
+  font-weight: 800;
+  font-size: clamp(24pt, 2.6vw, 32pt);
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+.proposal-page h2,
+.proposal-page .page-section-title {
+  font-family: 'Paperlogy Local', 'Paperlogy', 'Gowun Dodum', sans-serif;
+  font-weight: 700;
+  font-size: clamp(16pt, 1.5vw, 20pt);
+  letter-spacing: -0.015em;
+}
+.proposal-page h3 {
+  font-family: 'Paperlogy Local', 'Paperlogy', 'Gowun Dodum', sans-serif;
+  font-weight: 700;
+  font-size: clamp(14pt, 1.2vw, 18pt);
+}
+.proposal-page p,
+.proposal-page li,
+.proposal-page td,
+.proposal-page .body-text,
+.proposal-page .page-summary {
+  font-family: 'Presentation Local', 'Pretendard Variable', 'Pretendard', sans-serif;
+  font-size: clamp(11pt, 1vw, 16pt);
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+/* ============================================================
+   분야별 슬라이드 배경 시스템 (1+2번 fallback — 추출 이미지 없을 때)
+   .proposal-page 에 data-domain 속성으로 적용
+   ============================================================ */
+.proposal-page[data-domain] { background-size: cover; background-position: center; }
+.proposal-page[data-domain="festival"] {
+  background: linear-gradient(135deg, #FFE8DA 0%, #FFCB77 50%, #FFB4A2 100%);
+}
+.proposal-page[data-domain="forum"] {
+  background: linear-gradient(135deg, #EDE7FF 0%, #FAF8F5 60%, #FFE8DA 100%);
+}
+.proposal-page[data-domain="exhibition"] {
+  background: linear-gradient(135deg, #F3EFE9 0%, #FFEEE8 100%);
+}
+.proposal-page[data-domain="campaign"] {
+  background: linear-gradient(135deg, #FFF3DD 0%, #FFEEE8 100%);
+}
+.proposal-page[data-domain="education"] {
+  background: linear-gradient(135deg, #EDE7FF 0%, #F3EFE9 100%);
+}
+.proposal-page[data-domain="sports"] {
+  background: linear-gradient(135deg, #FFE8DA 0%, #FAF8F5 60%, #FFF3DD 100%);
+}
+.proposal-page[data-domain="welfare"] {
+  background: linear-gradient(135deg, #FFEEE8 0%, #FAF8F5 100%);
+}
+.proposal-page[data-domain="other"] {
+  background: linear-gradient(135deg, #FAF8F5 0%, #F3EFE9 100%);
+}
+/* 표지는 더 강한 그라데이션 + 보라 액센트 */
+.proposal-page[data-section*="표지"][data-domain] {
+  background: linear-gradient(135deg, #6B46E5 0%, #A855F7 50%, #FF8E5C 100%);
+  color: #fff;
+}
+.proposal-page[data-section*="표지"][data-domain] .page-governing { color: #fff; }

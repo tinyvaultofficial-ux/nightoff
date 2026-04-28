@@ -858,9 +858,247 @@ LAYER 1 — 고정 원칙 (항상 유지)
    단위(㎡ · m · nit · mm · m/s · ㎍/㎥ · 명 · 원 · % · °C · MB · Gbps · 건 · 명/시간)까지 명시.
    추상 형용사("뛰어난", "최고의") 금지. 정량으로만 말할 것.
 
-▸ 15종 시각화 라이브러리 — 섹션 성격에 맞게 자동 선택 (RAG 신호와 연동)
-   사용자가 RAG 학습 결과로 어떤 시각화 패턴을 즐겨 쓰는지 신호가 들어오면, 그 신호를 우선 적용.
-   본문 = 글덩어리만 줄줄 금지. 한 페이지에 최소 1~2개 시각 블록 필수.
+▸ 시각화 컴포넌트 클래스 — 본문은 .viz-* 컴포넌트로! 글머리(•)만 늘어놓는 페이지 절대 금지.
+
+⚠⚠⚠ 매우 중요 — 아래 정의된 CSS 클래스명을 그대로 출력하세요. AI 가 자유롭게 짠 HTML 은
+시각화 효과 0. 반드시 이 클래스명들이 들어가야 카드/박스/표/플로우가 화면에 그려집니다. ⚠⚠⚠
+
+==============================================================
+시각화 컴포넌트 9종 — 정확한 HTML 코드 예시 (그대로 복사 사용)
+==============================================================
+
+【1】 STEP 박스 (1→2→3 단계 흐름) — 절차·프로세스·운영 단계
+```html
+<div class="viz-steps">
+  <div class="viz-step">
+    <div class="viz-step-num">1</div>
+    <h4 class="viz-step-title">사전 등록 관리</h4>
+    <p class="viz-step-desc">D-60 ~ D-30 · 35개국 130명 신청서 수집</p>
+    <ul class="viz-step-list">
+      <li>참가 신청서·DB 구축</li>
+      <li>특이식성·종교 등 요청 수집</li>
+      <li>비자 초청장 발급 지원</li>
+    </ul>
+  </div>
+  <div class="viz-step">
+    <div class="viz-step-num">2</div>
+    <h4 class="viz-step-title">도착 전 최종 확인</h4>
+    <p class="viz-step-desc">D-7 ~ D-1 · 1:20 매칭 완료</p>
+    <ul class="viz-step-list">
+      <li>참가자별 일정표 발송</li>
+      <li>공항 픽업 배차 계획</li>
+    </ul>
+  </div>
+  <div class="viz-step">
+    <div class="viz-step-num">3</div>
+    <h4 class="viz-step-title">현장 운영</h4>
+    <p class="viz-step-desc">D-DAY ~ D+1 · 24시간 핫라인</p>
+    <ul class="viz-step-list">
+      <li>등록데스크 4개 부스 운영</li>
+      <li>실시간 출결 체크</li>
+    </ul>
+  </div>
+</div>
+```
+
+【2】 카드 grid (전략·강점·차별화) — 핵심 가치 4종
+```html
+<div class="viz-cards">
+  <div class="viz-card">
+    <div class="viz-card-emoji">🎯</div>
+    <h4 class="viz-card-title">정확한 타겟팅</h4>
+    <p class="viz-card-desc">35개국 도서관장·정책담당 130명 직접 매칭</p>
+  </div>
+  <div class="viz-card">
+    <div class="viz-card-emoji">🌐</div>
+    <h4 class="viz-card-title">5개국어 동시통역</h4>
+    <p class="viz-card-desc">영·중·일·스페인·프랑스 RSI 부스 운영</p>
+  </div>
+  <div class="viz-card">
+    <div class="viz-card-emoji">📊</div>
+    <h4 class="viz-card-title">99.97% 무중단</h4>
+    <p class="viz-card-desc">백업 회선·예비 인력으로 다층 안전망</p>
+  </div>
+  <div class="viz-card">
+    <div class="viz-card-emoji">🚀</div>
+    <h4 class="viz-card-title">현장 즉시 대응</h4>
+    <p class="viz-card-desc">PM 직속 12명 운영팀 24시간 상주</p>
+  </div>
+</div>
+```
+
+【3】 AS-IS / TO-BE 비교 — 현황 vs 목표
+```html
+<div class="viz-compare">
+  <div class="viz-compare-side before">
+    <span class="viz-compare-label">As-is</span>
+    <h4 style="margin:0 0 6px;font-size:15px;">분산된 등록 관리</h4>
+    <p style="margin:0;font-size:13px;line-height:1.55;">
+      엑셀·이메일·종이 양식 혼재로 누락 빈번<br>
+      VIP 일반 동선 충돌
+    </p>
+  </div>
+  <div class="viz-compare-arrow">→</div>
+  <div class="viz-compare-side after">
+    <span class="viz-compare-label">To-be</span>
+    <h4 style="margin:0 0 6px;font-size:15px;">통합 디지털 시스템</h4>
+    <p style="margin:0;font-size:13px;line-height:1.55;">
+      QR 기반 실시간 체크인<br>
+      VIP·일반 동선 완전 분리
+    </p>
+  </div>
+</div>
+```
+
+【4】 KPI 카드 (큰 숫자 강조) — 목표·실적·성과
+```html
+<div class="viz-kpis">
+  <div class="viz-kpi">
+    <span class="viz-kpi-num">35<small>개국</small></span>
+    <p class="viz-kpi-label">참가 국가</p>
+  </div>
+  <div class="viz-kpi">
+    <span class="viz-kpi-num">130<small>명</small></span>
+    <p class="viz-kpi-label">초청 도서관장</p>
+  </div>
+  <div class="viz-kpi">
+    <span class="viz-kpi-num">99.97<small>%</small></span>
+    <p class="viz-kpi-label">무중단 운영</p>
+  </div>
+  <div class="viz-kpi">
+    <span class="viz-kpi-num">24<small>h</small></span>
+    <p class="viz-kpi-label">현장 핫라인</p>
+  </div>
+</div>
+```
+
+【5】 표 (구분/항목/세부내용/비고) — 매뉴얼·예산·인력
+```html
+<table class="viz-table">
+  <thead>
+    <tr><th>구분</th><th>일반 참가자 (약 100명)</th><th>VIP 참가자 (약 30명)</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="em">등록</td>
+      <td>QR 셀프 등록 · 평균 30초</td>
+      <td>전담 컨시어지 1:1 안내</td>
+    </tr>
+    <tr>
+      <td class="em">동선</td>
+      <td>3개 출입구 분산</td>
+      <td>전용 게이트 · 의전팀 동행</td>
+    </tr>
+    <tr>
+      <td class="em">통역</td>
+      <td>RSI 헤드셋 5개국어</td>
+      <td>전담 통역사 1:1</td>
+    </tr>
+  </tbody>
+</table>
+```
+
+【6】 화살표 프로세스 (수평 흐름) — 단계 짧게 5~6개
+```html
+<div class="viz-flow">
+  <div class="viz-flow-node">
+    <div class="viz-flow-num">Step 1</div>
+    <h4 class="viz-flow-title">사전 등록</h4>
+    <p class="viz-flow-desc">D-60 ~ D-30</p>
+  </div>
+  <div class="viz-flow-node">
+    <div class="viz-flow-num">Step 2</div>
+    <h4 class="viz-flow-title">도착 확인</h4>
+    <p class="viz-flow-desc">D-7 ~ D-1</p>
+  </div>
+  <div class="viz-flow-node">
+    <div class="viz-flow-num">Step 3</div>
+    <h4 class="viz-flow-title">현장 운영</h4>
+    <p class="viz-flow-desc">D-DAY ~ D+1</p>
+  </div>
+</div>
+```
+
+【7】 조직도 (PM → 부문 → 실무)
+```html
+<div class="viz-org">
+  <div class="viz-org-row">
+    <div class="viz-org-node pm">
+      <div class="viz-org-role">PM</div>
+      <div class="viz-org-name">홍길동</div>
+      <div class="viz-org-meta">15년 · 국제행사 50건+</div>
+    </div>
+  </div>
+  <div class="viz-org-row">
+    <div class="viz-org-node">
+      <div class="viz-org-role">기획</div>
+      <div class="viz-org-name">김운영</div>
+      <div class="viz-org-meta">팀 4명</div>
+    </div>
+    <div class="viz-org-node">
+      <div class="viz-org-role">의전·통역</div>
+      <div class="viz-org-name">이VIP</div>
+      <div class="viz-org-meta">팀 5명</div>
+    </div>
+    <div class="viz-org-node">
+      <div class="viz-org-role">현장</div>
+      <div class="viz-org-name">박운영</div>
+      <div class="viz-org-meta">팀 3명</div>
+    </div>
+  </div>
+</div>
+```
+
+【8】 타임라인 (D-60 → D+30 마일스톤)
+```html
+<div class="viz-timeline">
+  <div class="viz-timeline-row">
+    <div class="viz-timeline-node">
+      <div class="viz-timeline-tag">D-60</div>
+      <h4 class="viz-timeline-title">초청 발송</h4>
+      <p class="viz-timeline-desc">국가별 우선순위</p>
+    </div>
+    <div class="viz-timeline-node">
+      <div class="viz-timeline-tag">D-30</div>
+      <h4 class="viz-timeline-title">참가 확정</h4>
+      <p class="viz-timeline-desc">130명 RSVP</p>
+    </div>
+    <div class="viz-timeline-node">
+      <div class="viz-timeline-tag">D-7</div>
+      <h4 class="viz-timeline-title">현장 셋업</h4>
+      <p class="viz-timeline-desc">부스·통역</p>
+    </div>
+    <div class="viz-timeline-node">
+      <div class="viz-timeline-tag">D-DAY</div>
+      <h4 class="viz-timeline-title">행사 운영</h4>
+      <p class="viz-timeline-desc">3일 풀 가동</p>
+    </div>
+    <div class="viz-timeline-node">
+      <div class="viz-timeline-tag">D+30</div>
+      <h4 class="viz-timeline-title">결과 보고</h4>
+      <p class="viz-timeline-desc">백서 발간</p>
+    </div>
+  </div>
+</div>
+```
+
+【9】 강조 인용 (거버닝 보조)
+```html
+<div class="viz-callout">
+  35개국 130명 모두를 한 명의 VIP처럼 — 이게 NightOff 의 약속입니다.
+</div>
+```
+
+==============================================================
+⚠ 페이지 작성 규칙 (절대 준수)
+==============================================================
+1. 본문에 글머리(<ul><li>) 만 줄줄이 늘어놓는 페이지 = 폐기·재작성.
+   → 반드시 위 9종 중 하나 이상의 .viz-* 컴포넌트로 감쌀 것.
+2. 한 페이지 최소 1개, 권장 2개의 .viz-* 컴포넌트.
+3. 같은 종류 컴포넌트만 반복 사용 금지. 다른 종류 조합으로 시각 리듬.
+4. .viz-step / .viz-flow / .viz-timeline / .viz-org 안의 텍스트는 짧게 (제목 1줄 + 설명 1줄).
+5. .viz-table 의 셀은 12자 이내 권장. 길면 .viz-cards 로 전환.
+6. 본문 모든 숫자는 .viz-kpi 또는 .viz-table 에 집어넣을 것 (인라인 텍스트 X).
 
    ① strategy-4cards          전략·특장점·차별화 (4 카드 grid, 각 카드 = 아이콘 + 한 줄 헤드 + 2~3 bullet)
    ② step-process             절차·순서·단계 (STEP 1 → 2 → 3 → 4, 화살표 connector, 각 step = 헤드 + 짧은 설명)

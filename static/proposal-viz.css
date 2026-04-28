@@ -1,0 +1,345 @@
+/* ============================================================
+   📊 NightOff 제안서 시각화 컴포넌트 라이브러리
+   사용처: .proposal-page 안의 본문에서 텍스트 글머리 대신 사용
+   AI 시스템 프롬프트가 이 클래스명들을 그대로 출력
+   ============================================================ */
+
+.proposal-page {
+  --viz-accent: var(--primary, #6B46E5);
+  --viz-accent-soft: var(--primary-soft, #EDE7FF);
+  --viz-card-bg: #fff;
+  --viz-border: rgba(0, 0, 0, 0.06);
+  --viz-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px -4px rgba(0,0,0,0.05);
+}
+
+/* ① STEP 박스 (1→2→3 단계 흐름) ─────────────── */
+.viz-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin: 14px 0;
+}
+.viz-step {
+  position: relative;
+  padding: 18px 18px 16px;
+  background: var(--viz-card-bg);
+  border-radius: 14px;
+  box-shadow: var(--viz-shadow);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.viz-step-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px;
+  background: linear-gradient(135deg, var(--viz-accent), #FF8E5C);
+  color: #fff;
+  border-radius: 8px;
+  font-weight: 800; font-size: 14px;
+  letter-spacing: -0.02em;
+  margin-bottom: 4px;
+}
+.viz-step-title {
+  font-size: 15px; font-weight: 700;
+  color: var(--fg-strong, #1F1A14);
+  letter-spacing: -0.015em;
+  margin: 0;
+}
+.viz-step-desc {
+  font-size: 13px; color: var(--fg, #3C342B);
+  line-height: 1.55; margin: 0;
+}
+.viz-step-list {
+  margin: 6px 0 0; padding-left: 14px;
+  font-size: 12.5px; color: var(--fg-soft, #6E6458);
+  line-height: 1.55;
+}
+.viz-step-list li { margin: 2px 0; }
+.viz-step:not(:last-child)::after {
+  content: "→";
+  position: absolute;
+  right: -14px; top: 50%;
+  transform: translateY(-50%);
+  color: var(--viz-accent);
+  font-size: 16px; font-weight: 900;
+  z-index: 2; pointer-events: none;
+}
+@media (max-width: 800px) {
+  .viz-step:not(:last-child)::after {
+    right: 50%; top: auto; bottom: -14px;
+    transform: translateX(50%) rotate(90deg);
+  }
+}
+
+/* ② 카드 grid (전략·강점·차별화) ─────────────── */
+.viz-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+}
+.viz-card {
+  padding: 16px 18px;
+  background: var(--viz-card-bg);
+  border-radius: 14px;
+  box-shadow: var(--viz-shadow);
+  border-top: 3px solid var(--viz-accent);
+}
+.viz-card-emoji { font-size: 24px; line-height: 1; margin-bottom: 8px; }
+.viz-card-title {
+  font-size: 15px; font-weight: 700;
+  color: var(--fg-strong, #1F1A14);
+  margin: 0 0 4px;
+  letter-spacing: -0.015em;
+}
+.viz-card-desc {
+  font-size: 13px; color: var(--fg, #3C342B);
+  line-height: 1.55; margin: 0;
+}
+
+/* ③ AS-IS vs TO-BE 비교 ─────────────── */
+.viz-compare {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 12px;
+  align-items: stretch;
+  margin: 14px 0;
+}
+.viz-compare-side {
+  padding: 18px 18px;
+  background: var(--viz-card-bg);
+  border-radius: 14px;
+  box-shadow: var(--viz-shadow);
+}
+.viz-compare-side.before {
+  background: rgba(0,0,0,0.025);
+  color: var(--fg-soft);
+}
+.viz-compare-side.after {
+  background: linear-gradient(135deg, var(--viz-accent-soft), #FFEEE8);
+  border-top: 3px solid var(--viz-accent);
+}
+.viz-compare-label {
+  display: inline-block;
+  font-size: 11.5px; font-weight: 800;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--viz-accent);
+  margin-bottom: 8px;
+}
+.viz-compare-side.before .viz-compare-label { color: var(--fg-soft, #6E6458); }
+.viz-compare-arrow {
+  display: grid; place-items: center;
+  font-size: 28px; font-weight: 900;
+  color: var(--viz-accent);
+}
+
+/* ④ KPI 카드 (큰 숫자 + 라벨) ─────────────── */
+.viz-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+  margin: 14px 0;
+}
+.viz-kpi {
+  padding: 18px 16px;
+  background: var(--viz-card-bg);
+  border-radius: 14px;
+  box-shadow: var(--viz-shadow);
+  text-align: center;
+}
+.viz-kpi-num {
+  font-size: 36px; font-weight: 800;
+  color: var(--viz-accent);
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  display: block;
+  margin-bottom: 6px;
+}
+.viz-kpi-num small { font-size: 16px; opacity: 0.7; }
+.viz-kpi-label {
+  font-size: 13px; font-weight: 600;
+  color: var(--fg, #3C342B);
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* ⑤ 표 (구분/항목/세부내용/비고) ─────────────── */
+.viz-table {
+  width: 100%; border-collapse: separate;
+  border-spacing: 0;
+  margin: 14px 0;
+  background: var(--viz-card-bg);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--viz-shadow);
+  font-size: 13px;
+}
+.viz-table thead th {
+  background: linear-gradient(135deg, var(--viz-accent), #A855F7);
+  color: #fff;
+  padding: 10px 14px;
+  text-align: left;
+  font-weight: 700;
+  font-size: 12.5px;
+  letter-spacing: -0.01em;
+}
+.viz-table tbody td {
+  padding: 10px 14px;
+  border-top: 1px solid var(--viz-border);
+  color: var(--fg, #3C342B);
+  line-height: 1.5;
+}
+.viz-table tbody tr:nth-child(even) td { background: rgba(0,0,0,0.015); }
+.viz-table tbody tr:hover td { background: var(--viz-accent-soft); }
+.viz-table .num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.viz-table .em { color: var(--viz-accent); font-weight: 700; }
+
+/* ⑥ 화살표 프로세스 (수평 흐름) ─────────────── */
+.viz-flow {
+  display: flex; align-items: stretch;
+  gap: 0;
+  margin: 14px 0;
+  flex-wrap: wrap;
+}
+.viz-flow-node {
+  flex: 1; min-width: 140px;
+  padding: 14px 16px;
+  background: var(--viz-card-bg);
+  box-shadow: var(--viz-shadow);
+  position: relative;
+  border-radius: 12px;
+  margin-right: 24px;
+}
+.viz-flow-node:last-child { margin-right: 0; }
+.viz-flow-node:not(:last-child)::after {
+  content: "→";
+  position: absolute;
+  right: -20px; top: 50%;
+  transform: translateY(-50%);
+  font-size: 20px; font-weight: 900;
+  color: var(--viz-accent);
+  z-index: 2;
+}
+.viz-flow-num {
+  font-size: 11px; font-weight: 800;
+  color: var(--viz-accent);
+  letter-spacing: 0.08em; text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.viz-flow-title {
+  font-size: 14px; font-weight: 700;
+  color: var(--fg-strong);
+  margin: 0 0 4px;
+}
+.viz-flow-desc {
+  font-size: 12px; color: var(--fg-soft);
+  line-height: 1.5; margin: 0;
+}
+
+/* ⑦ 조직도 (PM → 부문 → 실무) ─────────────── */
+.viz-org {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 18px;
+  margin: 14px 0;
+}
+.viz-org-row {
+  display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;
+  position: relative;
+}
+.viz-org-row + .viz-org-row::before {
+  content: "";
+  position: absolute;
+  top: -14px; left: 50%;
+  width: 1px; height: 14px;
+  background: var(--viz-accent);
+  opacity: 0.4;
+}
+.viz-org-node {
+  padding: 12px 18px;
+  background: var(--viz-card-bg);
+  border-radius: 12px;
+  box-shadow: var(--viz-shadow);
+  text-align: center;
+  min-width: 140px;
+}
+.viz-org-node.pm {
+  background: linear-gradient(135deg, var(--viz-accent), #FF8E5C);
+  color: #fff;
+}
+.viz-org-role {
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--viz-accent);
+  margin-bottom: 4px;
+}
+.viz-org-node.pm .viz-org-role { color: rgba(255,255,255,0.85); }
+.viz-org-name {
+  font-size: 14px; font-weight: 700;
+  color: var(--fg-strong);
+}
+.viz-org-node.pm .viz-org-name { color: #fff; }
+.viz-org-meta {
+  font-size: 11.5px; color: var(--fg-soft);
+  margin-top: 2px;
+}
+
+/* ⑧ 타임라인 (D-60 → D+30) ─────────────── */
+.viz-timeline {
+  position: relative;
+  margin: 14px 0;
+  padding: 24px 0 12px;
+}
+.viz-timeline::before {
+  content: ""; position: absolute;
+  top: 36px; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--viz-accent), #FF8E5C);
+  border-radius: 2px;
+}
+.viz-timeline-row {
+  display: flex; justify-content: space-between;
+  position: relative; gap: 8px;
+}
+.viz-timeline-node {
+  flex: 1; min-width: 80px;
+  text-align: center;
+  position: relative;
+}
+.viz-timeline-node::before {
+  content: ""; display: block;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--viz-accent);
+  border: 3px solid #fff;
+  margin: 8px auto 12px;
+  box-shadow: 0 0 0 1px var(--viz-accent);
+  position: relative; z-index: 1;
+}
+.viz-timeline-tag {
+  font-size: 11px; font-weight: 800;
+  color: var(--viz-accent);
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.viz-timeline-title {
+  font-size: 13px; font-weight: 700;
+  color: var(--fg-strong);
+  margin: 0 0 2px;
+}
+.viz-timeline-desc {
+  font-size: 11.5px; color: var(--fg-soft);
+  line-height: 1.5; margin: 0;
+}
+
+/* ⑨ 강조 인용 박스 (거버닝 보조) ─────────────── */
+.viz-callout {
+  padding: 14px 18px;
+  background: linear-gradient(135deg, var(--viz-accent-soft), #FFEEE8);
+  border-radius: 14px;
+  border-left: 4px solid var(--viz-accent);
+  margin: 14px 0;
+  font-size: 14px;
+  color: var(--fg-strong);
+  font-weight: 600;
+  line-height: 1.55;
+}

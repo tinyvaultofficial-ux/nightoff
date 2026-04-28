@@ -2932,6 +2932,9 @@ async function renderChat(cid, convId) {
     let firstDelta = true;
     let rafActive = false;
     let streamDone = false;
+    // [Phase 3-D fix] JSON 응답은 raw 텍스트로 노출하면 UX 망가짐 — placeholder 로 가림
+    let isJsonMode = false;
+    let jsonModeDecided = false;
 
     // 사용자가 위로 스크롤하면 자동 스크롤 일시 정지 (생성 완료 시 자동 해제)
     let userScrolledUp = false;
@@ -2946,14 +2949,16 @@ async function renderChat(cid, convId) {
     const tick = () => {
       if (displayedText.length >= targetText.length) {
         rafActive = false;
-        if (streamDone) renderAssistant(bubble, targetText, true);
+        // JSON 모드는 done 시점에 placeholder 제거로 처리 — raw 렌더 X
+        if (streamDone && !isJsonMode) renderAssistant(bubble, targetText, true);
         return;
       }
       const lag = targetText.length - displayedText.length;
       // 뒤처진 정도에 비례해서 더 많이 진행 — 최소 2자, 최대 24자/frame
       const step = Math.min(24, Math.max(2, Math.ceil(lag / 10)));
       displayedText = targetText.slice(0, displayedText.length + step);
-      renderAssistant(bubble, displayedText);
+      // JSON 모드면 bubble 에 raw 안 그림 (placeholder 유지) — progress 바만 갱신
+      if (!isJsonMode) renderAssistant(bubble, displayedText);
       progress.update(targetText);   // ← 전체 target 기준으로 진행률 업데이트
       // 사용자가 직접 위로 스크롤한 동안엔 자동 스크롤 안 함
       if (!userScrolledUp) body.scrollTop = body.scrollHeight;
@@ -2990,6 +2995,19 @@ async function renderChat(cid, convId) {
             if (firstDelta) { overlayLoader.stop(); bubble.innerHTML = ""; firstDelta = false; }
             targetText += ev.text;
             progress.update(targetText);
+            // [Phase 3-D fix] JSON 모드 감지 — 누적 60자 이상이면 한 번 판정
+            if (!jsonModeDecided && targetText.length >= 60) {
+              jsonModeDecided = true;
+              const head = targetText.slice(0, 200).replace(/^\s+/, "");
+              isJsonMode = /^(```json|\{[\s\S]*?"(?:title|domain|accent|summary|slides)")/.test(head);
+              if (isJsonMode) {
+                bubble.innerHTML =
+                  '<div class="json-stream-placeholder">' +
+                    '<span class="loading-dots"><span></span><span></span><span></span></span>' +
+                    '<span class="muted">제안서 구조를 설계하고 있어요…</span>' +
+                  '</div>';
+              }
+            }
             kickTyper();
           } else if (ev.type === "error") {
             overlayLoader.stop();
@@ -3000,7 +3018,8 @@ async function renderChat(cid, convId) {
             overlayLoader.stop();
             streamDone = true;
             displayedText = targetText;
-            renderAssistant(bubble, targetText, true);
+            // JSON 모드면 raw 텍스트 안 그리고 placeholder 유지 → done 후 doneBubble 이 안내
+            if (!isJsonMode) renderAssistant(bubble, targetText, true);
             progress.finish(true);
           }
         }
@@ -3008,7 +3027,7 @@ async function renderChat(cid, convId) {
       // 스트림 끝났는데 displayed가 아직 따라잡지 못한 경우 보강
       if (displayedText.length < targetText.length) {
         displayedText = targetText;
-        renderAssistant(bubble, targetText, true);
+        if (!isJsonMode) renderAssistant(bubble, targetText, true);
       }
       // rafActive가 진행 중이면 streamDone을 보고 알아서 마감
       streamDone = true;
@@ -3030,9 +3049,15 @@ async function renderChat(cid, convId) {
       userScrolledUp = false;
       body.removeEventListener("scroll", onUserScroll);
       // 제안서 완성 감지 — JSON (새 모드) 또는 HTML (legacy)
-      const isJson = /^\s*\{[\s\S]*"slides"\s*:/.test(targetText);
+      // ```json 코드펜스 + 어떤 형태든 "slides": 가 등장하면 JSON 으로 인식
+      const isJson = /"slides"\s*:\s*\[/.test(targetText) && /^\s*(```json|\{)/.test(targetText.replace(/^\s*/, ""));
       const isHtml = /<div class="proposal"/.test(targetText);
       if (isJson || isHtml) {
+        // [Phase 3-D fix] JSON raw 텍스트가 bubble 에 남아있으면 정리
+        if (isJson) {
+          bubble.innerHTML =
+            '<span class="muted small">✓ 제안서 구조 설계 완료 — PPTX 로 변환할게요</span>';
+        }
         const doneBubble = h("div", { class: "msg-bubble" },
           isJson ? "✅ 제안서 완성! PPTX 변환 중… 🔨"
                  : "✅ 제안서 초안이 완성됐어요! 수정이 필요한 부분은 말씀해 주세요 😊");

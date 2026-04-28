@@ -2315,6 +2315,17 @@ body.right-panel-off .right-panel { display: none; }
 .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
 @keyframes bounce { 0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; } 40% { transform: scale(1); opacity: 1; } }
 
+/* ===== JSON 스트리밍 placeholder — raw JSON 텍스트 노출 차단 ===== */
+.json-stream-placeholder {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+  font-size: 14px;
+  color: var(--fg-2);
+}
+.json-stream-placeholder .muted { color: var(--fg-2); }
+
 /* ===== Full-screen loading overlay (모든 AI 처리 구간 공통) ===== */
 .fs-loader-backdrop {
   position: fixed; inset: 0; z-index: 9999;

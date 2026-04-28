@@ -3029,18 +3029,44 @@ async function renderChat(cid, convId) {
       // 자동 스크롤 잠금 해제 + 스크롤 리스너 정리
       userScrolledUp = false;
       body.removeEventListener("scroll", onUserScroll);
-      // 제안서가 포함된 응답이면 완료 메시지 + confetti 축하 (item 12)
-      if (/<div class="proposal"/.test(targetText)) {
+      // 제안서 완성 감지 — JSON (새 모드) 또는 HTML (legacy)
+      const isJson = /^\s*\{[\s\S]*"slides"\s*:/.test(targetText);
+      const isHtml = /<div class="proposal"/.test(targetText);
+      if (isJson || isHtml) {
+        const doneBubble = h("div", { class: "msg-bubble" },
+          isJson ? "✅ 제안서 완성! PPTX 변환 중… 🔨"
+                 : "✅ 제안서 초안이 완성됐어요! 수정이 필요한 부분은 말씀해 주세요 😊");
         const done = h("div", { class: "msg-row assistant proposal-done-row" }, [
           h("div", { class: "msg-avatar", html: iconHtml("brain", 18) }),
-          h("div", { class: "msg-body" }, [
-            h("div", { class: "msg-bubble" },
-              "✅ 제안서 초안이 완성됐어요! 수정이 필요한 부분은 말씀해 주세요 😊"),
-          ]),
+          h("div", { class: "msg-body" }, [doneBubble]),
         ]);
         msgs.appendChild(done);
         try { celebrateConfetti(); } catch {}
         if (!userScrolledUp) body.scrollTop = body.scrollHeight;
+
+        // JSON 모드: 자동 PPTX 생성 + PNG 미리보기 모달 자동 열기
+        if (isJson) {
+          (async () => {
+            try {
+              const m = location.hash.match(/\/chat\/([^/?#]+)/);
+              const cid = m ? m[1] : null;
+              if (!cid) return;
+              await api.post("/api/proposals/pptx", { conversation_id: cid }, { timeoutMs: 120000 });
+              const r = await api.get(`/api/proposals/${cid}/preview`, { timeoutMs: 240000 });
+              if (r.slides && r.slides.length) {
+                doneBubble.textContent =
+                  `✅ 제안서 ${r.slides.length}장 완성됐어요! 미리보기를 띄울게요 😊`;
+                try { openPptxPreviewModal(r.slides); } catch (e2) {}
+              } else {
+                doneBubble.textContent =
+                  "✅ 제안서 완성. PPTX 다운로드 / 🖼 미리보기 버튼을 눌러주세요.";
+              }
+            } catch (e) {
+              doneBubble.textContent =
+                "✅ 제안서 JSON 받았는데 PPTX 변환 중 문제가 있어요. PPTX 다운로드 버튼을 한 번 더 눌러주세요.";
+            }
+          })();
+        }
       }
       ta.focus();
     }
@@ -3156,13 +3182,9 @@ function renderAssistant(bubble, text, final = false) {
     // 페이지에 keyword-row / figure 이미지 자동 장식 (공통)
     decorateProposalPages(propEl);
 
-    // 좌우 분할 패널 자동 활성화 — 제안서 HTML 감지되면 우측에 라이브 미리보기
-    try {
-      const shellEl = document.querySelector("main.chat-split-wrap > .chat-shell");
-      if (shellEl && typeof shellEl._activateSidePanel === "function") {
-        shellEl._activateSidePanel(propEl, !!final);
-      }
-    } catch (e) { /* 사이드 패널은 옵셔널 — 실패해도 본문은 정상 */ }
+    // [Phase 3-D] 우측 사이드 패널 HTML 자동 활성화 비활성화
+    // — JSON 모드에선 PPTX → PNG 미리보기 모달이 책임, HTML 모드는 legacy 안 보여도 OK
+    // — 사용자가 🖼 미리보기 버튼 누르면 PNG 캐러셀 모달 열림
 
     // 썸네일/모달/전체화면 보기 모두 제거 — 우측 사이드 패널이 미리보기 책임 100% 가져감
     // 컴팩트 카드: 라벨 + 메타 1줄 + 2버튼 ([PPTX][인쇄/PDF])

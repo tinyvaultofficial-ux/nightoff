@@ -2651,10 +2651,39 @@ body.fs-loader-active {
 /* 빈 상태 패널 — 가운데 정렬·여백 통일 */
 .empty-state {
   text-align: center;
-  padding: 28px 20px;
-  color: var(--fg-2);
+  padding: var(--space-5) var(--space-4);
+  color: var(--fg-soft);
+  display: flex; flex-direction: column; align-items: center;
+  gap: var(--space-3);
 }
 .empty-state p { margin: 0; font-size: 13.5px; line-height: 1.65; }
+.empty-state-lg { padding: var(--space-7) var(--space-5); gap: var(--space-4); }
+.empty-illust {
+  display: block;
+  margin: 0 auto;
+  pointer-events: none;
+  user-select: none;
+}
+.empty-illust-sm svg { width: 140px !important; height: auto !important; }
+.empty-illust svg {
+  max-width: 100%;
+  height: auto;
+  filter: drop-shadow(0 8px 24px rgba(255, 142, 92, 0.18));
+  border-radius: var(--radius);
+}
+.empty-title {
+  font-size: 17px; font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--fg-strong);
+  margin: 0;
+}
+.empty-desc {
+  font-size: 13.5px;
+  color: var(--fg-soft);
+  line-height: 1.6;
+  margin: 0;
+  max-width: 320px;
+}
 
 /* 사이드 컬럼 폭 고정 — 1.5fr ~ 360px 안정 */
 .dashboard-two-col {
@@ -4467,4 +4496,48 @@ body.landing-fullscreen .settings-fab {
 }
 body.landing-fullscreen .main {
   margin-right: 0 !important;
+}
+
+/* ============================================================
+   발주처 카드 헤더 + 마감 D-day 배지
+   ============================================================ */
+.client-card-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: var(--space-3);
+}
+.dday-badge {
+  flex-shrink: 0;
+  display: inline-flex; align-items: center;
+  padding: 5px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 11.5px; font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.dday-far    { background: var(--bg-2);          color: var(--fg-soft); }
+.dday-mid    { background: var(--gold-soft);     color: #B8762E; }
+.dday-soon   { background: var(--peach-soft);    color: var(--sunset); }
+.dday-urgent {
+  background: linear-gradient(135deg, #FF8E5C, #E8483A);
+  color: #fff;
+  box-shadow: 0 4px 12px -2px rgba(232, 72, 58, 0.4);
+  animation: ddayPulse 2.4s var(--ease) infinite;
+}
+.dday-today {
+  background: linear-gradient(135deg, #E8483A, #C2342A);
+  color: #fff;
+  font-weight: 900;
+  box-shadow: 0 4px 14px -2px rgba(194, 52, 42, 0.5);
+  animation: ddayPulse 1.4s var(--ease) infinite;
+}
+.dday-past {
+  background: var(--bg-3);
+  color: var(--fg-muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+@keyframes ddayPulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.04); }
 }

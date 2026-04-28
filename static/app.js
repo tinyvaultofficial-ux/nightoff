@@ -48,6 +48,101 @@ const ICO = {
   save: `<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>`,
   eye: `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`,
 };
+
+// "야근 OFF · 퇴근 동료" 시그니처 일러스트 — 빈 상태 / 성공 모먼트에 사용
+const SVG_ILLUST = {
+  // 노을 + 책상 (빈 발주처 목록 / 시작 모먼트)
+  sunset: `<svg viewBox="0 0 240 160" width="240" height="160" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="sunsetSky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#FFCB77"/>
+        <stop offset="60%" stop-color="#FF8E5C"/>
+        <stop offset="100%" stop-color="#FFB4A2"/>
+      </linearGradient>
+      <linearGradient id="sunsetGround" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#E9D5B7"/>
+        <stop offset="100%" stop-color="#FAF8F5"/>
+      </linearGradient>
+    </defs>
+    <!-- 하늘 -->
+    <rect x="0" y="0" width="240" height="100" fill="url(#sunsetSky)" rx="12"/>
+    <!-- 해 -->
+    <circle cx="180" cy="70" r="22" fill="#fff" opacity="0.95"/>
+    <circle cx="180" cy="70" r="22" fill="#FFEEE0" opacity="0.6"/>
+    <!-- 산 실루엣 -->
+    <path d="M 0 100 L 50 70 L 90 90 L 130 60 L 180 95 L 240 80 L 240 100 Z" fill="#6B46E5" opacity="0.55"/>
+    <!-- 지면 -->
+    <rect x="0" y="100" width="240" height="60" fill="url(#sunsetGround)"/>
+    <!-- 책상 + 노트북 (퇴근 직전 책상) -->
+    <rect x="80" y="118" width="80" height="3" rx="1.5" fill="#3C342B" opacity="0.85"/>
+    <rect x="100" y="105" width="40" height="14" rx="2" fill="#fff" stroke="#3C342B" stroke-width="1.5" opacity="0.95"/>
+    <rect x="103" y="108" width="34" height="8" rx="1" fill="#6B46E5" opacity="0.2"/>
+    <!-- 커피잔 -->
+    <rect x="155" y="111" width="9" height="8" rx="1" fill="#fff" stroke="#3C342B" stroke-width="1"/>
+    <path d="M 164 113 q 4 0 4 3" stroke="#3C342B" stroke-width="1" fill="none"/>
+    <!-- 김 -->
+    <path d="M 158 108 q 1 -2 0 -4 q 1 -2 0 -4" stroke="#A89E91" stroke-width="1" fill="none" opacity="0.7"/>
+  </svg>`,
+
+  // 집 (성공 모먼트 / 완성 후)
+  home: `<svg viewBox="0 0 240 160" width="240" height="160" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="homeSky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#FFE8DA"/>
+        <stop offset="100%" stop-color="#FAF8F5"/>
+      </linearGradient>
+    </defs>
+    <rect x="0" y="0" width="240" height="160" fill="url(#homeSky)" rx="12"/>
+    <!-- 별 -->
+    <circle cx="40" cy="30" r="2" fill="#FFCB77"/>
+    <circle cx="200" cy="40" r="1.5" fill="#FF8E5C"/>
+    <circle cx="180" cy="20" r="1" fill="#FFCB77"/>
+    <!-- 집 -->
+    <path d="M 80 90 L 120 60 L 160 90 L 160 130 L 80 130 Z" fill="#fff" stroke="#3C342B" stroke-width="1.8"/>
+    <path d="M 75 92 L 120 56 L 165 92" stroke="#FF8E5C" stroke-width="2" fill="none"/>
+    <!-- 굴뚝 -->
+    <rect x="135" y="62" width="8" height="14" fill="#3C342B" opacity="0.85"/>
+    <!-- 창 -->
+    <rect x="92" y="100" width="20" height="20" rx="2" fill="#FFCB77"/>
+    <line x1="102" y1="100" x2="102" y2="120" stroke="#3C342B" stroke-width="1"/>
+    <line x1="92" y1="110" x2="112" y2="110" stroke="#3C342B" stroke-width="1"/>
+    <!-- 문 -->
+    <rect x="128" y="105" width="16" height="25" rx="1" fill="#6B46E5" opacity="0.85"/>
+    <circle cx="141" cy="118" r="1" fill="#FFCB77"/>
+    <!-- 길 -->
+    <path d="M 100 130 Q 120 145 140 130" stroke="#3C342B" stroke-width="1" stroke-dasharray="3 3" fill="none" opacity="0.4"/>
+  </svg>`,
+
+  // 시계 (마감 / 진행중)
+  clock: `<svg viewBox="0 0 240 160" width="240" height="160" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="clockBg" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#FFF3DD"/>
+        <stop offset="100%" stop-color="#FAF8F5"/>
+      </linearGradient>
+    </defs>
+    <rect x="0" y="0" width="240" height="160" fill="url(#clockBg)" rx="12"/>
+    <!-- 시계 본체 -->
+    <circle cx="120" cy="80" r="48" fill="#fff" stroke="#3C342B" stroke-width="2.5"/>
+    <!-- 5:30 표시 (퇴근 시간) -->
+    <line x1="120" y1="80" x2="120" y2="48" stroke="#3C342B" stroke-width="3" stroke-linecap="round"/>
+    <line x1="120" y1="80" x2="143" y2="92" stroke="#FF8E5C" stroke-width="3.5" stroke-linecap="round"/>
+    <circle cx="120" cy="80" r="4" fill="#3C342B"/>
+    <!-- 12 / 3 / 6 / 9 표시 -->
+    <text x="120" y="58" text-anchor="middle" font-size="9" font-weight="700" fill="#3C342B">12</text>
+    <text x="158" y="84" text-anchor="middle" font-size="9" font-weight="700" fill="#3C342B">3</text>
+    <text x="120" y="110" text-anchor="middle" font-size="9" font-weight="700" fill="#3C342B">6</text>
+    <text x="82" y="84" text-anchor="middle" font-size="9" font-weight="700" fill="#3C342B">9</text>
+    <!-- 알람 종 (양옆) -->
+    <path d="M 78 38 L 88 48" stroke="#3C342B" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M 162 38 L 152 48" stroke="#3C342B" stroke-width="2.5" stroke-linecap="round"/>
+    <!-- '퇴근!' 말풍선 -->
+    <rect x="160" y="118" width="60" height="22" rx="11" fill="#FF8E5C"/>
+    <text x="190" y="133" text-anchor="middle" font-size="11" font-weight="800" fill="#fff">퇴근! 🏡</text>
+    <path d="M 168 130 L 162 138 L 175 132 Z" fill="#FF8E5C"/>
+  </svg>`,
+};
+
 function icon(name, size = 18) {
   const svg = `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICO[name] || ""}</svg>`;
   const span = document.createElement("span");
@@ -1016,9 +1111,11 @@ async function renderDashboard() {
     h("h2", { style: "margin: 0; font-size: 18px; font-weight: 600;" }, "과업 목록"),
   ]));
   if (clients.length === 0) {
-    // 빈 상태에서는 작은 안내만 (큰 CTA 가 위에 있음 — 중복 방지)
-    leftCol.appendChild(h("div", { class: "card empty-state" }, [
-      h("p", { class: "muted" }, "아직 등록된 과업이 없어요. 위쪽 버튼으로 첫 과업을 시작해보세요 🙂"),
+    // 빈 상태 — 노을 일러스트 + 따뜻한 카피
+    leftCol.appendChild(h("div", { class: "card empty-state empty-state-lg" }, [
+      h("div", { class: "empty-illust", html: SVG_ILLUST.sunset }),
+      h("p", { class: "empty-title" }, "오늘은 어떤 과업부터 시작해볼까요?"),
+      h("p", { class: "empty-desc muted" }, "RFP만 넣으면 분석부터 초안까지 — 같이 일찍 끝내봐요 ✨"),
     ]));
   } else {
     const grid = h("div", { class: "client-grid client-grid-2" });
@@ -1045,13 +1142,15 @@ async function renderDashboard() {
 // 시간대별 인사 (item 11-C)
 function getTimeBasedGreeting() {
   const h = new Date().getHours();
-  if (h >= 2 && h < 5)   return "💤 새벽이에요. 진짜 무리하지 마세요";
-  if (h >= 5 && h < 9)   return "☕ 일찍 일어나셨네요. 오늘도 화이팅이에요!";
-  if (h >= 9 && h < 12)  return "☀️ 오늘도 좋은 하루예요";
-  if (h >= 12 && h < 14) return "🍚 점심은 챙겨 드셨나요?";
-  if (h >= 14 && h < 18) return "✏️ 가장 집중력 좋은 시간이에요";
-  if (h >= 18 && h < 22) return "🌆 슬슬 마무리할 시간이에요";
-  return "🌙 늦게까지 수고가 많아요…";
+  // "야근 OFF · 퇴근 동료" 톤 — 일찍 끝내고 집에 가게 응원
+  if (h >= 2 && h < 5)   return "💤 이미 너무 늦었어요. 한 줄만 더 쓰고 자요";
+  if (h >= 5 && h < 9)   return "☕ 일찍 시작하셨네요. 오늘은 정시 퇴근해봐요";
+  if (h >= 9 && h < 12)  return "☀️ 오늘은 6시에 끝낼 수 있을까요?";
+  if (h >= 12 && h < 14) return "🍙 점심은 챙겨 드셨나요?";
+  if (h >= 14 && h < 17) return "✏️ 집중하기 딱 좋은 시간이에요";
+  if (h >= 17 && h < 19) return "🌅 슬슬 마무리하고 들어가요";
+  if (h >= 19 && h < 22) return "🏡 오늘은 이쯤하고 집에 갈까요?";
+  return "🌙 야근은 그만! 내일 또 봐요";
 }
 
 // 시간대별 인사가 dnaR 등을 사용하지 않도록 만든 더미 (renderSmartLearningBanner 호환)
@@ -1171,6 +1270,32 @@ function renderFakeAdBanner() {
   return card;
 }
 
+// 마감일 문자열 → D-day 계산 (RFP 분석에서 가져온 deadline 처리)
+// 입력 예: "2026-05-08" / "2026.05.08" / "2026/05/08" / "2026년 5월 8일"
+function calcDday(deadlineStr) {
+  if (!deadlineStr) return null;
+  let m = String(deadlineStr).match(/(\d{4})[\.\-\/년]\s*(\d{1,2})[\.\-\/월]\s*(\d{1,2})/);
+  if (!m) return null;
+  const [, y, mo, d] = m;
+  const target = new Date(parseInt(y), parseInt(mo) - 1, parseInt(d));
+  if (isNaN(target.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diff = Math.round((target - today) / (1000 * 60 * 60 * 24));
+  return diff;
+}
+
+function ddayBadge(diff) {
+  if (diff == null) return null;
+  let cls = "dday-far", label = `D-${diff}`;
+  if (diff < 0)         { cls = "dday-past"; label = `마감 +${Math.abs(diff)}d`; }
+  else if (diff === 0)  { cls = "dday-today"; label = "D-day"; }
+  else if (diff <= 2)   cls = "dday-urgent";
+  else if (diff <= 6)   cls = "dday-soon";
+  else if (diff <= 14)  cls = "dday-mid";
+  return h("span", { class: `dday-badge ${cls}`, title: `마감까지 ${diff}일` }, label);
+}
+
 function clientCard(c) {
   const initials = (c.name || "?").trim().slice(0, 1);
   const badges = [];
@@ -1178,19 +1303,25 @@ function clientCard(c) {
   if (c.memory_count > 0) badges.push({ cls: "badge-success", label: `대화기억 ${c.memory_count}` });
   if (c.conv_count > 0) badges.push({ cls: "badge-muted", label: `제안서 ${c.conv_count}` });
 
+  // D-day 계산 (서버가 client.deadline 을 내려주면 사용, 없으면 null)
+  const dday = calcDday(c.deadline);
+
   return h("div", {
     class: "card client-card",
     onclick: () => navigate(`/client/${c.id}`),
   }, [
-    h("div", { class: "flex-row" }, [
-      h("div", { class: "client-logo" }, initials),
-      h("div", {}, [
-        h("h3", {}, c.name),
-        h("p", { class: "client-sub" }, c.industry || "업종 미지정"),
+    h("div", { class: "client-card-head" }, [
+      h("div", { class: "flex-row", style: "gap: 12px; flex: 1; min-width: 0;" }, [
+        h("div", { class: "client-logo" }, initials),
+        h("div", { style: "flex: 1; min-width: 0;" }, [
+          h("h3", {}, c.name),
+          h("p", { class: "client-sub" }, c.industry || "업종 미지정"),
+        ]),
       ]),
+      ddayBadge(dday),
     ]),
     badges.length
-      ? h("div", { class: "flex-row", style: "flex-wrap: wrap; margin-top: 14px; gap: 6px;" },
+      ? h("div", { class: "flex-row", style: "flex-wrap: wrap; gap: 6px;" },
           badges.map((b) => h("span", { class: `badge ${b.cls}` }, b.label)))
       : null,
     h("div", { class: "client-meta" }, [
@@ -1630,8 +1761,11 @@ async function renderConvHistorySection(cid) {
   // 중복 큰 버튼 제거 — 상단 task-actions-card 의 ✨ 대화 시작하기로 일원화
 
   if (!convs.length) {
-    body.appendChild(h("div", { class: "empty-state", style: "padding: 18px 12px;" },
-      "아직 대화가 없어요. 위 ✨ 대화 시작하기로 시작해보세요 🙂"));
+    body.appendChild(h("div", { class: "empty-state", style: "padding: 24px 12px;" }, [
+      h("div", { class: "empty-illust empty-illust-sm", html: SVG_ILLUST.clock }),
+      h("p", { class: "muted small", style: "margin: 8px 0 0;" },
+        "아직 대화가 없어요 · 위 ✨ 대화 시작하기로 첫 페이지를 열어볼까요?"),
+    ]));
     return card;
   }
 
@@ -3397,12 +3531,12 @@ function ensureSignup(onDone) {
 //   alert/warn 은 body-zone 클래스에 .alert / .warn 적용
 //   pulse-* 클래스는 SVG 전체 호흡 속도
 const BODY_STAGES = [
-  { upTo: 30,    pulse: "pulse-slow", warn: [],          alert: [],          face: "happy",   msg: "오늘도 화이팅! 💪 좋은 제안서 써봐요!" },
-  { upTo: 120,   pulse: "pulse-mid",  warn: ["torso", "head", "arm-l", "arm-r", "leg-l", "leg-r", "waist", "neck"], alert: [], face: "happy", msg: "잘 하고 있어요! 😊" },
-  { upTo: 240,   pulse: "pulse-mid",  warn: ["torso", "head", "arm-l", "arm-r", "leg-l", "leg-r", "waist", "neck"], alert: ["wrist"], face: "tired", msg: "손목 좀 쉬어줘요~ 스트레칭 어때요? 🤸" },
-  { upTo: 360,   pulse: "pulse-mid",  warn: ["torso", "head", "arm-l", "arm-r", "leg-l", "leg-r", "waist"],          alert: ["neck", "wrist"], face: "tired", msg: "목 돌려줘요! 밤새면 안돼요 😅" },
-  { upTo: 480,   pulse: "pulse-mid",  warn: ["torso", "head", "arm-l", "arm-r", "leg-l", "leg-r"],                   alert: ["waist", "neck", "wrist"], face: "tired", msg: "일어나서 걸어요!! 제발요 🚶" },
-  { upTo: Infinity, pulse: "pulse-mid", warn: [], alert: ["head","torso","waist","neck","wrist","arm-l","arm-r","leg-l","leg-r","feet"], face: "exhausted", msg: "지금 당장 자야 해요. 나이트오프가 명령합니다 😤" },
+  { upTo: 30,    pulse: "pulse-slow", warn: [],          alert: [],          face: "happy",   msg: "오늘도 화이팅! 💪 일찍 끝내봐요" },
+  { upTo: 120,   pulse: "pulse-mid",  warn: ["torso", "head", "arm-l", "arm-r", "leg-l", "leg-r", "waist", "neck"], alert: [], face: "happy", msg: "잘 하고 있어요 😊 6시에 만나요" },
+  { upTo: 240,   pulse: "pulse-mid",  warn: ["torso", "head", "arm-l", "arm-r", "leg-l", "leg-r", "waist", "neck"], alert: ["wrist"], face: "tired", msg: "손목 좀 쉬어줘요 🤸 스트레칭 한 번!" },
+  { upTo: 360,   pulse: "pulse-mid",  warn: ["torso", "head", "arm-l", "arm-r", "leg-l", "leg-r", "waist"],          alert: ["neck", "wrist"], face: "tired", msg: "목 돌리고 물 한 잔 어때요? 💧" },
+  { upTo: 480,   pulse: "pulse-mid",  warn: ["torso", "head", "arm-l", "arm-r", "leg-l", "leg-r"],                   alert: ["waist", "neck", "wrist"], face: "tired", msg: "이만하면 충분! 일어나서 걸어요 🚶" },
+  { upTo: Infinity, pulse: "pulse-mid", warn: [], alert: ["head","torso","waist","neck","wrist","arm-l","arm-r","leg-l","leg-r","feet"], face: "exhausted", msg: "이만 들어가요 🏡 내일 또 봐요!" },
 ];
 
 const BODY_FACES = {

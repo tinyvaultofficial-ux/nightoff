@@ -1739,11 +1739,26 @@ def api_clients_list():
               (SELECT COUNT(*) FROM conversations cv WHERE cv.client_id=c.id) conv_count,
               (SELECT MAX(created_at) FROM conversations cv WHERE cv.client_id=c.id) last_conv,
               (SELECT COUNT(*) FROM rfp_files r WHERE r.client_id=c.id) has_rfp,
-              (SELECT COUNT(*) FROM nuance_memories n WHERE n.client_id=c.id) memory_count
+              (SELECT COUNT(*) FROM nuance_memories n WHERE n.client_id=c.id) memory_count,
+              (SELECT analysis_json FROM rfp_aggregated WHERE client_id=c.id) rfp_analysis_json
             FROM clients c
             ORDER BY c.updated_at DESC
         """).fetchall()
-    return [dict(r) for r in rows]
+    out = []
+    for r in rows:
+        d = dict(r)
+        # RFP 분석에서 deadline 추출 → 발주처 카드 D-day 배지에서 사용
+        analysis_json = d.pop("rfp_analysis_json", None)
+        deadline = ""
+        if analysis_json:
+            try:
+                a = json.loads(analysis_json)
+                deadline = (a.get("deadline") or "").strip() if isinstance(a, dict) else ""
+            except Exception:
+                deadline = ""
+        d["deadline"] = deadline
+        out.append(d)
+    return out
 
 
 @app.post("/api/clients")

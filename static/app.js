@@ -292,6 +292,8 @@ function route() {
   const path = location.pathname;
   // 페이지 전환 시 우측 패널은 기본 ON (renderChat 안에서 OFF 토글)
   document.body.classList.remove("right-panel-off");
+  // 랜딩 페이지 이전 상태도 초기화 (랜딩 진입 시 다시 추가됨)
+  document.body.classList.remove("landing-fullscreen");
   for (const r of routes) {
     const m = path.match(r.re);
     if (m) {
@@ -319,8 +321,7 @@ document.addEventListener("click", (e) => {
 
 // ---------- Sidebar ----------
 async function renderSidebar(active = "clients") {
-  let recent = [];
-  try { recent = (await api.get("/api/clients")).slice(0, 6); } catch {}
+  // 사이드바 — 로고 + 핵심 메뉴만 (최근 과업 섹션 제거)
   const side = h("aside", { class: "sidebar" }, [
     h("div", { class: "sidebar-logo", role: "button", tabindex: "0", title: "메인으로", onclick: () => navigate("/"), onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } } }, [
       h("img", { class: "sidebar-logo-img", src: "/static/logo.png", alt: "NightOff" }),
@@ -331,18 +332,6 @@ async function renderSidebar(active = "clients") {
         onclick: () => navigate("/"),
         html: `${iconHtml("users")}<span>과업 목록</span>`,
       }),
-      h("div", { class: "sidebar-section-title" }, "최근 과업"),
-      ...recent.map((c) => {
-        const initial = (c.name || "?").trim().slice(0, 1);
-        return h("button", {
-          class: "sidebar-recent-item",
-          onclick: () => navigate(`/client/${c.id}`),
-          html: `<span class="avatar">${escapeHtml(initial)}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.name)}</span>`,
-        });
-      }),
-      recent.length === 0
-        ? h("div", { class: "muted small", style: "padding: 8px 12px;" }, "등록된 과업가 없습니다")
-        : null,
     ]),
   ]);
   return side;
@@ -370,8 +359,9 @@ function renderLanding() {
   const root = $("#app-root");
   if (!root) return;
   root.innerHTML = "";
-  // 사이드바 없는 풀스크린 랜딩
+  // 사이드바 없는 풀스크린 랜딩 — 우측 패널/햄버거/푸터 모두 숨김
   root.classList.add("landing-active");
+  document.body.classList.add("landing-fullscreen");
 
   const wrap = h("div", { class: "landing-wrap" });
   root.appendChild(wrap);
@@ -432,7 +422,7 @@ function renderLanding() {
   // ── 핵심 기능 3가지
   const features = [
     { emoji: "👀", title: "발주처 들여다보기", desc: "RFP를 넣으면 발주처 정보와 과업 내용을 자동으로 파악해요" },
-    { emoji: "📚", title: "RAG 학습 제안서", desc: "414개 과거 제안서로 학습한 글투·시각화 패턴이 자동 반영돼요" },
+    { emoji: "📚", title: "고품질 제안서 학습", desc: "수많은 과거 제안서로 학습한 글투·시각화 패턴이 자동 반영돼요" },
     { emoji: "📊", title: "입찰 활동 히스토리", desc: "수주/탈락 결과를 기록하면 나의 입찰 활동을 한눈에 볼 수 있어요" },
   ];
   wrap.appendChild(h("section", { class: "landing-features" }, [
@@ -474,8 +464,8 @@ function renderHeroBanner() {
   const banner = h("section", { class: "hero-banner" });
 
   // 메인 카드 — 핵심 가치 (든든한 AI 작가)
-  banner.appendChild(h("div", { class: "hero-main-card" }, [
-    h("div", { class: "hero-main-emoji" }, "🧠"),
+  banner.appendChild(h("div", { class: "hero-main-card hero-main-compact" }, [
+    h("div", { class: "hero-main-emoji" }, "🖋"),
     h("div", { class: "hero-main-text" }, [
       h("h2", { class: "hero-main-title" }, "든든한 AI 작가"),
       h("p", { class: "hero-main-desc" },
@@ -487,7 +477,7 @@ function renderHeroBanner() {
   // 서브 카드 3개 — 메인을 뒷받침하는 도구들
   const feats = [
     { emoji: "👀", title: "발주처 들여다보기", desc: "RFP를 넣으면 발주처 정보와 과업 내용을 자동으로 파악해요" },
-    { emoji: "📚", title: "RAG 학습 제안서", desc: "414개 과거 제안서로 학습한 글투·시각화 패턴이 자동 반영돼요" },
+    { emoji: "📚", title: "고품질 제안서 학습", desc: "수많은 과거 제안서로 학습한 글투·시각화 패턴이 자동 반영돼요" },
     { emoji: "📊", title: "입찰 활동 히스토리", desc: "수주/탈락 결과를 기록하면 나의 입찰 활동을 한눈에 볼 수 있어요" },
   ];
   const grid = h("div", { class: "hero-sub-grid" });
@@ -825,7 +815,7 @@ async function openCompanyDnaModal() {
     body.appendChild(h("div", { class: "onboarding-hint" }, [
       h("span", { class: "ob-emoji" }, "📂"),
       h("div", {}, [
-        h("p", { class: "ob-title" }, "RFP 만 넣어도 과거 제안서 414개로 학습한 글투·시각화가 자동 반영돼요"),
+        h("p", { class: "ob-title" }, "RFP 만 넣어도 수많은 과거 제안서로 학습한 글투·시각화가 자동 반영돼요"),
         h("p", { class: "ob-desc" }, "발주처를 추가하고 RFP를 업로드하면 과업 분석과 발주처 들여다보기가 자동으로 진행됩니다. 대화로 본문을 다듬는 동안 RAG 가 적절한 시각화 블록을 추천해 드려요."),
       ]),
     ]));
@@ -993,9 +983,8 @@ async function renderDashboard() {
 
   // [좌] 과업 목록
   const leftCol = h("section");
-  leftCol.appendChild(h("div", { class: "flex-between", style: "margin-bottom: 14px;" }, [
+  leftCol.appendChild(h("div", { style: "margin-bottom: 14px;" }, [
     h("h2", { style: "margin: 0; font-size: 18px; font-weight: 600;" }, "과업 목록"),
-    h("span", { class: "small muted" }, `총 ${clients.length}개`),
   ]));
   if (clients.length === 0) {
     // 빈 상태에서는 작은 안내만 (큰 CTA 가 위에 있음 — 중복 방지)

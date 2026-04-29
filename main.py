@@ -2311,12 +2311,22 @@ def _run_rfp_aggregate(cid: str) -> dict:
             # 발주처(공고기관) 자동 추출 → clients.organization 에 저장
             # — 들여다보기 검색은 이 값만 사용 (과업명 영향 X)
             org = (analysis.get("organization") or "").strip()
+            # 의심값 사전 차단 (test/sample/예시 등)
+            _SUSPICIOUS_ORG = {"test", "TEST", "테스트", "샘플", "sample", "SAMPLE",
+                               "예시", "example", "TBD", "tbd", "n/a", "N/A",
+                               "발주처", "공고기관", "기관명", "-", "--", ".", ".."}
+            if org in _SUSPICIOUS_ORG or len(org.strip(".-_ ")) < 2:
+                log.warning("RFP 분석 organization 의심값 무시 · client=%s · org=%r", cid[:12], org)
+                org = ""
             if org and len(org) >= 2:
                 try:
                     db.execute("UPDATE clients SET organization=? WHERE id=?", (org, cid))
                     log.info("발주처 자동 추출 · client=%s · org=%r", cid[:12], org)
                 except Exception as e:
                     log.warning("clients.organization 저장 실패 (무시): %s", e)
+            else:
+                log.info("발주처 자동 추출 실패/공백 · client=%s · raw=%r",
+                         cid[:12], analysis.get("organization"))
 
     # 프로파일 자동 업데이트 (best-effort, 실패해도 RFP 분석은 유지)
     try:
@@ -3146,6 +3156,16 @@ def _run_client_intel(cid: str) -> dict:
                      "RFP(공고문/제안요청서)를 업로드해 주세요. "
                      "이미 올렸다면 RFP 에 발주처 정보가 명확히 적혀있는지 확인해 주세요."
         }
+    # 의심값 차단 — 'test', '예시', 'sample', '..', '-' 등 의미없는 값이 추출된 경우
+    SUSPICIOUS = {"test", "TEST", "테스트", "샘플", "sample", "SAMPLE",
+                  "예시", "example", "TBD", "tbd", "n/a", "N/A",
+                  "발주처", "공고기관", "기관명", "-", "--", ".", ".."}
+    if organization in SUSPICIOUS or len(organization.strip(".-_ ")) < 2:
+        log.warning("발주처 들여다보기 의심값 차단 · org=%r", organization)
+        return {
+            "error": f"추출된 발주처가 검색에 부적합해요 ('{organization}'). "
+                     "RFP 본문에 발주처 정보가 명확히 적혀있는지 확인해 주세요."
+        }
 
     prompt = (CLIENT_INTEL_PROMPT
               .replace("{CLIENT_NAME}", organization)
@@ -3237,9 +3257,11 @@ def _run_client_intel(cid: str) -> dict:
             or intel.get("summary")
         )
         if not has_any:
+            # 검색어는 organization 이지 client.name 이 아님 (이전 버그 수정)
             intel["error"] = (
                 "발주처 정보를 거의 찾지 못했어요. "
-                f"이름이 정확한지 확인해 보세요 (검색어: {client['name']})."
+                f"발주처가 정확한지 확인해 보세요 (검색어: '{organization}'). "
+                "RFP 분석을 다시 돌리면 더 정확한 발주처가 추출될 수 있어요."
             )
 
     with get_db() as db:

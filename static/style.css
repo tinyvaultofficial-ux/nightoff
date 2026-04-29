@@ -3121,42 +3121,57 @@ input.locked-by-env::placeholder {
 }
 
 /* ============================================================
-   섹션 헤더 — eyebrow + title + lead 의 3단 위계
+   섹션 헤더 — 메인 헤더가 주인공 (eyebrow / lead 는 보조)
    ============================================================ */
+/* eyebrow — 메인 헤더의 보조라서 톤 다운 */
 .landing-section-eyebrow {
   display: inline-block;
-  padding: 6px 14px;
-  margin: 0 auto 16px;
-  background: color-mix(in oklab, var(--primary) 12%, transparent);
-  color: var(--primary);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
+  padding: 4px 12px;
+  margin: 0 auto 14px;
+  background: color-mix(in oklab, var(--primary) 8%, transparent);
+  color: color-mix(in oklab, var(--primary) 75%, var(--fg-2));
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
   border-radius: 999px;
   text-align: center;
+  opacity: 0.85;
 }
 .landing-section-eyebrow.accent {
-  background: color-mix(in oklab, var(--accent, #FF8E5C) 14%, transparent);
-  color: var(--accent, #FF8E5C);
+  background: color-mix(in oklab, var(--accent, #FF8E5C) 10%, transparent);
+  color: color-mix(in oklab, var(--accent, #FF8E5C) 80%, var(--fg-2));
 }
 /* eyebrow 는 inline-block 이라 부모가 text-align:center 여야 가운데 정렬됨 */
 .landing-trust-inner,
 .landing-features-inner { text-align: center; }
 
+/* 메인 헤더 — 그라데이션 텍스트 + 굵게 + 크게 (가장 두드러지게) */
 .landing-section-title {
-  font-size: 34px; font-weight: 800;
-  letter-spacing: -0.02em;
-  margin: 0 0 12px;
+  font-size: 48px;
+  font-weight: 900;
+  letter-spacing: -0.035em;
+  margin: 0 0 14px;
   text-align: center;
-  color: var(--fg);
-  line-height: 1.25;
+  line-height: 1.15;
+  /* purple → orange 그라데이션 텍스트 */
+  background: linear-gradient(135deg,
+    var(--primary) 0%,
+    color-mix(in oklab, var(--primary) 60%, var(--accent, #FF8E5C)) 55%,
+    var(--accent, #FF8E5C) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  /* 그라데이션 텍스트 가독성 보강 — 살짝 그림자 */
+  filter: drop-shadow(0 2px 8px color-mix(in oklab, var(--primary) 18%, transparent));
 }
 .landing-section-lead {
   font-size: 16px;
   color: var(--fg-2);
   text-align: center;
-  margin: 0 0 40px;
+  margin: 0 0 48px;
   letter-spacing: -0.005em;
+  font-weight: 500;
 }
 
 /* ============================================================
@@ -3296,8 +3311,8 @@ input.locked-by-env::placeholder {
   .landing-hero-sub { font-size: 15px; }
   .landing-trust-grid { grid-template-columns: 1fr; }
   .landing-features-grid { grid-template-columns: 1fr; }
-  .landing-section-title { font-size: 28px; }
-  .landing-section-lead { font-size: 14.5px; margin-bottom: 28px; }
+  .landing-section-title { font-size: 36px; letter-spacing: -0.03em; }
+  .landing-section-lead { font-size: 14.5px; margin-bottom: 32px; }
 }
 
 /* ============================================================

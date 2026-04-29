@@ -1476,8 +1476,16 @@ def index():
 # ---- 헬스체크 전용 ---- DB / 정적 / 외부 의존 모두 회피 (Railway healthcheckPath)
 @app.get("/healthz")
 def healthz():
-    """가벼운 healthcheck — 의존성 0. 컨테이너가 살아만 있으면 200."""
-    return JSONResponse({"ok": True, "service": "nightoff"})
+    """가벼운 healthcheck — 의존성 0. 컨테이너가 살아만 있으면 200.
+    build_id 로 어느 코드가 deploy 됐는지 확인 가능 (디버깅용).
+    """
+    return JSONResponse({
+        "ok": True,
+        "service": "nightoff",
+        "build_id": "2026-04-29-html-mystery-fix",
+        "pptx_route_handler": "api_proposals_pptx",
+        "pptx_required_field": "conversation_id",
+    })
 
 
 @app.get("/api/r2/status")

@@ -2202,12 +2202,14 @@ def api_chat(conv_id: str, body: ChatIn):
         yield f"data: {json.dumps({'type':'start','message_id':assistant_id})}\n\n"
         full_text = ""
         try:
+            # [중요] 채팅 본문 생성에는 web_search 도구 미사용
+            # — 사용자 의도: '발주처 들여다보기는 분리. 본문 생성에 영향 X'
+            # — web_search 결과의 <cite index="..."> 태그가 JSON 본문에 박히는 것 방지
             with client.messages.stream(
                 model=get_setting("model", MODEL_DEFAULT),
                 max_tokens=16000,
                 system=system_prompt,
                 messages=messages,
-                tools=[WEB_SEARCH_TOOL],
             ) as s:
                 for chunk in s.text_stream:
                     full_text += chunk
@@ -3474,6 +3476,10 @@ def api_proposals_pptx(body: PptxExportIn):
         raise HTTPException(404, "이 대화에 제안서가 없어요. 먼저 제안서를 생성해 주세요.")
 
     raw_content = msg["content"]
+    # [방어] AI 가 web_search 인용 <cite index="..."> 태그를 본문에 박는 케이스 방지
+    # — JSON 본문 안에 들어가면 슬라이드에 그대로 노출되어 흉함
+    raw_content = re.sub(r"<cite[^>]*>", "", raw_content)
+    raw_content = re.sub(r"</cite>", "", raw_content)
     # JSON 우선 파싱 — 응답이 JSON 이면 슬라이드 데이터 직접 사용
     proposal_json = None
     try:

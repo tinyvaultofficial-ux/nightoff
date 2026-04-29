@@ -3138,11 +3138,20 @@ async function renderChat(cid, convId) {
             if (firstDelta) { overlayLoader.stop(); bubble.innerHTML = ""; firstDelta = false; }
             targetText += ev.text;
             progress.update(targetText);
-            // [Phase 3-D fix] JSON 모드 감지 — 누적 60자 이상이면 한 번 판정
-            if (!jsonModeDecided && targetText.length >= 60) {
+            // [Phase 3-D fix · 강화] JSON 모드 감지 — 누적 80자 이상이면 한 번 판정
+            // 더 관대하게: 평문 prefix 가 있어도 JSON 키워드만 보이면 JSON 모드로 간주
+            if (!jsonModeDecided && targetText.length >= 80) {
               jsonModeDecided = true;
-              const head = targetText.slice(0, 200).replace(/^\s+/, "");
-              isJsonMode = /^(```json|\{[\s\S]*?"(?:title|domain|accent|summary|slides)")/.test(head);
+              const head = targetText.slice(0, 400);
+              // 4가지 케이스 모두 JSON 으로 인식:
+              //   ① ```json 코드펜스 시작
+              //   ② { 로 바로 시작 + title/domain/slides 키 등장
+              //   ③ 평문 prefix 후 어딘가에 ```json 등장
+              //   ④ 평문 prefix 후 "slides": [ 패턴 등장
+              isJsonMode =
+                /```json/.test(head) ||
+                /^\s*\{[\s\S]*?"(?:title|domain|accent|summary|slides)"/.test(head) ||
+                /"slides"\s*:\s*\[/.test(head);
               if (isJsonMode) {
                 bubble.innerHTML =
                   '<div class="json-stream-placeholder">' +
@@ -3194,8 +3203,9 @@ async function renderChat(cid, convId) {
       userScrolledUp = false;
       body.removeEventListener("scroll", onUserScroll);
       // 제안서 완성 감지 — JSON (새 모드) 또는 HTML (legacy)
-      // ```json 코드펜스 + 어떤 형태든 "slides": 가 등장하면 JSON 으로 인식
-      const isJson = /"slides"\s*:\s*\[/.test(targetText) && /^\s*(```json|\{)/.test(targetText.replace(/^\s*/, ""));
+      // [관대하게] 어떤 형태든 "slides": [ 패턴이 나타나면 JSON 으로 인식
+      // (코드펜스/평문 prefix/공백 모두 허용)
+      const isJson = /"slides"\s*:\s*\[/.test(targetText);
       const isHtml = /<div class="proposal"/.test(targetText);
       if (isJson || isHtml) {
         // [Phase 3-D fix] JSON raw 텍스트가 bubble 에 남아있으면 정리

@@ -90,6 +90,13 @@ SAMPLE_JSON_RESPONSE = {
 
 def setup_fixtures() -> None:
     section("STEP 1 · 가짜 데이터 INSERT")
+    # [중요] 실제 AI 응답을 모사 — ```json 코드펜스로 시작 (가장 흔한 형태)
+    # 이전엔 깔끔한 { 시작이라 SQL LIKE 패턴 버그를 못 잡았음
+    fenced_content = (
+        "```json\n"
+        + json.dumps(SAMPLE_JSON_RESPONSE, ensure_ascii=False, indent=2)
+        + "\n```"
+    )
     with main.get_db() as db:
         db.execute(
             "INSERT INTO clients(id, name, industry, organization, created_at, updated_at) "
@@ -104,8 +111,9 @@ def setup_fixtures() -> None:
         db.execute(
             "INSERT INTO messages(id, conversation_id, role, content, created_at) "
             "VALUES(?, ?, 'assistant', ?, datetime('now','localtime'))",
-            (TEST_MSG_ID, TEST_CONV_ID, json.dumps(SAMPLE_JSON_RESPONSE, ensure_ascii=False)),
+            (TEST_MSG_ID, TEST_CONV_ID, fenced_content),
         )
+    print(f"  message content 첫 30자: {fenced_content[:30]!r}")
     print(f"  client_id  = {TEST_CLIENT_ID}")
     print(f"  conv_id    = {TEST_CONV_ID}")
     print(f"  message_id = {TEST_MSG_ID}")

@@ -3464,10 +3464,13 @@ def api_proposals_pptx(body: PptxExportIn):
 
     with get_db() as db:
         # JSON 또는 HTML 형식 제안서 메시지 찾기 (둘 다 지원)
+        # [중요] LIKE '%"slides"%' — 코드펜스(```json\n{...})·평문 prefix·깔끔한 JSON
+        #        모두 매칭. 이전 '{%"slides"%' 패턴은 첫 글자가 { 여야만 매칭되는
+        #        버그가 있었음 (AI 가 ```json 으로 시작하면 못 찾아 404)
         msg = db.execute(
             "SELECT content FROM messages "
             "WHERE conversation_id=? AND role='assistant' "
-            "AND (content LIKE '{%\"slides\"%' "
+            "AND (content LIKE '%\"slides\"%' "
             "     OR content LIKE '%<div class=\"proposal\"%') "
             "ORDER BY created_at DESC LIMIT 1",
             (body.conversation_id,),

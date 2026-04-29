@@ -157,6 +157,31 @@ def test_pptx_generation() -> dict:
                         f"{name} 안에 <cite> 태그 없음 (후처리 검증)")
                 assert_("</cite>" not in xml,
                         f"{name} 안에 </cite> 태그 없음 (후처리 검증)")
+
+    # [신규] 마스터 원본 잔재 0 검증 — 짬뽕 회귀 방지
+    # 사용자가 본 짬뽕 화면에 있던 마스터 원본 텍스트들
+    # 결과 PPTX 안에 이 단어들이 남아있으면 마스터 텍스트가 안 비워진 것
+    MASTER_RESIDUE = [
+        "DMZ OPEN",
+        "사업개요",
+        "사업목적",
+        "프로그램 기획·운영",
+        "출연진 섭외",
+        "공연 시설물",
+        "홍보 · 마케팅",
+        "Mov.1",
+        "Mov.2",
+    ]
+    print()
+    print("  [짬뽕 검증] 마스터 원본 잔재 검사")
+    with zipfile.ZipFile(disk) as z:
+        slide_xmls = [n for n in z.namelist()
+                      if n.startswith("ppt/slides/slide") and n.endswith(".xml")]
+        for name in slide_xmls:
+            xml = z.read(name).decode("utf-8", errors="replace")
+            for residue in MASTER_RESIDUE:
+                assert_(residue not in xml,
+                        f"{name}: '{residue}' 잔재 없음 (짬뽕 차단)")
     return result
 
 

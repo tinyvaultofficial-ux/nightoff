@@ -138,8 +138,181 @@ def _replace_text_frame_simple(text_frame, new_text: str):
     first_p.runs[0].text = new_text
 
 
+def _clear_text_frame(text_frame):
+    """text_frame 의 모든 paragraph + run 의 텍스트를 비움 (폰트 스타일은 유지).
+    첫 paragraph 의 첫 run 만 남기고 나머지 모두 제거. 첫 run 의 text 도 ""."""
+    if not text_frame or not text_frame.paragraphs:
+        return
+    NS_A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+    # 추가 paragraph 모두 제거
+    p_elements = text_frame._txBody.findall(f".//{NS_A}p")
+    for p in p_elements[1:]:
+        try:
+            p.getparent().remove(p)
+        except Exception:
+            pass
+    # 첫 paragraph 의 추가 run 제거
+    first_p = text_frame.paragraphs[0]
+    if first_p.runs:
+        runs_to_remove = list(first_p.runs)[1:]
+        for r in runs_to_remove:
+            try:
+                r._r.getparent().remove(r._r)
+            except Exception:
+                pass
+        # 첫 run 의 텍스트 비움
+        try:
+            first_p.runs[0].text = ""
+        except Exception:
+            pass
+    else:
+        # run 없는 paragraph — 그냥 text 비움
+        try:
+            first_p.text = ""
+        except Exception:
+            pass
+
+
+def _frame_max_font_size(text_frame) -> float:
+    """text_frame 안의 최대 폰트 사이즈 (pt). 비어있으면 0."""
+    max_sz = 0.0
+    for p in text_frame.paragraphs:
+        for r in p.runs:
+            if (r.text or "").strip():
+                max_sz = max(max_sz, _run_size_pt(r))
+    return max_sz
+
+
+def fill_slide_clearing_master(slide, content: dict) -> dict:
+    """[옵션 A 핵심] 마스터의 모든 텍스트를 비우고 AI 콘텐츠로 채움.
+
+    매핑 전략 (폰트 사이즈 내림차순):
+      - 가장 큰 사이즈 frame    → 거버닝 (governing)
+      - 두 번째 큰 frame        → 소제목 (subtitle)
+      - 그 외 frame들           → 본문 (body) 항목 순서대로 분배
+      - AI 콘텐츠 부족 시       → 빈 문자열 (디자인만 남김. 짬뽕 방지)
+
+    기존 replace_text_in_slide 와의 차이:
+      - 기존: 큰 글자만 치환, 본문 박스는 마스터 원본 그대로 (= 짬뽕)
+      - 신규: 모든 frame 비우고 AI 콘텐츠로 정확히 매핑 (= 깨끗)
+
+    content 형식:
+      {"거버닝": "...", "소제목": "...", "본문": ["...", "..."], "summary": "..."}
+    """
+    # 1. 슬라이드의 모든 text_frame 수집 + 폰트 사이즈
+    frames = []
+    for shape in slide.shapes:
+        if not shape.has_text_frame:
+            continue
+        tf = shape.text_frame
+        # 비어있는 frame 도 일단 포함 (디자인 자리 표시일 수 있음)
+        frames.append({
+            "shape": shape,
+            "tf": tf,
+            "size": _frame_max_font_size(tf),
+            "had_text": bool(tf.text and tf.text.strip()),
+        })
+
+    if not frames:
+        return {"replaced": 0, "cleared": 0, "errors": ["no text frames"]}
+
+    # 2. 사이즈 내림차순 정렬 — 큰 글자가 거버닝/소제목 후보
+    frames.sort(key=lambda f: -f["size"])
+
+    # 3. 모든 frame 의 텍스트 비우기 (마스터 원본 잔재 0)
+    cleared = 0
+    for f in frames:
+        if f["had_text"]:
+            try:
+                _clear_text_frame(f["tf"])
+                cleared += 1
+            except Exception as e:
+                log.warning("frame clear 실패 (shape=%s): %s", f["shape"].name, e)
+
+    # 4. AI 콘텐츠 정리
+    governing = (content.get("거버닝") or "").strip() if content else ""
+    subtitle = (content.get("소제목") or "").strip() if content else ""
+    body_raw = content.get("본문") if content else None
+    if isinstance(body_raw, str):
+        body = [body_raw.strip()] if body_raw.strip() else []
+    elif isinstance(body_raw, list):
+        body = [str(b).strip() for b in body_raw if str(b).strip()]
+    else:
+        body = []
+    summary = (content.get("summary") or "").strip() if content else ""
+
+    # 5. 매핑 — 사이즈 내림차순 frame 들에 콘텐츠 채움
+    # had_text 가 True 인 frame 만 채움 (디자인 전용 빈 frame 은 그대로)
+    fillable = [f for f in frames if f["had_text"]]
+
+    replaced = 0
+    fill_idx = 0
+
+    # 5-a. 거버닝 → 가장 큰 frame
+    if fill_idx < len(fillable) and governing:
+        try:
+            _replace_text_frame_simple(fillable[fill_idx]["tf"], governing)
+            replaced += 1
+        except Exception as e:
+            log.warning("거버닝 채움 실패: %s", e)
+        fill_idx += 1
+
+    # 5-b. 소제목 → 다음 frame
+    if fill_idx < len(fillable) and subtitle:
+        try:
+            _replace_text_frame_simple(fillable[fill_idx]["tf"], subtitle)
+            replaced += 1
+        except Exception as e:
+            log.warning("소제목 채움 실패: %s", e)
+        fill_idx += 1
+
+    # 5-c. 본문 → 남은 frame 들에 순서대로
+    body_idx = 0
+    while fill_idx < len(fillable) and body_idx < len(body):
+        try:
+            _replace_text_frame_simple(fillable[fill_idx]["tf"], body[body_idx])
+            replaced += 1
+        except Exception as e:
+            log.warning("본문 [%d] 채움 실패: %s", body_idx, e)
+        body_idx += 1
+        fill_idx += 1
+
+    # 5-d. summary 있으면 다음 frame 에
+    if fill_idx < len(fillable) and summary:
+        try:
+            _replace_text_frame_simple(fillable[fill_idx]["tf"], "💡 " + summary)
+            replaced += 1
+        except Exception as e:
+            log.warning("summary 채움 실패: %s", e)
+        fill_idx += 1
+
+    # 5-e. 본문 항목이 frame 보다 많이 남았으면 — 마지막 frame 에 합쳐서
+    if body_idx < len(body) and fill_idx > 0:
+        leftover = body[body_idx:]
+        # 마지막으로 채운 frame 의 텍스트 뒤에 줄바꿈으로 추가
+        try:
+            last_tf = fillable[fill_idx - 1]["tf"]
+            current = last_tf.text or ""
+            combined = current + "\n" + "\n".join(leftover)
+            _replace_text_frame_simple(last_tf, combined)
+        except Exception as e:
+            log.warning("leftover 합침 실패: %s", e)
+
+    # fill_idx 부터 끝까지의 frame 은 비어있는 채로 둠 (마스터 디자인만 남김)
+    return {
+        "replaced": replaced,
+        "cleared": cleared,
+        "frames_total": len(frames),
+        "frames_fillable": len(fillable),
+        "errors": [],
+    }
+
+
 def replace_text_in_slide(slide, content: dict) -> dict:
-    """AUTO 모드 텍스트 치환.
+    """[LEGACY] 기존 AUTO 모드 텍스트 치환 — 큰 글자만 치환.
+
+    ⚠ 이 함수는 마스터의 작은 텍스트(본문, 서브헤더)를 그대로 둠 → 짬뽕 발생.
+    신규 코드는 fill_slide_clearing_master() 사용.
 
     content 형식:
       {"거버닝": "...", "소제목": "...", "본문": ["...", "..."]}
@@ -427,8 +600,10 @@ def generate_from_master(
     slides = list(prs.slides)
     log.info("마스터 로드 · %d 슬라이드", len(slides))
 
-    # 3. 텍스트 치환 (지정된 슬라이드만)
+    # 3. 텍스트 치환 — fill_slide_clearing_master 로 마스터 원본 비우고 AI 콘텐츠 채움
+    #    (기존 replace_text_in_slide 는 큰 글자만 치환 → 짬뽕 발생, deprecated)
     replaced_total = 0
+    cleared_total = 0
     errors_total = []
     for slide_idx, content in content_per_slide.items():
         if slide_idx >= len(slides):
@@ -436,12 +611,28 @@ def generate_from_master(
             continue
         slide = slides[slide_idx]
         try:
-            r = replace_text_in_slide(slide, content)
+            r = fill_slide_clearing_master(slide, content)
             replaced_total += r["replaced"]
+            cleared_total += r.get("cleared", 0)
             errors_total.extend([f"slide{slide_idx}: {e}" for e in r["errors"]])
         except Exception as e:
             log.exception("슬라이드 %d 치환 실패: %s", slide_idx, e)
             errors_total.append(f"slide{slide_idx}: {e}")
+
+    # 3-b. content 가 지정되지 않은 슬라이드 (keep_indices 에는 있지만 content_per_slide 에 없는)
+    #      → 이 슬라이드들도 모든 텍스트 비움 (마스터 원본 잔재 방지)
+    if keep_indices is not None:
+        for idx in keep_indices:
+            if idx in content_per_slide:
+                continue
+            if idx >= len(slides):
+                continue
+            slide = slides[idx]
+            try:
+                r = fill_slide_clearing_master(slide, {})
+                cleared_total += r.get("cleared", 0)
+            except Exception as e:
+                log.warning("슬라이드 %d 빈값 처리 실패: %s", idx, e)
 
     # 4. keep_indices 지정 시 그 외 삭제
     if keep_indices is None:
@@ -453,8 +644,8 @@ def generate_from_master(
     prs.save(str(output_path))
 
     final_count = len(prs.slides)
-    log.info("저장 · %d 슬라이드 / %d 치환 / %d 에러",
-             final_count, replaced_total, len(errors_total))
+    log.info("저장 · %d 슬라이드 / 치환 %d · 비움 %d · 에러 %d",
+             final_count, replaced_total, cleared_total, len(errors_total))
 
     # 6. 미디어 garbage collection — 사용 안 하는 이미지/동영상 제거 (사이즈 축소)
     gc_result = {}

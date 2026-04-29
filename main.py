@@ -1488,6 +1488,29 @@ def healthz():
     })
 
 
+@app.get("/api/diag/fonts")
+def diag_fonts():
+    """한글 폰트 설치 상태 진단 — Railway deploy 후 한글 깨짐 검증."""
+    import subprocess
+    out = {"ok": False, "korean_fonts": [], "all_count": 0, "stderr": ""}
+    try:
+        # 한국어 폰트만
+        r = subprocess.run(
+            ["fc-list", ":lang=ko"],
+            capture_output=True, timeout=10,
+        )
+        ko = r.stdout.decode("utf-8", errors="replace").strip()
+        out["korean_fonts"] = [l.split(":")[0].strip() for l in ko.split("\n") if l.strip()][:30]
+        # 전체 폰트 수
+        r2 = subprocess.run(["fc-list"], capture_output=True, timeout=10)
+        all_lines = r2.stdout.decode("utf-8", errors="replace").strip().split("\n")
+        out["all_count"] = len([l for l in all_lines if l.strip()])
+        out["ok"] = len(out["korean_fonts"]) > 0
+    except Exception as e:
+        out["stderr"] = f"{type(e).__name__}: {e}"
+    return JSONResponse(out)
+
+
 @app.get("/api/r2/status")
 def r2_status():
     """R2 연결 + 캐시 상태 진단."""

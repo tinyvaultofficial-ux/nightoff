@@ -1,6 +1,9 @@
 [phases.setup]
-# libreoffice 추가 — PPTX → PDF → PNG 미리보기에 필요 (Phase 3-C)
-nixPkgs = ["python312", "gcc", "libreoffice", "fontconfig"]
+# libreoffice — PPTX → PDF → PNG 미리보기 (Phase 3-C)
+# noto-fonts-cjk-sans / nanum — 한글 폰트 (LibreOffice 가 PDF 변환 시 한글 렌더에 사용)
+#   없으면 한글이 □ tofu 박스로 출력됨
+nixPkgs = ["python312", "gcc", "libreoffice", "fontconfig",
+           "noto-fonts-cjk-sans", "nanum"]
 
 [phases.install]
 cmds = [
@@ -9,6 +12,8 @@ cmds = [
   ". /opt/venv/bin/activate && pip install -r requirements.txt",
   # RAG (옵셔널) — 설치 실패해도 빌드 통과 (rag_retriever 가 graceful skip)
   ". /opt/venv/bin/activate && pip install -r requirements-rag.txt || echo 'RAG deps install failed — RAG 비활성화 모드로 진행'",
+  # 폰트 캐시 강제 빌드 — LibreOffice 가 새 폰트를 즉시 인식하게
+  "fc-cache -f 2>&1 | tail -3 || echo 'fc-cache skipped'",
 ]
 
 [phases.build]

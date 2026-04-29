@@ -1504,7 +1504,7 @@ async function renderClientDetail(cid) {
   // ── 강점 기능은 의도적으로 제거됨 (추상적 신호라 제안서 품질에 역효과)
   const [rfpSec, intelSec, historySec] = await Promise.all([
     renderRfpSection(cid),
-    renderClientIntelSection(cid),
+    renderClientIntelSection(cid, client),
     renderConvHistorySection(cid),
   ]);
   stack.appendChild(rfpSec);
@@ -1922,17 +1922,27 @@ async function renderConvHistorySection(cid) {
 }
 
 // ---------- 발주처 들여다보기 👀 ----------
-async function renderClientIntelSection(cid) {
+async function renderClientIntelSection(cid, clientObj = null) {
   const r = await api.get(`/api/clients/${cid}/intel`).catch(() => ({ intel: {}, updated_at: null }));
   const intel = r?.intel || {};
+  // RFP 에서 추출된 발주처(공고기관). 과업명(client.name) 과 분리된 별도 필드.
+  const organization = (clientObj && clientObj.organization) ? String(clientObj.organization).trim() : "";
+  const hasRfp = !!(clientObj && clientObj.has_rfp);
+
   const card = h("div", { class: "card" });
   card.appendChild(h("div", { class: "card-head" }, [
     h("div", { class: "card-title-row" }, [
       h("div", { class: "card-title-icon", html: iconHtml("eye", 18) }),
       h("div", { style: "flex:1; min-width:0;" }, [
         h("h3", { class: "card-title" }, "발주처 들여다보기 👀"),
-        h("p", { class: "card-subtitle" }, "RFP 를 넣으면 발주처 정보와 과업 내용을 자동으로 파악해요"),
+        h("p", { class: "card-subtitle" },
+          organization
+            ? `RFP 에서 추출한 발주처: ${organization}`
+            : "RFP 를 넣으면 발주처 정보와 과업 내용을 자동으로 파악해요"),
       ]),
+      // organization 있으면 작은 배지로도 강조
+      organization ? h("span", { class: "intel-org-badge", title: "RFP 에서 자동 추출된 발주처" },
+        `🏛 ${organization}`) : null,
     ]),
   ]));
 
@@ -1956,6 +1966,24 @@ async function renderClientIntelSection(cid) {
     },
   });
 
+  // [구조 강화] organization 이 비어있으면 들여다보기 비활성 — 과업명 검색 사고 방지
+  if (!organization) {
+    body.appendChild(h("div", { class: "intel-disabled-row" }, [
+      h("span", { class: "intel-disabled-emoji" }, "🔒"),
+      h("div", { style: "flex: 1; min-width: 0;" }, [
+        h("p", { class: "intel-disabled-title" },
+          hasRfp
+            ? "RFP 에서 발주처를 추출하지 못했어요"
+            : "RFP 를 먼저 업로드해 주세요"),
+        h("p", { class: "muted small", style: "margin: 4px 0 0;" },
+          hasRfp
+            ? "RFP 에 발주처(공고기관) 정보가 명확히 적혀있는지 확인해 주세요. RFP 분석을 다시 돌리면 추출이 시도돼요."
+            : "발주처 들여다보기는 RFP 에 적힌 발주처(공고기관)만 사용해요. 과업명은 검색에 영향을 주지 않아요."),
+      ]),
+    ]));
+    return card;
+  }
+
   if (!intel || Object.keys(intel).length === 0 || intel.error) {
     if (intel?.error) {
       // 에러 시에만 재시도 버튼 노출
@@ -1968,7 +1996,7 @@ async function renderClientIntelSection(cid) {
       ]));
     } else {
       body.appendChild(h("div", { class: "muted small", style: "padding: 12px 4px;" },
-        "RFP 를 업로드하면 자동으로 발주처 정보를 수집해요."));
+        `'${organization}' 정보를 자동으로 조회 중이에요. 잠시 후 다시 확인해 주세요.`));
     }
     return card;
   }

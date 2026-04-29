@@ -2856,6 +2856,42 @@ body, .msg-bubble, .card, .strengths-intro,
   border-radius: 6px;
   display: inline-flex; align-items: center; gap: 4px;
 }
+/* 발주처 배지 — 카드 헤더 우측에 작게 */
+.intel-org-badge {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  background: color-mix(in oklab, var(--primary) 10%, transparent);
+  color: var(--primary);
+  border: 1px solid color-mix(in oklab, var(--primary) 22%, transparent);
+  border-radius: 999px;
+  font-size: 12px; font-weight: 600;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  max-width: 240px;
+  overflow: hidden; text-overflow: ellipsis;
+}
+
+/* 비활성 안내 — RFP 없을 때 / 발주처 추출 실패 */
+.intel-disabled-row {
+  display: flex; align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px;
+  background: color-mix(in oklab, var(--primary) 4%, var(--bg-2));
+  border: 1px dashed color-mix(in oklab, var(--primary) 22%, transparent);
+  border-radius: 12px;
+}
+.intel-disabled-emoji {
+  font-size: 24px;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+.intel-disabled-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--fg);
+}
+
 .intel-error-row {
   display: flex; align-items: center; justify-content: space-between;
   gap: 10px; padding: 10px 12px;

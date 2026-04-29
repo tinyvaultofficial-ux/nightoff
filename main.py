@@ -357,6 +357,9 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     ("conversations", "outcome",          "TEXT DEFAULT ''"),
     ("conversations", "pptx_path",        "TEXT DEFAULT ''"),    # 마지막 PPTX 다운로드 경로
     ("conversations", "pptx_updated_at",  "TEXT DEFAULT ''"),    # PPTX 생성 시각
+    # 발주처(공고기관) — RFP 분석에서 자동 추출. 과업명(name)과 분리.
+    # 들여다보기 검색은 이 컬럼만 사용 (과업명은 검색에 영향 X)
+    ("clients",       "organization",     "TEXT DEFAULT ''"),
 ]
 
 
@@ -1155,6 +1158,7 @@ orientation 엄격 규칙:
 출력 스키마 (JSON만, 다른 텍스트 금지):
 {
   "title": "사업/과업명",
+  "organization": "발주처(공고기관) — 가장 큰 조직 단위만 추출. 본부·과·팀·실 같은 하위 부서는 제외하고 재단/협회/부/처/청/시/군/구/공사/대학/기관 단위까지만. 추출 불가능하면 빈 문자열. 예시: '문화체육관광부', '한국관광공사', '서울특별시', '한국콘텐츠진흥원', '국립중앙박물관'. 잘못된 예: '서울시 한강사업본부' → '서울특별시', '문체부 콘텐츠정책관실' → '문화체육관광부'",
   "client_type": "공공|대기업|민간|스타트업",
   "project_domain": "festival|forum|education|sports|exhibition|campaign|tourism|rnd|welfare|other",
   "project_domain_label": "도메인 한국어 라벨 (예: '축제·행사', '포럼·컨퍼런스', '박람회·전시' 등)",
@@ -2304,6 +2308,15 @@ def _run_rfp_aggregate(cid: str) -> dict:
                 "ON CONFLICT(client_id) DO UPDATE SET analysis_json=excluded.analysis_json, updated_at=excluded.updated_at",
                 (cid, json.dumps(analysis, ensure_ascii=False)),
             )
+            # 발주처(공고기관) 자동 추출 → clients.organization 에 저장
+            # — 들여다보기 검색은 이 값만 사용 (과업명 영향 X)
+            org = (analysis.get("organization") or "").strip()
+            if org and len(org) >= 2:
+                try:
+                    db.execute("UPDATE clients SET organization=? WHERE id=?", (org, cid))
+                    log.info("발주처 자동 추출 · client=%s · org=%r", cid[:12], org)
+                except Exception as e:
+                    log.warning("clients.organization 저장 실패 (무시): %s", e)
 
     # 프로파일 자동 업데이트 (best-effort, 실패해도 RFP 분석은 유지)
     try:
@@ -3103,6 +3116,10 @@ JSON:"""
 def _run_client_intel(cid: str) -> dict:
     """발주처 정보 자동 수집 — Claude + web_search 활용.
 
+    [중요] 검색에는 RFP 에서 추출된 organization 만 사용.
+    과업명(client.name) 은 검색에 영향 X — 사용자가 짧거나 모호한 과업명을 넣어도
+    엉뚱한 결과가 나오지 않도록 의도적으로 분리.
+
     실패 케이스를 명확히 분류해 사용자에게 의미있는 에러 메시지를 돌려줌.
     """
     with get_db() as db:
@@ -3112,12 +3129,30 @@ def _run_client_intel(cid: str) -> dict:
     rfp = _get_rfp_aggregated(cid) or {}
     project_title = rfp.get("title", "")
 
+    # 발주처 결정: clients.organization (RFP 추출) 우선
+    organization = ""
+    try:
+        organization = (client["organization"] or "").strip()
+    except (KeyError, IndexError):
+        organization = ""
+    # 폴백: RFP analysis 의 organization 도 시도 (저장 직후 race)
+    if not organization:
+        organization = (rfp.get("organization") or "").strip()
+
+    # 발주처 추출 실패 → 들여다보기 비활성 (과업명으로 검색하지 않음)
+    if not organization or len(organization) < 2:
+        return {
+            "error": "RFP 에서 발주처를 추출하지 못했어요. "
+                     "RFP(공고문/제안요청서)를 업로드해 주세요. "
+                     "이미 올렸다면 RFP 에 발주처 정보가 명확히 적혀있는지 확인해 주세요."
+        }
+
     prompt = (CLIENT_INTEL_PROMPT
-              .replace("{CLIENT_NAME}", client["name"])
+              .replace("{CLIENT_NAME}", organization)
               .replace("{CLIENT_TYPE}", client["industry"] or "")
               .replace("{PROJECT_TITLE}", project_title))
 
-    log.info("발주처 들여다보기 시작 · client=%s · project=%r", client["name"], project_title[:40])
+    log.info("발주처 들여다보기 시작 · org=%r · project=%r", organization[:40], project_title[:40])
 
     intel: dict = {}
     raw_text = ""
@@ -3146,6 +3181,17 @@ def _run_client_intel(cid: str) -> dict:
         json_match = re.search(r"\{[\s\S]*\}", cleaned)
         if json_match:
             cleaned = json_match.group(0)
+        else:
+            # AI 가 평문으로 거절 응답한 케이스 — JSON 파싱 시도 자체를 건너뛰고 친절 안내
+            refusal_keywords = ("죄송", "특정할 수 없", "확인할 수 없", "찾을 수 없", "구체적인")
+            is_refusal = any(k in raw_text for k in refusal_keywords)
+            if is_refusal:
+                log.warning("발주처 들여다보기 평문 거절 응답: %r", raw_text[:200])
+                return {
+                    "error": "AI 가 발주처를 특정하지 못했어요. "
+                             "RFP 에 발주처가 명확히 적혀있는지 확인해 주세요. "
+                             f"(추출된 발주처: '{organization}')"
+                }
         intel = json.loads(cleaned)
         if not isinstance(intel, dict):
             return {"error": "응답 형식이 dict 가 아니에요"}
@@ -3157,7 +3203,9 @@ def _run_client_intel(cid: str) -> dict:
         if stop_reason == "max_tokens":
             err_msg = "응답이 잘렸어요 (max_tokens 부족) — 다시 시도하면 보통 성공해요"
         else:
-            err_msg = f"JSON 형식 오류: {str(e)[:80]}"
+            # raw_text 의 첫 80자도 함께 보여주기 (디버깅 도움)
+            preview = raw_text.strip()[:80].replace("\n", " ")
+            err_msg = f"AI 응답 형식 오류 — 응답 일부: '{preview}…'"
         intel = {"error": err_msg}
 
     except anthropic.AuthenticationError:

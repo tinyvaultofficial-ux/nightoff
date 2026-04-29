@@ -2326,31 +2326,32 @@ body.right-panel-off .right-panel { display: none; }
 }
 .json-stream-placeholder .muted { color: var(--fg-2); }
 
-/* ===== Loading overlay — 중앙 카드형 (배경은 보임, 클릭만 차단) ===== */
+/* ===== Loading overlay — 중앙 카드형 (옅은 회색 딤 + 카드 입체감) ===== */
 .fs-loader-backdrop {
   position: fixed; inset: 0; z-index: 9999;
   display: grid; place-items: center;
   animation: fs-fade-in 0.22s ease-out;
   cursor: wait;
-  /* 배경: 완전 투명 (사용자 요구 — "까만 필터 전체 제거") */
-  background: transparent;
-  /* clear 모드: backdrop-filter 도 제거 → 뒷화면 그대로 보임 */
+  /* 옅은 회색 톤 — 뒷화면 보이되 카드가 떠 보이게 (까만 필터 X) */
+  background: rgba(28, 32, 44, 0.14);
+  backdrop-filter: blur(2px) saturate(0.96);
+  -webkit-backdrop-filter: blur(2px) saturate(0.96);
   pointer-events: auto;
 }
 .fs-loader-backdrop.closing {
   animation: fs-fade-out 0.26s ease-out forwards;
 }
-/* legacy 호환 — fs-loader-clear 클래스 명시되면 같은 스타일 적용 (이중 안전) */
+/* legacy 호환 — fs-loader-clear 클래스가 명시돼도 같은 스타일 (회색 톤 유지) */
 .fs-loader-backdrop.fs-loader-clear {
-  background: transparent;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  background: rgba(28, 32, 44, 0.14);
+  backdrop-filter: blur(2px) saturate(0.96);
+  -webkit-backdrop-filter: blur(2px) saturate(0.96);
 }
 body.fs-loader-active {
   overflow: hidden;
   user-select: none;
 }
-/* 중앙 카드 — 흰 배경 + 그림자 (작고 깔끔하게) */
+/* 중앙 카드 — 흰 배경 + 강한 그림자 (입체감 강조) */
 .fs-loader-content,
 .fs-loader-card {
   display: flex; flex-direction: column; align-items: center; gap: 18px;
@@ -2358,10 +2359,12 @@ body.fs-loader-active {
   text-align: center;
   max-width: min(420px, 80vw);
   background: #fff;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
   border-radius: 18px;
-  box-shadow: 0 24px 48px -12px rgba(15, 15, 20, 0.22),
-              0 8px 24px -8px rgba(15, 15, 20, 0.12);
+  box-shadow:
+    0 32px 64px -16px rgba(15, 15, 20, 0.30),
+    0 12px 28px -8px rgba(15, 15, 20, 0.18),
+    0 0 0 1px rgba(255, 255, 255, 0.6) inset;
   animation: fs-card-in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 .fs-spinner {

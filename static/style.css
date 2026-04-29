@@ -2326,53 +2326,66 @@ body.right-panel-off .right-panel { display: none; }
 }
 .json-stream-placeholder .muted { color: var(--fg-2); }
 
-/* ===== Full-screen loading overlay (모든 AI 처리 구간 공통) ===== */
+/* ===== Loading overlay — 중앙 카드형 (배경은 보임, 클릭만 차단) ===== */
 .fs-loader-backdrop {
   position: fixed; inset: 0; z-index: 9999;
-  background: rgba(15, 15, 20, 0.68);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
   display: grid; place-items: center;
   animation: fs-fade-in 0.22s ease-out;
   cursor: wait;
+  /* 배경: 완전 투명 (사용자 요구 — "까만 필터 전체 제거") */
+  background: transparent;
+  /* clear 모드: backdrop-filter 도 제거 → 뒷화면 그대로 보임 */
+  pointer-events: auto;
 }
 .fs-loader-backdrop.closing {
   animation: fs-fade-out 0.26s ease-out forwards;
+}
+/* legacy 호환 — fs-loader-clear 클래스 명시되면 같은 스타일 적용 (이중 안전) */
+.fs-loader-backdrop.fs-loader-clear {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 body.fs-loader-active {
   overflow: hidden;
   user-select: none;
 }
-.fs-loader-content {
-  display: flex; flex-direction: column; align-items: center; gap: 22px;
-  padding: 40px 52px;
+/* 중앙 카드 — 흰 배경 + 그림자 (작고 깔끔하게) */
+.fs-loader-content,
+.fs-loader-card {
+  display: flex; flex-direction: column; align-items: center; gap: 18px;
+  padding: 28px 36px;
   text-align: center;
-  max-width: 90vw;
+  max-width: min(420px, 80vw);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: 0 24px 48px -12px rgba(15, 15, 20, 0.22),
+              0 8px 24px -8px rgba(15, 15, 20, 0.12);
+  animation: fs-card-in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 .fs-spinner {
-  width: 62px; height: 62px;
-  border: 4px solid rgba(255, 255, 255, 0.15);
+  width: 48px; height: 48px;
+  border: 3.5px solid color-mix(in oklab, var(--primary) 12%, transparent);
   border-top-color: var(--primary);
-  border-right-color: color-mix(in oklab, var(--primary) 80%, #fff);
+  border-right-color: color-mix(in oklab, var(--primary) 70%, #fff);
   border-radius: 50%;
   animation: fs-spin 0.85s linear infinite;
-  box-shadow: 0 0 28px color-mix(in oklab, var(--primary) 35%, transparent);
 }
-/* 단일 메시지 슬롯 — 실무·위트가 교대로 표시 */
+/* 메시지 — 카드 안 어두운 배경 → 어두운 텍스트로 변경 */
 .fs-message-text {
-  color: #fff;
-  font-size: 17px; font-weight: 600;
+  color: var(--fg);
+  font-size: 15px; font-weight: 600;
   letter-spacing: -0.01em;
-  min-height: 28px;
-  max-width: 520px;
+  min-height: 22px;
+  max-width: 360px;
   text-align: center;
-  transition: opacity 0.4s ease, transform 0.4s ease;
+  transition: opacity 0.32s ease, transform 0.32s ease;
 }
-.fs-message-text.fade-out { opacity: 0; transform: translateY(6px); }
-.fs-message-text.is-witty {
-  color: rgba(255, 255, 255, 0.78);
-  font-size: 15px; font-style: italic;
-  font-weight: 500;
+.fs-message-text.fade-out { opacity: 0; transform: translateY(4px); }
+@keyframes fs-card-in {
+  from { opacity: 0; transform: scale(0.92) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 @keyframes fs-spin { to { transform: rotate(360deg); } }
 @keyframes fs-fade-in { from { opacity: 0; } to { opacity: 1; } }
@@ -2744,7 +2757,27 @@ body.fs-loader-active {
   flex: 1;                /* 좌측 빈 상태 카드가 우측 길이에 맞춰 늘어남 */
   justify-content: center;
 }
-.dashboard-side-col { min-width: 0; }
+/* 카드들이 들어찬 grid 도 우측 컬럼 합계 높이까지 stretch */
+.dashboard-two-col > section > .client-grid {
+  flex: 1;
+  align-content: start;   /* 카드는 위에서부터 채우고 남는 공간은 아래 */
+}
+.dashboard-side-col { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.dashboard-side-col > .tip-card { flex: 0 0 auto; }
+/* "과업 목록" 라벨 — 박스 위로 살짝 띄움 */
+.dashboard-two-col > section > .dashboard-section-label {
+  margin: 0 4px 12px 4px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+  display: flex; align-items: center; gap: 8px;
+}
+.dashboard-two-col > section > .dashboard-section-label::before {
+  content: ""; display: inline-block;
+  width: 4px; height: 16px; border-radius: 2px;
+  background: linear-gradient(180deg, var(--primary), var(--accent, #FF8E5C));
+}
 
 /* 채팅·시스템 텍스트 wrapping — 한국어 단어 단위 줄바꿈 */
 body, .msg-bubble, .card, .strengths-intro,
@@ -3087,82 +3120,147 @@ input.locked-by-env::placeholder {
   box-shadow: 0 18px 36px -10px rgba(124, 58, 237, 0.65);
 }
 
-/* Trust 배지 섹션 */
-.landing-trust {
-  background: rgba(255,255,255,0.6);
-  border-top: 1px solid rgba(229,229,229,0.5);
-  border-bottom: 1px solid rgba(229,229,229,0.5);
-  padding: 64px 24px;
+/* ============================================================
+   섹션 헤더 — eyebrow + title + lead 의 3단 위계
+   ============================================================ */
+.landing-section-eyebrow {
+  display: inline-block;
+  padding: 6px 14px;
+  margin: 0 auto 16px;
+  background: color-mix(in oklab, var(--primary) 12%, transparent);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  border-radius: 999px;
+  text-align: center;
 }
-.landing-trust-inner { max-width: 1100px; margin: 0 auto; }
+.landing-section-eyebrow.accent {
+  background: color-mix(in oklab, var(--accent, #FF8E5C) 14%, transparent);
+  color: var(--accent, #FF8E5C);
+}
+/* eyebrow 는 inline-block 이라 부모가 text-align:center 여야 가운데 정렬됨 */
+.landing-trust-inner,
+.landing-features-inner { text-align: center; }
+
 .landing-section-title {
-  font-size: 28px; font-weight: 700;
-  letter-spacing: -0.015em;
-  margin: 0 0 36px;
+  font-size: 34px; font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0 0 12px;
   text-align: center;
   color: var(--fg);
+  line-height: 1.25;
 }
+.landing-section-lead {
+  font-size: 16px;
+  color: var(--fg-2);
+  text-align: center;
+  margin: 0 0 40px;
+  letter-spacing: -0.005em;
+}
+
+/* ============================================================
+   Trust 섹션 — 따뜻한 베이지 카드 + 강조 보더
+   ============================================================ */
+.landing-trust {
+  background: linear-gradient(180deg,
+    color-mix(in oklab, var(--primary) 4%, #fff) 0%,
+    color-mix(in oklab, var(--accent, #FF8E5C) 5%, #fff) 100%);
+  border-top: 1px solid color-mix(in oklab, var(--primary) 12%, transparent);
+  border-bottom: 1px solid color-mix(in oklab, var(--primary) 12%, transparent);
+  padding: 80px 24px;
+}
+.landing-trust-inner { max-width: 1100px; margin: 0 auto; }
 .landing-trust-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 16px 28px;
+  gap: 14px 24px;
   max-width: 880px; margin: 0 auto;
+  text-align: left;
 }
 .landing-trust-item {
   display: flex; align-items: center; gap: 14px;
-  padding: 18px 22px;
+  padding: 20px 24px;
   background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 14px;
+  border: 1px solid color-mix(in oklab, var(--primary) 14%, transparent);
+  border-radius: 16px;
   font-size: 15px; font-weight: 500; color: var(--fg);
   letter-spacing: -0.005em;
-  transition: border-color .15s ease, box-shadow .15s ease;
+  box-shadow: 0 2px 8px -4px rgba(124,58,237,0.08);
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
 }
 .landing-trust-item:hover {
-  border-color: color-mix(in oklab, var(--primary) 30%, transparent);
-  box-shadow: 0 8px 16px -8px rgba(124,58,237,0.15);
+  border-color: color-mix(in oklab, var(--primary) 35%, transparent);
+  box-shadow: 0 12px 24px -10px rgba(124,58,237,0.18);
+  transform: translateY(-2px);
 }
 .landing-trust-emoji {
-  font-size: 20px; flex-shrink: 0;
+  font-size: 22px; flex-shrink: 0;
   filter: saturate(1.2);
 }
 .landing-trust-text { line-height: 1.55; }
 
-/* Features 섹션 */
+/* ============================================================
+   Features 섹션 — 번호 라벨 + 강조 카드
+   ============================================================ */
 .landing-features {
-  padding: 80px 24px;
+  padding: 96px 24px;
+  background: #fff;
 }
 .landing-features-inner { max-width: 1100px; margin: 0 auto; }
 .landing-features-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 24px;
+  gap: 22px;
+  text-align: left;
 }
 .landing-feature-card {
-  padding: 36px 28px;
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+  position: relative;
+  padding: 40px 30px 32px;
+  background: linear-gradient(180deg, #fff 0%,
+    color-mix(in oklab, var(--primary) 3%, #fff) 100%);
+  border: 1px solid color-mix(in oklab, var(--primary) 14%, transparent);
+  border-radius: 20px;
+  box-shadow: 0 6px 20px -10px rgba(124,58,237,0.10);
+  transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease;
+  overflow: hidden;
+}
+.landing-feature-card::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--primary), var(--accent, #FF8E5C));
+  opacity: 0.85;
 }
 .landing-feature-card:hover {
-  transform: translateY(-3px);
+  transform: translateY(-5px);
   border-color: color-mix(in oklab, var(--primary) 35%, transparent);
-  box-shadow: 0 16px 32px -12px rgba(124,58,237,0.18);
+  box-shadow: 0 24px 40px -16px rgba(124,58,237,0.22);
+}
+.landing-feature-num {
+  position: absolute;
+  top: 18px; right: 22px;
+  font-size: 28px;
+  font-weight: 800;
+  color: color-mix(in oklab, var(--primary) 18%, transparent);
+  letter-spacing: -0.02em;
+  font-feature-settings: "tnum";
 }
 .landing-feature-emoji {
-  font-size: 36px;
-  margin-bottom: 18px;
+  font-size: 40px;
+  margin-bottom: 20px;
+  filter: saturate(1.25);
 }
 .landing-feature-title {
-  font-size: 20px; font-weight: 700;
+  font-size: 21px; font-weight: 700;
   margin: 0 0 10px;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.012em;
   color: var(--fg);
 }
 .landing-feature-desc {
   margin: 0;
-  font-size: 14px;
+  font-size: 14.5px;
   line-height: 1.65;
   color: var(--fg-2);
 }
@@ -3198,6 +3296,8 @@ input.locked-by-env::placeholder {
   .landing-hero-sub { font-size: 15px; }
   .landing-trust-grid { grid-template-columns: 1fr; }
   .landing-features-grid { grid-template-columns: 1fr; }
+  .landing-section-title { font-size: 28px; }
+  .landing-section-lead { font-size: 14.5px; margin-bottom: 28px; }
 }
 
 /* ============================================================
@@ -3712,6 +3812,160 @@ input.locked-by-env::placeholder {
 }
 .side-panel-stage .proposal-page {
   box-shadow: 0 6px 20px -10px rgba(0,0,0,.18);
+}
+
+/* ============================================================
+   [B7] PNG 모드 사이드패널 — Genspark 스타일 우측 미리보기
+   ============================================================ */
+.png-stage {
+  flex: 1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 24px;
+  background: linear-gradient(180deg, var(--bg-2) 0%, #fff 100%);
+  overflow: hidden;
+}
+.png-slide-frame {
+  width: 100%; max-width: 1100px;
+  aspect-ratio: 16 / 9;
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 32px -12px rgba(15,15,20,0.18),
+              0 4px 12px -4px rgba(15,15,20,0.08);
+  overflow: hidden;
+  display: grid; place-items: center;
+  animation: png-slide-in 0.32s ease-out;
+}
+.png-slide-img {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  display: block;
+}
+@keyframes png-slide-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* 작업 중 placeholder */
+.png-stage-placeholder {
+  display: flex; flex-direction: column; align-items: center; gap: 18px;
+  padding: 40px 32px;
+  text-align: center;
+  max-width: 480px;
+}
+.png-placeholder-emoji {
+  font-size: 56px;
+  opacity: 0.92;
+  animation: png-emoji-bounce 2.4s ease-in-out infinite;
+}
+@keyframes png-emoji-bounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%      { transform: translateY(-6px) scale(1.05); }
+}
+.png-placeholder-spinner {
+  width: 38px; height: 38px;
+  border: 3px solid color-mix(in oklab, var(--primary) 12%, transparent);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: fs-spin 0.85s linear infinite;
+}
+.png-placeholder-text {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg);
+  letter-spacing: -0.005em;
+}
+.png-stage-steps {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 12px;
+  font-size: 12.5px;
+  color: var(--fg-2);
+  font-weight: 500;
+}
+.png-stage-steps .step {
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  transition: all .2s ease;
+}
+.png-stage-steps .step.active {
+  background: color-mix(in oklab, var(--primary) 14%, transparent);
+  color: var(--primary);
+  border-color: color-mix(in oklab, var(--primary) 30%, transparent);
+  font-weight: 700;
+}
+.png-stage-steps .step.done {
+  background: color-mix(in oklab, var(--success) 12%, transparent);
+  color: var(--success);
+  border-color: color-mix(in oklab, var(--success) 26%, transparent);
+}
+.png-stage-steps .step-arrow {
+  color: var(--fg-2);
+  opacity: 0.5;
+}
+
+/* 에러 상태 */
+.png-stage-error {
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  padding: 40px 28px;
+  color: var(--fg-2);
+  text-align: center;
+}
+.png-stage-emoji { font-size: 48px; }
+
+/* 하단 컨트롤 — PNG 캐러셀 */
+.png-controls {
+  padding: 14px 16px;
+  background: #fff;
+  border-top: 1px solid var(--border);
+  gap: 12px;
+}
+.png-thumb-strip {
+  flex: 1;
+  display: flex; gap: 6px;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  padding: 4px 2px;
+  scrollbar-width: thin;
+}
+.png-thumb-strip::-webkit-scrollbar { height: 6px; }
+.png-thumb-strip::-webkit-scrollbar-thumb {
+  background: var(--border-strong); border-radius: 3px;
+}
+.png-thumb {
+  height: 48px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 5px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  background: #fff;
+  transition: border-color .15s ease, transform .15s ease;
+}
+.png-thumb:hover {
+  border-color: color-mix(in oklab, var(--primary) 40%, transparent);
+  transform: translateY(-1px);
+}
+.png-thumb.active {
+  border-color: var(--primary);
+  box-shadow: 0 4px 10px -4px color-mix(in oklab, var(--primary) 40%, transparent);
+}
+
+/* 다운로드 행 */
+.sp-download-row {
+  padding: 12px 16px 16px;
+  background: #fff;
+  border-top: 1px solid var(--border);
+  display: flex; justify-content: center;
+}
+.sp-download-btn {
+  min-width: 200px;
+  text-align: center;
+  text-decoration: none;
 }
 
 /* ===== 제안서 완료 메시지 행 — 차분 강조 ===== */

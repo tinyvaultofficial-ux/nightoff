@@ -275,45 +275,39 @@ const WITTY_LINES = [
   "애매하게 썼으면 전화는 잘 받아주세요, 공뭔님들",
 ];
 
-// 풀스크린 로딩 오버레이 — 딤처리 + 인터랙션 차단 + 스피너 + 실무/위트 교대 표시 (한 슬롯)
+// 로딩 오버레이 — 중앙 카드 + 배경 투명(클릭만 차단) + 실무 단계만 회전 (위트문구 삭제)
 function showFullscreenLoader(steps) {
   document.querySelectorAll(".fs-loader-backdrop").forEach((el) => el.remove());
 
   const safeSteps = (steps && steps.length) ? steps : [{ emoji: "✨", text: "잠시만요…" }];
-  const backdrop = h("div", { class: "fs-loader-backdrop" });
+  // backdrop = 클릭/스크롤 차단용 투명 레이어. 어두운 필터 X.
+  const backdrop = h("div", { class: "fs-loader-backdrop fs-loader-clear" });
   const messageEl = h("div", { class: "fs-message-text" }, `${safeSteps[0].emoji} ${safeSteps[0].text}`);
-  const content = h("div", { class: "fs-loader-content" }, [
+  const content = h("div", { class: "fs-loader-content fs-loader-card" }, [
     h("div", { class: "fs-spinner" }),
     messageEl,
   ]);
   backdrop.appendChild(content);
   backdrop.addEventListener("click", (e) => e.stopPropagation());
   backdrop.addEventListener("mousedown", (e) => e.preventDefault());
+  // wheel + touchmove 도 막아서 스크롤 차단
+  backdrop.addEventListener("wheel", (e) => e.preventDefault(), { passive: false });
+  backdrop.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
   document.body.appendChild(backdrop);
   document.body.classList.add("fs-loader-active");
 
-  // 교대 시퀀스: 실무 1 → 위트 1 → 실무 2 → 위트 2 …
-  let isWittyTurn = false;
+  // 실무 단계만 회전 (위트 문구 제거 — 신뢰감 우선)
   let stepIdx = 0;
-  let wittyIdx = Math.floor(Math.random() * WITTY_LINES.length);
-
   const rotate = () => {
+    if (safeSteps.length <= 1) return;
     messageEl.classList.add("fade-out");
     setTimeout(() => {
-      if (isWittyTurn) {
-        wittyIdx = (wittyIdx + 1) % WITTY_LINES.length;
-        messageEl.textContent = WITTY_LINES[wittyIdx];
-        messageEl.classList.add("is-witty");
-      } else {
-        stepIdx = (stepIdx + 1) % safeSteps.length;
-        messageEl.textContent = `${safeSteps[stepIdx].emoji} ${safeSteps[stepIdx].text}`;
-        messageEl.classList.remove("is-witty");
-      }
-      isWittyTurn = !isWittyTurn;
+      stepIdx = (stepIdx + 1) % safeSteps.length;
+      messageEl.textContent = `${safeSteps[stepIdx].emoji} ${safeSteps[stepIdx].text}`;
       messageEl.classList.remove("fade-out");
-    }, 380);
+    }, 280);
   };
-  const timer = setInterval(rotate, 2800);
+  const timer = setInterval(rotate, 2400);
 
   let closed = false;
   const handle = {
@@ -321,13 +315,13 @@ function showFullscreenLoader(steps) {
       messageEl.classList.add("fade-out");
       setTimeout(() => {
         messageEl.textContent = `${emoji} ${text}`;
-        messageEl.classList.remove("is-witty", "fade-out");
-      }, 260);
+        messageEl.classList.remove("fade-out");
+      }, 220);
     },
     finish(emoji = "✅", text = "완료!", delayMs = 700) {
       if (closed) return;
       clearInterval(timer);
-      messageEl.classList.remove("fade-out", "is-witty");
+      messageEl.classList.remove("fade-out");
       messageEl.textContent = `${emoji} ${text}`;
       setTimeout(() => handle.stop(), delayMs);
     },
@@ -341,7 +335,7 @@ function showFullscreenLoader(steps) {
         if (!document.querySelector(".fs-loader-backdrop")) {
           document.body.classList.remove("fs-loader-active");
         }
-      }, 260);
+      }, 240);
     },
   };
   return handle;
@@ -533,7 +527,9 @@ function renderLanding() {
   ];
   wrap.appendChild(h("section", { class: "landing-trust" }, [
     h("div", { class: "landing-trust-inner" }, [
+      h("div", { class: "landing-section-eyebrow" }, "WHY NIGHTOFF"),
       h("h2", { class: "landing-section-title" }, "왜 NightOff 인가요?"),
+      h("p", { class: "landing-section-lead" }, "기획자의 밤을 지키는 4가지 약속"),
       h("div", { class: "landing-trust-grid" },
         trustItems.map((t) => h("div", { class: "landing-trust-item" }, [
           h("span", { class: "landing-trust-emoji" }, t.emoji),
@@ -551,9 +547,12 @@ function renderLanding() {
   ];
   wrap.appendChild(h("section", { class: "landing-features" }, [
     h("div", { class: "landing-features-inner" }, [
+      h("div", { class: "landing-section-eyebrow accent" }, "CORE FEATURES"),
       h("h2", { class: "landing-section-title" }, "핵심 기능 3가지"),
+      h("p", { class: "landing-section-lead" }, "RFP 한 장이면, 시작도 마무리도 NightOff 가 도와요"),
       h("div", { class: "landing-features-grid" },
-        features.map((f) => h("div", { class: "landing-feature-card" }, [
+        features.map((f, i) => h("div", { class: "landing-feature-card" }, [
+          h("div", { class: "landing-feature-num" }, String(i + 1).padStart(2, "0")),
           h("div", { class: "landing-feature-emoji" }, f.emoji),
           h("h3", { class: "landing-feature-title" }, f.title),
           h("p", { class: "landing-feature-desc" }, f.desc),
@@ -1107,9 +1106,7 @@ async function renderDashboard() {
 
   // [좌] 과업 목록
   const leftCol = h("section");
-  leftCol.appendChild(h("div", { style: "margin-bottom: 14px;" }, [
-    h("h2", { style: "margin: 0; font-size: 18px; font-weight: 600;" }, "과업 목록"),
-  ]));
+  leftCol.appendChild(h("h2", { class: "dashboard-section-label" }, "과업 목록"));
   if (clients.length === 0) {
     // 빈 상태 — 노을 일러스트 + 따뜻한 카피
     leftCol.appendChild(h("div", { class: "card empty-state empty-state-lg" }, [
@@ -2765,8 +2762,126 @@ async function renderChat(cid, convId) {
   };
   document.addEventListener("keydown", onKey);
 
-  // 글로벌 노출 — renderAssistant 가 호출
+  // 글로벌 노출 — renderAssistant 가 호출 (HTML 모드용)
   shell._activateSidePanel = activateSidePanel;
+
+  // ────────────────────────────────────────────────────────────
+  // [Phase 3-D + B7] PNG 모드 사이드패널 — JSON 흐름의 우측 미리보기
+  // state: 'preparing' | 'building' | 'rendering' | 'ready' | 'error'
+  // ────────────────────────────────────────────────────────────
+  let pngSlideIdx = 0;
+  function setSidePanelPng(state, payload = {}) {
+    splitWrap.classList.add("split-active");
+    sidePanel.classList.remove("hidden");
+    sidePanel.innerHTML = "";
+
+    const stateLabels = {
+      preparing: { emoji: "✨", text: "제안서 구조를 설계하고 있어요…" },
+      building:  { emoji: "🔨", text: "PPTX 로 변환하고 있어요…" },
+      rendering: { emoji: "🖼", text: "슬라이드 미리보기를 만들고 있어요…" },
+      ready:     { emoji: "✅", text: "제안서가 완성됐어요" },
+      error:     { emoji: "⚠️", text: payload.error || "미리보기를 만들지 못했어요" },
+    };
+    const label = stateLabels[state] || stateLabels.preparing;
+    const isReady = state === "ready" && Array.isArray(payload.slides) && payload.slides.length > 0;
+
+    // 헤더
+    sidePanel.appendChild(h("div", { class: "side-panel-head" }, [
+      h("div", { class: "sp-head-left" }, [
+        h("p", { class: "side-panel-label" }, `${label.emoji} ${isReady ? "미리보기" : "작성 중"}`),
+        h("p", { class: "side-panel-title" },
+          isReady ? `${payload.slides.length} 장의 슬라이드` : label.text),
+      ]),
+      h("div", { class: "sp-head-right" }, [
+        isReady ? h("span", { class: "sp-page-indicator" },
+          `${pngSlideIdx + 1} / ${payload.slides.length}`) : null,
+        h("button", {
+          class: "icon-btn",
+          title: "사이드 패널 닫기",
+          html: iconHtml("x", 18),
+          onclick: () => {
+            splitWrap.classList.remove("split-active");
+            sidePanel.classList.add("hidden");
+          },
+        }),
+      ]),
+    ]));
+
+    // 본문 — state 별로 다른 UI
+    const stage = h("div", { class: "side-panel-stage png-stage" });
+    if (isReady) {
+      // 큰 슬라이드 PNG
+      if (pngSlideIdx >= payload.slides.length) pngSlideIdx = payload.slides.length - 1;
+      if (pngSlideIdx < 0) pngSlideIdx = 0;
+      const cur = payload.slides[pngSlideIdx];
+      stage.appendChild(h("div", { class: "png-slide-frame" }, [
+        h("img", { class: "png-slide-img", src: cur.url + "?t=" + Date.now(), alt: `슬라이드 ${pngSlideIdx + 1}` }),
+      ]));
+    } else if (state === "error") {
+      stage.appendChild(h("div", { class: "png-stage-error" }, [
+        h("div", { class: "png-stage-emoji" }, "⚠️"),
+        h("p", {}, label.text),
+      ]));
+    } else {
+      // 작업 중 — 큰 placeholder + 단계 표시
+      stage.appendChild(h("div", { class: "png-stage-placeholder" }, [
+        h("div", { class: "png-placeholder-emoji" }, label.emoji),
+        h("div", { class: "png-placeholder-spinner" }),
+        h("p", { class: "png-placeholder-text" }, label.text),
+        // 단계 progress
+        h("div", { class: "png-stage-steps" }, [
+          h("span", { class: "step" + (state === "preparing" ? " active" : (["building","rendering","ready"].includes(state) ? " done" : "")) }, "1. 설계"),
+          h("span", { class: "step-arrow" }, "→"),
+          h("span", { class: "step" + (state === "building" ? " active" : (["rendering","ready"].includes(state) ? " done" : "")) }, "2. 변환"),
+          h("span", { class: "step-arrow" }, "→"),
+          h("span", { class: "step" + (state === "rendering" ? " active" : (state === "ready" ? " done" : "")) }, "3. 미리보기"),
+        ]),
+      ]));
+    }
+    sidePanel.appendChild(stage);
+
+    // 컨트롤 — ready 일 때만
+    if (isReady) {
+      const slides = payload.slides;
+      const goTo = (i) => {
+        pngSlideIdx = Math.max(0, Math.min(slides.length - 1, i));
+        setSidePanelPng("ready", payload);
+      };
+      const prevBtn = h("button", {
+        class: "sp-nav-btn", disabled: pngSlideIdx === 0,
+        title: "이전 (←)", onclick: () => goTo(pngSlideIdx - 1),
+        html: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`,
+      });
+      const nextBtn = h("button", {
+        class: "sp-nav-btn", disabled: pngSlideIdx === slides.length - 1,
+        title: "다음 (→)", onclick: () => goTo(pngSlideIdx + 1),
+        html: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`,
+      });
+      // 썸네일 스트립
+      const strip = h("div", { class: "png-thumb-strip" },
+        slides.map((s, i) => h("img", {
+          class: "png-thumb" + (i === pngSlideIdx ? " active" : ""),
+          src: s.url + "?t=" + Date.now(),
+          title: `슬라이드 ${i + 1}`,
+          onclick: () => goTo(i),
+        }))
+      );
+      // 다운로드 버튼
+      const dlBtn = payload.pptxUrl ? h("a", {
+        class: "btn btn-primary sp-download-btn",
+        href: payload.pptxUrl,
+        download: "",
+        html: `<span>⬇ PPTX 다운로드</span>`,
+      }) : null;
+
+      sidePanel.appendChild(h("div", { class: "side-panel-controls png-controls" }, [
+        prevBtn, strip, nextBtn,
+      ]));
+      if (dlBtn) sidePanel.appendChild(h("div", { class: "sp-download-row" }, [dlBtn]));
+    }
+  }
+  // 글로벌 노출 — 채팅 스트리밍 핸들러가 호출
+  shell._setSidePanelPng = setSidePanelPng;
 
   // Detect context injection flags
   const injected = {
@@ -3006,6 +3121,8 @@ async function renderChat(cid, convId) {
                     '<span class="loading-dots"><span></span><span></span><span></span></span>' +
                     '<span class="muted">제안서 구조를 설계하고 있어요…</span>' +
                   '</div>';
+                // [B7] JSON 감지와 동시에 우측 패널 'preparing' 상태로 띄움
+                try { shell._setSidePanelPng && shell._setSidePanelPng("preparing"); } catch {}
               }
             }
             kickTyper();
@@ -3069,26 +3186,46 @@ async function renderChat(cid, convId) {
         try { celebrateConfetti(); } catch {}
         if (!userScrolledUp) body.scrollTop = body.scrollHeight;
 
-        // JSON 모드: 자동 PPTX 생성 + PNG 미리보기 모달 자동 열기
+        // [B7] JSON 모드: 자동 PPTX 생성 + PNG 미리보기 → 우측 사이드패널 (모달 X)
         if (isJson) {
           (async () => {
             try {
               const m = location.hash.match(/\/chat\/([^/?#]+)/);
               const cid = m ? m[1] : null;
               if (!cid) return;
-              await api.post("/api/proposals/pptx", { conversation_id: cid }, { timeoutMs: 120000 });
+              // 1단계: PPTX 생성
+              try { shell._setSidePanelPng && shell._setSidePanelPng("building"); } catch {}
+              const pptxR = await api.post("/api/proposals/pptx", { conversation_id: cid }, { timeoutMs: 180000 });
+              const pptxUrl = (pptxR && pptxR.url) || null;
+              // 2단계: PNG 미리보기
+              try { shell._setSidePanelPng && shell._setSidePanelPng("rendering"); } catch {}
               const r = await api.get(`/api/proposals/${cid}/preview`, { timeoutMs: 240000 });
               if (r.slides && r.slides.length) {
                 doneBubble.textContent =
-                  `✅ 제안서 ${r.slides.length}장 완성됐어요! 미리보기를 띄울게요 😊`;
-                try { openPptxPreviewModal(r.slides); } catch (e2) {}
+                  `✅ 제안서 ${r.slides.length}장 완성됐어요! 우측에서 확인해보세요 😊`;
+                try {
+                  shell._setSidePanelPng && shell._setSidePanelPng("ready", {
+                    slides: r.slides,
+                    pptxUrl,
+                  });
+                } catch (e2) {}
               } else {
                 doneBubble.textContent =
                   "✅ 제안서 완성. PPTX 다운로드 / 🖼 미리보기 버튼을 눌러주세요.";
+                try {
+                  shell._setSidePanelPng && shell._setSidePanelPng("error", {
+                    error: r.message || "미리보기 생성에 실패했어요",
+                  });
+                } catch {}
               }
             } catch (e) {
               doneBubble.textContent =
                 "✅ 제안서 JSON 받았는데 PPTX 변환 중 문제가 있어요. PPTX 다운로드 버튼을 한 번 더 눌러주세요.";
+              try {
+                shell._setSidePanelPng && shell._setSidePanelPng("error", {
+                  error: (e && e.message) || "PPTX 변환 중 오류가 발생했어요",
+                });
+              } catch {}
             }
           })();
         }
@@ -3698,29 +3835,53 @@ function ensureSignup(onDone) {
   modal.appendChild(h("div", { class: "modal-header" }, [h("h3", {}, "시작하기")]));
   const emailIn = h("input", { class: "input", type: "email", placeholder: "이메일", autocomplete: "email" });
   const compIn = h("input", { class: "input", type: "text", placeholder: "회사명 (선택)" });
+
+  // 제출 핸들러 — 버튼 클릭 / Enter 모두 같은 흐름
+  let submitting = false;
+  const submitBtn = h("button", { class: "btn btn-primary" }, "시작하기");
+  const doSubmit = async () => {
+    if (submitting) return;
+    const email = emailIn.value.trim();
+    const company = compIn.value.trim();
+    if (!email || !email.includes("@")) {
+      toast("이메일을 확인해 주세요", "error");
+      emailIn.focus();
+      return;
+    }
+    submitting = true;
+    submitBtn.disabled = true;
+    submitBtn.textContent = "잠시만요…";
+    try {
+      const r = await api.post("/api/signup", { email, company });
+      localStorage.setItem("nightoff.email", r.email);
+      localStorage.setItem("nightoff.company", company);
+      backdrop.remove();
+      toast(r.returning ? "다시 오신 것을 환영합니다!" : "시작해요!", "success");
+      if (onDone) onDone(r.email);
+    } catch (err) {
+      toast(err.message || "가입 실패", "error");
+      submitBtn.disabled = false;
+      submitBtn.textContent = "시작하기";
+      submitting = false;
+    }
+  };
+  submitBtn.addEventListener("click", doSubmit);
+
+  // Enter 키 어디서든 제출 (한국어 IME 조합 중에는 무시 — keyCode 229 / isComposing)
+  const onEnter = (e) => {
+    if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
+    e.preventDefault();
+    doSubmit();
+  };
+  emailIn.addEventListener("keydown", onEnter);
+  compIn.addEventListener("keydown", onEnter);
+
   modal.appendChild(h("div", { class: "modal-body" }, [
     h("p", { class: "small muted", style: "margin: 0 0 10px;" }, "비밀번호 없이 이메일만으로 시작할 수 있어요. 같은 이메일로 재방문 시 자동 로그인됩니다."),
     h("div", { class: "field" }, [h("label", {}, "이메일"), emailIn]),
     h("div", { class: "field" }, [h("label", {}, "회사명"), compIn]),
   ]));
-  modal.appendChild(h("div", { class: "modal-footer" }, [
-    h("button", {
-      class: "btn btn-primary",
-      onclick: async () => {
-        const email = emailIn.value.trim();
-        const company = compIn.value.trim();
-        if (!email || !email.includes("@")) { toast("이메일을 확인해 주세요", "error"); return; }
-        try {
-          const r = await api.post("/api/signup", { email, company });
-          localStorage.setItem("nightoff.email", r.email);
-          localStorage.setItem("nightoff.company", company);
-          backdrop.remove();
-          toast(r.returning ? "다시 오신 것을 환영합니다!" : "시작해요!", "success");
-          if (onDone) onDone(r.email);
-        } catch (err) { toast(err.message || "가입 실패", "error"); }
-      },
-    }, "시작하기"),
-  ]));
+  modal.appendChild(h("div", { class: "modal-footer" }, [submitBtn]));
   backdrop.appendChild(modal);
   document.body.appendChild(backdrop);
   setTimeout(() => emailIn.focus(), 100);

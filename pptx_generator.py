@@ -596,17 +596,27 @@ def pptx_to_png_previews(
 
 def find_master_template(domain: Optional[str] = None) -> Optional[Path]:
     """분야에 맞는 마스터 PPTX 파일 찾기.
-    현재는 단일 마스터 (dmz_default.pptx) 반환. 차후 분야별 매핑 확장.
+
+    조회 순서:
+      1. master_templates/dmz_default.pptx (R2 sync 가 만든 alias 또는 로컬 기본)
+      2. master_templates/ 안의 첫 *.pptx (R2 다운로드된 임의 파일)
+      3. R2_LOCAL_CACHE_DIR 환경변수가 가리키는 디렉토리의 첫 *.pptx
+
+    차후 domain 별 매핑 확장 예정.
     """
+    import os
+    candidates: list[Path] = []
     base = Path(__file__).parent / "master_templates"
-    if not base.is_dir():
-        return None
-    # 분야별 매핑 (향후 확장)
-    # festival/forum/exhibition/... → 각 마스터 파일
-    default = base / "dmz_default.pptx"
-    if default.exists():
-        return default
-    # 기타 PPTX 파일 중 첫 번째
-    for f in base.glob("*.pptx"):
-        return f
+    if base.is_dir():
+        candidates.append(base / "dmz_default.pptx")
+        candidates.extend(sorted(base.glob("*.pptx")))
+    cache_env = os.environ.get("R2_LOCAL_CACHE_DIR")
+    if cache_env:
+        cache = Path(cache_env)
+        if cache.is_dir():
+            candidates.append(cache / "dmz_default.pptx")
+            candidates.extend(sorted(cache.glob("*.pptx")))
+    for c in candidates:
+        if c.exists() and c.stat().st_size > 0:
+            return c
     return None

@@ -7,13 +7,14 @@ uploads/
 *.db-journal
 *.db-shm
 *.db-wal
-# 단, RAG 학습 결과 DB 는 깃 트래킹 대상 (Railway 배포 시 동봉)
-!rag_kb.db
+# RAG 학습 결과 DB — Railway 에서는 R2/별도 채널로 배포 (177MB · GitHub 100MB 초과)
+# rag_kb.db 는 ignore 유지
 .DS_Store
 server.log
 
 # Claude Code 로컬 설정 (사용자 허용 명령 저장 — API 키가 들어갈 수 있음)
 .claude/settings.local.json
+.claude/settings.local.json.backup*
 
 # RAG 학습 원본/디버그 — 발주처/회사명/금액 평문 포함 → 깃 제외
 _rag_extracted/

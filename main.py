@@ -1428,6 +1428,12 @@ def _startup() -> None:
             log.info("ANTHROPIC_API_KEY source = NONE")
     except Exception as e:
         log.warning("API key source 조회 실패 (무시): %s", e)
+    # R2 마스터 템플릿 동기화 (실패해도 startup 종료 안 함)
+    try:
+        import r2_storage
+        r2_storage.sync_master_templates()
+    except Exception as e:
+        log.warning("R2 sync 실패 (무시 — 로컬 master_templates/ 만 사용): %s", e)
     log.info("=== NightOff server ready (uvicorn 응답 시작) ===")
 
 
@@ -1468,6 +1474,30 @@ def index():
 def healthz():
     """가벼운 healthcheck — 의존성 0. 컨테이너가 살아만 있으면 200."""
     return JSONResponse({"ok": True, "service": "nightoff"})
+
+
+@app.get("/api/r2/status")
+def r2_status():
+    """R2 연결 + 캐시 상태 진단."""
+    try:
+        import r2_storage
+        return JSONResponse(r2_storage.status())
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/r2/sync")
+def r2_sync():
+    """수동 R2 재동기화 (관리자용)."""
+    try:
+        import r2_storage
+        result = r2_storage.sync_master_templates()
+        # Path 객체는 str 로 변환해서 직렬화
+        if result.get("default") is not None:
+            result["default"] = str(result["default"])
+        return JSONResponse(result)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.get("/favicon.ico")

@@ -8,6 +8,8 @@ Pillow==12.1.1
 python-docx==1.1.2
 python-pptx==1.0.2
 psycopg[binary]==3.2.10
+# Cloudflare R2 (S3 호환) — 마스터 PPTX 클라우드 스토리지
+boto3==1.35.92
 # RAG (옵셔널) — 두 패키지 설치 실패해도 NightOff 자체는 정상 동작 (rag_retriever 가 graceful skip).
 # Railway nixpacks 의 phases.install 에서 best-effort 로 설치하도록 분리.
 # 로컬 개발 시: pip install -r requirements-rag.txt

@@ -3217,17 +3217,30 @@ async function renderChat(cid, convId) {
         // [B7] JSON 모드: 자동 PPTX 생성 + PNG 미리보기 → 우측 사이드패널 (모달 X)
         if (isJson) {
           (async () => {
+            const log = (...args) => console.log("[PPTX-FLOW]", ...args);
+            log("step 0 · JSON 흐름 진입");
             try {
+              // location.hash 가 #/client/{cid}/chat/{convId} 형태
               const m = location.hash.match(/\/chat\/([^/?#]+)/);
               const cid = m ? m[1] : null;
-              if (!cid) return;
+              log("step 1 · hash =", location.hash, "· cid =", cid);
+              if (!cid) {
+                log("❌ STOP — cid 추출 실패. hash 패턴이 /chat/... 형태여야 함");
+                doneBubble.textContent =
+                  "⚠ 대화 ID 를 찾지 못해 PPTX 변환을 시작할 수 없어요. 페이지 새로고침 후 다시 시도해주세요.";
+                return;
+              }
               // 1단계: PPTX 생성
-              try { shell._setSidePanelPng && shell._setSidePanelPng("building"); } catch {}
+              try { shell._setSidePanelPng && shell._setSidePanelPng("building"); } catch (e) { log("setSidePanelPng building 실패:", e); }
+              log("step 2 · POST /api/proposals/pptx 호출 시작");
               const pptxR = await api.post("/api/proposals/pptx", { conversation_id: cid }, { timeoutMs: 180000 });
+              log("step 3 · POST /pptx 응답:", pptxR);
               const pptxUrl = (pptxR && pptxR.url) || null;
               // 2단계: PNG 미리보기
-              try { shell._setSidePanelPng && shell._setSidePanelPng("rendering"); } catch {}
+              try { shell._setSidePanelPng && shell._setSidePanelPng("rendering"); } catch (e) { log("setSidePanelPng rendering 실패:", e); }
+              log("step 4 · GET /preview 호출 시작");
               const r = await api.get(`/api/proposals/${cid}/preview`, { timeoutMs: 240000 });
+              log("step 5 · GET /preview 응답:", r);
               if (r.slides && r.slides.length) {
                 doneBubble.textContent =
                   `✅ 제안서 ${r.slides.length}장 완성됐어요! 우측에서 확인해보세요 😊`;
@@ -3236,8 +3249,10 @@ async function renderChat(cid, convId) {
                     slides: r.slides,
                     pptxUrl,
                   });
-                } catch (e2) {}
+                  log("step 6 · 미리보기 패널 ready 표시 완료");
+                } catch (e2) { log("setSidePanelPng ready 실패:", e2); }
               } else {
+                log("⚠ slides 비어있음 ·", r);
                 doneBubble.textContent =
                   "✅ 제안서 완성. PPTX 다운로드 / 🖼 미리보기 버튼을 눌러주세요.";
                 try {
@@ -3247,8 +3262,9 @@ async function renderChat(cid, convId) {
                 } catch {}
               }
             } catch (e) {
+              log("❌ 예외 발생:", e);
               doneBubble.textContent =
-                "✅ 제안서 JSON 받았는데 PPTX 변환 중 문제가 있어요. PPTX 다운로드 버튼을 한 번 더 눌러주세요.";
+                `⚠ PPTX 변환 중 오류: ${(e && e.message) || String(e)}`;
               try {
                 shell._setSidePanelPng && shell._setSidePanelPng("error", {
                   error: (e && e.message) || "PPTX 변환 중 오류가 발생했어요",

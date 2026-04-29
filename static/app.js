@@ -172,6 +172,8 @@ async function _call(method, path, { body, form, signal, timeoutMs = 60000 } = {
   const signals = [ctrl.signal];
   if (signal) signals.push(signal);
   const timer = setTimeout(() => ctrl.abort(new Error("timeout")), timeoutMs);
+  // [디버그 강화] 요청 정보 로깅 — 422 나오면 어느 path 인지 즉시 알 수 있게
+  const debugBody = body !== undefined ? JSON.stringify(body) : null;
   try {
     const init = { method, signal: ctrl.signal };
     if (form) {
@@ -183,8 +185,17 @@ async function _call(method, path, { body, form, signal, timeoutMs = 60000 } = {
     const r = await fetch(path, init);
     if (!r.ok) {
       const msg = await _parseErrorResponse(r);
+      // [디버그 강화] 422 등 에러일 때 console 에 모든 정보 덤프
+      console.warn(
+        `[API ERROR] ${method} ${path}\n` +
+        `  status: ${r.status}\n` +
+        `  body sent: ${debugBody}\n` +
+        `  msg: ${msg}`
+      );
       const err = new Error(msg);
       err.status = r.status;
+      err.path = path;
+      err.method = method;
       throw err;
     }
     const ct = r.headers.get("content-type") || "";

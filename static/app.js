@@ -3230,12 +3230,12 @@ async function renderChat(cid, convId) {
             const log = (...args) => console.log("[PPTX-FLOW]", ...args);
             log("step 0 · JSON 흐름 진입");
             try {
-              // location.hash 가 #/client/{cid}/chat/{convId} 형태
-              const m = location.hash.match(/\/chat\/([^/?#]+)/);
-              const cid = m ? m[1] : null;
-              log("step 1 · hash =", location.hash, "· cid =", cid);
+              // [근본 해결] renderChat(cid, convId) closure 의 convId 직접 사용
+              // — location.hash 파싱은 라우팅 방식 변경에 취약 (이전: hash 매칭 실패로 null)
+              const cid = convId;
+              log("step 1 · convId(closure) =", cid);
               if (!cid) {
-                log("❌ STOP — cid 추출 실패. hash 패턴이 /chat/... 형태여야 함");
+                log("❌ STOP — convId 자체가 비어있음 (renderChat 호출 잘못)");
                 doneBubble.textContent =
                   "⚠ 대화 ID 를 찾지 못해 PPTX 변환을 시작할 수 없어요. 페이지 새로고침 후 다시 시도해주세요.";
                 return;

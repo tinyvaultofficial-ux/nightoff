@@ -2195,7 +2195,47 @@ def _build_system_prompt(client_id: str) -> str:
             lines.append("❌ 패배 사례: " + ", ".join(r["title"] for r in lost_rows))
         parts.append("[승패 기록 — 승리 패턴 우선 반영, 패배 원인 회피]\n" + "\n".join(lines))
 
+    # [마스터 슬롯 가이드] — placeholder 모드 마스터일 때만 주입
+    # AI 가 마스터 슬롯 개수에 정확히 맞춰 콘텐츠 짜게 → mismatch 방지
+    try:
+        import pptx_generator as _pg
+        master_path = _pg.find_master_template()
+        if master_path and master_path.exists():
+            slots = _master_slot_cache_get(master_path)
+            if slots:
+                # 마커가 있는 슬라이드가 있을 때만 주입 (placeholder 모드 마스터)
+                has_markers = any(s.get("markers") for s in slots)
+                if has_markers:
+                    guide_text = _pg.format_slot_guide_for_prompt(slots)
+                    if guide_text:
+                        parts.append(guide_text)
+    except Exception as e:
+        log.warning("마스터 슬롯 가이드 주입 실패 (무시): %s", e)
+
     return "\n\n".join(parts)
+
+
+# 마스터 슬롯 추출 캐시 — mtime 기반 invalidation
+_MASTER_SLOT_CACHE: dict[str, tuple[float, list[dict]]] = {}
+
+
+def _master_slot_cache_get(master_path) -> list[dict]:
+    """마스터 슬롯 가이드 — mtime 캐시. 마스터 안 바뀌면 1회만 추출."""
+    import pptx_generator as _pg
+    key = str(master_path)
+    try:
+        mtime = master_path.stat().st_mtime
+    except Exception:
+        mtime = 0
+    cached = _MASTER_SLOT_CACHE.get(key)
+    if cached and cached[0] == mtime:
+        return cached[1]
+    slots = _pg.extract_master_slot_guide(master_path)
+    _MASTER_SLOT_CACHE[key] = (mtime, slots)
+    log.info("마스터 슬롯 추출 · %s · 슬라이드 %d (마커 있는 %d)",
+             master_path.name, len(slots),
+             sum(1 for s in slots if s.get("markers")))
+    return slots
 
 
 @app.post("/api/conversations/{conv_id}/chat")

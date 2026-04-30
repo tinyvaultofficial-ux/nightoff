@@ -467,6 +467,123 @@ def _replace_placeholders_in_text_frame(text_frame, content: dict) -> dict:
     return result
 
 
+def extract_master_slot_guide(master_path: "str | Path") -> list[dict]:
+    """마스터 PPTX 를 스캔해서 슬라이드별 마커 목록 추출.
+
+    AI 호출 시 시스템 프롬프트에 주입 → AI 가 마스터 슬롯 개수에 맞춰 콘텐츠 짬.
+    (콘텐츠 N개 vs 슬롯 M개 mismatch 방지)
+
+    반환:
+      [
+        {
+          "idx": 0,
+          "markers": [
+            {"key": "거버닝", "max": 25, "hint": None},
+            {"key": "회사명", "max": None, "hint": None},
+          ],
+          "body_count": 0,        # 본문_N 개수 (UI 표시용)
+          "image_count": 0,       # 이미지_N 개수
+          "section_hint": "표지",  # 섹션 추정 (마스터 노트 또는 첫 텍스트 기반)
+        },
+        ...
+      ]
+    """
+    from pptx import Presentation as _P
+    p = Path(master_path)
+    if not p.exists():
+        return []
+    try:
+        prs = _P(str(p))
+    except Exception as e:
+        log.warning("마스터 슬롯 추출 실패: %s", e)
+        return []
+
+    out: list[dict] = []
+    for idx, slide in enumerate(prs.slides):
+        markers: list[dict] = []
+        seen_keys: set[str] = set()
+        for shape in slide.shapes:
+            if not shape.has_text_frame:
+                continue
+            text = shape.text_frame.text or ""
+            for m in PLACEHOLDER_RE.finditer(text):
+                ph = parse_placeholder(m)
+                # 같은 key 중복은 1번만 (같은 마커가 여러 자리에 있어도)
+                if ph["key"] in seen_keys:
+                    continue
+                seen_keys.add(ph["key"])
+                markers.append({
+                    "key": ph["key"],
+                    "max": ph["max"],
+                    "hint": ph["hint"],
+                })
+
+        # 본문/이미지 개수 카운트
+        body_count = sum(1 for m in markers if m["key"].startswith("본문_") or m["key"] == "본문")
+        image_count = sum(1 for m in markers if m["key"].startswith("이미지_") or m["key"] == "이미지")
+
+        # 섹션 추정 — 슬라이드 노트 (presenter notes) 우선, 없으면 ""
+        section_hint = ""
+        try:
+            if slide.has_notes_slide:
+                notes = slide.notes_slide.notes_text_frame.text or ""
+                # "section: ..." 형태 또는 첫 줄
+                m_sec = re.search(r"section\s*:\s*(\S[^\n]+)", notes)
+                if m_sec:
+                    section_hint = m_sec.group(1).strip()[:30]
+                elif notes.strip():
+                    section_hint = notes.strip().split("\n")[0][:30]
+        except Exception:
+            pass
+
+        out.append({
+            "idx": idx,
+            "markers": markers,
+            "body_count": body_count,
+            "image_count": image_count,
+            "section_hint": section_hint,
+        })
+    return out
+
+
+def format_slot_guide_for_prompt(slots: list[dict]) -> str:
+    """추출된 슬롯 가이드를 AI 프롬프트에 주입할 텍스트로 변환.
+
+    예시 출력:
+      [마스터 슬라이드 슬롯 가이드]
+      슬라이드 0 (표지): 거버닝, 소제목, 회사명
+      슬라이드 1 (사업이해): 거버닝, 본문_1, 본문_2, 본문_3 (본문 3개)
+      슬라이드 2: 거버닝, 본문_1, 본문_2, 본문_3, 본문_4, 이미지_1 (본문 4개 + 이미지)
+      ...
+    """
+    if not slots:
+        return ""
+    lines = ["[마스터 슬라이드 슬롯 가이드 — 자동 추출]"]
+    for s in slots:
+        if not s["markers"]:
+            continue  # 마커 없는 슬라이드는 가이드 안 만듦
+        marker_keys = [m["key"] for m in s["markers"]]
+        # 글자수 제한도 표시 (있으면)
+        marker_strs = []
+        for m in s["markers"]:
+            if m["max"]:
+                marker_strs.append(f"{m['key']}(max:{m['max']})")
+            else:
+                marker_strs.append(m["key"])
+        section_part = f" ({s['section_hint']})" if s["section_hint"] else ""
+        suffix_parts = []
+        if s["body_count"]:
+            suffix_parts.append(f"본문 {s['body_count']}개")
+        if s["image_count"]:
+            suffix_parts.append(f"이미지 {s['image_count']}개")
+        suffix = f" — {' + '.join(suffix_parts)}" if suffix_parts else ""
+        lines.append(f"  슬라이드 {s['idx']}{section_part}: {', '.join(marker_strs)}{suffix}")
+
+    lines.append("")
+    lines.append("⚠ 규칙: 위 슬롯 개수 정확히 맞춰서 콘텐츠 작성. 슬롯 부족하면 다른 슬라이드로 분산. 본문 개수 어기지 말 것.")
+    return "\n".join(lines)
+
+
 def fill_slide_with_placeholders(slide, content: dict) -> dict:
     """[Placeholder 모드 — 슬라이드 단위] 마커 있는 자리만 치환.
 

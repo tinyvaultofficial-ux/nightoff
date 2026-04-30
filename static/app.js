@@ -669,6 +669,187 @@ function recalcBudget(data) {
   return data;
 }
 
+// ===== 🔍 자체 검증 모달 (Compliance + Red Team) =====
+async function openAuditModal(convId) {
+  const backdrop = h("div", { class: "modal-backdrop", onclick: (e) => { if (e.target === backdrop) backdrop.remove(); } });
+  const modal = h("div", { class: "modal audit-modal" });
+  modal.appendChild(h("div", { class: "modal-header" }, [
+    h("div", {}, [
+      h("h3", {}, "🔍 자체 검증"),
+      h("p", { class: "small muted", style: "margin: 4px 0 0;" },
+        "RFP 요구사항 누락·평가위원 시각의 예상 점수를 동시에 점검"),
+    ]),
+    h("button", { class: "icon-btn", onclick: () => backdrop.remove(), html: iconHtml("x", 18) }),
+  ]));
+  const body = h("div", { class: "modal-body audit-body" });
+  modal.appendChild(body);
+
+  // 로딩 상태
+  body.appendChild(h("div", { class: "audit-loading" }, [
+    h("div", { class: "fs-spinner", style: "margin: 0 auto 16px;" }),
+    h("p", { class: "muted small", style: "text-align:center; margin:0;" },
+      "RFP 와 제안서를 비교 분석하고 있어요…"),
+    h("p", { class: "muted small", style: "text-align:center; margin: 6px 0 0;" },
+      "AI 가 평가위원처럼 체크해요. 30~60초 걸려요."),
+  ]));
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
+
+  let result;
+  try {
+    result = await api.post("/api/proposals/audit",
+      { conversation_id: convId },
+      { timeoutMs: 120000 });
+  } catch (e) {
+    body.innerHTML = "";
+    body.appendChild(h("div", { class: "audit-error" }, [
+      h("div", { style: "text-align:center; font-size:36px;" }, "⚠"),
+      h("p", { style: "text-align:center; font-weight:700; margin:8px 0 4px;" },
+        "검증 실행 실패"),
+      h("p", { class: "muted small", style: "text-align:center; margin:0;" },
+        e.message || String(e)),
+    ]));
+    return;
+  }
+
+  body.innerHTML = "";
+  renderAuditResult(body, result);
+}
+
+function renderAuditResult(body, result) {
+  const compliance = result.compliance || {};
+  const redTeam = result.red_team || {};
+  const summary = result.summary || "";
+
+  // ── 요약 ──
+  if (summary) {
+    body.appendChild(h("div", { class: "audit-summary" }, [
+      h("p", {}, summary),
+    ]));
+  }
+
+  // ── Compliance ──
+  const compSec = h("section", { class: "audit-section" });
+  const total = compliance.total_required || 0;
+  const covered = compliance.covered || 0;
+  const pct = compliance.coverage_pct || (total ? Math.round(covered / total * 100) : 0);
+  compSec.appendChild(h("div", { class: "audit-section-head" }, [
+    h("h4", {}, "✅ 컴플라이언스 체크"),
+    h("p", { class: "small muted" }, `RFP 요구사항 ${covered}/${total} 반영 (${pct}%)`),
+  ]));
+  // 진행률 바
+  compSec.appendChild(h("div", { class: "audit-progress-wrap" }, [
+    h("div", { class: "audit-progress-bar", style: `width: ${Math.min(100, Math.max(0, pct))}%;` }),
+  ]));
+
+  // 빠진 항목 (먼저 — 사용자 액션 우선)
+  if (Array.isArray(compliance.missing_items) && compliance.missing_items.length) {
+    const missing = h("div", { class: "audit-block missing" });
+    missing.appendChild(h("p", { class: "audit-block-label" }, `🔴 빠진 항목 (${compliance.missing_items.length})`));
+    const ul = h("ul", { class: "audit-list" });
+    compliance.missing_items.forEach((it) => {
+      const li = h("li", {}, [
+        h("strong", {}, it.req || it.requirement || "요구사항"),
+        it.weight ? h("span", { class: "audit-tag" }, it.weight) : null,
+        it.rfp_section ? h("span", { class: "audit-tag" }, `RFP ${it.rfp_section}`) : null,
+        it.advice ? h("p", { class: "audit-advice" }, "💡 " + it.advice) : null,
+      ]);
+      ul.appendChild(li);
+    });
+    missing.appendChild(ul);
+    compSec.appendChild(missing);
+  }
+
+  // 반영된 항목 (접힘으로)
+  if (Array.isArray(compliance.covered_items) && compliance.covered_items.length) {
+    const details = h("details", { class: "audit-block covered" });
+    details.appendChild(h("summary", { class: "audit-block-label" },
+      `🟢 반영된 항목 (${compliance.covered_items.length}) — 클릭으로 펼침`));
+    const ul = h("ul", { class: "audit-list small" });
+    compliance.covered_items.forEach((it) => {
+      ul.appendChild(h("li", {}, [
+        h("span", {}, it.req || it.requirement || "—"),
+        it.where ? h("span", { class: "audit-where" }, it.where) : null,
+      ]));
+    });
+    details.appendChild(ul);
+    compSec.appendChild(details);
+  }
+  body.appendChild(compSec);
+
+  // ── Red Team ──
+  const rtSec = h("section", { class: "audit-section" });
+  const expected = redTeam.expected_score || 0;
+  const max = redTeam.max_score || 100;
+  rtSec.appendChild(h("div", { class: "audit-section-head" }, [
+    h("h4", {}, "⚠ Red Team 예상 점수"),
+    h("p", { class: "audit-score" }, [
+      h("span", { class: "audit-score-num" }, String(expected)),
+      h("span", { class: "audit-score-max" }, ` / ${max}`),
+    ]),
+  ]));
+
+  // 평가 기준별 점수 (있으면)
+  if (Array.isArray(redTeam.by_criterion) && redTeam.by_criterion.length) {
+    const grid = h("div", { class: "audit-criterion-grid" });
+    redTeam.by_criterion.forEach((c) => {
+      const w = c.weight || 0;
+      const e = c.expected || 0;
+      const ratio = w ? Math.round(e / w * 100) : 0;
+      grid.appendChild(h("div", { class: "audit-criterion" }, [
+        h("p", { class: "audit-crit-name" }, c.item || "—"),
+        h("p", { class: "audit-crit-score" }, [
+          h("strong", {}, `${e}`),
+          h("span", { class: "muted small" }, `/${w}`),
+        ]),
+        h("div", { class: "audit-crit-bar" }, [
+          h("div", { class: "audit-crit-bar-fill", style: `width: ${Math.min(100, ratio)}%;` }),
+        ]),
+        c.reason ? h("p", { class: "audit-crit-reason small muted" }, c.reason) : null,
+      ]));
+    });
+    rtSec.appendChild(grid);
+  }
+
+  // 강점 / 약점
+  const sw = h("div", { class: "audit-sw-grid" });
+  if (Array.isArray(redTeam.strengths) && redTeam.strengths.length) {
+    const block = h("div", { class: "audit-sw audit-strengths" });
+    block.appendChild(h("p", { class: "audit-block-label" }, "💪 강점"));
+    const ul = h("ul", { class: "audit-list small" });
+    redTeam.strengths.forEach((s) => ul.appendChild(h("li", {}, s)));
+    block.appendChild(ul);
+    sw.appendChild(block);
+  }
+  if (Array.isArray(redTeam.weaknesses) && redTeam.weaknesses.length) {
+    const block = h("div", { class: "audit-sw audit-weaknesses" });
+    block.appendChild(h("p", { class: "audit-block-label" }, "👎 약점"));
+    const ul = h("ul", { class: "audit-list small" });
+    redTeam.weaknesses.forEach((s) => ul.appendChild(h("li", {}, s)));
+    block.appendChild(ul);
+    sw.appendChild(block);
+  }
+  if (sw.children.length) rtSec.appendChild(sw);
+
+  // 개선 우선순위
+  if (Array.isArray(redTeam.improvement_priority) && redTeam.improvement_priority.length) {
+    const block = h("div", { class: "audit-block improvement" });
+    block.appendChild(h("p", { class: "audit-block-label" }, "💡 개선 우선순위"));
+    const ul = h("ul", { class: "audit-list" });
+    redTeam.improvement_priority.forEach((it) => {
+      ul.appendChild(h("li", {}, [
+        h("strong", {}, it.item || "—"),
+        it.expected_gain ? h("span", { class: "audit-tag gain" }, it.expected_gain) : null,
+        it.advice ? h("p", { class: "audit-advice" }, it.advice) : null,
+      ]));
+    });
+    block.appendChild(ul);
+    rtSec.appendChild(block);
+  }
+  body.appendChild(rtSec);
+}
+
+
 async function openBudgetModal(convId) {
   const backdrop = h("div", { class: "modal-backdrop", onclick: (e) => { if (e.target === backdrop) backdrop.remove(); } });
   const modal = h("div", { class: "modal budget-modal" });
@@ -2979,6 +3160,12 @@ async function renderChat(cid, convId) {
           },
         }),
       ]),
+      // 자체 검증 버튼 (Compliance + Red Team)
+      h("button", {
+        class: "btn btn-outline", title: "RFP 요구사항 누락·예상 점수 점검",
+        html: `<span style="margin-right:4px;">🔍</span><span>자체 검증</span>`,
+        onclick: () => openAuditModal(convId),
+      }),
       // 산출내역서 버튼
       h("button", {
         class: "btn btn-outline", html: `${iconHtml("file", 14)}<span>산출내역서</span>`,

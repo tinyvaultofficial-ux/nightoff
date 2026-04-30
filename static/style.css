@@ -1914,6 +1914,210 @@ body.right-panel-off .right-panel { display: none; }
 }
 
 /* ===== 산출내역서 모달 (고정 양식) ===== */
+/* ============================================================
+   🔍 자체 검증 모달 (Compliance + Red Team)
+   ============================================================ */
+.audit-modal {
+  max-width: 880px !important;
+  width: 92vw;
+  max-height: 88vh;
+  display: flex; flex-direction: column;
+}
+.audit-body {
+  overflow-y: auto;
+  padding: 20px 24px 24px;
+  display: flex; flex-direction: column; gap: 20px;
+}
+.audit-loading {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 60px 20px;
+}
+.audit-error {
+  padding: 40px 20px;
+  color: var(--fg);
+}
+.audit-summary {
+  padding: 14px 18px;
+  background: linear-gradient(135deg,
+    color-mix(in oklab, var(--primary) 8%, #fff) 0%,
+    color-mix(in oklab, var(--accent, #FF8E5C) 6%, #fff) 100%);
+  border: 1px solid color-mix(in oklab, var(--primary) 20%, transparent);
+  border-radius: 12px;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--fg);
+}
+.audit-summary p { margin: 0; }
+
+.audit-section {
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 18px 20px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.audit-section-head {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.audit-section-head h4 {
+  margin: 0;
+  font-size: 17px; font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+}
+.audit-progress-wrap {
+  height: 8px;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--primary) 8%, var(--bg-2));
+  overflow: hidden;
+}
+.audit-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), color-mix(in oklab, var(--primary) 60%, var(--accent, #FF8E5C)));
+  transition: width 0.4s ease;
+}
+
+.audit-block { padding-top: 6px; }
+.audit-block-label {
+  margin: 0 0 8px;
+  font-size: 13.5px; font-weight: 700;
+  letter-spacing: -0.005em;
+  color: var(--fg);
+  cursor: default;
+}
+details.audit-block summary.audit-block-label {
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+details.audit-block summary.audit-block-label::-webkit-details-marker { display: none; }
+details.audit-block[open] summary.audit-block-label::after { content: " ▾"; }
+details.audit-block:not([open]) summary.audit-block-label::after { content: " ▸"; }
+
+.audit-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex; flex-direction: column; gap: 8px;
+  font-size: 14px; line-height: 1.55;
+}
+.audit-list.small { font-size: 13px; }
+.audit-list li { color: var(--fg); }
+.audit-list li strong { color: var(--fg); margin-right: 8px; }
+.audit-tag {
+  display: inline-block;
+  margin: 0 0 0 6px;
+  padding: 2px 8px;
+  font-size: 11px; font-weight: 600;
+  background: color-mix(in oklab, var(--primary) 10%, transparent);
+  color: var(--primary);
+  border-radius: 999px;
+  vertical-align: 2px;
+}
+.audit-tag.gain {
+  background: color-mix(in oklab, var(--success) 12%, transparent);
+  color: var(--success);
+}
+.audit-advice {
+  margin: 4px 0 0;
+  padding: 6px 10px;
+  font-size: 12.5px; line-height: 1.55;
+  background: color-mix(in oklab, var(--primary) 5%, var(--bg-2));
+  border-radius: 6px;
+  color: var(--fg-2);
+}
+.audit-where {
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 11px;
+  color: var(--primary);
+  background: color-mix(in oklab, var(--primary) 8%, transparent);
+  border-radius: 4px;
+}
+
+/* Red Team 점수 */
+.audit-score { margin: 0; }
+.audit-score-num {
+  font-size: 28px; font-weight: 900;
+  color: var(--primary);
+  letter-spacing: -0.03em;
+  font-feature-settings: "tnum";
+}
+.audit-score-max {
+  font-size: 14px; color: var(--fg-2);
+  font-weight: 600;
+}
+.audit-criterion-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.audit-criterion {
+  padding: 12px 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.audit-crit-name { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--fg); }
+.audit-crit-score { margin: 0 0 8px; font-size: 16px; }
+.audit-crit-score strong { color: var(--primary); font-size: 18px; }
+.audit-crit-bar {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.audit-crit-bar-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 2px;
+}
+.audit-crit-reason {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* 강점 / 약점 그리드 */
+.audit-sw-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+.audit-sw {
+  padding: 12px 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.audit-sw.audit-strengths {
+  background: color-mix(in oklab, var(--success) 5%, var(--bg-2));
+  border-color: color-mix(in oklab, var(--success) 18%, transparent);
+}
+.audit-sw.audit-weaknesses {
+  background: color-mix(in oklab, var(--danger, #dc2626) 5%, var(--bg-2));
+  border-color: color-mix(in oklab, var(--danger, #dc2626) 18%, transparent);
+}
+
+.audit-block.missing {
+  padding: 12px 14px;
+  background: color-mix(in oklab, var(--danger, #dc2626) 4%, var(--bg-2));
+  border: 1px solid color-mix(in oklab, var(--danger, #dc2626) 18%, transparent);
+  border-radius: 10px;
+}
+.audit-block.improvement {
+  padding: 12px 14px;
+  background: color-mix(in oklab, var(--accent, #FF8E5C) 5%, var(--bg-2));
+  border: 1px solid color-mix(in oklab, var(--accent, #FF8E5C) 22%, transparent);
+  border-radius: 10px;
+}
+
+@media (max-width: 720px) {
+  .audit-criterion-grid { grid-template-columns: 1fr; }
+  .audit-sw-grid { grid-template-columns: 1fr; }
+}
+
 .budget-modal {
   max-width: 1200px !important;
   width: 95vw;

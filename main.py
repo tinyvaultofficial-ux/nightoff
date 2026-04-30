@@ -3730,6 +3730,176 @@ RFP 분석:
 JSON:"""
 
 
+# ---------------------------------------------------------------------------
+# 🔍 제안서 자체 검증 (Compliance + Red Team) — 부록 슬라이드 대체
+# ---------------------------------------------------------------------------
+PROPOSAL_AUDIT_PROMPT = """당신은 한국 B2G 공공입찰 제안서 *셀프 검증* 전문가입니다.
+제안서 작성자가 *놓친 RFP 요구사항* 과 *평가위원 시각의 예상 점수* 를 동시에 분석합니다.
+
+핵심 원칙:
+- 추측 금지. RFP 와 제안서 본문 근거로만 판단.
+- 누락된 요구사항은 *RFP 의 어느 항목* 인지 명시.
+- Red Team 점수는 평가 기준별 배점에 근거.
+
+JSON 스키마 (JSON만 출력, 다른 텍스트 금지):
+{
+  "compliance": {
+    "total_required": 15,
+    "covered": 12,
+    "coverage_pct": 80,
+    "covered_items": [
+      {"req": "안전관리 계획", "where": "슬라이드 12 안전관리"},
+      {"req": "운영 인력 배치", "where": "슬라이드 8 조직"}
+    ],
+    "missing_items": [
+      {"req": "비상 연락망", "rfp_section": "2.3", "weight": "5점", "advice": "안전관리 페이지에 추가 권장"},
+      {"req": "직접생산증명서", "rfp_section": "1.1", "weight": "자격", "advice": "부록에 첨부 필요"}
+    ]
+  },
+  "red_team": {
+    "expected_score": 78,
+    "max_score": 100,
+    "by_criterion": [
+      {"item": "기획 적정성", "weight": 30, "expected": 25, "reason": "거버닝 명확하지만 차별화 약함"},
+      {"item": "사업 수행 능력", "weight": 30, "expected": 24, "reason": "조직 안정적, 일정 모호"},
+      {"item": "안전관리", "weight": 20, "expected": 15, "reason": "비상 연락망 누락"},
+      {"item": "예산 적정성", "weight": 20, "expected": 14, "reason": "단가 근거 부족"}
+    ],
+    "strengths": [
+      "거버닝 메시지 명확 (페이지 5)",
+      "정량 수치 풍부 (안전관리 페이지)"
+    ],
+    "weaknesses": [
+      "일정 마일스톤 모호",
+      "차별화 포인트 약함",
+      "비상 대응 시나리오 부재"
+    ],
+    "improvement_priority": [
+      {"item": "비상 연락망 추가", "expected_gain": "+5", "advice": "안전관리 슬라이드에 표 형식으로"},
+      {"item": "차별화 강화", "expected_gain": "+3", "advice": "경쟁사 대비 우위 한 페이지 추가"}
+    ]
+  },
+  "summary": "전체 한 줄 평 — 100자 이내"
+}
+
+[RFP 분석]
+{RFP_TEXT}
+
+[제안서 JSON]
+{PROPOSAL_JSON}
+
+JSON:"""
+
+
+def _get_proposal_json_for_conv(conversation_id: str) -> Optional[dict]:
+    """대화의 최신 제안서 JSON 응답 → dict (audit/검증용)."""
+    with get_db() as db:
+        row = db.execute(
+            "SELECT content FROM messages "
+            "WHERE conversation_id=? AND role='assistant' "
+            "AND content LIKE '%\"slides\"%' "
+            "ORDER BY created_at DESC LIMIT 1",
+            (conversation_id,),
+        ).fetchone()
+    if not row or not row["content"]:
+        return None
+    raw = row["content"]
+    # cite 태그 제거 (web_search 잔재 방어)
+    raw = re.sub(r"<cite[^>]*>", "", raw)
+    raw = re.sub(r"</cite>", "", raw)
+    cleaned = raw.strip()
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+    m = re.search(r"\{[\s\S]*\}", cleaned)
+    if not m:
+        return None
+    try:
+        parsed = json.loads(m.group(0))
+        if isinstance(parsed, dict) and isinstance(parsed.get("slides"), list):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+    return None
+
+
+class AuditIn(BaseModel):
+    conversation_id: str
+
+
+@app.post("/api/proposals/audit")
+def api_proposals_audit(body: AuditIn):
+    """🔍 자체 검증 — Compliance + Red Team 통합 분석.
+
+    동작:
+      1. RFP 분석 결과 (요구사항/배점) 가져옴
+      2. 제안서 JSON 가져옴
+      3. Claude 에 audit 프롬프트 → JSON 결과
+      4. compliance (커버리지) + red_team (예상 점수) 반환
+    """
+    # 1. 제안서 JSON
+    proposal = _get_proposal_json_for_conv(body.conversation_id)
+    if not proposal:
+        raise HTTPException(404, "이 대화에 제안서가 없어요. 먼저 제안서를 생성해 주세요.")
+
+    # 2. RFP 분석 (client_id 통해)
+    with get_db() as db:
+        cv = db.execute(
+            "SELECT client_id FROM conversations WHERE id=?",
+            (body.conversation_id,),
+        ).fetchone()
+    if not cv:
+        raise HTTPException(404, "대화를 찾을 수 없어요.")
+    rfp_json = _get_rfp_aggregated(cv["client_id"]) or {}
+    if not rfp_json or rfp_json.get("error"):
+        raise HTTPException(
+            400,
+            "RFP 분석 결과가 없어요. RFP 를 먼저 업로드/분석해 주세요. "
+            "(검증은 RFP 요구사항을 기준으로 점검합니다)",
+        )
+
+    # 3. 프롬프트 만들기 — 토큰 예산 관리
+    rfp_text = json.dumps(rfp_json, ensure_ascii=False)[:8000]
+    proposal_text = json.dumps(proposal, ensure_ascii=False)[:12000]
+    prompt = (
+        PROPOSAL_AUDIT_PROMPT
+        .replace("{RFP_TEXT}", rfp_text)
+        .replace("{PROPOSAL_JSON}", proposal_text)
+    )
+
+    # 4. Claude 호출
+    try:
+        client = require_client()
+        resp = client.messages.create(
+            model=get_setting("model", MODEL_DEFAULT),
+            max_tokens=4000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = _extract_text_from_resp(resp)
+        if not raw.strip():
+            raise HTTPException(502, "AI 응답이 비어있어요. 다시 시도해 주세요.")
+        # JSON 추출
+        cleaned = raw.strip()
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+        json_match = re.search(r"\{[\s\S]*\}", cleaned)
+        if not json_match:
+            raise HTTPException(502, "AI 응답에서 JSON 을 찾지 못했어요.")
+        result = json.loads(json_match.group(0))
+    except anthropic.APIError as e:
+        raise HTTPException(502, translate_anthropic_error(e))
+    except json.JSONDecodeError as e:
+        log.warning("audit JSON 파싱 실패: %s · 원본: %s", e, raw[:300])
+        raise HTTPException(502, "검증 결과를 이해하지 못했어요. 다시 시도해 주세요.")
+
+    # 5. 결과 검증 (필수 필드 체크)
+    if not isinstance(result, dict):
+        raise HTTPException(502, "검증 결과 형식 오류")
+    result.setdefault("compliance", {})
+    result.setdefault("red_team", {})
+    result.setdefault("summary", "")
+    return result
+
+
 def _get_proposal_text_for_conv(conversation_id: str) -> str:
     """대화의 최신 제안서 HTML → 일반 텍스트 요약."""
     with get_db() as db:

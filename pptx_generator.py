@@ -308,6 +308,192 @@ def fill_slide_clearing_master(slide, content: dict) -> dict:
     }
 
 
+################################################################################
+# Placeholder 모드 — 마커 기반 정확 매핑 (NightOff 정석 모드)
+#
+# 마스터 PPTX 안에 디자이너가 박은 마커:
+#   {{거버닝}}              — 단순. max 미명시
+#   {{거버닝|max:25}}       — 글자수 명시
+#   {{본문_1|max:50}}       — 인덱스 + max
+#   {{이미지_1|hint:콜센터}} — 이미지 자리 (코드는 비움 + hint 메타로 보관)
+#   {{회사명}} {{발주처}}    — 동적 필드 (런타임에 채움)
+#
+# 동작 원칙:
+#   - 마커 있는 자리만 치환 (마커 없는 박스는 절대 안 건드림)
+#   - 마스터 디자인 100% 보존
+#   - 같은 마커가 여러 곳이면 모두 같은 값으로 치환
+################################################################################
+
+import re
+
+PLACEHOLDER_RE = re.compile(
+    r"\{\{\s*(?P<key>[\w가-힣]+(?:_\d+)?)"
+    r"(?:\s*\|\s*max\s*:\s*(?P<max>\d+))?"
+    r"(?:\s*\|\s*hint\s*:\s*(?P<hint>[^}|]+))?"
+    r"\s*\}\}"
+)
+
+
+def parse_placeholder(match: "re.Match") -> dict:
+    """{{...}} 매치를 dict 로 변환."""
+    return {
+        "raw": match.group(0),
+        "key": match.group("key"),
+        "max": int(match.group("max")) if match.group("max") else None,
+        "hint": match.group("hint").strip() if match.group("hint") else None,
+    }
+
+
+def find_placeholders_in_text(text: str) -> list[dict]:
+    """문자열 안 모든 {{...}} 마커 추출."""
+    return [parse_placeholder(m) for m in PLACEHOLDER_RE.finditer(text or "")]
+
+
+def has_any_placeholder(prs) -> bool:
+    """프레젠테이션 전체에 {{...}} 마커가 하나라도 있는지."""
+    for slide in prs.slides:
+        for shape in slide.shapes:
+            if not shape.has_text_frame:
+                continue
+            if PLACEHOLDER_RE.search(shape.text_frame.text or ""):
+                return True
+    return False
+
+
+def collect_placeholders_in_slide(slide) -> list[dict]:
+    """슬라이드의 모든 마커 수집 — 분석/검증/디버깅용.
+
+    반환: [{"shape_name", "key", "max", "hint", "raw"}, ...]
+    """
+    out = []
+    for shape in slide.shapes:
+        if not shape.has_text_frame:
+            continue
+        text = shape.text_frame.text or ""
+        for m in PLACEHOLDER_RE.finditer(text):
+            ph = parse_placeholder(m)
+            ph["shape_name"] = shape.name
+            out.append(ph)
+    return out
+
+
+def _truncate(text: str, max_len: int | None) -> str:
+    """글자수 제한 — 넘으면 '…' 으로 자름."""
+    if max_len is None or len(text) <= max_len:
+        return text
+    return text[: max_len - 1].rstrip() + "…"
+
+
+def _replace_placeholders_in_text_frame(text_frame, content: dict) -> dict:
+    """text_frame 안의 모든 {{...}} 마커를 content 값으로 치환.
+
+    동작:
+      - 각 paragraph 의 각 run 의 텍스트에서 {{...}} 패턴 찾음
+      - run.text 에 마커가 *완전히* 들어있으면 그 안에서 치환 (가장 흔한 케이스)
+      - run 경계로 마커가 잘려있으면 paragraph.text 통째로 처리 (폴백)
+
+    content:
+      {"거버닝": "...", "본문_1": "...", "회사명": "...", ...}
+
+    반환:
+      {"replaced": int, "missing_keys": [...], "preserved_keys": [...]}
+    """
+    result = {"replaced": 0, "missing_keys": [], "preserved_keys": []}
+
+    if not text_frame.paragraphs:
+        return result
+
+    # 각 paragraph 별로 처리
+    for para in text_frame.paragraphs:
+        # 1단계: run 단위 치환 시도 (run 안에 마커가 완전히 있는 경우)
+        for run in para.runs:
+            new_text = run.text or ""
+            matches = list(PLACEHOLDER_RE.finditer(new_text))
+            if not matches:
+                continue
+            # 뒤에서부터 치환 (offset 안 꼬이게)
+            for m in reversed(matches):
+                ph = parse_placeholder(m)
+                key = ph["key"]
+                if key in content and content[key] is not None:
+                    val = _truncate(str(content[key]), ph["max"])
+                    new_text = new_text[: m.start()] + val + new_text[m.end():]
+                    result["replaced"] += 1
+                else:
+                    # content 에 키 없음 — 빈 문자열로 대체 (마커 자체는 제거)
+                    new_text = new_text[: m.start()] + "" + new_text[m.end():]
+                    if key not in result["missing_keys"]:
+                        result["missing_keys"].append(key)
+            try:
+                run.text = new_text
+            except Exception as e:
+                log.warning("run.text 치환 실패: %s", e)
+
+        # 2단계: paragraph 전체 텍스트에 여전히 마커 남아있으면 (run 경계 잘림)
+        # paragraph.text 통째로 대체. 단 첫 run 의 스타일만 살아남음 — 트레이드오프
+        full = para.text or ""
+        if PLACEHOLDER_RE.search(full):
+            new_full = full
+            for m in reversed(list(PLACEHOLDER_RE.finditer(full))):
+                ph = parse_placeholder(m)
+                key = ph["key"]
+                if key in content and content[key] is not None:
+                    val = _truncate(str(content[key]), ph["max"])
+                    new_full = new_full[: m.start()] + val + new_full[m.end():]
+                    result["replaced"] += 1
+                else:
+                    new_full = new_full[: m.start()] + "" + new_full[m.end():]
+                    if key not in result["missing_keys"]:
+                        result["missing_keys"].append(key)
+            # paragraph 의 run 들을 비우고 첫 run 에 새 텍스트
+            if para.runs:
+                first_run = para.runs[0]
+                # 추가 run 제거
+                for r in list(para.runs)[1:]:
+                    try:
+                        r._r.getparent().remove(r._r)
+                    except Exception:
+                        pass
+                try:
+                    first_run.text = new_full
+                except Exception:
+                    pass
+            else:
+                try:
+                    para.text = new_full
+                except Exception:
+                    pass
+
+    return result
+
+
+def fill_slide_with_placeholders(slide, content: dict) -> dict:
+    """[Placeholder 모드 — 슬라이드 단위] 마커 있는 자리만 치환.
+
+    마스터 디자인 100% 보존. 마커 없는 박스는 손대지 않음.
+
+    content:
+      {"거버닝": "...", "본문_1": "...", "회사명": "...", ...}
+
+    반환:
+      {"replaced": int, "missing_keys": [...], "frames_processed": int}
+    """
+    total = {"replaced": 0, "missing_keys": [], "frames_processed": 0}
+    for shape in slide.shapes:
+        if not shape.has_text_frame:
+            continue
+        # 마커가 하나라도 있는 frame 만 처리 (성능 + 안전)
+        if not PLACEHOLDER_RE.search(shape.text_frame.text or ""):
+            continue
+        r = _replace_placeholders_in_text_frame(shape.text_frame, content)
+        total["replaced"] += r["replaced"]
+        total["frames_processed"] += 1
+        for k in r["missing_keys"]:
+            if k not in total["missing_keys"]:
+                total["missing_keys"].append(k)
+    return total
+
+
 def replace_text_in_slide(slide, content: dict) -> dict:
     """[LEGACY] 기존 AUTO 모드 텍스트 치환 — 큰 글자만 치환.
 
@@ -600,10 +786,15 @@ def generate_from_master(
     slides = list(prs.slides)
     log.info("마스터 로드 · %d 슬라이드", len(slides))
 
-    # 3. 텍스트 치환 — fill_slide_clearing_master 로 마스터 원본 비우고 AI 콘텐츠 채움
-    #    (기존 replace_text_in_slide 는 큰 글자만 치환 → 짬뽕 발생, deprecated)
+    # 3. 텍스트 치환 — 마스터에 placeholder 마커 있으면 placeholder 모드, 없으면 AUTO 모드
+    #    placeholder 모드: {{거버닝|max:25}} 같은 마커만 정확히 치환 (디자인 100% 보존)
+    #    AUTO 모드:        모든 텍스트 비우고 사이즈 매핑으로 채움 (legacy, 짬뽕 가능)
+    use_placeholder_mode = has_any_placeholder(prs)
+    log.info("렌더 모드: %s", "PLACEHOLDER" if use_placeholder_mode else "AUTO")
+
     replaced_total = 0
     cleared_total = 0
+    missing_keys_total: set[str] = set()
     errors_total = []
     for slide_idx, content in content_per_slide.items():
         if slide_idx >= len(slides):
@@ -611,17 +802,23 @@ def generate_from_master(
             continue
         slide = slides[slide_idx]
         try:
-            r = fill_slide_clearing_master(slide, content)
-            replaced_total += r["replaced"]
-            cleared_total += r.get("cleared", 0)
-            errors_total.extend([f"slide{slide_idx}: {e}" for e in r["errors"]])
+            if use_placeholder_mode:
+                r = fill_slide_with_placeholders(slide, content)
+                replaced_total += r["replaced"]
+                missing_keys_total.update(r.get("missing_keys", []))
+            else:
+                r = fill_slide_clearing_master(slide, content)
+                replaced_total += r["replaced"]
+                cleared_total += r.get("cleared", 0)
+                errors_total.extend([f"slide{slide_idx}: {e}" for e in r.get("errors", [])])
         except Exception as e:
             log.exception("슬라이드 %d 치환 실패: %s", slide_idx, e)
             errors_total.append(f"slide{slide_idx}: {e}")
 
     # 3-b. content 가 지정되지 않은 슬라이드 (keep_indices 에는 있지만 content_per_slide 에 없는)
-    #      → 이 슬라이드들도 모든 텍스트 비움 (마스터 원본 잔재 방지)
-    if keep_indices is not None:
+    #      AUTO 모드: 모든 텍스트 비움 (마스터 원본 잔재 방지)
+    #      placeholder 모드: 손대지 않음 (마커 없으면 자연히 안 건드림)
+    if keep_indices is not None and not use_placeholder_mode:
         for idx in keep_indices:
             if idx in content_per_slide:
                 continue
@@ -644,8 +841,15 @@ def generate_from_master(
     prs.save(str(output_path))
 
     final_count = len(prs.slides)
-    log.info("저장 · %d 슬라이드 / 치환 %d · 비움 %d · 에러 %d",
-             final_count, replaced_total, cleared_total, len(errors_total))
+    if use_placeholder_mode:
+        log.info("저장 · %d 슬라이드 / 마커 치환 %d · 누락키 %d · 에러 %d",
+                 final_count, replaced_total, len(missing_keys_total), len(errors_total))
+        if missing_keys_total:
+            log.info("누락된 마커 키 (마스터엔 있는데 content 에 없음): %s",
+                     sorted(missing_keys_total)[:20])
+    else:
+        log.info("저장 · %d 슬라이드 / 치환 %d · 비움 %d · 에러 %d",
+                 final_count, replaced_total, cleared_total, len(errors_total))
 
     # 6. 미디어 garbage collection — 사용 안 하는 이미지/동영상 제거 (사이즈 축소)
     gc_result = {}

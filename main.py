@@ -1081,14 +1081,14 @@ RAG 신호 / 시각화 가이드 / 컴플라이언스·Red Team 페이지) 을 1
   "title": "발주처명 + 사업명 + 정성 제안서",
   "domain": "festival|forum|exhibition|education|sports|campaign|tourism|rnd|welfare|other",
   "accent": "#RRGGBB",
-  "summary": "전체 한 줄 요약 (제안서 핵심 가치)",
+  "summary": "전체 한 줄 요약 (제안서 핵심 가치, 60자 이내)",
   "slides": [
     {
-      "section": "표지|목차|사업이해|추진전략|수행조직|일정|예산|프로그램|홍보|안전관리|기대효과|컴플라이언스|Red Team|기타",
-      "거버닝": "한 줄 큰 제목 (30자 이내, em-dash 금지)",
-      "소제목": "부제 (50자 이내, 선택)",
-      "본문": ["핵심 메시지 1 (50~120자)", "핵심 메시지 2", "핵심 메시지 3", "핵심 메시지 4"],
-      "summary": "페이지 한 줄 요약 (선택)",
+      "section": "표지|목차|사업이해|추진전략|수행조직|일정|예산|프로그램|홍보|안전관리|기대효과|기타",
+      "거버닝": "한 줄 큰 제목 (★25자 이내★, em-dash 금지)",
+      "소제목": "부제 (★30자 이내★, 선택)",
+      "본문": ["핵심 메시지 1 (★40~70자★)", "핵심 메시지 2", "핵심 메시지 3", "핵심 메시지 4"],
+      "summary": "페이지 한 줄 요약 (★40자 이내★, 선택)",
       "viz_type": "step|cards|compare|kpi|table|flow|org|timeline|callout|none"
     }
   ]
@@ -1098,7 +1098,15 @@ RAG 신호 / 시각화 가이드 / 컴플라이언스·Red Team 페이지) 을 1
 [규칙 — 절대 준수]
 1. 출력 시작 = `{`, 끝 = `}`. 다른 텍스트·설명·코드블록·주석·"```json" 등 모두 금지.
 2. 슬라이드 수: 최소 8장, 권장 25~50장 (RFP 분량에 따라).
-3. 각 슬라이드 본문 = list[str], 항목 4~6개, 각 50~120자 (페이지 밀도 정책 그대로).
+3. 각 슬라이드 본문 = list[str], 항목 3~5개, 각 ★40~70자★ (마스터 박스에 안 맞으면 잘림).
+3-1. 글자수 제한 — 마스터 PPTX 박스 크기 한계. 어기면 박스 넘쳐서 디자인 깨짐:
+   · 거버닝       : ★25자 이내★ (큰 글자 박스. 길면 줄바꿈 깨짐)
+   · 소제목       : ★30자 이내★
+   · 본문 항목    : ★40~70자★ (불릿 한 줄 분량)
+   · summary      : ★40자 이내★
+   · title        : ★60자 이내★
+3-2. 한국어 기준 (한글 1자 = 1자, 한자/영문도 1자). 띄어쓰기 포함.
+3-3. ⚠ 절대 어기지 말 것. 박스에 안 맞으면 디자인 깨져서 사용 불가능한 PPTX 가 됨.
 4. 거버닝 메시지에 em-dash(—) / hyphen(-) / 콜론(:) / 슬래시(/) 모두 금지.
    콤마(,) 와 × 기호는 허용.
 5. domain 값은 RFP 분석의 project_domain 그대로 사용.
@@ -3575,21 +3583,52 @@ def api_proposals_pptx(body: PptxExportIn):
         master = pptx_generator.find_master_template()
         if master and master.exists():
             log.info("마스터 모드 (%s, pages=%d)", master.name, len(pages))
+            # 발주처/회사명 — placeholder 모드에서 동적 필드로 사용
+            organization = ""
+            try:
+                with get_db() as db_:
+                    cli_org = db_.execute(
+                        "SELECT organization FROM clients c "
+                        "JOIN conversations cv ON cv.client_id=c.id WHERE cv.id=?",
+                        (body.conversation_id,),
+                    ).fetchone()
+                    organization = (cli_org["organization"] if cli_org else "") or ""
+            except Exception:
+                organization = ""
+
+            def _build_slide_content(page: dict, is_cover: bool = False) -> dict:
+                """Placeholder 모드 + AUTO 모드 둘 다 호환되는 content 빌드.
+                - AUTO 모드는 거버닝/소제목/본문 (list) 만 사용
+                - Placeholder 모드는 본문_1, 본문_2, ... + 동적 필드 (회사명, 발주처) 사용
+                """
+                본문_list = page.get("본문") or []
+                if is_cover:
+                    본문_list = [client_name] + 본문_list[:3]
+                c = {
+                    # AUTO 모드용 (legacy)
+                    "거버닝": page.get("거버닝") or (title_for_cover if is_cover else ""),
+                    "소제목": page.get("소제목") or page.get("section") or "",
+                    "본문": 본문_list,
+                    "summary": page.get("summary", ""),
+                    # Placeholder 모드용 — 본문 list 를 본문_1, 본문_2, ... 로 펼침
+                    "title": title_for_cover,
+                    "section": page.get("section", ""),
+                    "회사명": client_name,  # 표지/푸터용
+                    "발주처": organization,  # 표지/페이지 마커용
+                }
+                # 본문_1 ~ 본문_N
+                for i, b in enumerate(본문_list, 1):
+                    c[f"본문_{i}"] = str(b)
+                return c
+
             content_per_slide = {}
             # 표지 — 마스터 0번
-            content_per_slide[0] = {
-                "거버닝": pages[0].get("거버닝") or title_for_cover,
-                "본문": [client_name],
-            }
+            content_per_slide[0] = _build_slide_content(pages[0] if pages else {}, is_cover=True)
             # 본문 — 마스터 1번부터
             for idx, page in enumerate(pages, 1):
                 if idx >= 90:
                     break
-                content_per_slide[idx] = {
-                    "거버닝": page.get("거버닝") or "",
-                    "소제목": page.get("소제목") or page.get("section") or "",
-                    "본문": page.get("본문") or [],
-                }
+                content_per_slide[idx] = _build_slide_content(page, is_cover=False)
             keep = list(content_per_slide.keys())
             result = pptx_generator.generate_from_master(
                 master_path=master,

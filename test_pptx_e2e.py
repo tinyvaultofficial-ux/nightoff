@@ -158,30 +158,43 @@ def test_pptx_generation() -> dict:
                 assert_("</cite>" not in xml,
                         f"{name} 안에 </cite> 태그 없음 (후처리 검증)")
 
-    # [신규] 마스터 원본 잔재 0 검증 — 짬뽕 회귀 방지
-    # 사용자가 본 짬뽕 화면에 있던 마스터 원본 텍스트들
-    # 결과 PPTX 안에 이 단어들이 남아있으면 마스터 텍스트가 안 비워진 것
-    MASTER_RESIDUE = [
-        "DMZ OPEN",
-        "사업개요",
-        "사업목적",
-        "프로그램 기획·운영",
-        "출연진 섭외",
-        "공연 시설물",
-        "홍보 · 마케팅",
-        "Mov.1",
-        "Mov.2",
-    ]
-    print()
-    print("  [짬뽕 검증] 마스터 원본 잔재 검사")
-    with zipfile.ZipFile(disk) as z:
-        slide_xmls = [n for n in z.namelist()
-                      if n.startswith("ppt/slides/slide") and n.endswith(".xml")]
-        for name in slide_xmls:
-            xml = z.read(name).decode("utf-8", errors="replace")
-            for residue in MASTER_RESIDUE:
-                assert_(residue not in xml,
-                        f"{name}: '{residue}' 잔재 없음 (짬뽕 차단)")
+    # [짬뽕 검증] 마스터 원본 잔재 0 검사 — AUTO 모드 (dmz_default) 일 때만
+    # placeholder 모드 (paperlogy) 는 footer 등 디자이너 의도 텍스트가 정상적으로 남음
+    import pptx_generator
+    master_path = pptx_generator.find_master_template()
+    is_placeholder_master = master_path and "paperlogy" in master_path.name.lower()
+    is_legacy_master = master_path and "dmz" in master_path.name.lower()
+
+    if is_legacy_master:
+        # AUTO 모드 — DMZ 마스터 원본 텍스트가 남으면 짬뽕
+        MASTER_RESIDUE = [
+            "DMZ OPEN", "사업개요", "사업목적", "프로그램 기획·운영",
+            "출연진 섭외", "공연 시설물", "홍보 · 마케팅", "Mov.1", "Mov.2",
+        ]
+        print()
+        print("  [짬뽕 검증 — AUTO 모드] 마스터 원본 잔재 검사")
+        with zipfile.ZipFile(disk) as z:
+            slide_xmls = [n for n in z.namelist()
+                          if n.startswith("ppt/slides/slide") and n.endswith(".xml")]
+            for name in slide_xmls:
+                xml = z.read(name).decode("utf-8", errors="replace")
+                for residue in MASTER_RESIDUE:
+                    assert_(residue not in xml,
+                            f"{name}: '{residue}' 잔재 없음 (짬뽕 차단)")
+    elif is_placeholder_master:
+        # Placeholder 모드 — {{...}} 마커 잔재 0 검사
+        print()
+        print("  [짬뽕 검증 — Placeholder 모드] 마커 잔재 검사")
+        with zipfile.ZipFile(disk) as z:
+            slide_xmls = [n for n in z.namelist()
+                          if n.startswith("ppt/slides/slide") and n.endswith(".xml")]
+            for name in slide_xmls:
+                xml = z.read(name).decode("utf-8", errors="replace")
+                # {{...}} 마커가 *치환 안 된 채로* 남아있으면 안 됨
+                # 단 footer 의 {{발주처}} 등 동적 필드는 placeholder 모드에서 정상 치환됨
+                # → 모든 마커 잔재 0 이 정답
+                assert_("{{" not in xml,
+                        f"{name}: '{{{{' 마커 잔재 없음 (placeholder 치환됨)")
     return result
 
 

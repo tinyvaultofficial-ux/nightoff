@@ -532,9 +532,10 @@ def auto_inject_markers(
     report = {"slides": [], "total_markers": 0}
 
     for slide_idx, slide in enumerate(prs.slides):
-        # 빈 텍스트 박스 수집
+        # 빈 텍스트 박스 수집 + z-order 인덱스 (앞쪽 = 뒤. 배경 식별용)
         empty_boxes = []
-        for shape in slide.shapes:
+        all_shapes_list = list(slide.shapes)
+        for z_idx, shape in enumerate(all_shapes_list):
             if not shape.has_text_frame:
                 continue
             tf = shape.text_frame
@@ -545,7 +546,7 @@ def auto_inject_markers(
             w = (shape.width or 0) / 914400
             h = (shape.height or 0) / 914400
             empty_boxes.append({
-                "shape": shape, "tf": tf, "name": shape.name,
+                "shape": shape, "tf": tf, "name": shape.name, "z": z_idx,
                 "x": x, "y": y, "w": w, "h": h,
                 "area": w * h,
                 "marker": None,
@@ -555,16 +556,56 @@ def auto_inject_markers(
             report["slides"].append({"idx": slide_idx, "markers_added": []})
             continue
 
-        # 1. 푸터 분리 (하단 + 작은 높이)
+        # 1. 디자인 요소 식별 (마커 박지 않음)
+        # 단, 빈 텍스트 박스가 적은 슬라이드 (≤3개) 는 디자인 분류 안 함
+        # — 표지처럼 큰 박스 1~2개가 *진짜 텍스트 자리* 인 경우 보호
+        protect_all = (len(empty_boxes) <= 3)
+        for b in empty_boxes:
+            if protect_all:
+                # 적은 박스 슬라이드 — 분류 X, 모두 텍스트 자리로
+                # 단 너무 얇은 strip 은 그래도 디자인 (헤어라인 등)
+                if b["h"] < 0.15:
+                    b["marker"] = "_design"
+                continue
+            # 일반 슬라이드 (박스 4개 이상)
+            # 1-a. 배경 박스 — 슬라이드 전체 크기 + z-order 0~2 (맨 뒤)
+            is_full_size = (b["w"] >= sw_in * 0.93 and b["h"] >= sh_in * 0.93)
+            is_back_layer = (b["z"] <= 2)
+            if is_full_size and is_back_layer:
+                b["marker"] = "_background"
+                continue
+            # 1-b. 너무 좁고 긴 strip (예: 좌측 세로 띠 1.4x8.3)
+            is_vertical_strip = (b["w"] < 1.5 and b["h"] >= sh_in * 0.7)
+            is_horizontal_strip = (b["h"] < 0.25 and b["w"] >= sw_in * 0.5)
+            if is_vertical_strip or is_horizontal_strip:
+                b["marker"] = "_design"
+                continue
+            # 1-c. 너무 작음 (디자인 dot 또는 빈 셀)
+            if b["area"] < 0.25:
+                b["marker"] = "_tiny"
+                continue
+
+        # 2. 푸터 분리 (하단 + 작은 높이) — h 임계값 0.6→1.0 완화
         footer_y = sh_in * 0.85
         for b in empty_boxes:
-            if b["y"] >= footer_y and b["h"] <= 0.6:
-                b["marker"] = "_footer"  # 마커 안 박음
+            if b["marker"] is None and b["y"] >= footer_y and b["h"] <= 1.0:
+                b["marker"] = "_footer"
 
         candidates = [b for b in empty_boxes if b["marker"] is None]
         if not candidates:
             report["slides"].append({"idx": slide_idx, "markers_added": []})
             continue
+
+        # 1-d. 거대 박스 (배경 디자인) 추가 식별:
+        # 가장 큰 박스의 면적 > 다른 박스 면적 합 → 배경 가능성 (거버닝 후보 X)
+        # protect_all (박스 ≤3개 슬라이드) 은 면제
+        if not protect_all and len(candidates) >= 4:
+            cands_sorted_tmp = sorted(candidates, key=lambda b: -b["area"])
+            biggest = cands_sorted_tmp[0]
+            other_total = sum(b["area"] for b in cands_sorted_tmp[1:])
+            if biggest["area"] > other_total * 1.2:
+                biggest["marker"] = "_design"
+                candidates = [b for b in candidates if b is not biggest]
 
         # 2. 거버닝 후보 — 상단 50% + 가로 60% 이상 + 면적 큼
         cands_sorted = sorted(candidates, key=lambda b: -b["area"])
@@ -604,9 +645,10 @@ def auto_inject_markers(
             b["marker"] = f"본문_{i}"
 
         # 4. 마커 박기 (dry_run 이면 skip)
+        # underscore prefix (_background, _design, _tiny, _footer) 는 모두 skip
         slide_report = {"idx": slide_idx, "markers_added": []}
         for b in empty_boxes:
-            if not b["marker"] or b["marker"] == "_footer":
+            if not b["marker"] or b["marker"].startswith("_"):
                 continue
             marker_text = "{{" + b["marker"] + "}}"
             if not dry_run:
@@ -1288,10 +1330,11 @@ def pptx_to_png_previews(
 def find_master_template(domain: Optional[str] = None) -> Optional[Path]:
     """분야에 맞는 마스터 PPTX 파일 찾기.
 
-    조회 순서:
-      1. master_templates/dmz_default.pptx (R2 sync 가 만든 alias 또는 로컬 기본)
-      2. master_templates/ 안의 첫 *.pptx (R2 다운로드된 임의 파일)
-      3. R2_LOCAL_CACHE_DIR 환경변수가 가리키는 디렉토리의 첫 *.pptx
+    조회 순서 (placeholder 모드 우선):
+      1. master_templates/paperlogy_default.pptx (auto_inject_markers 적용된 placeholder 마스터)
+      2. master_templates/dmz_default.pptx (legacy, AUTO 모드 fallback)
+      3. master_templates/ 안의 첫 *.pptx
+      4. R2_LOCAL_CACHE_DIR 환경변수가 가리키는 디렉토리
 
     차후 domain 별 매핑 확장 예정.
     """
@@ -1299,15 +1342,26 @@ def find_master_template(domain: Optional[str] = None) -> Optional[Path]:
     candidates: list[Path] = []
     base = Path(__file__).parent / "master_templates"
     if base.is_dir():
+        # 1. placeholder 마스터 우선 (paperlogy_default 또는 *_placeholder)
+        candidates.append(base / "paperlogy_default.pptx")
+        # 그 외 *_placeholder.pptx 패턴
+        candidates.extend(sorted(base.glob("*_placeholder.pptx")))
+        # 2. legacy 마스터 (AUTO 모드)
         candidates.append(base / "dmz_default.pptx")
+        # 3. 그 외 모든 pptx
         candidates.extend(sorted(base.glob("*.pptx")))
     cache_env = os.environ.get("R2_LOCAL_CACHE_DIR")
     if cache_env:
         cache = Path(cache_env)
         if cache.is_dir():
+            candidates.append(cache / "paperlogy_default.pptx")
             candidates.append(cache / "dmz_default.pptx")
             candidates.extend(sorted(cache.glob("*.pptx")))
+    seen: set[str] = set()
     for c in candidates:
+        if str(c) in seen:
+            continue
+        seen.add(str(c))
         if c.exists() and c.stat().st_size > 0:
             return c
     return None

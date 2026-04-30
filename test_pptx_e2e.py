@@ -237,13 +237,129 @@ def teardown_fixtures(pptx_result: dict | None = None) -> None:
 # ---------------------------------------------------------------------------
 # 메인
 # ---------------------------------------------------------------------------
+def test_placeholder_mode() -> None:
+    """가짜 placeholder 마스터로 placeholder 모드 검증.
+
+    실제 마스터(DMZ OPEN) 와 별개로 임시 마스터 만들어서
+    {{...}} 마커 자동 치환이 정확한지 검증.
+    """
+    section("STEP 2-B · Placeholder 모드 검증 (가짜 placeholder 마스터)")
+    import sys
+    sys.path.insert(0, ".")
+    import pptx_generator as pg
+    from pptx import Presentation
+    from pptx.util import Inches
+    from pathlib import Path
+    import zipfile
+
+    # 1. 가짜 placeholder 마스터 동적 생성
+    prs = Presentation()
+    prs.slide_width = Inches(13.33)
+    prs.slide_height = Inches(7.5)
+    blank = prs.slide_layouts[6]
+
+    # 슬라이드 0 — 표지 (거버닝 + 회사명)
+    s = prs.slides.add_slide(blank)
+    tx = s.shapes.add_textbox(Inches(1), Inches(2), Inches(11), Inches(2)).text_frame
+    tx.text = "{{거버닝|max:50}}"
+    tx2 = s.shapes.add_textbox(Inches(1), Inches(5), Inches(6), Inches(0.6)).text_frame
+    tx2.text = "{{회사명}}"
+
+    # 슬라이드 1 — 본문 3개
+    s = prs.slides.add_slide(blank)
+    tx = s.shapes.add_textbox(Inches(1), Inches(0.5), Inches(11), Inches(1)).text_frame
+    tx.text = "{{거버닝|max:25}}"
+    for i in range(1, 4):
+        tx = s.shapes.add_textbox(Inches(1), Inches(2 + i * 1.2), Inches(10), Inches(0.8)).text_frame
+        tx.text = f"{{{{본문_{i}|max:60}}}}"
+
+    # 슬라이드 2 — 이미지 placeholder 포함
+    s = prs.slides.add_slide(blank)
+    tx = s.shapes.add_textbox(Inches(1), Inches(0.5), Inches(11), Inches(1)).text_frame
+    tx.text = "{{거버닝}}"
+    tx_img = s.shapes.add_textbox(Inches(2), Inches(2), Inches(9), Inches(4)).text_frame
+    tx_img.text = "{{이미지_1|hint:콜센터_여성}}"
+
+    fake_master = Path(".tmp_placeholder_master.pptx")
+    prs.save(str(fake_master))
+    print(f"  가짜 마스터 생성: 3 슬라이드, {fake_master.stat().st_size // 1024} KB")
+
+    # 2. has_any_placeholder 검증 (자동 분기)
+    test_prs = Presentation(str(fake_master))
+    assert_(pg.has_any_placeholder(test_prs), "has_any_placeholder True")
+
+    # 3. content 준비 (이미지_1 은 content 에 없음 → hint 로 처리되어야)
+    content_per_slide = {
+        0: {"거버닝": "AI 와 함께하는 제안서", "회사명": "NightOff Co."},
+        1: {
+            "거버닝": "전략 3축",
+            "본문_1": "사용자 중심 설계",
+            "본문_2": "데이터 기반 의사결정",
+            "본문_3": "지속 가능한 운영",
+        },
+        2: {"거버닝": "운영 사무국 체계"},  # 이미지_1 은 content 없음
+    }
+
+    # 4. generate_from_master 호출
+    out = Path(".tmp_placeholder_out.pptx")
+    if out.exists():
+        out.unlink()
+    result = pg.generate_from_master(
+        master_path=fake_master,
+        content_per_slide=content_per_slide,
+        output_path=out,
+        keep_indices=[0, 1, 2],
+    )
+    print(f"  generate 결과: 슬라이드 {result['slide_count']}, 치환 {result['replaced_total']}")
+    assert_(result["slide_count"] == 3, f"슬라이드 수 3 (실제 {result['slide_count']})")
+    assert_(result["replaced_total"] >= 6, f"치환 6+ (실제 {result['replaced_total']})")
+
+    # 5. 결과 PPTX 안 검증
+    with zipfile.ZipFile(out) as z:
+        slide_xmls = {
+            n: z.read(n).decode("utf-8", errors="replace")
+            for n in z.namelist()
+            if n.startswith("ppt/slides/slide") and n.endswith(".xml")
+        }
+    all_text = " ".join(slide_xmls.values())
+
+    # 마커 잔재 0
+    for name, xml in slide_xmls.items():
+        assert_("{{" not in xml, f"{name}: '{{{{' 잔재 없음")
+        assert_("}}" not in xml, f"{name}: '}}}}' 잔재 없음")
+
+    # 콘텐츠 정확히 들어감
+    expected = [
+        "AI 와 함께하는 제안서",  # 거버닝(slide 0)
+        "NightOff Co.",          # 회사명(slide 0)
+        "전략 3축",                # 거버닝(slide 1)
+        "사용자 중심 설계",         # 본문_1
+        "데이터 기반 의사결정",      # 본문_2
+        "지속 가능한 운영",         # 본문_3
+        "운영 사무국 체계",         # 거버닝(slide 2)
+        "콜센터_여성",             # 이미지 placeholder 의 hint
+    ]
+    for txt in expected:
+        assert_(txt in all_text, f"콘텐츠 들어감: '{txt}'")
+
+    # 정리
+    fake_master.unlink()
+    out.unlink()
+    print("  ✓ Placeholder 모드 검증 통과")
+
+
 def main_test() -> None:
     pptx_result = None
     try:
+        # 1. AUTO 모드 e2e (실제 마스터, JSON 파싱, 마스터 잔재 검증, PNG)
         setup_fixtures()
         pptx_result = test_pptx_generation()
         test_preview_generation()
-        section("✅ 모든 단계 통과 — END-TO-END OK")
+
+        # 2. Placeholder 모드 e2e (가짜 마스터, 마커 치환 검증)
+        test_placeholder_mode()
+
+        section("✅ 모든 단계 통과 — END-TO-END OK (AUTO + Placeholder 모드)")
     finally:
         teardown_fixtures(pptx_result)
 

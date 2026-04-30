@@ -384,6 +384,32 @@ def _truncate(text: str, max_len: int | None) -> str:
     return text[: max_len - 1].rstrip() + "…"
 
 
+def _is_image_marker(key: str) -> bool:
+    """이미지 placeholder 키인지 ('이미지', '이미지_1', 'image_2' 등)."""
+    if not key:
+        return False
+    k = key.lower()
+    return key.startswith("이미지") or k.startswith("image")
+
+
+def _resolve_placeholder_value(ph: dict, content: dict) -> str:
+    """placeholder 매치를 실제 채울 텍스트로 변환.
+
+    우선순위:
+      1. content[key] 가 있으면 그걸로 (AI 가 동적 결정)
+      2. 이미지 마커면 hint 기반 안내 ("🖼 콜센터_여성")
+         → 사용자가 PowerPoint 에서 박스 더블클릭 → 이미지 삽입
+      3. 그 외엔 빈 문자열 (마스터 디자인만 남김)
+    """
+    key = ph["key"]
+    if key in content and content[key] is not None:
+        return _truncate(str(content[key]), ph["max"])
+    if _is_image_marker(key):
+        hint = ph.get("hint") or "이미지 추가"
+        return f"🖼 {hint}"
+    return ""
+
+
 def _replace_placeholders_in_text_frame(text_frame, content: dict) -> dict:
     """text_frame 안의 모든 {{...}} 마커를 content 값으로 치환.
 
@@ -415,15 +441,15 @@ def _replace_placeholders_in_text_frame(text_frame, content: dict) -> dict:
             for m in reversed(matches):
                 ph = parse_placeholder(m)
                 key = ph["key"]
+                val = _resolve_placeholder_value(ph, content)
+                new_text = new_text[: m.start()] + val + new_text[m.end():]
+                # 통계
                 if key in content and content[key] is not None:
-                    val = _truncate(str(content[key]), ph["max"])
-                    new_text = new_text[: m.start()] + val + new_text[m.end():]
                     result["replaced"] += 1
-                else:
-                    # content 에 키 없음 — 빈 문자열로 대체 (마커 자체는 제거)
-                    new_text = new_text[: m.start()] + "" + new_text[m.end():]
-                    if key not in result["missing_keys"]:
-                        result["missing_keys"].append(key)
+                elif _is_image_marker(key):
+                    result["replaced"] += 1  # 이미지도 치환된 것으로 카운트
+                elif key not in result["missing_keys"]:
+                    result["missing_keys"].append(key)
             try:
                 run.text = new_text
             except Exception as e:
@@ -437,14 +463,14 @@ def _replace_placeholders_in_text_frame(text_frame, content: dict) -> dict:
             for m in reversed(list(PLACEHOLDER_RE.finditer(full))):
                 ph = parse_placeholder(m)
                 key = ph["key"]
+                val = _resolve_placeholder_value(ph, content)
+                new_full = new_full[: m.start()] + val + new_full[m.end():]
                 if key in content and content[key] is not None:
-                    val = _truncate(str(content[key]), ph["max"])
-                    new_full = new_full[: m.start()] + val + new_full[m.end():]
                     result["replaced"] += 1
-                else:
-                    new_full = new_full[: m.start()] + "" + new_full[m.end():]
-                    if key not in result["missing_keys"]:
-                        result["missing_keys"].append(key)
+                elif _is_image_marker(key):
+                    result["replaced"] += 1
+                elif key not in result["missing_keys"]:
+                    result["missing_keys"].append(key)
             # paragraph 의 run 들을 비우고 첫 run 에 새 텍스트
             if para.runs:
                 first_run = para.runs[0]

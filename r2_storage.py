@@ -112,8 +112,12 @@ def _write_marker(p: Path, etag: str) -> None:
         log.warning("ETag marker write 실패 (%s): %s", p, e)
 
 
-def list_objects() -> list[dict]:
-    """R2 버킷의 PPTX 객체 목록."""
+def list_objects(suffix: str | None = ".pptx") -> list[dict]:
+    """R2 버킷의 객체 목록.
+
+    Args:
+      suffix: 필터링할 확장자 (e.g. '.pptx'). None 이면 모두.
+    """
     if not _is_configured() or not _BOTO3_AVAILABLE:
         return []
     bucket = os.environ["R2_BUCKET_NAME"]
@@ -124,7 +128,7 @@ def list_objects() -> list[dict]:
         for page in paginator.paginate(Bucket=bucket):
             for obj in page.get("Contents", []) or []:
                 key = obj.get("Key") or ""
-                if not key.lower().endswith(".pptx"):
+                if suffix and not key.lower().endswith(suffix):
                     continue
                 out.append({
                     "key": key,
@@ -241,6 +245,54 @@ def sync_master_templates() -> dict:
         result["downloaded"], result["skipped"], result["failed"],
         getattr(result["default"], "name", None),
     )
+    return result
+
+
+def sync_rag_db() -> dict:
+    """R2 의 rag_kb.db 다운로드 → 워크트리 루트.
+
+    NightOff 의 RAG 검색에 필수. 177MB 정도라 git 에 못 넣어서 R2 통해 배포.
+
+    return: {"downloaded": bool, "size_mb": float, "skipped": bool, "error": str|None}
+    """
+    result = {"downloaded": False, "size_mb": 0.0, "skipped": False, "error": None}
+    if not _BOTO3_AVAILABLE:
+        result["error"] = "boto3 미설치"
+        return result
+    if not _is_configured():
+        result["error"] = "R2 환경변수 미설정"
+        return result
+    bucket = os.environ["R2_BUCKET_NAME"]
+    # 워크트리 루트 = 이 파일의 디렉토리
+    root = Path(__file__).parent
+    local = root / "rag_kb.db"
+    marker = _etag_marker_path(local)
+    try:
+        client = _client()
+        head = client.head_object(Bucket=bucket, Key="rag_kb.db")
+        etag = (head.get("ETag") or "").strip('"')
+        size = head.get("ContentLength") or 0
+        prev = _read_marker(marker)
+        result["size_mb"] = round(size / 1024 / 1024, 1)
+        if local.exists() and prev == etag and local.stat().st_size == size:
+            log.info("RAG DB 캐시 HIT · etag=%s · %s MB", etag[:10], result["size_mb"])
+            result["skipped"] = True
+            return result
+        log.info("RAG DB 다운로드 시작 · %s MB", result["size_mb"])
+        client.download_file(bucket, "rag_kb.db", str(local))
+        _write_marker(marker, etag)
+        log.info("RAG DB 다운로드 완료 · %s", local.name)
+        result["downloaded"] = True
+    except ClientError as e:
+        if hasattr(e, "response") and e.response.get("Error", {}).get("Code") in ("404", "NoSuchKey"):
+            log.info("R2 에 rag_kb.db 없음 — RAG 비활성 모드로 진행")
+            result["error"] = "rag_kb.db not in R2"
+        else:
+            log.warning("RAG DB 다운로드 실패: %s", e)
+            result["error"] = str(e)[:120]
+    except (BotoCoreError, Exception) as e:
+        log.warning("RAG DB 다운로드 예외: %s", e)
+        result["error"] = str(e)[:120]
     return result
 
 

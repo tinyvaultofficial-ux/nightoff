@@ -1440,12 +1440,22 @@ def _startup() -> None:
             log.info("ANTHROPIC_API_KEY source = NONE")
     except Exception as e:
         log.warning("API key source 조회 실패 (무시): %s", e)
-    # R2 마스터 템플릿 동기화 (실패해도 startup 종료 안 함)
+    # R2 마스터 템플릿 + RAG DB 동기화 (실패해도 startup 종료 안 함)
     try:
         import r2_storage
         r2_storage.sync_master_templates()
     except Exception as e:
         log.warning("R2 sync 실패 (무시 — 로컬 master_templates/ 만 사용): %s", e)
+    try:
+        import r2_storage
+        rag_result = r2_storage.sync_rag_db()
+        if rag_result.get("downloaded") or rag_result.get("skipped"):
+            log.info("RAG DB sync OK (size=%.1fMB, downloaded=%s)",
+                     rag_result.get("size_mb", 0), rag_result.get("downloaded", False))
+        elif rag_result.get("error"):
+            log.info("RAG DB sync skip: %s", rag_result["error"])
+    except Exception as e:
+        log.warning("RAG DB sync 실패 (무시 — RAG 비활성 모드로): %s", e)
     log.info("=== NightOff server ready (uvicorn 응답 시작) ===")
 
 
@@ -1543,6 +1553,42 @@ def r2_status():
         return JSONResponse(r2_storage.status())
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/diag/rag")
+def diag_rag():
+    """RAG 동작 상태 진단 — Railway deploy 후 RAG 활성 여부 확인."""
+    out = {
+        "available": False,
+        "openai_key_present": bool(os.environ.get("OPENAI_API_KEY", "").strip()),
+        "rag_db_exists": False,
+        "rag_db_path": "",
+        "rag_db_size_mb": 0,
+        "chunk_count": 0,
+    }
+    try:
+        from pathlib import Path as _P
+        # rag_retriever 의 DB_PATH 동일 경로
+        db_path = _P(__file__).parent / "rag_kb.db"
+        out["rag_db_path"] = str(db_path)
+        if db_path.exists():
+            out["rag_db_exists"] = True
+            out["rag_db_size_mb"] = round(db_path.stat().st_size / 1024 / 1024, 1)
+            try:
+                import sqlite3
+                db = sqlite3.connect(str(db_path))
+                out["chunk_count"] = db.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
+                db.close()
+            except Exception as e:
+                out["chunk_query_error"] = str(e)[:120]
+        try:
+            import rag_retriever
+            out["available"] = rag_retriever.is_available()
+        except Exception as e:
+            out["import_error"] = str(e)[:120]
+    except Exception as e:
+        out["error"] = str(e)[:120]
+    return JSONResponse(out)
 
 
 @app.post("/api/r2/sync")

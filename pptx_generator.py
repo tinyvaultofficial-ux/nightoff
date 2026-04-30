@@ -493,6 +493,159 @@ def _replace_placeholders_in_text_frame(text_frame, content: dict) -> dict:
     return result
 
 
+def auto_inject_markers(
+    master_path: "str | Path",
+    output_path: "str | Path",
+    *,
+    dry_run: bool = False,
+) -> dict:
+    """[옵션 A] 빈 텍스트 박스를 가진 마스터 PPTX 에 자동으로 마커 텍스트 박기.
+
+    크리스가 만든 페이퍼템플릿_1 같은 *빈 박스 + 디자인* 형태의 마스터를
+    *자동으로* placeholder 모드 마스터로 변환.
+
+    분류 알고리즘 (휴리스틱):
+      1. 푸터 분리: y >= sh*0.85 + h <= 0.6  → 무시 (페이지 번호)
+      2. 큰 가로 박스 (w >= sw*0.6 + 슬라이드 상단 50%) → 거버닝 후보
+      3. 면적 기준 정렬:
+         - 가장 큰 박스 → 거버닝 (이미 거버닝 후보 있으면 그걸로)
+         - 두 번째 큰 박스 → 소제목 (높이가 작고 폭이 큰 경우만)
+      4. 나머지 박스 → 본문_N (위→아래, 좌→우 정렬)
+      5. 모든 박스 면적이 비슷하면 (예: cards layout) → 거버닝 X, 모두 본문_N
+
+    Args:
+      master_path: 입력 PPTX (빈 박스 형태)
+      output_path: 출력 PPTX (마커 박힌 버전)
+      dry_run: True 면 분석만 하고 저장 안 함
+
+    Returns:
+      {"slides": [{"idx", "markers_added": [{"shape_name", "marker", "x", "y", "w", "h"}]}],
+       "total_markers": int}
+    """
+    from pptx import Presentation as _P
+    p = Path(master_path)
+    out = Path(output_path)
+    prs = _P(str(p))
+    sw_in = prs.slide_width / 914400
+    sh_in = prs.slide_height / 914400
+
+    report = {"slides": [], "total_markers": 0}
+
+    for slide_idx, slide in enumerate(prs.slides):
+        # 빈 텍스트 박스 수집
+        empty_boxes = []
+        for shape in slide.shapes:
+            if not shape.has_text_frame:
+                continue
+            tf = shape.text_frame
+            if (tf.text or "").strip():
+                continue  # 이미 텍스트 있으면 안 건드림
+            x = (shape.left or 0) / 914400
+            y = (shape.top or 0) / 914400
+            w = (shape.width or 0) / 914400
+            h = (shape.height or 0) / 914400
+            empty_boxes.append({
+                "shape": shape, "tf": tf, "name": shape.name,
+                "x": x, "y": y, "w": w, "h": h,
+                "area": w * h,
+                "marker": None,
+            })
+
+        if not empty_boxes:
+            report["slides"].append({"idx": slide_idx, "markers_added": []})
+            continue
+
+        # 1. 푸터 분리 (하단 + 작은 높이)
+        footer_y = sh_in * 0.85
+        for b in empty_boxes:
+            if b["y"] >= footer_y and b["h"] <= 0.6:
+                b["marker"] = "_footer"  # 마커 안 박음
+
+        candidates = [b for b in empty_boxes if b["marker"] is None]
+        if not candidates:
+            report["slides"].append({"idx": slide_idx, "markers_added": []})
+            continue
+
+        # 2. 거버닝 후보 — 상단 50% + 가로 60% 이상 + 면적 큼
+        cands_sorted = sorted(candidates, key=lambda b: -b["area"])
+        top_half_y = sh_in * 0.5
+
+        # 면적 분포 분석 — 모든 박스가 비슷한 크기면 cards layout (거버닝 X)
+        max_area = cands_sorted[0]["area"]
+        similar_count = sum(1 for b in candidates if b["area"] >= max_area * 0.7)
+        is_cards_layout = (similar_count >= 4 and len(candidates) >= 4)
+
+        governing_box = None
+        subtitle_box = None
+        if not is_cards_layout:
+            # 거버닝: 가장 큰 박스 + 상단 + 가로 큰 것
+            for b in cands_sorted:
+                if b["w"] >= sw_in * 0.4 and b["y"] <= top_half_y + 1.0:
+                    governing_box = b
+                    b["marker"] = "거버닝"
+                    break
+            # 그 외 가장 큰 박스 (2번째) — 거버닝 면적의 70% 이하 + 상단 가까움 → 소제목
+            if governing_box:
+                for b in cands_sorted:
+                    if b is governing_box or b["marker"]:
+                        continue
+                    # 소제목 = 거버닝보다 작고 + 폭은 적당히 + 위쪽
+                    if (b["area"] < governing_box["area"] * 0.7
+                        and b["w"] >= sw_in * 0.3
+                        and b["y"] <= top_half_y + 1.5):
+                        subtitle_box = b
+                        b["marker"] = "소제목"
+                        break
+
+        # 3. 본문 (위→아래, 좌→우)
+        body_candidates = [b for b in candidates if b["marker"] is None]
+        body_candidates.sort(key=lambda b: (round(b["y"], 1), round(b["x"], 1)))
+        for i, b in enumerate(body_candidates, 1):
+            b["marker"] = f"본문_{i}"
+
+        # 4. 마커 박기 (dry_run 이면 skip)
+        slide_report = {"idx": slide_idx, "markers_added": []}
+        for b in empty_boxes:
+            if not b["marker"] or b["marker"] == "_footer":
+                continue
+            marker_text = "{{" + b["marker"] + "}}"
+            if not dry_run:
+                tf = b["tf"]
+                if tf.paragraphs:
+                    para = tf.paragraphs[0]
+                    if para.runs:
+                        # 첫 run 의 텍스트만 변경
+                        para.runs[0].text = marker_text
+                    else:
+                        # run 없는 빈 paragraph — 새 run 만들기
+                        try:
+                            para.text = marker_text
+                        except Exception:
+                            try:
+                                tf.text = marker_text
+                            except Exception:
+                                pass
+                else:
+                    try:
+                        tf.text = marker_text
+                    except Exception:
+                        pass
+            slide_report["markers_added"].append({
+                "shape_name": b["name"],
+                "marker": b["marker"],
+                "x": round(b["x"], 1), "y": round(b["y"], 1),
+                "w": round(b["w"], 1), "h": round(b["h"], 1),
+            })
+            report["total_markers"] += 1
+        report["slides"].append(slide_report)
+
+    if not dry_run:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        prs.save(str(out))
+
+    return report
+
+
 def extract_master_slot_guide(master_path: "str | Path") -> list[dict]:
     """마스터 PPTX 를 스캔해서 슬라이드별 마커 목록 추출.
 

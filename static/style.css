@@ -95,8 +95,8 @@
   --duration:    240ms;
   --duration-fast: 160ms;
 
-  /* ─── 폰트 — SUIT Variable 우선 (페이퍼/노션 결, 가독성 검증) ─── */
-  --sans: 'SUIT Variable', 'SUIT', 'Pretendard Variable', 'Pretendard',
+  /* ─── 폰트 — Paperlogy 우선 (프레젠테이션 특화. SUIT/Pretendard 폴백) ─── */
+  --sans: 'Paperlogy', 'SUIT Variable', 'SUIT', 'Pretendard Variable', 'Pretendard',
           -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', sans-serif;
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
@@ -5122,51 +5122,61 @@ body.landing-fullscreen .main {
 }
 
 /* ============================================================
-   자체 호스팅 폰트 — /static/fonts/ (파일 있으면 사용, 없으면 CDN 폴백)
+   자체 호스팅 폰트 — /static/fonts/Paperlogy-*.ttf (OFL 라이선스)
+   9개 weight 전체 매핑 (100 Thin ~ 900 Black)
    ============================================================ */
 @font-face {
-  font-family: 'Paperlogy Local';
-  src: url('/static/fonts/Paperlogy-4Regular.woff2') format('woff2');
-  font-weight: 400;
-  font-display: swap;
+  font-family: 'Paperlogy';
+  src: url('/static/fonts/Paperlogy-1Thin.ttf') format('truetype');
+  font-weight: 100; font-display: swap; font-style: normal;
 }
 @font-face {
-  font-family: 'Paperlogy Local';
-  src: url('/static/fonts/Paperlogy-7Bold.woff2') format('woff2');
-  font-weight: 700;
-  font-display: swap;
+  font-family: 'Paperlogy';
+  src: url('/static/fonts/Paperlogy-2ExtraLight.ttf') format('truetype');
+  font-weight: 200; font-display: swap; font-style: normal;
 }
 @font-face {
-  font-family: 'Paperlogy Local';
-  src: url('/static/fonts/Paperlogy-8ExtraBold.woff2') format('woff2');
-  font-weight: 800;
-  font-display: swap;
+  font-family: 'Paperlogy';
+  src: url('/static/fonts/Paperlogy-3Light.ttf') format('truetype');
+  font-weight: 300; font-display: swap; font-style: normal;
 }
 @font-face {
-  font-family: 'Presentation Local';
-  src: url('/static/fonts/Presentation-Regular.woff2') format('woff2');
-  font-weight: 400;
-  font-display: swap;
+  font-family: 'Paperlogy';
+  src: url('/static/fonts/Paperlogy-4Regular.ttf') format('truetype');
+  font-weight: 400; font-display: swap; font-style: normal;
 }
 @font-face {
-  font-family: 'Presentation Local';
-  src: url('/static/fonts/Presentation-Medium.woff2') format('woff2');
-  font-weight: 500;
-  font-display: swap;
+  font-family: 'Paperlogy';
+  src: url('/static/fonts/Paperlogy-5Medium.ttf') format('truetype');
+  font-weight: 500; font-display: swap; font-style: normal;
 }
 @font-face {
-  font-family: 'Presentation Local';
-  src: url('/static/fonts/Presentation-Bold.woff2') format('woff2');
-  font-weight: 700;
-  font-display: swap;
+  font-family: 'Paperlogy';
+  src: url('/static/fonts/Paperlogy-6SemiBold.ttf') format('truetype');
+  font-weight: 600; font-display: swap; font-style: normal;
+}
+@font-face {
+  font-family: 'Paperlogy';
+  src: url('/static/fonts/Paperlogy-7Bold.ttf') format('truetype');
+  font-weight: 700; font-display: swap; font-style: normal;
+}
+@font-face {
+  font-family: 'Paperlogy';
+  src: url('/static/fonts/Paperlogy-8ExtraBold.ttf') format('truetype');
+  font-weight: 800; font-display: swap; font-style: normal;
+}
+@font-face {
+  font-family: 'Paperlogy';
+  src: url('/static/fonts/Paperlogy-9Black.ttf') format('truetype');
+  font-weight: 900; font-display: swap; font-style: normal;
 }
 
 /* ============================================================
-   제안서 슬라이드 폰트 — 거버닝/본문 모두 SUIT (검증된 한국 폰트)
-   사용자 요청: 거버닝 28~32pt / 소제목 18~20pt / 본문 14~16pt
+   제안서 슬라이드 폰트 — Paperlogy (프레젠테이션 특화)
+   거버닝 28~32pt / 소제목 18~20pt / 본문 14~16pt
    ============================================================ */
 .proposal-page {
-  font-family: 'SUIT Variable', 'SUIT', 'Pretendard Variable', 'Pretendard', sans-serif;
+  font-family: 'Paperlogy', 'SUIT Variable', 'SUIT', 'Pretendard Variable', 'Pretendard', sans-serif;
 }
 .proposal-page .page-governing,
 .proposal-page h1,

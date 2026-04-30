@@ -1498,9 +1498,16 @@ def healthz():
 
 @app.get("/api/diag/fonts")
 def diag_fonts():
-    """한글 폰트 설치 상태 진단 — Railway deploy 후 한글 깨짐 검증."""
+    """한글 폰트 + Paperlogy 설치 상태 진단 — Railway deploy 후 검증."""
     import subprocess
-    out = {"ok": False, "korean_fonts": [], "all_count": 0, "stderr": ""}
+    out = {
+        "ok": False,
+        "korean_fonts": [],
+        "paperlogy_installed": False,
+        "paperlogy_files": [],
+        "all_count": 0,
+        "stderr": "",
+    }
     try:
         # 한국어 폰트만
         r = subprocess.run(
@@ -1509,6 +1516,15 @@ def diag_fonts():
         )
         ko = r.stdout.decode("utf-8", errors="replace").strip()
         out["korean_fonts"] = [l.split(":")[0].strip() for l in ko.split("\n") if l.strip()][:30]
+        # Paperlogy 설치 검출
+        r_pl = subprocess.run(
+            ["fc-list", ":family=Paperlogy"],
+            capture_output=True, timeout=10,
+        )
+        pl = r_pl.stdout.decode("utf-8", errors="replace").strip()
+        if pl:
+            out["paperlogy_installed"] = True
+            out["paperlogy_files"] = [l.split(":")[0].strip() for l in pl.split("\n") if l.strip()][:15]
         # 전체 폰트 수
         r2 = subprocess.run(["fc-list"], capture_output=True, timeout=10)
         all_lines = r2.stdout.decode("utf-8", errors="replace").strip().split("\n")

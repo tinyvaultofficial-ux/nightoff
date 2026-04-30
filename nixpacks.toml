@@ -12,6 +12,9 @@ cmds = [
   ". /opt/venv/bin/activate && pip install -r requirements.txt",
   # RAG (옵셔널) — 설치 실패해도 빌드 통과 (rag_retriever 가 graceful skip)
   ". /opt/venv/bin/activate && pip install -r requirements-rag.txt || echo 'RAG deps install failed — RAG 비활성화 모드로 진행'",
+  # Paperlogy ttf 를 시스템 폰트로 등록 — LibreOffice 가 PPTX 변환 시 페이퍼로지 인식
+  "mkdir -p /usr/share/fonts/truetype/paperlogy",
+  "cp -f static/fonts/Paperlogy-*.ttf /usr/share/fonts/truetype/paperlogy/ 2>/dev/null || echo 'paperlogy ttf copy skipped'",
   # 폰트 캐시 강제 빌드 — LibreOffice 가 새 폰트를 즉시 인식하게
   "fc-cache -f 2>&1 | tail -3 || echo 'fc-cache skipped'",
 ]

@@ -40,6 +40,10 @@ static/fonts/*.woff2
 static/fonts/*.woff
 static/fonts/*.ttf
 static/fonts/*.otf
+# Paperlogy (OFL 라이선스 — 자체 호스팅, repo 에 포함)
+!static/fonts/Paperlogy-*.ttf
+!static/fonts/Paperlogy-*.woff2
+!static/fonts/Paperlogy-*.woff
 
 # 마스터 PPTX 템플릿 — 88MB+ 라 깃 트래킹 X (운영은 외부 스토리지 또는 Volume)
 master_templates/*.pptx

@@ -2171,8 +2171,164 @@ def _format_client_block(client) -> str:
     return "\n".join(lines)
 
 
+def _format_chat_block_domain_tone(rfp_analysis: Optional[dict]) -> str:
+    """블록 #4 도메인 톤 (CHAT 용).
+
+    multi-pass 의 _format_domain_tone 과 같은 DOMAIN_TONE_MATRIX 참조.
+    단 마지막 가이드 줄 (도형 JSON / 5부 구조 / 흑백 6색 강제) 제거 — CHAT 무관.
+    빈 입력 (rfp_analysis None / project_domain 없음) → 빈 문자열 (블록 통째 생략).
+    multi-pass 와 다른 점: domain 미상이면 'other' 폴백 X — 채팅에선 컨텍스트 없는
+    상태가 명확해야 AI 가 사용자에게 도메인 질문 트리거 가능.
+    """
+    if not rfp_analysis:
+        return ""
+
+    domain = (rfp_analysis.get("project_domain") or "").strip().lower()
+    if not domain:
+        return ""
+
+    # 모듈 전역 dict 재사용 (proposal_multi_pass 의 정체성 매트릭스)
+    from proposal_multi_pass import DOMAIN_TONE_MATRIX
+
+    entry = DOMAIN_TONE_MATRIX.get(domain) or DOMAIN_TONE_MATRIX.get("other")
+    if not entry:
+        return ""
+
+    label = entry.get("label", domain)
+    lines = [f"[도메인 톤 — {domain} ({label})]"]
+    if entry.get("endings"):
+        lines.append(f"  거버닝 어미: {entry['endings']}")
+    if entry.get("tone"):
+        lines.append(f"  카피 톤: {entry['tone']}")
+    if entry.get("vocab"):
+        lines.append(f"  어휘: {entry['vocab']}")
+    if entry.get("register"):
+        lines.append(f"  레지스터: {entry['register']}")
+    if entry.get("examples"):
+        lines.append("  거버닝 예시:")
+        for ex in entry["examples"][:3]:
+            lines.append(f"    · {ex}")
+
+    # CHAT 용 마지막 가이드 (multi-pass 의 도형 JSON 강제 멘션 제거)
+    lines.append("  → 어미·어휘·레지스터를 위 매트릭스에 일관 적용해 토론·답변.")
+
+    return "\n".join(lines)
+
+
+def _format_chat_block_outcomes(won_rows, lost_rows) -> str:
+    """블록 #13 승패 기록 (CHAT 용).
+
+    PROPOSAL 흐름과 동일한 형식 (title 만, 5개 LIMIT, ✅/❌ 라벨).
+    won/lost 양쪽 빈 시 또는 모든 title 빈 시 빈 문자열 반환 (블록 통째 생략).
+    """
+    if not won_rows and not lost_rows:
+        return ""
+
+    def _join_titles(rows) -> str:
+        if not rows:
+            return ""
+        return ", ".join(
+            (r["title"] or "").strip()
+            for r in rows
+            if r and (r["title"] or "").strip()
+        )
+
+    lines = []
+    won_titles = _join_titles(won_rows)
+    if won_titles:
+        lines.append(f"✅ 승리 사례: {won_titles}")
+    lost_titles = _join_titles(lost_rows)
+    if lost_titles:
+        lines.append(f"❌ 패배 사례: {lost_titles}")
+
+    if not lines:
+        return ""
+
+    return "[승패 기록 — 승리 패턴 우선 반영, 패배 원인 회피]\n" + "\n".join(lines)
+
+
+def _format_chat_block_profile(profile_row) -> str:
+    """블록 #11 발주처 성향 프로필 (CHAT 용).
+
+    client_profiles 테이블 1행 → 4 list (keywords / high_weight_items /
+    recurring_reqs / insights) + sample_count.
+
+    PROPOSAL 흐름의 json.dumps(indent=2) (~2,000자) 와 달리 한국어 라벨 +
+    불릿 + 각 list LIMIT/cap 적용. sample_count < 5 시 신뢰도 안내 노출.
+    빈 입력 / 모든 list 빈 시 빈 문자열 (블록 통째 생략).
+    """
+    if not profile_row:
+        return ""
+
+    def _safe_json_list(field_name: str) -> list:
+        try:
+            v = json.loads(profile_row[field_name] or "[]")
+            return v if isinstance(v, list) else []
+        except Exception:
+            return []
+
+    keywords = _safe_json_list("keywords")
+    high_weight = _safe_json_list("high_weight_items")
+    recurring = _safe_json_list("recurring_reqs")
+    insights = _safe_json_list("insights")
+
+    if not (keywords or high_weight or recurring or insights):
+        return ""
+
+    try:
+        sample_count = int(profile_row["sample_count"] or 0)
+    except (KeyError, TypeError, ValueError):
+        sample_count = 0
+
+    lines = ["[발주처 성향 — 축적된 인사이트]"]
+
+    # keywords — 5개 LIMIT, 30자 cap, 단일 줄 join
+    if keywords:
+        kws = [str(k).strip()[:30] for k in keywords[:5] if k]
+        kws = [k for k in kws if k]
+        if kws:
+            lines.append("- 단골 키워드: " + ", ".join(kws))
+
+    # high_weight_items — 3개 LIMIT, 60자 cap, 불릿
+    if high_weight:
+        items = [str(h).strip()[:60] for h in high_weight[:3] if h]
+        items = [it for it in items if it]
+        if items:
+            lines.append("- 고배점·핵심 평가:")
+            for it in items:
+                lines.append(f"  · {it}")
+
+    # recurring_reqs — 3개 LIMIT, 60자 cap, 불릿
+    if recurring:
+        items = [str(r).strip()[:60] for r in recurring[:3] if r]
+        items = [it for it in items if it]
+        if items:
+            lines.append("- 반복 요구사항:")
+            for it in items:
+                lines.append(f"  · {it}")
+
+    # insights — 3개 LIMIT, 80자 cap, 불릿
+    if insights:
+        items = [str(i).strip()[:80] for i in insights[:3] if i]
+        items = [it for it in items if it]
+        if items:
+            lines.append("- 발주처 성향:")
+            for it in items:
+                lines.append(f"  · {it}")
+
+    # 헤더 외 실제 inject 줄이 없으면 통째 생략
+    if len(lines) <= 1:
+        return ""
+
+    # sample_count 임계값 5 미만 시 신뢰도 안내 (마지막 줄)
+    if sample_count < 5:
+        lines.append(f"(분석 샘플 {sample_count}건 — 신뢰도 참고용)")
+
+    return "\n".join(lines)
+
+
 def _build_system_prompt(client_id: str) -> str:
-    """RFP 분석, 뉘앙스, 레퍼런스, 강점을 시스템 프롬프트에 주입."""
+    """RFP 분석, 뉘앙스, 레퍼런스를 시스템 프롬프트에 주입."""
     with get_db() as db:
         client = db.execute("SELECT * FROM clients WHERE id=?", (client_id,)).fetchone()
         refs = db.execute(
@@ -2363,7 +2519,7 @@ def _build_system_prompt(client_id: str) -> str:
     # 발주처 성향 주입
     with get_db() as db:
         profile_row = db.execute("SELECT * FROM client_profiles WHERE client_id=?", (client_id,)).fetchone()
-        dna_row = db.execute("SELECT * FROM company_dna WHERE id=1").fetchone()
+        # company DNA inject 제거 — NightOff 멀티 사용자 도구 정체성 정합
         # 승률 / 승리 사례 패턴
         won_rows = db.execute(
             "SELECT title FROM conversations WHERE client_id=? AND outcome='won' ORDER BY updated_at DESC LIMIT 5",
@@ -2383,18 +2539,6 @@ def _build_system_prompt(client_id: str) -> str:
                 "insights": json.loads(profile_row["insights"] or "[]"),
             }
             parts.append("[발주처 성향 — 축적된 인사이트]\n" + json.dumps(p, ensure_ascii=False, indent=2))
-        except Exception:
-            pass
-
-    if dna_row:
-        try:
-            dna = {
-                "signature_phrases": json.loads(dna_row["signature_phrases"] or "[]"),
-                "strength_keywords": json.loads(dna_row["strength_keywords"] or "[]"),
-                "strategy_patterns": json.loads(dna_row["strategy_patterns"] or "[]"),
-                "tone_style": dna_row["tone_style"] or "",
-            }
-            parts.append("[우리 회사 DNA — 문체/강점/전략 반드시 반영]\n" + json.dumps(dna, ensure_ascii=False, indent=2))
         except Exception:
             pass
 
@@ -2532,7 +2676,7 @@ async def api_proposals_generate_multipass(conv_id: str):
     Multi-pass 제안서 생성. SSE 로 진행률 실시간 push.
 
     흐름:
-      1. RFP / RAG / 발주처 인텔 / 회사 DNA 모아서 system block 들 만들기
+      1. RFP / RAG / 발주처 인텔 모아서 system block 들 만들기
       2. proposal_multi_pass.orchestrate() 호출
       3. 각 이벤트를 SSE 로 yield
       4. 완료시 도형 JSON 을 messages 에 assistant 메시지로 저장

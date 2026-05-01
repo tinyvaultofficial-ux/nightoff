@@ -3166,7 +3166,7 @@ async function renderChat(cid, convId) {
         html: `<span style="margin-right:4px;">✨</span><span>제안서 생성</span>`,
         onclick: async () => {
           // 채팅 input 영역에 진행률 표시 — 가짜 user 메시지로 시각화
-          const msgs = document.querySelector(".msgs") || document.querySelector("[class*='msg-list']");
+          const msgs = document.getElementById("chat-messages") || document.querySelector(".chat-messages");
           if (!msgs) { toast("채팅 영역을 못 찾았어요", "error"); return; }
           const userBubble = h("div", { class: "msg-row user" }, [
             h("div", { class: "msg-body" }, [

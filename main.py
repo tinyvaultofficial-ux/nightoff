@@ -2366,7 +2366,7 @@ def _format_chat_block_domain_tone(rfp_analysis: Optional[dict]) -> str:
             lines.append(f"    · {ex}")
 
     # CHAT 용 마지막 가이드 (multi-pass 의 도형 JSON 강제 멘션 제거)
-    lines.append("  → 어미·어휘·레지스터를 위 매트릭스에 일관 적용해 토론·답변.")
+    lines.append("  → 어미·어휘·레지스터를 위 매트릭스에 일관 적용해 답변.")
 
     return "\n".join(lines)
 
@@ -2661,7 +2661,7 @@ def _format_chat_block_intel(intel_row) -> str:
 def _build_chat_system_prompt(client_id: str) -> str:
     """채팅용 시스템 프롬프트.
 
-    CHAT_SYSTEM_PROMPT 정적 본문 (전략 논의 파트너 정체성) +
+    CHAT_SYSTEM_PROMPT 정적 본문 (기획 파트너 정체성) +
     8 inject 블록 (#1 client / #2 RFP / #4 도메인 톤 / #8 refs / #9 memories /
     #10 intel / #11 profile / #13 outcomes).
 

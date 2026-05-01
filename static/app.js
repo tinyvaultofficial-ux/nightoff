@@ -3160,6 +3160,37 @@ async function renderChat(cid, convId) {
           },
         }),
       ]),
+      // ✨ 제안서 생성 (multi-pass) — 명시적 버튼
+      h("button", {
+        class: "btn btn-primary", title: "Multi-pass 모드 — 슬라이드별 분리 호출로 빽빽하게",
+        html: `<span style="margin-right:4px;">✨</span><span>제안서 생성</span>`,
+        onclick: async () => {
+          if (!confirm("Multi-pass 모드로 제안서를 생성합니다.\n\n· 슬라이드별 분리 호출 (~1~2분 소요)\n· 슬라이드당 도형 15~50개로 빽빽하게\n· 비용 ~$0.65/건 (single-pass ~10배)\n\n진행할까요?")) return;
+          // 채팅 input 영역에 진행률 표시 — 가짜 user 메시지로 시각화
+          const msgs = document.querySelector(".msgs") || document.querySelector("[class*='msg-list']");
+          if (!msgs) { toast("채팅 영역을 못 찾았어요", "error"); return; }
+          const userBubble = h("div", { class: "msg-row user" }, [
+            h("div", { class: "msg-body" }, [
+              h("div", { class: "msg-bubble" }, "✨ 제안서 생성 (Multi-pass)"),
+            ]),
+          ]);
+          msgs.appendChild(userBubble);
+          const asstEl = msgElement("assistant", "", new Date().toISOString());
+          msgs.appendChild(asstEl);
+          const bubble = asstEl.querySelector(".msg-bubble");
+          bubble.innerHTML = '<span class="loading-dots"><span></span><span></span><span></span></span>';
+          const progress = createStreamProgress();
+          asstEl.querySelector(".msg-body").insertBefore(progress.el, bubble);
+          const body = msgs.parentElement || document.body;
+          try {
+            await runMultiPassProposal({ convId, asstEl, bubble, progress, body, msgs });
+          } catch (e) {
+            console.error("multi-pass 실패:", e);
+            bubble.innerHTML = `<span style="color:var(--danger);">❌ ${escapeHtml(e.message || String(e))}</span>`;
+            progress.finish(false);
+          }
+        },
+      }),
       // 자체 검증 버튼 (Compliance + Red Team)
       h("button", {
         class: "btn btn-outline", title: "RFP 요구사항 누락·예상 점수 점검",
@@ -3267,11 +3298,13 @@ async function renderChat(cid, convId) {
     const progress = createStreamProgress();
     asstEl.querySelector(".msg-body").insertBefore(progress.el, bubble);
 
-    // ─── Multi-pass 분기 — 사용자 메시지에 "제안서" 키워드 + 동사 있으면 ───
-    // 일반 대화는 기존 /chat 으로, 제안서 생성은 /proposals/generate (SSE 별 이벤트)
+    // ─── Multi-pass 분기 — 명시적 키워드만 매칭 (오트리거 방지) ───
+    // 명시적 "제안서 생성" 버튼이 주 트리거. 채팅에서도 매우 명확한 표현일 때만 트리거.
+    // 단순 "제안개요 써줘" / "목차 잡아줘" 는 일반 chat 으로 → 부분 작업 가능
     const isProposalRequest =
-      /제안서/.test(text) &&
-      /(만들|써|작성|생성|뽑|초안|만드|만들어)/.test(text);
+      /(전체|풀|풀버전|모든|전부|완성).*제안서/.test(text) ||
+      /제안서.*(생성|만들어줘|작성해줘|뽑아줘|풀로|전체로|다 써|모두)/.test(text) ||
+      /multi[-\s]?pass/i.test(text);
     if (isProposalRequest) {
       try {
         await runMultiPassProposal({

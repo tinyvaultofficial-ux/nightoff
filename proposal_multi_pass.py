@@ -349,7 +349,7 @@ weight 값을 다음 9 단계 중 하나로 지정. 코드가 Paperlogy-1Thin ~ 
 [정보 위치 표시 — 단순하게 · 위치 자율]
 - 챕터 표시 (breadcrumb): 9~10pt #999 weight 300~400. 좌상단 권장이지만 자율.
 - 페이지 번호: 작은 폰트 #999. 위치는 자율 (우하단 또는 우상단). 30 슬라이드 일관 위치.
-- 회사명·섹션명 표시는 필요시만. 모든 슬라이드 강제 X.
+- 섹션명 표시는 필요시만. 모든 슬라이드 강제 X. (회사명은 본문 inject 금지 — 청렴제)
 - 가로 구분선·좌측 컬러바·하단 take-away 박스 같은 미적 모티브는 강제 X.
   (디자이너가 받아서 추가/변경할 여백을 남긴다)
 
@@ -465,8 +465,9 @@ RAG 학습한 과거 우리 회사 제안서 본문이 시스템 메시지에 in
   ]
 }
 ```
-(주의: 좌표는 A4 가로 11.69×8.27 캔버스 안. 가로 구분선 / 회사명 풀 푸터 같은 모티브는 강제 X.
- 페이지 번호 외 추가 모티브는 슬라이드 본질이 요구할 때만.)
+(주의: 좌표는 A4 가로 11.69×8.27 캔버스 안. 가로 구분선 / 풀 푸터 같은 모티브는 강제 X.
+ 페이지 번호 외 추가 모티브는 슬라이드 본질이 요구할 때만.
+ 회사명은 본문에 inject 금지 — 청렴제 / 회사 소개 페이지 1회 외 등장 비정상.)
 
 [규칙]
 - 출력은 **한 슬라이드의 도형 JSON 한 개**. 이 슬라이드 외 다른 슬라이드 절대 출력 X.
@@ -601,13 +602,12 @@ def _build_slide_user_prompt(
     outline_summary: str,
     rag_per_slide_block: str,
     canvas: tuple[float, float],
-    company_name: str,
     total_slides: int,
     domain: str = "other",
 ) -> str:
+    # 본인 회사명 inject 제거 (한국 공공입찰 청렴제 — 회사명 본문 등장 비정상)
     parts = [
         f"[슬라이드 캔버스] slide_width={canvas[0]}, slide_height={canvas[1]}",
-        f"[회사명] {company_name or '회사명'}",
         f"[전체 슬라이드 수] {total_slides}",
         f"[현재 슬라이드 페이지] {item.page} / {total_slides}",
         f"[섹션] {item.section}",
@@ -636,13 +636,12 @@ async def generate_one_slide(
     outline_summary: str,
     rag_per_slide_block: str,
     canvas: tuple[float, float],
-    company_name: str,
     total_slides: int,
     model: str = "",
     domain: str = "other",
 ) -> SlideResult:
     user = _build_slide_user_prompt(
-        item, outline_summary, rag_per_slide_block, canvas, company_name, total_slides,
+        item, outline_summary, rag_per_slide_block, canvas, total_slides,
         domain=domain,
     )
     try:
@@ -667,7 +666,6 @@ async def generate_slides_parallel(
     client,
     outline: OutlineResult,
     rag_for_slide,  # callable: (item) -> str (RAG block)
-    company_name: str,
     concurrency: int = 5,
     model: str = "",
 ) -> AsyncIterator[SlideResult]:
@@ -687,7 +685,7 @@ async def generate_slides_parallel(
             except Exception as e:
                 log.warning("slide RAG 블록 생성 실패 (p%d): %s", item.page, e)
             return await generate_one_slide(
-                client, item, outline_summary, rag_block, canvas, company_name,
+                client, item, outline_summary, rag_block, canvas,
                 outline.total_slides, model,
                 domain=outline.domain,
             )
@@ -706,7 +704,6 @@ async def orchestrate(
     rag_for_slide,  # callable
     intel_block: str = "",
     extra_block: str = "",
-    company_name: str = "",
     concurrency: int = 5,
     model: str = "",
 ) -> AsyncIterator[dict]:
@@ -746,7 +743,7 @@ async def orchestrate(
     slides: dict[int, SlideResult] = {}
     done_count = 0
     async for sr in generate_slides_parallel(
-        client, outline, rag_for_slide, company_name, concurrency, model,
+        client, outline, rag_for_slide, concurrency, model,
     ):
         slides[sr.page] = sr
         done_count += 1

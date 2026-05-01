@@ -76,7 +76,6 @@ async def main():
         rag_block_global="[RAG global hint]",
         rag_for_slide=lambda item: f"[RAG for p{item.page}]",
         intel_block="",
-        company_name="테스트회사",
         concurrency=2,  # 2개씩 병렬
     ):
         events.append(ev)

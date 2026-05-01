@@ -530,7 +530,7 @@ def _parse_json_safely(s: str) -> Optional[dict]:
 def _call_anthropic_sync(client, system: str, user: str, max_tokens: int = 8000, model: str = "") -> str:
     """동기 Anthropic 호출 (asyncio.to_thread 로 감싸 사용)."""
     import os
-    model = model or os.environ.get("MODEL", "") or "claude-sonnet-4-5-20250514"
+    model = model or os.environ.get("MODEL", "") or "claude-sonnet-4-5-20250929"
     resp = client.messages.create(
         model=model,
         max_tokens=max_tokens,

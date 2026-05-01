@@ -2201,21 +2201,33 @@ def _build_system_prompt(client_id: str) -> str:
         )
         parts.append("\n".join(tone_signal))
 
-        # ── RAG: 17개 과거 제안서에서 도메인·요구사항 기반 스타일 신호 주입 ──
+        # ── RAG v2: 과거 제안서 본문 풍부 주입 ──
+        # 이전엔 통계만 들어가서 "그냥 Claude 결과" 와 차이 없음 → v2 부터 본문 발췌 8개 × 800자 inline
         # rag_kb.db + OPENAI_API_KEY 가 있을 때만 동작 (둘 중 하나라도 없으면 자연 스킵)
         try:
             if rag_retriever is not None and rag_retriever.is_available():
                 rag_query = rag_retriever.build_query_from_rfp(rfp_analysis)
                 if rag_query:
-                    rag_hints = rag_retriever.retrieve_style_hints(rag_query, top_k=8)
+                    rag_hints = rag_retriever.retrieve_style_hints(
+                        rag_query, top_k=12, excerpt_chars=800, excerpt_count=8,
+                    )
                     if rag_hints:
                         rag_block = rag_retriever.format_hints_for_prompt(rag_hints)
                         if rag_block:
                             parts.append(rag_block)
-                            log.info("RAG hints injected · query=%r · visuals=%s · endings=%s",
-                                     rag_query[:60],
-                                     [v[0] for v in rag_hints["visual_top"][:3]],
-                                     [e[0] for e in rag_hints["ending_top"][:3]])
+                            ex_total = sum(
+                                ex.get("char_count", 0)
+                                for ex in rag_hints.get("sample_excerpts", [])
+                            )
+                            log.info(
+                                "RAG hints injected · hits=%d · 발췌=%d개 · 총 %d자 · "
+                                "visuals=%s · endings=%s",
+                                rag_hints["hits_count"],
+                                len(rag_hints.get("sample_excerpts", [])),
+                                ex_total,
+                                [v[0] for v in rag_hints["visual_top"][:3]],
+                                [e[0] for e in rag_hints["ending_top"][:3]],
+                            )
         except Exception as _rag_err:
             log.warning("RAG hint 주입 실패 (무시): %s", _rag_err)
 

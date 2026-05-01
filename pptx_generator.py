@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Optional
 
 from pptx import Presentation
-from pptx.util import Pt
+from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
 
 log = logging.getLogger("pptx_gen")
@@ -1365,3 +1365,360 @@ def find_master_template(domain: Optional[str] = None) -> Optional[Path]:
         if c.exists() and c.stat().st_size > 0:
             return c
     return None
+
+
+################################################################################
+# 🎨 도형 JSON 모드 — Claude 가 layout 자유 결정 → 원시 도형 그리기
+#
+# 마스터 PPTX 와 무관. AI 가 슬라이드별로 도형 + 위치 + 텍스트 자유롭게 정함.
+# 우리 코드는 *원시 도형 그리기 함수* 만 제공 (rect/text/line/circle/arrow/image)
+# 입력 형식: 도형 JSON 스펙
+################################################################################
+
+from pptx.enum.shapes import MSO_SHAPE, MSO_CONNECTOR
+from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+from pptx.oxml.ns import qn
+
+
+def _hex_to_rgb(hex_color):
+    """#RRGGBB → RGBColor (잘못된 입력은 검정으로 폴백)."""
+    if not hex_color:
+        return RGBColor(0, 0, 0)
+    h = str(hex_color).lstrip("#").strip()
+    if len(h) == 3:
+        h = "".join(c * 2 for c in h)
+    if len(h) != 6:
+        return RGBColor(0, 0, 0)
+    try:
+        return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+    except ValueError:
+        return RGBColor(0, 0, 0)
+
+
+def _set_no_fill(shape) -> None:
+    """투명 채움."""
+    try:
+        shape.fill.background()
+    except Exception:
+        pass
+
+
+def _set_no_line(shape) -> None:
+    """테두리 없음."""
+    try:
+        shape.line.fill.background()
+    except Exception:
+        pass
+
+
+def _add_rect(slide, x, y, w, h, *, fill="#FFFFFF", stroke=None, stroke_width=None, radius=None):
+    """사각형 (옵션: rounded, 테두리, 채움)."""
+    shape_type = MSO_SHAPE.ROUNDED_RECTANGLE if radius else MSO_SHAPE.RECTANGLE
+    shape = slide.shapes.add_shape(
+        shape_type, Inches(x), Inches(y), Inches(w), Inches(h)
+    )
+    if fill:
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = _hex_to_rgb(fill)
+    else:
+        _set_no_fill(shape)
+    if stroke:
+        shape.line.color.rgb = _hex_to_rgb(stroke)
+        if stroke_width:
+            shape.line.width = Pt(float(stroke_width))
+    else:
+        _set_no_line(shape)
+    return shape
+
+
+def _add_text(slide, x, y, w, h, text, *,
+              size=14, weight=400, color="#1A1A1A",
+              align="left", valign="top",
+              font_family=None, italic=False):
+    """텍스트 박스. 줄바꿈 \\n 으로 멀티라인 지원."""
+    box = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
+    tf = box.text_frame
+    tf.word_wrap = True
+    tf.margin_left = Inches(0.04)
+    tf.margin_right = Inches(0.04)
+    tf.margin_top = Inches(0.02)
+    tf.margin_bottom = Inches(0.02)
+    valign_map = {
+        "top": MSO_ANCHOR.TOP,
+        "middle": MSO_ANCHOR.MIDDLE,
+        "center": MSO_ANCHOR.MIDDLE,
+        "bottom": MSO_ANCHOR.BOTTOM,
+    }
+    try:
+        tf.vertical_anchor = valign_map.get(str(valign).lower(), MSO_ANCHOR.TOP)
+    except Exception:
+        pass
+
+    align_map = {
+        "left": PP_ALIGN.LEFT,
+        "center": PP_ALIGN.CENTER,
+        "right": PP_ALIGN.RIGHT,
+        "justify": PP_ALIGN.JUSTIFY,
+    }
+
+    lines = (text or "").split("\n")
+    for i, line in enumerate(lines):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        try:
+            p.alignment = align_map.get(str(align).lower(), PP_ALIGN.LEFT)
+        except Exception:
+            pass
+        run = p.add_run()
+        run.text = line
+        try:
+            run.font.size = Pt(float(size))
+        except Exception:
+            run.font.size = Pt(14)
+        try:
+            run.font.bold = int(weight) >= 600
+        except Exception:
+            run.font.bold = False
+        if italic:
+            run.font.italic = True
+        run.font.color.rgb = _hex_to_rgb(color)
+        if font_family:
+            try:
+                run.font.name = str(font_family)
+            except Exception:
+                pass
+    return box
+
+
+def _add_line(slide, x1, y1, x2, y2, *, color="#1A1A1A", width=1.0):
+    """직선 (커넥터)."""
+    line = slide.shapes.add_connector(
+        MSO_CONNECTOR.STRAIGHT,
+        Inches(x1), Inches(y1), Inches(x2), Inches(y2),
+    )
+    line.line.color.rgb = _hex_to_rgb(color)
+    try:
+        line.line.width = Pt(float(width))
+    except Exception:
+        line.line.width = Pt(1)
+    return line
+
+
+def _add_arrow(slide, x1, y1, x2, y2, *, color="#1A1A1A", width=1.5):
+    """화살표 — 직선 + tail 끝에 삼각형."""
+    line = slide.shapes.add_connector(
+        MSO_CONNECTOR.STRAIGHT,
+        Inches(x1), Inches(y1), Inches(x2), Inches(y2),
+    )
+    line.line.color.rgb = _hex_to_rgb(color)
+    try:
+        line.line.width = Pt(float(width))
+    except Exception:
+        line.line.width = Pt(1.5)
+    # XML 직접 조작 — tail 에 화살촉 추가
+    try:
+        ln = line.line._get_or_add_ln()
+        # 기존 헤드/테일 제거
+        for tag in ("a:headEnd", "a:tailEnd"):
+            existing = ln.find(qn(tag))
+            if existing is not None:
+                ln.remove(existing)
+        from lxml import etree
+        head_end = etree.SubElement(ln, qn("a:headEnd"))
+        head_end.set("type", "none")
+        tail_end = etree.SubElement(ln, qn("a:tailEnd"))
+        tail_end.set("type", "triangle")
+        tail_end.set("w", "med")
+        tail_end.set("len", "med")
+    except Exception as e:
+        log.warning("화살촉 추가 실패 (선만 표시): %s", e)
+    return line
+
+
+def _add_circle(slide, x, y, w, h, *, fill="#000000", stroke=None, stroke_width=None):
+    """원/타원."""
+    shape = slide.shapes.add_shape(
+        MSO_SHAPE.OVAL, Inches(x), Inches(y), Inches(w), Inches(h)
+    )
+    if fill:
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = _hex_to_rgb(fill)
+    else:
+        _set_no_fill(shape)
+    if stroke:
+        shape.line.color.rgb = _hex_to_rgb(stroke)
+        if stroke_width:
+            shape.line.width = Pt(float(stroke_width))
+    else:
+        _set_no_line(shape)
+    return shape
+
+
+def _add_image_placeholder(slide, x, y, w, h, hint="이미지 추가"):
+    """이미지 자리 — 회색 박스 + 안내. 사용자가 PowerPoint 에서 더블클릭으로 이미지 삽입."""
+    box = slide.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE, Inches(x), Inches(y), Inches(w), Inches(h)
+    )
+    box.fill.solid()
+    box.fill.fore_color.rgb = RGBColor(0xEC, 0xEC, 0xEC)
+    box.line.color.rgb = RGBColor(0xCC, 0xCC, 0xCC)
+    box.line.width = Pt(0.75)
+    tf = box.text_frame
+    tf.word_wrap = True
+    try:
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    except Exception:
+        pass
+    p = tf.paragraphs[0]
+    p.alignment = PP_ALIGN.CENTER
+    run = p.add_run()
+    run.text = "🖼  " + str(hint)
+    run.font.size = Pt(11)
+    run.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
+    run.font.italic = True
+    return box
+
+
+def render_shape_to_slide(slide, shape_def):
+    """단일 도형 스펙(JSON) → 슬라이드에 그림.
+
+    지원 type: rect, text, line, arrow, circle/ellipse/oval, image/image_placeholder
+    실패 시 None 반환 (다른 도형 렌더링은 계속됨).
+    """
+    if not isinstance(shape_def, dict):
+        return None
+    t = str(shape_def.get("type", "")).lower().strip()
+    try:
+        if t in ("rect", "rectangle"):
+            return _add_rect(
+                slide,
+                float(shape_def.get("x", 0)), float(shape_def.get("y", 0)),
+                float(shape_def.get("w", 1)), float(shape_def.get("h", 1)),
+                fill=shape_def.get("fill"),
+                stroke=shape_def.get("stroke"),
+                stroke_width=shape_def.get("stroke_width"),
+                radius=shape_def.get("radius"),
+            )
+        if t == "text":
+            return _add_text(
+                slide,
+                float(shape_def.get("x", 0)), float(shape_def.get("y", 0)),
+                float(shape_def.get("w", 5)), float(shape_def.get("h", 1)),
+                str(shape_def.get("text", "")),
+                size=float(shape_def.get("size", 14)),
+                weight=int(shape_def.get("weight", 400)),
+                color=str(shape_def.get("color", "#1A1A1A")),
+                align=str(shape_def.get("align", "left")),
+                valign=str(shape_def.get("valign", "top")),
+                font_family=shape_def.get("font_family"),
+                italic=bool(shape_def.get("italic", False)),
+            )
+        if t == "line":
+            return _add_line(
+                slide,
+                float(shape_def.get("x1", 0)), float(shape_def.get("y1", 0)),
+                float(shape_def.get("x2", 1)), float(shape_def.get("y2", 0)),
+                color=str(shape_def.get("color", "#1A1A1A")),
+                width=float(shape_def.get("width", 1.0)),
+            )
+        if t == "arrow":
+            return _add_arrow(
+                slide,
+                float(shape_def.get("x1", 0)), float(shape_def.get("y1", 0)),
+                float(shape_def.get("x2", 1)), float(shape_def.get("y2", 0)),
+                color=str(shape_def.get("color", "#1A1A1A")),
+                width=float(shape_def.get("width", 1.5)),
+            )
+        if t in ("circle", "ellipse", "oval"):
+            return _add_circle(
+                slide,
+                float(shape_def.get("x", 0)), float(shape_def.get("y", 0)),
+                float(shape_def.get("w", 1)), float(shape_def.get("h", 1)),
+                fill=str(shape_def.get("fill", "#000000")),
+                stroke=shape_def.get("stroke"),
+                stroke_width=shape_def.get("stroke_width"),
+            )
+        if t in ("image", "image_placeholder"):
+            return _add_image_placeholder(
+                slide,
+                float(shape_def.get("x", 0)), float(shape_def.get("y", 0)),
+                float(shape_def.get("w", 4)), float(shape_def.get("h", 3)),
+                hint=str(shape_def.get("hint", "이미지 추가")),
+            )
+    except Exception as e:
+        log.warning("도형 렌더링 실패 (type=%s): %s", t, e)
+    return None
+
+
+def generate_from_shape_json(json_data, output_path):
+    """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
+
+    json_data 형식:
+      {
+        "title": "...",
+        "slide_width": 11.7,        # 옵션 (inch)
+        "slide_height": 8.3,        # 옵션
+        "slides": [
+          {
+            "section": "표지",
+            "shapes": [
+              {"type": "rect", "x": 0, "y": 0, "w": 0.5, "h": 8.3, "fill": "#000"},
+              {"type": "text", "x": 1, "y": 2, "w": 6, "h": 1.5,
+               "text": "수주", "size": 80, "weight": 900},
+              ...
+            ]
+          },
+          ...
+        ]
+      }
+    """
+    if not isinstance(json_data, dict):
+        raise ValueError("json_data 가 dict 가 아님")
+    slides_data = json_data.get("slides")
+    if not isinstance(slides_data, list) or not slides_data:
+        raise ValueError("slides 배열 비어있거나 list 아님")
+
+    sw = float(json_data.get("slide_width", 11.7))
+    sh = float(json_data.get("slide_height", 8.3))
+
+    prs = Presentation()
+    prs.slide_width = Inches(sw)
+    prs.slide_height = Inches(sh)
+    blank_layout = prs.slide_layouts[6]
+
+    rendered_total = 0
+    errors_total = []
+    for slide_idx, slide_data in enumerate(slides_data):
+        if not isinstance(slide_data, dict):
+            errors_total.append("slide" + str(slide_idx) + ": not a dict")
+            prs.slides.add_slide(blank_layout)
+            continue
+        slide = prs.slides.add_slide(blank_layout)
+        shapes = slide_data.get("shapes", [])
+        if not isinstance(shapes, list):
+            errors_total.append("slide" + str(slide_idx) + ": shapes not list")
+            continue
+        for shape_idx, shape_def in enumerate(shapes):
+            try:
+                result = render_shape_to_slide(slide, shape_def)
+                if result is not None:
+                    rendered_total += 1
+            except Exception as e:
+                errors_total.append(
+                    "slide" + str(slide_idx) + ":shape" + str(shape_idx) +
+                    ": " + type(e).__name__ + ": " + str(e)
+                )
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    prs.save(str(output_path))
+
+    log.info("도형 JSON 모드 · 슬라이드 %d / 도형 %d 렌더 / 에러 %d",
+             len(slides_data), rendered_total, len(errors_total))
+
+    return {
+        "slide_count": len(slides_data),
+        "rendered_total": rendered_total,
+        "errors": errors_total[:10],
+        "output_path": str(output_path),
+        "size_mb": round(output_path.stat().st_size / 1024 / 1024, 2),
+    }

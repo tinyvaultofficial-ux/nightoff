@@ -1069,79 +1069,156 @@ PPTX 변환 시 적절한 슬라이드 레이아웃을 자동 적용.
 
 
 ═══════════════════════════════════════════════════
-⚠⚠⚠ 출력 형식 — 제안서 생성 요청 시 JSON 만 출력 ⚠⚠⚠
+⚠⚠⚠ 출력 형식 — 제안서 생성 요청 시 도형 JSON 만 출력 ⚠⚠⚠
 ═══════════════════════════════════════════════════
 
-위의 모든 정책 (5부 구조 / 페이지 밀도 / em-dash 금지 / 도메인 매트릭스 /
-RAG 신호 / 시각화 가이드 / 컴플라이언스·Red Team 페이지) 을 100% 따르되,
-**최종 출력 형식은 반드시 다음 JSON 한 가지** — HTML 절대 출력 금지.
+위의 모든 정책 (5부 구조 / em-dash 금지 / 도메인 매트릭스 / RAG 신호 / 사투리 금지 가이드) 을
+100% 따르되, **최종 출력 형식은 반드시 다음 도형 JSON 한 가지** — HTML / 마커 / 자연어 설명 절대 금지.
+
+이 모드는 placeholder/master 매핑이 아닌 **도형 단위 자유 레이아웃** 이다.
+당신이 슬라이드마다 필요한 도형(사각형·원·선·화살표·텍스트박스·이미지)을
+**좌표 단위(인치)로 직접 배치** 하고, 시스템은 그 도형 정의를 그대로 PPTX 로 그린다.
 
 ```json
 {
   "title": "발주처명 + 사업명 + 정성 제안서",
   "domain": "festival|forum|exhibition|education|sports|campaign|tourism|rnd|welfare|other",
-  "accent": "#RRGGBB",
-  "summary": "전체 한 줄 요약 (제안서 핵심 가치, 60자 이내)",
+  "slide_width": 13.33,
+  "slide_height": 7.5,
   "slides": [
     {
-      "section": "표지|목차|사업이해|추진전략|수행조직|일정|예산|프로그램|홍보|안전관리|기대효과|기타",
-      "거버닝": "한 줄 큰 제목 (★25자 이내★, em-dash 금지)",
-      "소제목": "부제 (★30자 이내★, 선택)",
-      "본문": ["핵심 메시지 1 (★40~70자★)", "핵심 메시지 2", "핵심 메시지 3", "핵심 메시지 4"],
-      "summary": "페이지 한 줄 요약 (★40자 이내★, 선택)",
-      "viz_type": "step|cards|compare|kpi|table|flow|org|timeline|callout|none"
+      "section": "표지|목차|사업이해|추진전략|수행조직|일정|예산|프로그램|홍보|안전관리|기대효과|마무리",
+      "shapes": [
+        {"type": "rect", "x": 0, "y": 0, "w": 0.4, "h": 7.5, "fill": "#1A1A1A"},
+        {"type": "text", "x": 0.8, "y": 1.5, "w": 8, "h": 2.5,
+         "text": "거버닝 메시지\n(한 줄 또는 두 줄)",
+         "size": 48, "weight": 900, "color": "#1A1A1A", "align": "left"},
+        {"type": "line", "x1": 0.8, "y1": 5.0, "x2": 4.0, "y2": 5.0,
+         "color": "#1A1A1A", "width": 2},
+        {"type": "circle", "x": 9.5, "y": 1.5, "w": 0.7, "h": 0.7, "fill": "#1A1A1A"},
+        {"type": "arrow", "x1": 1.7, "y1": 4.0, "x2": 11.0, "y2": 4.0,
+         "color": "#1A1A1A", "width": 1.5},
+        {"type": "image", "x": 5, "y": 2, "w": 4, "h": 3, "hint": "행사장 이미지"}
+      ]
     }
   ]
 }
 ```
 
-[규칙 — 절대 준수]
-1. 출력 시작 = `{`, 끝 = `}`. 다른 텍스트·설명·코드블록·주석·"```json" 등 모두 금지.
-2. 슬라이드 수: 최소 8장, 권장 25~50장 (RFP 분량에 따라).
-3. 각 슬라이드 본문 = list[str], 항목 3~5개, 각 ★40~70자★ (마스터 박스에 안 맞으면 잘림).
-3-1. 글자수 제한 — 마스터 PPTX 박스 크기 한계. 어기면 박스 넘쳐서 디자인 깨짐:
-   · 거버닝       : ★25자 이내★ (큰 글자 박스. 길면 줄바꿈 깨짐)
-   · 소제목       : ★30자 이내★
-   · 본문 항목    : ★40~70자★ (불릿 한 줄 분량)
-   · summary      : ★40자 이내★
-   · title        : ★60자 이내★
-3-2. 한국어 기준 (한글 1자 = 1자, 한자/영문도 1자). 띄어쓰기 포함.
-3-3. ⚠ 절대 어기지 말 것. 박스에 안 맞으면 디자인 깨져서 사용 불가능한 PPTX 가 됨.
-4. 거버닝 메시지에 em-dash(—) / hyphen(-) / 콜론(:) / 슬래시(/) 모두 금지.
-   콤마(,) 와 × 기호는 허용.
-5. domain 값은 RFP 분석의 project_domain 그대로 사용.
-6. accent 는 RFP 의 data-accent 또는 도메인 어울리는 #RRGGBB 자율 선택.
-7. viz_type 매핑 가이드:
-   · step    — 절차/단계 (1→2→3→4)
-   · cards   — 4개 강점/특징 병렬
-   · compare — AS-IS vs TO-BE
-   · kpi     — 큰 숫자 강조 (3~4개)
-   · table   — 표 (구분/항목/내용)
-   · flow    — 화살표 프로세스
-   · org     — 조직도
-   · timeline — D-60 ~ D+30 마일스톤
-   · callout — 인용/강조 박스
-   · none    — 일반 텍스트 (본문만)
-8. 컴플라이언스 페이지 (이전엔 HTML 표) → JSON 으로:
-   {"section":"컴플라이언스","거버닝":"RFP 요구사항 100% 반영 확인",
-    "viz_type":"table","본문":["1. 청년 의견 수렴 — 표지·사업이해 페이지","2. 안전관리 — 안전관리 페이지","..."]}
-9. Red Team 페이지 (이전엔 HTML 점수표) → JSON 으로 동일 형식.
+[도형 타입 — 6 가지만]
+**좌표 단위는 모두 인치(inch).** slide_width=13.33, slide_height=7.5 가 표준 16:9.
 
+  ① rect    — 사각형 (배경 바 / 카드 박스 / 색면)
+     필드: x, y, w, h, fill (예 "#000000"), stroke (선택), stroke_width (선택), radius (선택, 라운드)
+  ② text    — 텍스트 박스 (한국어, 줄바꿈은 \\n)
+     필드: x, y, w, h, text, size (포인트), weight (100~900), color, align (left|center|right),
+           valign (top|middle|bottom, 선택), italic (선택, true/false)
+  ③ line    — 직선 (구분선)
+     필드: x1, y1, x2, y2, color, width (포인트, 1~3 권장)
+  ④ arrow   — 화살표 (프로세스 흐름)
+     필드: x1, y1, x2, y2, color, width
+  ⑤ circle  — 원 (단계 번호 / 포인트)
+     필드: x, y, w, h, fill, stroke (선택), stroke_width (선택)  · w=h 로 정원
+  ⑥ image   — 외부 이미지 자리 (운영 환경에서 회색 박스로 placeholder 처리)
+     필드: x, y, w, h, hint (이미지 설명 — 추후 실제 이미지로 대체)
+
+[필드 기본값 / 단위]
+- 모든 좌표·크기 = 인치 (소수점 OK)
+- size = 폰트 포인트 (정수)
+- weight: 100/200/300/400(=normal)/500/600/700(=bold)/800/900
+- color: "#RRGGBB" 또는 그림자 표기 "#000". 이름("black") 안 됨.
+- align: 미지정 시 left, valign 미지정 시 top
+- 배경은 기본 흰색 — 색 배경 깔고 싶으면 슬라이드 전체 크기 rect 를 첫 도형으로
+
+[슬라이드 캔버스]
+- 표준 16:9: slide_width=13.33, slide_height=7.5 (인치)
+- 4:3 클래식: slide_width=10, slide_height=7.5
+- A4 가로: slide_width=11.69, slide_height=8.27
+- 모든 도형은 캔버스 안에 들어와야 함 (밖으로 빠져나가면 잘림)
+
+[레이아웃 디자인 원칙 — SOOZOO 톤 모방]
+당신은 디자이너이자 카피라이터다. 다음 톤을 모든 슬라이드에 일관 유지한다:
+
+▸ 흑백 + 1 액센트 (선택)
+   - 주 컬러: #1A1A1A (거의 검정), #FFFFFF (배경)
+   - 보조: #444 (본문), #999 (메타), #DDD (구분선)
+   - 액센트는 슬라이드당 1개 색만 (아예 안 써도 OK)
+
+▸ 큰 헤드라인 + 짧은 본문 + 풍부한 여백
+   - 거버닝 메시지: 36~60pt, weight 800~900
+   - 부제: 14~18pt, weight 500~600, color #444
+   - 본문: 11~14pt, color #1f2937
+   - 메타/푸터: 9~10pt, color #999
+
+▸ 좌측 정렬 우선 (한국어 가독성)
+   - 표지·구분 슬라이드만 가운데 정렬 가끔 OK
+   - 카드/그리드는 왼쪽 위부터 흐르게
+
+▸ 도형 활용 패턴 (참고 패턴이며 강제는 아님)
+   - 표지: 좌측 검은 세로 바 + 큰 헤드라인 + 부제 + 우측 KPI 숫자 2~3개 + 푸터
+   - 목차: 번호 매긴 큰 텍스트 (Ⅰ. ~ Ⅴ.) + 각 항목 한 줄 부제
+   - 5부 시작 divider: 거대한 챕터 번호 (200pt+) + 챕터명 한 줄
+   - 프로세스: 가로 5단 동그라미 + 잇는 선 + 끝에 화살표 + 단계명 위/아래
+   - KPI: 거대한 숫자 (80~120pt) + 단위 라벨 + 부연 설명 (아래)
+   - 비교 (AS-IS / TO-BE): 좌우 두 박스 + 가운데 화살표 + 각 박스 안 4~5 항목
+   - 표: rect 로 셀 그리고 text 로 채우기 (예: 5열 6행 → rect 30개 + text 30개)
+   - 조직도: 최상위 박스 + 선 + 하위 박스 3~4개
+
+▸ 푸터 일관성 (모든 슬라이드 공통)
+   - y=7.4 부근 가로선 (#DDD)
+   - 좌하단: 회사명/섹션명 (9pt #999)
+   - 우하단: "현재페이지 / 전체페이지" (9pt #999)
+
+[페이지 수 / 분량]
+- 슬라이드 수: 최소 8장, 권장 20~40장 (RFP 분량에 따라)
+- 슬라이드별 도형 수: 5~30개 권장 (적게는 표지, 많게는 표/조직도)
+- 표지 / 목차 / 5개 챕터 divider / 챕터별 5~7장 본문 / 마무리 (감사합니다 — 본문에 포함)
+
+[5부 구조 — shapes 안에 텍스트로 반영]
+   Ⅰ. 제안 개요  /  Ⅱ. 일반 부문  /  Ⅲ. 사업 수행 부문
+   Ⅳ. (도메인별 변형)  /  Ⅴ. (도메인별 변형)
+   + 표지 / 목차 / 마무리 (감사합니다 — 마지막 슬라이드. 부록 X)
+- 챕터 시작 직전 divider 슬라이드 1장: 거대 번호 "Ⅰ" 200pt + 챕터명 36pt + 한 줄 요약 14pt
+
+[거버닝 메시지 — 절대 원칙 재확인]
+- 길이: 25자 이내, 명사형 문어체
+- ⚠⚠⚠ em-dash(—) / hyphen(-) 으로 명사 나열 / 콜론(:) 으로 부제 / 슬래시(/) 나열 절대 금지
+- 콤마(,) 와 × 기호는 OK
+- 좋은 예: "탄소중립, 아동친화, 생태관광까지 잡는 축제 설계"
+- 나쁜 예: "탄소중립 — 아동친화 — 생태관광" (em-dash 나열)
+
+[AI 사투리 제거 — RAG 학습 결과 반영]
+시스템은 수백 건의 실제 공공 제안서를 학습했다. 다음은 **이 분야에서 자연스러운 워딩**:
+- "~ 체계 구축", "~ 운영 모델", "~ 추진 방안", "~ 거버넌스" (비즈니스 명사형)
+- "본 제안에서는", "당사는", "발주처의 ~ 에 부응하여"
+- 수치 단위 항상 명시: "12만 명", "연 15회", "총 사업비 8억 5천만 원"
+- ⚠ 일반 GPT 톤 금지: "혁신적인 솔루션", "효율적인 시스템", "다양한 가치 제공" 같은 추상 형용사
+- ⚠ "~ 을(를) 통해" 남발 금지 — 한 슬라이드 1회만
+- ⚠ 영어 외래어 / 콩글리시 / "synergy" / "leverage" 같은 표현 금지
+
+[도형 검증 자가 점검 — 슬라이드 작성 후 반드시 확인]
+1. 모든 좌표가 캔버스 안 (0 ≤ x+w ≤ slide_width, 0 ≤ y+h ≤ slide_height)?
+2. 텍스트 박스 size·weight 가 권장 범위 안?
+3. 거버닝 메시지에 금지 기호(—, /, : 단일 사용) 없는지?
+4. 푸터(가로선 + 회사명 + 페이지번호) 빠진 슬라이드 없는지?
+5. 한 슬라이드 도형 수 5~30 범위?
+→ 어기면 해당 슬라이드 폐기·재작성.
+
+═══════════════════════════════════════════════════
 [채팅 응답 — 두 모드]
 
 A) 일반 대화 (제안서 요청 아님): 자연어로 친근하게 응답. JSON 출력 X.
 B) 제안서 생성 요청 ("제안서 써줘", "이 RFP 로 제안서 만들어" 등):
-   → 출력 = 위 JSON 한 가지만. 어떤 자연어 설명도 앞뒤에 붙이지 X.
+   → 출력 = 위 도형 JSON 한 가지만. 어떤 자연어 설명도 앞뒤에 붙이지 X.
    → 출력 시작 첫 글자 = `{`, 끝 글자 = `}`.
+   → 코드펜스(```json) 도 붙이지 말 것 — 시스템이 알아서 파싱.
 
-⚠ 채팅에서 사용자가 한 페이지만 수정 요청 시 → JSON 의 해당 slide 만 다시 출력.
-   전체 JSON 다시 출력해도 OK.
-
-⚠ 만약 분석할 RFP 가 부족해 슬라이드 못 만들면 → JSON 이 아닌 자연어로
-   "RFP 정보가 부족해요. 어떤 부분 채워주실래요?" 같은 안내. JSON 거짓 출력 X.
-
-⚠ 사용자 채팅 응답에서 'HTML', '<div>', 'CSS' 등 출력 형식 단어 등장 금지.
-   사용자가 받는 것은 .pptx 파일이고, 시스템이 JSON 을 PPTX 로 변환합니다.
+⚠ 채팅에서 사용자가 한 페이지만 수정 요청 시 → JSON 의 해당 slide 만 다시 출력하거나
+   전체 JSON 다시 출력 (둘 다 OK).
+⚠ 만약 분석할 RFP 가 부족해 슬라이드 못 만들면 → 도형 JSON 이 아닌 자연어로
+   "RFP 정보가 부족해요. 어떤 부분 채워주실래요?" 같은 안내.
+⚠ 사용자 채팅 응답에서 'HTML', '<div>', 'CSS', 'placeholder', 'marker' 등 기술 용어 등장 금지.
+   사용자가 받는 것은 .pptx 파일이고, 시스템이 도형 JSON 을 PPTX 로 변환합니다.
 """
 
 
@@ -2073,7 +2150,13 @@ def _build_system_prompt(client_id: str) -> str:
         if not rfp_analysis.get("orientation"):
             rfp_analysis["orientation"] = "landscape"
         parts.append("[RFP 분석]\n" + json.dumps(rfp_analysis, ensure_ascii=False, indent=2))
-        parts.append(f"[⚠ 필수 준수] data-orientation=\"{rfp_analysis['orientation']}\" — 이 값을 그대로 제안서 루트 div에 기입. 바꾸지 말 것.")
+        # 도형 JSON 모드: orientation → slide_width/slide_height 매핑
+        if rfp_analysis["orientation"] == "portrait":
+            parts.append("[⚠ 캔버스 방향] 도형 JSON 의 slide_width=7.5, slide_height=13.33 (세로형). "
+                         "모든 도형 좌표·크기를 이 캔버스 안에 맞게 배치.")
+        else:
+            parts.append("[⚠ 캔버스 방향] 도형 JSON 의 slide_width=13.33, slide_height=7.5 (가로 16:9). "
+                         "RFP 가 'A4 가로' 로 명시한 경우만 11.69 × 8.27 사용.")
 
         # 도메인 톤 시그널 — LAYER 2 매트릭스 자동 발동
         domain = (rfp_analysis.get("project_domain") or "other").strip().lower()
@@ -2099,11 +2182,22 @@ def _build_system_prompt(client_id: str) -> str:
             "도메인과 무관하게 동일 유지.\n"
             "레퍼런스 스타일 가이드가 함께 있으면 그 가이드가 LAYER 2 보다 우선."
         )
-        # 슬라이드 배경 자동 매칭용 — 각 .proposal-page 에 data-domain 속성 주입
+        # 도형 JSON 모드: 도메인별 색감 힌트 (HTML 속성 X — 도형 fill 색에 직접 반영)
+        domain_palette_hints = {
+            "festival": "축제·감성 — 검정+오렌지(#FF6B35) 액센트, 또는 보라(#6B46C1)",
+            "forum": "지적·권위 — 검정+딥블루(#1E3A8A) 액센트",
+            "education": "논리·신뢰 — 검정+청록(#0F766E) 액센트",
+            "sports": "역동·정밀 — 검정+레드(#DC2626) 액센트",
+            "exhibition": "규모·성과 — 검정+골드(#D97706) 액센트",
+            "campaign": "공감·시민 — 검정+그린(#16A34A) 액센트",
+            "tourism": "발견·매력 — 검정+코랄(#FB7185) 액센트",
+            "rnd": "논리·기술 — 검정+그레이블루(#475569) 액센트, 거의 흑백",
+            "welfare": "온정·돌봄 — 검정+살구(#FB923C) 액센트",
+            "other": "담백·전문 — 흑백 + 다크그레이(#374151) 만",
+        }
         tone_signal.append(
-            f"\n[⚠ 필수 준수] 모든 <div class=\"proposal-page\"> 에 data-domain=\"{domain}\" 속성을 추가.\n"
-            "  → CSS 가 자동으로 분야별 노을빛 그라데이션 배경을 적용함 (festival/forum/exhibition 등).\n"
-            "  → 표지 슬라이드는 추가로 data-section=\"표지\" 도 함께 (보라→오렌지 강조 배경)."
+            f"\n[⚠ 도메인 색감] {domain_palette_hints.get(domain, domain_palette_hints['other'])}\n"
+            "  → 슬라이드당 액센트 색은 1개만, 본문은 흑백 유지 (가독성)."
         )
         parts.append("\n".join(tone_signal))
 
@@ -2257,11 +2351,12 @@ def _build_system_prompt(client_id: str) -> str:
             lines.append("❌ 패배 사례: " + ", ".join(r["title"] for r in lost_rows))
         parts.append("[승패 기록 — 승리 패턴 우선 반영, 패배 원인 회피]\n" + "\n".join(lines))
 
-    # [마스터 슬롯 가이드] — placeholder 모드 마스터일 때만 주입
-    # AI 가 마스터 슬롯 개수에 정확히 맞춰 콘텐츠 짜게 → mismatch 방지
+    # [마스터 슬롯 가이드] — DEPRECATED (도형 JSON 모드에서는 사용 안 함)
+    # placeholder/master 매핑 모드 폴백 시에만 의미가 있어 주입 비활성화.
+    # 환경변수 ENABLE_MASTER_SLOT_GUIDE=1 일 때만 (legacy 디버그용) 주입.
     try:
         import pptx_generator as _pg
-        master_path = _pg.find_master_template()
+        master_path = _pg.find_master_template() if os.environ.get("ENABLE_MASTER_SLOT_GUIDE") == "1" else None
         if master_path and master_path.exists():
             slots = _master_slot_cache_get(master_path)
             if slots:
@@ -3676,6 +3771,44 @@ def api_proposals_pptx(body: PptxExportIn):
 
     if not pages:
         raise HTTPException(500, "제안서 슬라이드 데이터를 추출하지 못했어요.")
+
+    # 0. 도형 JSON 모드 자동 감지 — slides[*].shapes 가 있으면 자유 레이아웃 모드
+    is_shape_mode = False
+    if proposal_json is not None:
+        for s in proposal_json.get("slides", []):
+            if isinstance(s, dict) and isinstance(s.get("shapes"), list) and s["shapes"]:
+                is_shape_mode = True
+                break
+
+    if is_shape_mode:
+        log.info("PPTX 생성: 도형 JSON 모드 (slides=%d)", len(proposal_json.get("slides", [])))
+        try:
+            import pptx_generator
+            shape_result = pptx_generator.generate_from_shape_json(proposal_json, out_path)
+            slide_count = shape_result.get("slide_count", 0)
+            errors = shape_result.get("errors") or []
+            if errors:
+                log.warning("도형 모드 렌더 경고 %d 건: %s", len(errors), errors[:3])
+            # conversations 에 PPTX 경로 기록
+            try:
+                with get_db() as db:
+                    db.execute(
+                        "UPDATE conversations SET pptx_path=?, pptx_updated_at=datetime('now','localtime') "
+                        "WHERE id=?",
+                        (f"/static/exports/{disk_fname}", body.conversation_id),
+                    )
+            except Exception as e:
+                log.warning("conversations.pptx_path 기록 실패 (무시): %s", e)
+            return {
+                "url": f"/static/exports/{disk_fname}",
+                "filename": download_name,
+                "page_count": slide_count,
+                "mode": "shape",
+                "render_errors": errors[:5],
+            }
+        except Exception as e:
+            log.exception("도형 모드 실패 — placeholder/fallback 으로 전환: %s", e)
+            # fallthrough → 기존 모드 시도
 
     # 1. 마스터 템플릿 우선 시도
     used_master = False

@@ -33,6 +33,43 @@ from pptx.dml.color import RGBColor
 log = logging.getLogger("pptx_gen")
 
 
+# ─── Paperlogy weight 9 단계 매핑 ──────────────────────────────────────────────
+# 도형 JSON 의 weight (100~900) 값을 받아 PowerPoint 의 typeface 명으로 매핑.
+# 폰트 이름은 ttf internal Family Name (nameID 1) — Windows PowerPoint /
+# LibreOffice 가 표준으로 매칭하는 형식. PostScript name (Paperlogy-1Thin)
+# 이 아닌 Family Name (Paperlogy 1 Thin, 스페이스 포함) 으로 정확히 박아야
+# 폰트 매칭 실패 시 기본 폰트 (맑은 고딕 등) 로 폴백되지 않는다.
+WEIGHT_FONT_MAP: dict[int, str] = {
+    100: "Paperlogy 1 Thin",
+    200: "Paperlogy 2 ExtraLight",
+    300: "Paperlogy 3 Light",
+    400: "Paperlogy 4 Regular",
+    500: "Paperlogy 5 Medium",
+    600: "Paperlogy 6 SemiBold",
+    700: "Paperlogy 7 Bold",
+    800: "Paperlogy 8 ExtraBold",
+    900: "Paperlogy 9 Black",
+}
+DEFAULT_FONT_FAMILY = WEIGHT_FONT_MAP[400]  # "Paperlogy 4 Regular"
+
+
+def _normalize_weight(weight) -> int:
+    """임의 weight 값 → 가장 가까운 100 단위 (100~900) 로 정규화."""
+    try:
+        w = int(weight) if weight else 400
+    except (TypeError, ValueError):
+        w = 400
+    w = round(w / 100) * 100
+    return max(100, min(900, w))
+
+
+def _resolve_font(font_family, weight) -> str:
+    """font_family 명시 시 우선, 미지정 시 weight 기반 자동 매핑."""
+    if font_family:
+        return str(font_family)
+    return WEIGHT_FONT_MAP.get(_normalize_weight(weight), DEFAULT_FONT_FAMILY)
+
+
 # ─── AUTO 모드 텍스트 영역 식별 ───────────────────────────────
 
 def _run_size_pt(run) -> float:
@@ -1462,6 +1499,10 @@ def _add_text(slide, x, y, w, h, text, *,
     }
 
     lines = (text or "").split("\n")
+    # weight 기반 자동 폰트 매핑 (font_family 명시 시 그것이 우선)
+    target_font = _resolve_font(font_family, weight)
+    weight_norm = _normalize_weight(weight)
+
     for i, line in enumerate(lines):
         p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
         try:
@@ -1474,18 +1515,17 @@ def _add_text(slide, x, y, w, h, text, *,
             run.font.size = Pt(float(size))
         except Exception:
             run.font.size = Pt(14)
-        try:
-            run.font.bold = int(weight) >= 600
-        except Exception:
-            run.font.bold = False
+        # PowerPoint 호환 bool bold 유지 (weight 600 이상이면 True)
+        # — 매핑된 폰트가 이미 굵기 표현하지만 PowerPoint 기본 렌더링 호환용
+        run.font.bold = weight_norm >= 600
         if italic:
             run.font.italic = True
         run.font.color.rgb = _hex_to_rgb(color)
-        if font_family:
-            try:
-                run.font.name = str(font_family)
-            except Exception:
-                pass
+        # 폰트 매핑: font_family 명시 우선 → weight 자동 매핑 (Paperlogy 9 단계)
+        try:
+            run.font.name = target_font
+        except Exception:
+            pass
     return box
 
 
@@ -1655,8 +1695,8 @@ def generate_from_shape_json(json_data, output_path):
     json_data 형식:
       {
         "title": "...",
-        "slide_width": 11.7,        # 옵션 (inch)
-        "slide_height": 8.3,        # 옵션
+        "slide_width": 13.33,       # 옵션 (inch). 기본 16:9
+        "slide_height": 7.5,        # 옵션
         "slides": [
           {
             "section": "표지",
@@ -1677,8 +1717,9 @@ def generate_from_shape_json(json_data, output_path):
     if not isinstance(slides_data, list) or not slides_data:
         raise ValueError("slides 배열 비어있거나 list 아님")
 
-    sw = float(json_data.get("slide_width", 11.7))
-    sh = float(json_data.get("slide_height", 8.3))
+    # 기본값 16:9 (13.33×7.5) — 시스템 프롬프트 / OUTLINE / SLIDE 모두 정합
+    sw = float(json_data.get("slide_width", 13.33))
+    sh = float(json_data.get("slide_height", 7.5))
 
     prs = Presentation()
     prs.slide_width = Inches(sw)

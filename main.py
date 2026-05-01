@@ -1249,6 +1249,56 @@ B) 제안서 생성 요청 ("제안서 써줘", "이 RFP 로 제안서 만들어
 """
 
 
+CHAT_SYSTEM_PROMPT = """NightOff 의 전략 논의 파트너다.
+한국 공공 입찰 정성 제안서 도메인의 전략 토론을 다룬다.
+
+[채팅의 용도]
+이 채팅은 정보 조회가 아니라 **함께 사고하는 토론** 이다.
+- "차별화 포인트 어디로 잡지?" 같은 전략 토론
+- "발주처가 진짜 원하는 게 뭘까?" 같은 행간 읽기
+- "경쟁사가 어떻게 들어올까?" 같은 시뮬레이션
+- "Winning theme 한 줄로 정리하면?" 같은 메시지 정제
+
+[별도 기능과의 분리 — 채팅에서 시도하지 마라]
+다음 작업은 채팅 모드에서 처리하지 않는다. 사용자가 채팅에서 요청하면 해당 기능을 안내:
+
+- **제안서 생성** (전체 PPTX 작성) → "✨ 제안서 생성 버튼을 눌러주세요. 비용·시간 확인 후 진행됩니다."
+- **RFP 분석** → "RFP 업로드 화면에서 자동 분석됩니다. 결과를 함께 토론하면 좋겠어요."
+- **자체 검증 / 점수 시뮬레이션** → "🔍 자체 검증 버튼을 눌러주세요. Compliance + Red Team 통합 분석이 떠요."
+- **발주처 들여다보기** → "발주처 인텔 패널이 별도로 있어요. 그 결과를 보고 함께 토론합시다."
+- **입찰 히스토리** → "발주처 상세 페이지의 대화 히스토리에서 보세요. 그 결과를 함께 토론하면 좋겠어요."
+
+[응답 톤]
+- 짧고 본질적. 한 응답은 보통 3~7 줄, 깊은 토론도 15 줄 이내.
+- **답을 정해주기보다 사용자 사고를 자극** 한다. 단 "어떻게 생각하세요?" 같은 약한 질문 남발 금지.
+- 본인 분석·직감을 먼저 제시 → 사용자 반응 기다림.
+- 추측은 "추측인데", 확신은 "이건 확실히" 명시. 모르는 것은 "확인 필요" 솔직히.
+
+[글투 — PROPOSAL_SYSTEM_PROMPT 의 핵심 계승]
+- em-dash (—), 콜론 (:) 으로 명사 나열 금지
+- 슬래시 (/) 나열 금지 (단 비율 표기 99.97%/24h 같은 건 OK)
+- 추상 형용사 (혁신적·효율적·다양한·체계적·탁월한·우수한·통합적인·전략적인) 금지
+- 영어 직역 어조 ("~ 할 수 있습니다", "~ 하는 것이 좋습니다") 회피 — 단 격식체 자체는 OK
+- 메타 멘트 ("이는 매우 중요한 점입니다", "다음과 같은 이유로") 금지
+- 영어 외래어 (synergy, leverage, engagement) 금지
+- 번호 매김 강박 금지 (모든 답을 1·2·3 으로 만들지 말 것)
+- 수치는 단위까지 ("12 만 명", "연 15 회", "총 사업비 8 억 5 천만 원")
+
+[도메인 컨텍스트]
+사용자가 작업 중인 RFP / 발주처 / 사업명이 본 시스템 프롬프트에 별도 inject 된다.
+그 컨텍스트를 적극 활용 — 발주처명·사업명·평가 기준·요구사항 모두 정확히 인지.
+domain 정보가 함께 들어오면 그 도메인의 어미·어휘·톤도 자연스럽게 반영.
+
+[출력 형식]
+**순수 텍스트 대화만.** 도형 JSON / HTML / `<div>` / 마크업 / 코드블록 절대 출력 X.
+긴 목록이 필요하면 한국어 줄바꿈 + 짧은 불릿 (·) 정도. 표 마크다운도 X.
+
+[모르는 것]
+함부로 단정하지 말고 같이 사고. RFP / 발주처 정보가 부족하면
+"RFP 어떤 부분 더 보여줄 수 있어요?" 같은 짧은 추가 질문.
+"""
+
+
 RFP_ANALYSIS_PROMPT = """당신은 공공/민간 입찰 RFP·과업지시서·공고문 분석 전문가입니다.
 아래 1개 이상의 문서가 제공됩니다. 각 문서 앞에 [ROLE: 공고문|과업지시서|제안요청서|기타] 표기가 있습니다.
 
@@ -2608,6 +2658,67 @@ def _format_chat_block_intel(intel_row) -> str:
     return "\n".join(lines)
 
 
+def _build_chat_system_prompt(client_id: str) -> str:
+    """채팅용 시스템 프롬프트.
+
+    CHAT_SYSTEM_PROMPT 정적 본문 (전략 논의 파트너 정체성) +
+    8 inject 블록 (#1 client / #2 RFP / #4 도메인 톤 / #8 refs / #9 memories /
+    #10 intel / #11 profile / #13 outcomes).
+
+    PROPOSAL/SLIDE 흐름과 분리 — 도형 JSON / RAG / 캔버스 / 색감 가이드 없음.
+    api_chat (자연어 채팅) 전용. 캐시 X (PROPOSAL 패턴과 일관).
+    """
+    # DB 조회 (PROPOSAL 패턴 동일 — 9건)
+    with get_db() as db:
+        client = db.execute("SELECT * FROM clients WHERE id=?", (client_id,)).fetchone()
+        refs = db.execute(
+            "SELECT id, filename, summary FROM references_lib WHERE client_id=? ORDER BY created_at",
+            (client_id,),
+        ).fetchall()
+        memories = db.execute(
+            "SELECT category, content, tags FROM nuance_memories WHERE client_id=? ORDER BY created_at DESC LIMIT 30",
+            (client_id,),
+        ).fetchall()
+        intel_row = db.execute(
+            "SELECT intel_json FROM client_intel WHERE client_id=?",
+            (client_id,),
+        ).fetchone()
+        profile_row = db.execute(
+            "SELECT * FROM client_profiles WHERE client_id=?",
+            (client_id,),
+        ).fetchone()
+        won_rows = db.execute(
+            "SELECT title FROM conversations WHERE client_id=? AND outcome='won' ORDER BY updated_at DESC LIMIT 5",
+            (client_id,),
+        ).fetchall()
+        lost_rows = db.execute(
+            "SELECT title FROM conversations WHERE client_id=? AND outcome='lost' ORDER BY updated_at DESC LIMIT 5",
+            (client_id,),
+        ).fetchall()
+    rfp_analysis = _get_rfp_aggregated(client_id)
+
+    parts = [CHAT_SYSTEM_PROMPT]
+
+    if (block := _format_client_block(client)):
+        parts.append(block)
+    if (block := _format_chat_block_rfp_summary(rfp_analysis)):
+        parts.append(block)
+    if (block := _format_chat_block_domain_tone(rfp_analysis)):
+        parts.append(block)
+    if (block := _format_chat_block_refs(refs)):
+        parts.append(block)
+    if (block := _format_chat_block_memories(memories)):
+        parts.append(block)
+    if (block := _format_chat_block_intel(intel_row)):
+        parts.append(block)
+    if (block := _format_chat_block_profile(profile_row)):
+        parts.append(block)
+    if (block := _format_chat_block_outcomes(won_rows, lost_rows)):
+        parts.append(block)
+
+    return "\n\n".join(parts)
+
+
 def _build_system_prompt(client_id: str) -> str:
     """RFP 분석, 뉘앙스, 레퍼런스를 시스템 프롬프트에 주입."""
     with get_db() as db:
@@ -2903,7 +3014,8 @@ def api_chat(conv_id: str, body: ChatIn):
             (conv_id,),
         ).fetchall()
 
-    system_prompt = _build_system_prompt(client_id)
+    # 자연어 채팅 = 전략 토론 모드 → CHAT_SYSTEM_PROMPT 사용 (PROPOSAL 분리)
+    system_prompt = _build_chat_system_prompt(client_id)
     messages = [{"role": m["role"], "content": m["content"]} for m in hist if m["content"]]
 
     try:
@@ -2975,8 +3087,8 @@ async def api_proposals_generate_multipass(conv_id: str):
         client_id = conv["client_id"]
     # company_name inject 제거 (한국 공공입찰 청렴제 — 본문 회사명 등장 비정상)
 
-    # RFP / RAG / 인텔 블록을 시스템 프롬프트 빌더에서 재사용해 추출
-    system_full = _build_system_prompt(client_id)
+    # RFP 분석 결과만 추출 — multi-pass orchestrator 가 자체 OUTLINE/SLIDE 프롬프트 사용
+    # (이전 system_full = _build_system_prompt(...) 호출 dead code 제거)
     rfp_analysis = _get_rfp_aggregated(client_id)
 
     # RAG global 블록 (Phase 1 outline 호출용)

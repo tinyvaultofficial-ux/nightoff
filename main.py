@@ -2148,6 +2148,29 @@ def _get_rfp_aggregated(client_id: str) -> Optional[dict]:
     return None
 
 
+def _format_client_block(client) -> str:
+    """발주처 정보 블록 (PROPOSAL + CHAT 공용).
+
+    clients 테이블 row 1건 → '[현재 발주처]' 시작 멀티라인 텍스트.
+    organization (사용자 입력 발주 기관명) 명시 노출 — 이전 PROPOSAL inline
+    코드의 누락 정합성 패치. 빈 컬럼은 그 줄 통째 생략. organization 미입력 시
+    '(미입력)' 표기로 안내 트리거. 빈 client (None) 안전망 포함.
+    """
+    if not client:
+        return ""
+    lines = ["[현재 발주처]"]
+    org = (client["organization"] or "").strip()
+    lines.append(f"- 발주 기관: {org or '(미입력)'}")
+    lines.append(f"- 별명: {client['name']}")
+    for key, label in (("industry", "업종"), ("manager", "담당자"), ("memo", "메모")):
+        v = (client[key] or "").strip()
+        if v:
+            if key == "memo":
+                v = v[:200]
+            lines.append(f"- {label}: {v}")
+    return "\n".join(lines)
+
+
 def _build_system_prompt(client_id: str) -> str:
     """RFP 분석, 뉘앙스, 레퍼런스, 강점을 시스템 프롬프트에 주입."""
     with get_db() as db:
@@ -2163,8 +2186,8 @@ def _build_system_prompt(client_id: str) -> str:
 
     parts = [PROPOSAL_SYSTEM_PROMPT, ""]
 
-    if client:
-        parts.append(f"[현재 발주처]\n- 이름: {client['name']}\n- 업종: {client['industry']}\n- 담당자: {client['manager']}\n- 메모: {client['memo']}")
+    if (block := _format_client_block(client)):
+        parts.append(block)
 
     rfp_analysis = _get_rfp_aggregated(client_id)
     # 에러 블록(실제 정보 없음) 은 시스템 프롬프트에 주입하지 않음

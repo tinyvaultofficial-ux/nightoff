@@ -3162,16 +3162,15 @@ async function renderChat(cid, convId) {
       ]),
       // ✨ 제안서 생성 (multi-pass) — 명시적 버튼
       h("button", {
-        class: "btn btn-primary", title: "Multi-pass 모드 — 슬라이드별 분리 호출로 빽빽하게",
+        class: "btn btn-primary",
         html: `<span style="margin-right:4px;">✨</span><span>제안서 생성</span>`,
         onclick: async () => {
-          if (!confirm("Multi-pass 모드로 제안서를 생성합니다.\n\n· 슬라이드별 분리 호출 (~1~2분 소요)\n· 슬라이드당 도형 15~50개로 빽빽하게\n· 비용 ~$0.65/건 (single-pass ~10배)\n\n진행할까요?")) return;
           // 채팅 input 영역에 진행률 표시 — 가짜 user 메시지로 시각화
           const msgs = document.querySelector(".msgs") || document.querySelector("[class*='msg-list']");
           if (!msgs) { toast("채팅 영역을 못 찾았어요", "error"); return; }
           const userBubble = h("div", { class: "msg-row user" }, [
             h("div", { class: "msg-body" }, [
-              h("div", { class: "msg-bubble" }, "✨ 제안서 생성 (Multi-pass)"),
+              h("div", { class: "msg-bubble" }, "✨ 제안서 생성"),
             ]),
           ]);
           msgs.appendChild(userBubble);
@@ -3937,7 +3936,7 @@ async function runMultiPassProposal({ convId, asstEl, bubble, progress, body, ms
     }
   }
 
-  if (!finalDone) throw new Error("Multi-pass 가 완료 이벤트 없이 종료됐어요.");
+  if (!finalDone) throw new Error("제안서 생성이 완료되지 않았어요.");
 
   progress.finish(true);
 

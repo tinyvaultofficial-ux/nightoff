@@ -2171,6 +2171,112 @@ def _format_client_block(client) -> str:
     return "\n".join(lines)
 
 
+def _format_chat_block_rfp_summary(rfp_analysis: Optional[dict]) -> str:
+    """블록 #2 RFP 분석 핵심 필드 요약 (CHAT 용).
+
+    PROPOSAL 흐름의 전체 JSON dump (~2,034자) 와 달리 13 핵심 필드만,
+    한국어 라벨 + 불릿 + 각 필드 cap 적용. organization 은 #1 [현재 발주처]
+    블록에서 노출되므로 본 블록에서 생략. 빈 필드는 그 줄 통째 생략.
+    """
+    if not rfp_analysis:
+        return ""
+
+    lines: list[str] = []
+
+    def _add(label: str, value):
+        """단일 값 + 라벨 inject. 빈 값이면 줄 추가 X."""
+        if value is None:
+            return
+        s = str(value).strip()
+        if s:
+            lines.append(f"- {label}: {s}")
+
+    # 1. 사업명
+    _add("사업명", (rfp_analysis.get("title") or "").strip())
+
+    # 2. 도메인 (한글 라벨)
+    _add("도메인", (rfp_analysis.get("project_domain_label") or "").strip())
+
+    # 3. 톤 힌트 (100자 cap)
+    tone_hint = (rfp_analysis.get("project_tone_hint") or "").strip()[:100]
+    _add("톤 힌트", tone_hint)
+
+    # 4. 청중
+    _add("청중", (rfp_analysis.get("target_audience") or "").strip())
+
+    # 5. 마감
+    _add("마감", (rfp_analysis.get("deadline") or "").strip())
+
+    # 6. 예산
+    _add("예산", (rfp_analysis.get("budget") or "").strip())
+
+    # 7. 평가 기준 — 한 줄 요약 (라벨 약화 + "점" 중복 제거)
+    ec = rfp_analysis.get("evaluation_criteria") or []
+    if isinstance(ec, list) and ec:
+        try:
+            parts: list[str] = []
+            for c in ec[:5]:
+                if not isinstance(c, dict):
+                    continue
+                item = str(c.get("item") or "").strip()
+                weight = str(c.get("weight") or "").strip()
+                if not item:
+                    continue
+                # 라벨 약화: "기술능력평가(정량적 평가)" → "기술능력평가(정량)"
+                item_short = re.sub(
+                    r"\((정량적 평가|정성적 평가|정량평가|정성평가)\)",
+                    lambda m: "(정량)" if "정량" in m.group(1) else "(정성)",
+                    item,
+                )
+                parts.append(f"{item_short} {weight}".strip())
+            if parts:
+                lines.append("- 평가 기준: " + " / ".join(parts))
+        except Exception:
+            pass
+
+    # 8. 핵심 요구사항 — 5개, 80자 cap
+    kr = rfp_analysis.get("key_requirements") or []
+    if isinstance(kr, list) and kr:
+        items = [str(r).strip()[:80] for r in kr[:5] if r]
+        if items:
+            lines.append("- 핵심 요구사항:")
+            for it in items:
+                lines.append(f"  · {it}")
+
+    # 9. 리스크 — 3개, 80자 cap
+    rp = rfp_analysis.get("risk_points") or []
+    if isinstance(rp, list) and rp:
+        items = [str(r).strip()[:80] for r in rp[:3] if r]
+        if items:
+            lines.append("- 리스크:")
+            for it in items:
+                lines.append(f"  · {it}")
+
+    # 10. 산출물 — 5개, 50자 cap
+    dl = rfp_analysis.get("deliverables") or []
+    if isinstance(dl, list) and dl:
+        items = [str(r).strip()[:50] for r in dl[:5] if r]
+        if items:
+            lines.append("- 산출물: " + " / ".join(items))
+
+    # 11. PT 일정 — 120자 cap
+    pt = (rfp_analysis.get("pt_schedule") or "").strip()[:120]
+    _add("PT 일정", pt)
+
+    # 12. 제출 방법 — 120자 cap
+    sf = (rfp_analysis.get("submission_format") or "").strip()[:120]
+    _add("제출 방법", sf)
+
+    # 13. 한 줄 요약 — 300자 cap
+    summary = (rfp_analysis.get("summary") or "").strip()[:300]
+    _add("한 줄 요약", summary)
+
+    if not lines:
+        return ""
+
+    return "[RFP 분석]\n" + "\n".join(lines)
+
+
 def _format_chat_block_domain_tone(rfp_analysis: Optional[dict]) -> str:
     """블록 #4 도메인 톤 (CHAT 용).
 
@@ -2324,6 +2430,181 @@ def _format_chat_block_profile(profile_row) -> str:
     if sample_count < 5:
         lines.append(f"(분석 샘플 {sample_count}건 — 신뢰도 참고용)")
 
+    return "\n".join(lines)
+
+
+def _format_chat_block_memories(memories) -> str:
+    """블록 #9 뉘앙스 메모리 (CHAT 용).
+
+    nuance_memories 테이블 row list (PROPOSAL 30개 LIMIT → CHAT 10개로 약화).
+    한국어 라벨 + 불릿 + 시간순 (PROPOSAL 패턴 정합).
+    content 50자 cap. 카테고리 빈값 시 [기타] 폴백. tags 무시.
+
+    빈 입력 / 모든 row content 빈 시 빈 문자열 (블록 통째 생략).
+    """
+    if not memories:
+        return ""
+
+    lines = []
+    for m in memories[:10]:
+        if not m:
+            continue
+        try:
+            content = (m["content"] or "").strip()[:50]
+        except (KeyError, IndexError, TypeError):
+            content = ""
+        if not content:
+            continue
+        try:
+            category = (m["category"] or "").strip() or "기타"
+        except (KeyError, IndexError, TypeError):
+            category = "기타"
+        lines.append(f"- [{category}] {content}")
+
+    if not lines:
+        return ""
+
+    return "[대화 기억(뉘앙스) — 최근 10개]\n" + "\n".join(lines)
+
+
+def _format_chat_block_refs(refs) -> str:
+    """블록 #8 레퍼런스 스타일 가이드 (CHAT 용).
+
+    references_lib row list (PROPOSAL 의 무 LIMIT → CHAT 3개로 약화).
+    summary JSON 분기 / 평문 분기 둘 다 처리. JSON 은 4 핵심 필드만 압축.
+
+    PROPOSAL 의 도형 JSON 모드 강제 표현 ("그대로 흉내내 새 제안서에 적용") 제거.
+    CHAT 은 토론 컨텍스트로 자연 활용.
+
+    빈 입력 / 모든 row 빈 summary → 빈 문자열 (블록 통째 생략).
+    """
+    if not refs:
+        return ""
+
+    def _extract_json_summary(parsed: dict) -> list[str]:
+        """JSON summary parsed dict → CHAT inject 라인들 (핵심 4 필드만)."""
+        block: list[str] = []
+        if parsed.get("summary"):
+            block.append(f"  요약: {str(parsed['summary'])[:120]}")
+        tone = parsed.get("tone")
+        if isinstance(tone, dict):
+            if tone.get("governing_message"):
+                block.append(f"  거버닝 톤: {str(tone['governing_message'])[:80]}")
+            samples = tone.get("sample_governing")
+            if isinstance(samples, list) and samples:
+                joined = " | ".join(str(s).strip()[:60] for s in samples[:2] if s)
+                if joined:
+                    block.append(f"  거버닝 메시지 예시: {joined}")
+        patterns = parsed.get("reusable_patterns")
+        if isinstance(patterns, list) and patterns:
+            joined = " / ".join(str(p).strip()[:50] for p in patterns[:3] if p)
+            if joined:
+                block.append(f"  재활용 패턴: {joined}")
+        return block
+
+    parts: list[str] = []
+    for r in refs[:3]:
+        if not r:
+            continue
+        try:
+            filename = (r["filename"] or "").strip()
+        except (KeyError, IndexError, TypeError):
+            filename = ""
+        try:
+            s = (r["summary"] or "").strip()
+        except (KeyError, IndexError, TypeError):
+            s = ""
+        if not filename and not s:
+            continue
+
+        ref_lines = [f"◆ {filename or '(파일명 없음)'}"]
+        if s.startswith("{"):
+            try:
+                parsed = json.loads(s)
+                if isinstance(parsed, dict):
+                    extracted = _extract_json_summary(parsed)
+                    if extracted:
+                        ref_lines.extend(extracted)
+                    else:
+                        ref_lines.append(f"  요약: {s[:100]}")
+                else:
+                    ref_lines.append(f"  요약: {s[:100]}")
+            except Exception:
+                ref_lines.append(f"  요약: {s[:100]}")
+        elif s:
+            ref_lines.append(f"  요약: {s[:100]}")
+
+        if len(ref_lines) > 1:
+            parts.extend(ref_lines)
+
+    if not parts:
+        return ""
+
+    return "[레퍼런스 스타일 가이드 — 최근 3개]\n" + "\n".join(parts)
+
+
+def _format_chat_block_intel(intel_row) -> str:
+    """블록 #10 발주처 들여다보기 (CHAT 용).
+
+    client_intel.intel_json 의 6 필드 (summary / basic_info / event_history /
+    tendency / key_people / communication_tips) 압축 inject.
+
+    PROPOSAL 의 json.dumps(indent=2) (~960자) 와 달리 한국어 라벨 + 불릿 +
+    카테고리당 LIMIT/cap 적용. basic_info.official_name 은 #1 발주처 블록과
+    중복 회피로 생략.
+
+    intel.error 키 있으면 빈 문자열 (intel 수집 실패 케이스).
+    """
+    if not intel_row:
+        return ""
+    try:
+        intel = json.loads(intel_row["intel_json"] or "{}")
+    except Exception:
+        intel = {}
+    if not intel or not isinstance(intel, dict) or intel.get("error"):
+        return ""
+
+    def _format_intel_list(label: str, items, n: int, cap: int) -> list[str]:
+        if not isinstance(items, list) or not items:
+            return []
+        cleaned = [str(x).strip()[:cap] for x in items[:n] if x]
+        cleaned = [x for x in cleaned if x]
+        if not cleaned:
+            return []
+        out = [f"- {label}:"]
+        for x in cleaned:
+            out.append(f"  · {x}")
+        return out
+
+    lines = ["[발주처 들여다보기]"]
+
+    # basic_info (inline, official_name 생략 — #1 발주처 블록 중복 회피)
+    bi = intel.get("basic_info")
+    if isinstance(bi, dict):
+        bi_parts: list[str] = []
+        for k in ("type", "main_role"):
+            v = (bi.get(k) or "").strip()[:80]
+            if v:
+                bi_parts.append(v)
+        web = (bi.get("website") or "").strip()
+        if web:
+            bi_parts.append(web)
+        if bi_parts:
+            lines.append("- 기본 정보: " + " · ".join(bi_parts))
+
+    # summary (160자)
+    summary = (intel.get("summary") or "").strip()[:160]
+    if summary:
+        lines.append(f"- 한 줄 요약: {summary}")
+
+    # 4 list inner helper
+    lines.extend(_format_intel_list("과거 행사", intel.get("event_history"), 2, 50))
+    lines.extend(_format_intel_list("성향", intel.get("tendency"), 3, 50))
+    lines.extend(_format_intel_list("핵심 인물", intel.get("key_people"), 2, 30))
+    lines.extend(_format_intel_list("커뮤니케이션 팁", intel.get("communication_tips"), 3, 60))
+
+    if len(lines) <= 1:
+        return ""
     return "\n".join(lines)
 
 

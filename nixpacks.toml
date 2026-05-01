@@ -3,7 +3,7 @@
 # noto-fonts-cjk-sans / nanum — 한글 폰트 (LibreOffice 가 PDF 변환 시 한글 렌더에 사용)
 #   없으면 한글이 □ tofu 박스로 출력됨
 nixPkgs = ["python312", "gcc", "libreoffice", "fontconfig",
-           "noto-fonts-cjk-sans", "nanum"]
+           "noto-fonts-cjk-sans", "nanum", "coreutils"]
 
 [phases.install]
 cmds = [

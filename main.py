@@ -464,7 +464,7 @@ def require_client() -> anthropic.Anthropic:
     key = get_api_key()
     if not key:
         raise HTTPException(status_code=400, detail="API 키가 설정되지 않았습니다. 좌하단 설정에서 등록해주세요.")
-    return anthropic.Anthropic(api_key=key, timeout=60.0, max_retries=2)
+    return anthropic.Anthropic(api_key=key, timeout=300.0, max_retries=1)
 
 
 def translate_anthropic_error(exc: Exception) -> str:

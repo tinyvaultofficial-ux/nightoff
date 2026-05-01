@@ -3267,6 +3267,29 @@ async function renderChat(cid, convId) {
     const progress = createStreamProgress();
     asstEl.querySelector(".msg-body").insertBefore(progress.el, bubble);
 
+    // ─── Multi-pass 분기 — 사용자 메시지에 "제안서" 키워드 + 동사 있으면 ───
+    // 일반 대화는 기존 /chat 으로, 제안서 생성은 /proposals/generate (SSE 별 이벤트)
+    const isProposalRequest =
+      /제안서/.test(text) &&
+      /(만들|써|작성|생성|뽑|초안|만드|만들어)/.test(text);
+    if (isProposalRequest) {
+      try {
+        await runMultiPassProposal({
+          convId, asstEl, bubble, progress, body, msgs,
+          aborter: aborter,
+        });
+      } catch (e) {
+        console.error("multi-pass 실패:", e);
+        bubble.innerHTML = `<span style="color:var(--danger);">❌ ${escapeHtml(e.message || String(e))}</span>`;
+        progress.finish(false);
+      } finally {
+        streaming = false; sendBtn.disabled = false; ta.disabled = false;
+        sendBtn.classList.remove("hidden"); stopBtn.classList.add("hidden");
+        aborter = null;
+      }
+      return;
+    }
+
     aborter = new AbortController();
     let targetText = "";    // 서버에서 받아 누적한 실제 full text
     let displayedText = ""; // 화면에 출력된 길이
@@ -3782,6 +3805,123 @@ function createStreamProgress() {
   }
 
   return { el, update, finish };
+}
+
+// ─── Multi-pass 제안서 생성 — SSE 받으면서 진행률 표시 + 끝나면 PPTX 변환 ───
+async function runMultiPassProposal({ convId, asstEl, bubble, progress, body, msgs }) {
+  bubble.innerHTML =
+    '<div class="json-stream-placeholder">' +
+      '<span class="loading-dots"><span></span><span></span><span></span></span>' +
+      '<span class="muted">목차 작성을 시작합니다…</span>' +
+    '</div>';
+
+  // 우측 미리보기 패널 preparing 모드
+  try { window.shellSetSidePanelPng && window.shellSetSidePanelPng("preparing"); } catch {}
+
+  const resp = await fetch(`/api/conversations/${convId}/proposals/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!resp.ok) throw new Error(await resp.text());
+
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  let totalSlides = 0;
+  let okCount = 0;
+  let failCount = 0;
+  let outlineLines = [];
+  let finalDone = false;
+
+  // progress UI 헬퍼
+  const sectionEl = progress.el.querySelector(".sp-section");
+  const countEl = progress.el.querySelector(".sp-count");
+  const fillEl = progress.el.querySelector(".sp-bar-fill");
+  progress.el.classList.remove("indeterminate");
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split("\n\n");
+    buf = lines.pop();
+    for (const line of lines) {
+      const m = line.match(/^data: (.*)$/s);
+      if (!m) continue;
+      let ev;
+      try { ev = JSON.parse(m[1]); } catch { continue; }
+
+      if (ev.type === "phase") {
+        sectionEl.textContent = ev.message || ev.phase;
+        if (ev.phase === "outline") {
+          progress.el.classList.add("indeterminate");
+        } else {
+          progress.el.classList.remove("indeterminate");
+        }
+        countEl.textContent = ev.phase === "outline" ? "분석 중" : "";
+      } else if (ev.type === "outline_done") {
+        totalSlides = ev.total_slides || (ev.outline || []).length;
+        outlineLines = (ev.outline || []).map(o => `p${o.page}. ${o.section} · ${o.governing}`);
+        progress.el.classList.remove("indeterminate");
+        sectionEl.textContent = `목차 작성 완료 — 슬라이드 ${totalSlides}장 병렬 작성 시작`;
+        countEl.textContent = `0 / ${totalSlides}`;
+        fillEl.style.width = "5%";
+        // bubble 에 목차 미리보기
+        bubble.innerHTML =
+          `<div class="json-stream-placeholder">` +
+            `<div style="font-weight:600; margin-bottom:6px;">📑 목차 작성 완료 — ${totalSlides}장</div>` +
+            `<div style="font-size:12px; color:#666; max-height:200px; overflow:auto;">` +
+              outlineLines.map(l => `<div>${escapeHtml(l)}</div>`).join("") +
+            `</div>` +
+            `<div style="margin-top:8px;">` +
+              `<span class="loading-dots"><span></span><span></span><span></span></span>` +
+              `<span class="muted">슬라이드별 도형 그리는 중… (병렬)</span>` +
+            `</div>` +
+          `</div>`;
+      } else if (ev.type === "slide_done") {
+        if (ev.ok) okCount++;
+        else { failCount++; console.warn(`slide ${ev.page} 실패: ${ev.error}`); }
+        const progressPct = Math.min(95, 5 + Math.round((ev.progress / Math.max(1, ev.total)) * 90));
+        fillEl.style.width = `${progressPct}%`;
+        sectionEl.textContent = `슬라이드 작성 중 — ${ev.section}`;
+        countEl.textContent = `${ev.progress} / ${ev.total}`;
+      } else if (ev.type === "error") {
+        progress.finish(false);
+        bubble.innerHTML = `<span style="color:var(--danger);">❌ ${escapeHtml(ev.error)}</span>`;
+        return;
+      } else if (ev.type === "done") {
+        finalDone = true;
+        fillEl.style.width = "100%";
+        sectionEl.textContent = `✅ 제안서 작성 완료 — ${ev.ok_slides}/${ev.total} 슬라이드 (${ev.elapsed_sec}초)`;
+        countEl.textContent = "완료";
+        bubble.innerHTML =
+          `<div style="line-height:1.6;">` +
+            `<div style="font-weight:600;">✅ 제안서 ${ev.total}장 작성 완료</div>` +
+            (failCount > 0 ? `<div style="color:#c43;">⚠ ${failCount}장 실패 (placeholder 처리됨)</div>` : "") +
+            `<div class="muted small" style="margin-top:6px;">PPTX 변환 중… 🔨</div>` +
+          `</div>`;
+      }
+    }
+  }
+
+  if (!finalDone) throw new Error("Multi-pass 가 완료 이벤트 없이 종료됐어요.");
+
+  progress.finish(true);
+
+  // PPTX 변환 트리거 — 기존 endpoint 활용
+  try {
+    const pptxResp = await api.post("/api/proposals/pptx", { conversation_id: convId }, { timeoutMs: 180000 });
+    bubble.innerHTML =
+      `<div style="line-height:1.6;">` +
+        `<div style="font-weight:600;">✅ 제안서 ${totalSlides}장 + PPTX 변환 완료</div>` +
+        `<div class="muted small" style="margin-top:6px;">우측 미리보기에서 확인하세요 😊</div>` +
+        `<a href="${pptxResp.url}" download="${pptxResp.filename || ''}" style="display:inline-block; margin-top:8px; padding:8px 14px; background:#1A1A1A; color:#fff; border-radius:8px; text-decoration:none; font-weight:600;">⬇ PPTX 다운로드</a>` +
+      `</div>`;
+    // 우측 미리보기 패널 갱신 — 기존 함수 활용
+    try { window.shellSetSidePanelPng && window.shellSetSidePanelPng(pptxResp.url); } catch {}
+  } catch (e) {
+    bubble.innerHTML = `<span style="color:var(--danger);">❌ PPTX 변환 실패: ${escapeHtml(e.message || String(e))}</span>`;
+  }
 }
 
 // 제안서 페이지에 keyword row / 이미지 자동 로드 장식 — 썸네일/팝업 공통

@@ -276,6 +276,37 @@ def retrieve_style_hints(
     }
 
 
+def build_query_from_slide(
+    section: str,
+    key_msgs: list[str] | None,
+    domain_label: str = "",
+    governing: str = "",
+) -> str:
+    """슬라이드 1장용 RAG 검색 쿼리.
+
+    Multi-pass 모드에서 각 슬라이드를 그릴 때, 그 슬라이드 주제로만
+    좁혀서 retrieve 해서 진짜 관련 chunk 만 inline 시키기 위한 helper.
+
+    예시:
+      section="안전 관리", key_msgs=["기상 단계별 대응", "비상 대응 매뉴얼"],
+      domain_label="축제·행사"
+      → "축제·행사 · 안전 관리 · 기상 단계별 대응 · 비상 대응 매뉴얼"
+    """
+    parts: list[str] = []
+    if domain_label:
+        parts.append(str(domain_label)[:30])
+    if section:
+        parts.append(str(section)[:50])
+    if governing:
+        parts.append(str(governing)[:60])
+    if key_msgs:
+        for m in key_msgs[:4]:
+            if isinstance(m, str) and m.strip():
+                parts.append(m.strip()[:50])
+    query = " · ".join(p for p in parts if p)
+    return query[:300]
+
+
 def build_query_from_rfp(rfp_analysis: dict) -> str:
     """RFP 분석 dict → 합성 쿼리 1개.
 

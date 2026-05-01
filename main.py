@@ -2478,6 +2478,151 @@ def api_chat(conv_id: str, body: ChatIn):
     return StreamingResponse(stream(), media_type="text/event-stream")
 
 
+# ---------------------------------------------------------------------------
+# Multi-pass 제안서 생성 — Outline → 슬라이드별 도형 JSON → 병합
+# ---------------------------------------------------------------------------
+@app.post("/api/conversations/{conv_id}/proposals/generate")
+async def api_proposals_generate_multipass(conv_id: str):
+    """
+    Multi-pass 제안서 생성. SSE 로 진행률 실시간 push.
+
+    흐름:
+      1. RFP / RAG / 발주처 인텔 / 회사 DNA 모아서 system block 들 만들기
+      2. proposal_multi_pass.orchestrate() 호출
+      3. 각 이벤트를 SSE 로 yield
+      4. 완료시 도형 JSON 을 messages 에 assistant 메시지로 저장
+         → 사용자가 PPTX 다운로드 누르면 기존 api_proposals_pptx 가 그대로 처리
+
+    UI 측: SSE 받으면서 "목차 작성 중 → 슬라이드 1/28 ... → 병합 → 완료" 표시.
+    """
+    import asyncio as _asyncio
+    import proposal_multi_pass as mp
+
+    with get_db() as db:
+        conv = db.execute("SELECT * FROM conversations WHERE id=?", (conv_id,)).fetchone()
+        if not conv:
+            raise HTTPException(404, "대화를 찾을 수 없습니다.")
+        client_id = conv["client_id"]
+        client_row = db.execute("SELECT name FROM clients WHERE id=?", (client_id,)).fetchone()
+        company_name = (client_row["name"] if client_row else "") or ""
+
+    # RFP / RAG / 인텔 블록을 시스템 프롬프트 빌더에서 재사용해 추출
+    system_full = _build_system_prompt(client_id)
+    rfp_analysis = _get_rfp_aggregated(client_id)
+
+    # RAG global 블록 (Phase 1 outline 호출용)
+    rag_block_global = ""
+    try:
+        if rag_retriever is not None and rag_retriever.is_available():
+            rfp_query = rag_retriever.build_query_from_rfp(rfp_analysis or {})
+            if rfp_query:
+                hints = rag_retriever.retrieve_style_hints(
+                    rfp_query, top_k=12, excerpt_chars=800, excerpt_count=8,
+                )
+                if hints:
+                    rag_block_global = rag_retriever.format_hints_for_prompt(hints)
+    except Exception as e:
+        log.warning("multi-pass: RAG global 블록 실패 (무시): %s", e)
+
+    # 슬라이드별 RAG 블록 생성 callback
+    def _rag_for_slide(item: mp.OutlineItem) -> str:
+        if not (rag_retriever is not None and rag_retriever.is_available()):
+            return ""
+        try:
+            domain_label = (rfp_analysis or {}).get("project_domain_label", "")
+            q = rag_retriever.build_query_from_slide(
+                section=item.section,
+                key_msgs=item.key_msgs,
+                domain_label=domain_label,
+                governing=item.governing,
+            )
+            if not q:
+                return ""
+            # 슬라이드별 검색은 chunk 적게·길게 (한 슬라이드에 너무 많이 박지 X)
+            hints = rag_retriever.retrieve_style_hints(
+                q, top_k=8, excerpt_chars=900, excerpt_count=4,
+            )
+            if not hints:
+                return ""
+            return rag_retriever.format_hints_for_prompt(hints)
+        except Exception as e:
+            log.warning("multi-pass: 슬라이드 RAG 실패 (p%d): %s", item.page, e)
+            return ""
+
+    # RFP 본문 블록 (Phase 1 user prompt 에 들어감)
+    rfp_block = "[RFP 분석]\n" + json.dumps(rfp_analysis or {}, ensure_ascii=False, indent=2)
+
+    # 발주처 인텔
+    intel_block = ""
+    try:
+        with get_db() as db:
+            intel_row = db.execute(
+                "SELECT intel_json FROM client_intel WHERE client_id=?",
+                (client_id,),
+            ).fetchone()
+        if intel_row:
+            intel_obj = json.loads(intel_row["intel_json"] or "{}")
+            if intel_obj and not intel_obj.get("error"):
+                intel_block = "[발주처 들여다보기]\n" + json.dumps(intel_obj, ensure_ascii=False, indent=2)
+    except Exception:
+        intel_block = ""
+
+    # 사용자 메시지 저장 ("제안서 만들어줘" 명시 메시지로)
+    user_msg_id = uuid.uuid4().hex[:12]
+    with get_db() as db:
+        db.execute(
+            "INSERT INTO messages(id,conversation_id,role,content) VALUES(?,?,?,?)",
+            (user_msg_id, conv_id, "user", "[multi-pass 제안서 생성 요청]"),
+        )
+
+    try:
+        client = require_client()
+    except HTTPException as e:
+        async def err_stream():
+            yield f"data: {json.dumps({'type':'error','error':e.detail})}\n\n"
+        return StreamingResponse(err_stream(), media_type="text/event-stream")
+
+    model = get_setting("model", MODEL_DEFAULT)
+
+    async def stream():
+        assistant_id = uuid.uuid4().hex[:12]
+        yield f"data: {json.dumps({'type':'start','message_id':assistant_id})}\n\n"
+        final_payload = None
+        try:
+            async for ev in mp.orchestrate(
+                client=client,
+                rfp_block=rfp_block,
+                rag_block_global=rag_block_global,
+                rag_for_slide=_rag_for_slide,
+                intel_block=intel_block,
+                extra_block="",
+                company_name=company_name,
+                concurrency=5,
+                model=model,
+            ):
+                if ev.get("type") == "done":
+                    final_payload = ev.get("payload")
+                yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            log.exception("multi-pass 예외")
+            yield f"data: {json.dumps({'type':'error','error':str(e)[:200]})}\n\n"
+            return
+        finally:
+            # 완성된 도형 JSON 을 assistant 메시지로 저장 (api_proposals_pptx 가 읽음)
+            if final_payload:
+                try:
+                    with get_db() as db:
+                        db.execute(
+                            "INSERT INTO messages(id,conversation_id,role,content) VALUES(?,?,?,?)",
+                            (assistant_id, conv_id, "assistant",
+                             json.dumps(final_payload, ensure_ascii=False)),
+                        )
+                except Exception as e:
+                    log.warning("multi-pass: assistant 메시지 저장 실패: %s", e)
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
+
 # ---------- RFP (multi-file, role-aware) ----------
 VALID_ROLES = {"공고문", "과업지시서", "제안요청서", "기타"}
 

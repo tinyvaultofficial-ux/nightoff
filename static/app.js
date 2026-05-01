@@ -3611,8 +3611,30 @@ function renderMarkdown(src) {
   return html;
 }
 
+// multi-pass 결과 (raw slide JSON) detect — 채팅 reload 시 raw 노출 방지
+function isMultiPassResult(text) {
+  if (!text) return false;
+  const t = text.trimStart();
+  if (!t.startsWith("{")) return false;
+  try {
+    const obj = JSON.parse(text);
+    return obj && Array.isArray(obj.slides) && obj.slides.length > 0;
+  } catch { return false; }
+}
+
 function renderAssistant(bubble, text, final = false) {
   bubble.dataset.raw = text;
+  // multi-pass 결과면 placeholder 표시 (raw JSON 노출 방지)
+  // — 백엔드는 final_payload 를 그대로 DB 저장 (api_proposals_pptx 가 읽음)
+  if (isMultiPassResult(text)) {
+    let n = 0;
+    try { n = JSON.parse(text).slides.length; } catch {}
+    bubble.innerHTML =
+      `<div style="color:#666; line-height:1.6;">` +
+        `✓ 제안서 ${n}장 생성 완료 — PPTX 파일로 변환됨` +
+      `</div>`;
+    return;
+  }
   const idx = text.indexOf('<div class="proposal"');
   if (idx === -1) {
     // 제안서 HTML 없음 → 마크다운 렌더링

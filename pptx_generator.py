@@ -1695,8 +1695,8 @@ def generate_from_shape_json(json_data, output_path):
     json_data 형식:
       {
         "title": "...",
-        "slide_width": 13.33,       # 옵션 (inch). 기본 16:9
-        "slide_height": 7.5,        # 옵션
+        "slide_width": 11.69,       # 옵션 (inch). 기본 A4 가로 (한국 B2G 표준)
+        "slide_height": 8.27,       # 옵션
         "slides": [
           {
             "section": "표지",
@@ -1717,9 +1717,10 @@ def generate_from_shape_json(json_data, output_path):
     if not isinstance(slides_data, list) or not slides_data:
         raise ValueError("slides 배열 비어있거나 list 아님")
 
-    # 기본값 16:9 (13.33×7.5) — 시스템 프롬프트 / OUTLINE / SLIDE 모두 정합
-    sw = float(json_data.get("slide_width", 13.33))
-    sh = float(json_data.get("slide_height", 7.5))
+    # 기본값 A4 가로 (11.69×8.27, 인치) — 한국 B2G 공공입찰 표준 인쇄 비율.
+    # 시스템 프롬프트 / OUTLINE / SLIDE 모두 동일 기본값으로 정합.
+    sw = float(json_data.get("slide_width", 11.69))
+    sh = float(json_data.get("slide_height", 8.27))
 
     prs = Presentation()
     prs.slide_width = Inches(sw)

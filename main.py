@@ -918,8 +918,8 @@ other:        "분야별 N년 경력의 전문가들이 함께합니다"
 {
   "title": "발주처명 + 사업명 + 정성 제안서",
   "domain": "festival|forum|exhibition|education|sports|campaign|tourism|rnd|welfare|other",
-  "slide_width": 13.33,
-  "slide_height": 7.5,
+  "slide_width": 11.69,
+  "slide_height": 8.27,
   "slides": [
     {
       "section": "표지|목차|사업이해|추진전략|수행조직|일정|예산|프로그램|홍보|안전관리|기대효과|마무리",
@@ -942,7 +942,7 @@ other:        "분야별 N년 경력의 전문가들이 함께합니다"
 ```
 
 [도형 타입 — 6 가지만]
-**좌표 단위는 모두 인치 (inch).** slide_width=13.33, slide_height=7.5 가 표준 (16:9 강제).
+**좌표 단위는 모두 인치 (inch).** slide_width=11.69, slide_height=8.27 이 표준 (A4 가로 강제).
 
   ① rect    — 사각형 (배경 바 / 카드 박스 / 색면)
      필드: x, y, w, h, fill (예 "#1A1A1A"), stroke (선택), stroke_width (선택), radius (선택, 라운드)
@@ -988,9 +988,9 @@ Paperlogy-1Thin ~ Paperlogy-9Black 폰트로 매핑한다.
 - 메타·푸터·캡션: 300~400
 - KPI 거대 숫자 (80~120pt): 900
 
-[슬라이드 캔버스 — 16:9 강제]
-- 표준 (강제): slide_width=13.33, slide_height=7.5 (16:9)
-- 사용자가 명시적으로 다른 비율을 요청한 경우만 변경 가능. 그 외 기본 16:9 고정.
+[슬라이드 캔버스 — A4 가로 강제]
+- 표준 (강제): slide_width=11.69, slide_height=8.27 (A4 가로 — 한국 B2G 공공입찰 인쇄 표준)
+- 16:9 (13.33×7.5) 같은 PT 발표용 비율은 RFP 가 명시적으로 요청한 경우만.
 - 모든 도형은 캔버스 안에 들어와야 함 (0 ≤ x+w ≤ slide_width, 0 ≤ y+h ≤ slide_height).
 
 [레이아웃 디자인 원칙 — SOOZOO 톤 모방 · 초안 단계는 완전 흑백]
@@ -2050,11 +2050,11 @@ def _build_system_prompt(client_id: str) -> str:
         parts.append("[RFP 분석]\n" + json.dumps(rfp_analysis, ensure_ascii=False, indent=2))
         # 도형 JSON 모드: orientation → slide_width/slide_height 매핑
         if rfp_analysis["orientation"] == "portrait":
-            parts.append("[⚠ 캔버스 방향] 도형 JSON 의 slide_width=7.5, slide_height=13.33 (세로형). "
+            parts.append("[⚠ 캔버스 방향] 도형 JSON 의 slide_width=8.27, slide_height=11.69 (A4 세로). "
                          "모든 도형 좌표·크기를 이 캔버스 안에 맞게 배치.")
         else:
-            parts.append("[⚠ 캔버스 방향] 도형 JSON 의 slide_width=13.33, slide_height=7.5 (가로 16:9). "
-                         "RFP 가 'A4 가로' 로 명시한 경우만 11.69 × 8.27 사용.")
+            parts.append("[⚠ 캔버스 방향] 도형 JSON 의 slide_width=11.69, slide_height=8.27 (A4 가로 — 한국 B2G 표준). "
+                         "RFP 가 16:9 PT 발표용 등을 명시한 경우만 다른 비율 사용.")
 
         # 도메인 톤 시그널 — LAYER 2 매트릭스 자동 발동
         domain = (rfp_analysis.get("project_domain") or "other").strip().lower()

@@ -169,7 +169,8 @@ async function _parseErrorResponse(r) {
 
 // ---------- Auth — JWT localStorage helpers (묶음 N Commit 5) ----------
 const AUTH_TOKEN_KEY = "nightoff_jwt";
-const AUTH_PUBLIC_PAGES = new Set(["/login.html", "/register.html"]);
+// 인증 면제 페이지 — 미가입 방문자가 접근 가능 (랜딩 노출용 / + /landing 포함)
+const AUTH_PUBLIC_PAGES = new Set(["/", "/landing", "/login.html", "/register.html"]);
 
 function getToken() { return localStorage.getItem(AUTH_TOKEN_KEY) || ""; }
 function setToken(t) { localStorage.setItem(AUTH_TOKEN_KEY, t || ""); }
@@ -517,18 +518,23 @@ function renderLanding() {
   const wrap = h("div", { class: "landing-wrap" });
   root.appendChild(wrap);
 
-  // ── Top Nav
+  // ── Top Nav (인증 상태에 따라 동적)
+  const _isAuthed = !!getToken();
   wrap.appendChild(h("nav", { class: "landing-nav" }, [
     h("div", { class: "landing-nav-inner" }, [
       h("img", { class: "landing-logo", src: "/static/logo.png", alt: "NightOff" }),
       h("button", {
         class: "btn btn-ghost",
         onclick: () => {
-          localStorage.setItem("nightoff.landing_seen", "1");
-          root.classList.remove("landing-active");
-          navigate("/dashboard");
+          if (_isAuthed) {
+            localStorage.setItem("nightoff.landing_seen", "1");
+            root.classList.remove("landing-active");
+            navigate("/dashboard");
+          } else {
+            location.href = "/login.html";
+          }
         },
-      }, "대시보드 →"),
+      }, _isAuthed ? "대시보드 →" : "로그인"),
     ]),
   ]));
 
@@ -542,9 +548,14 @@ function renderLanding() {
       h("button", {
         class: "btn btn-primary landing-cta-btn",
         onclick: () => {
-          localStorage.setItem("nightoff.landing_seen", "1");
-          root.classList.remove("landing-active");
-          navigate("/dashboard");
+          // 미인증: 가입 페이지 / 인증: 대시보드
+          if (getToken()) {
+            localStorage.setItem("nightoff.landing_seen", "1");
+            root.classList.remove("landing-active");
+            navigate("/dashboard");
+          } else {
+            location.href = "/register.html";
+          }
         },
         html: `<span>지금 시작하기 ✨</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left:6px;"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`,
       }),
@@ -601,9 +612,13 @@ function renderLanding() {
     h("button", {
       class: "btn btn-primary landing-cta-btn",
       onclick: () => {
-        localStorage.setItem("nightoff.landing_seen", "1");
-        root.classList.remove("landing-active");
-        navigate("/dashboard");
+        if (getToken()) {
+          localStorage.setItem("nightoff.landing_seen", "1");
+          root.classList.remove("landing-active");
+          navigate("/dashboard");
+        } else {
+          location.href = "/register.html";
+        }
       },
       html: `<span>지금 시작하기 ✨</span>`,
     }),
@@ -612,6 +627,93 @@ function renderLanding() {
   // ── 푸터
   wrap.appendChild(h("footer", { class: "landing-footer" },
     "NightOff · 수주를 진심으로 기원합니다 🙏"));
+
+  // ── 베타 안내 팝업 (첫 진입 시 1회)
+  if (!localStorage.getItem("nightoff.beta_notice_seen")) {
+    setTimeout(() => showBetaNotice(), 600);  // 랜딩 fade-in 후 자연스럽게
+  }
+}
+
+// ── 베타 안내 모달 ─────────────────────────────────────────────────────────
+function showBetaNotice() {
+  // 이미 떠있으면 중복 표시 X
+  if (document.querySelector(".beta-notice-overlay")) return;
+
+  const close = (persist = false) => {
+    if (persist) localStorage.setItem("nightoff.beta_notice_seen", "1");
+    overlay.classList.add("fade-out");
+    setTimeout(() => overlay.remove(), 240);
+  };
+
+  const overlay = h("div", {
+    class: "beta-notice-overlay",
+    onclick: (ev) => { if (ev.target === overlay) close(false); },
+  });
+
+  const modal = h("div", { class: "beta-notice-modal" });
+  overlay.appendChild(modal);
+
+  // 닫기 ✕
+  modal.appendChild(h("button", {
+    class: "beta-notice-close", "aria-label": "닫기",
+    onclick: () => close(false),
+  }, "✕"));
+
+  // 헤더
+  modal.appendChild(h("h2", { class: "beta-notice-title" }, "🌙 NightOff 베타 안내"));
+  modal.appendChild(h("p", { class: "beta-notice-subtitle" },
+    "지금 보고 계신 NightOff 는 베타 단계예요."));
+
+  // ✨ 잘하는 것
+  modal.appendChild(h("div", { class: "beta-notice-section bn-good" }, [
+    h("h3", { class: "beta-notice-section-title" }, "✨ 잘하는 것"),
+    h("ul", { class: "beta-notice-list" }, [
+      h("li", {}, "RFP 한 장만 올려주시면 제안서 초안을 자동으로 만들어드려요"),
+      h("li", {}, "발주처도 들여다볼 수 있어요 (발표 준비할 때 좋아요!)"),
+      h("li", {}, "수백 건의 실제 수주 제안서를 학습한 차별화 패턴을 적용해요"),
+    ]),
+  ]));
+
+  // ⚠ 아직 부족한 것
+  modal.appendChild(h("div", { class: "beta-notice-section bn-warn" }, [
+    h("h3", { class: "beta-notice-section-title" }, "⚠ 아직 부족한 것"),
+    h("p", { class: "beta-notice-paragraph" },
+      "생성되는 제안서는 약 70% 정도의 완성도예요. 디자이너나 디자인 가능한 기획자가 마무리해주셔야 합니다."),
+  ]));
+
+  // 🚀 곧 업데이트
+  modal.appendChild(h("div", { class: "beta-notice-section bn-soon" }, [
+    h("h3", { class: "beta-notice-section-title" }, "🚀 곧 업데이트"),
+    h("ul", { class: "beta-notice-list" }, [
+      h("li", {}, "발주처 성향을 자동으로 학습해요"),
+      h("li", {}, "AI 평가위원과 PT 연습할 수 있어요"),
+      h("li", {}, "나라장터 공고를 자동으로 매칭해드려요"),
+      h("li", {}, "자사 데이터를 학습해 우리 회사만의 제안서를 만들어드려요"),
+    ]),
+  ]));
+
+  // 액션 버튼
+  const actions = h("div", { class: "beta-notice-actions" }, [
+    h("button", {
+      class: "beta-notice-btn-secondary",
+      onclick: () => close(true),
+    }, "다시 보지 않기"),
+    h("button", {
+      class: "beta-notice-btn-primary",
+      onclick: () => close(false),
+    }, "확인"),
+  ]);
+  modal.appendChild(actions);
+
+  document.body.appendChild(overlay);
+  // ESC 키로 닫기 (한 번만 바인딩)
+  const onEsc = (e) => {
+    if (e.key === "Escape") {
+      close(false);
+      document.removeEventListener("keydown", onEsc);
+    }
+  };
+  document.addEventListener("keydown", onEsc);
 }
 
 // ---------- Dashboard ----------

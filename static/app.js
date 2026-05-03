@@ -678,7 +678,9 @@ function showBetaNotice() {
   modal.appendChild(h("div", { class: "beta-notice-section bn-warn" }, [
     h("h3", { class: "beta-notice-section-title" }, "⚠ 아직 부족한 것"),
     h("p", { class: "beta-notice-paragraph" },
-      "생성되는 제안서는 약 70% 정도의 완성도예요. 디자이너나 디자인 가능한 기획자가 마무리해주셔야 합니다."),
+      "RFP 분석과 제안서 생성에는 딥 리서치가 내장되어 있어 시간이 조금 걸려요. 좀 더 정확한 결과를 위한 시간이라 생각해주시면 좋을 것 같아요."),
+    h("p", { class: "beta-notice-paragraph" },
+      "생성되는 제안서는 약 70% 정도의 완성도예요. 가끔 텍스트 정렬이 어긋나거나 슬라이드를 살짝 넘어가는 경우가 있어서, 디자이너나 디자인 가능한 기획자가 마무리해주셔야 합니다."),
   ]));
 
   // 🚀 곧 업데이트
@@ -4632,8 +4634,15 @@ window.addEventListener("DOMContentLoaded", async () => {
       const me = await api.get("/api/auth/me");
       window.__nightoff_user = me.user;  // 다른 곳에서 활용 가능
     } catch (e) {
-      // 401 은 _call 안에서 redirect 처리됨. 다른 에러는 route() 진행
-      if (e && e.status === 401) return;
+      // /api/auth/me 의 401 은 _call() 안 redirect 분기에서 path.startsWith("/api/auth/")
+      // 가드로 skip 됨 — 여기서 명시적으로 token clear + redirect.
+      // (이전엔 silent return 이었어서 stale token 유지 -> dashboard 깜빡 -> 다른 endpoint
+      //  401 -> redirect 의 마찰 흐름이 발생)
+      if (e && e.status === 401) {
+        clearToken();
+        redirectToLogin();
+        return;
+      }
     }
   }
   // (legacy ensureSignup 모달 — 묶음 N 인증 시스템 전환 후 폐기됨.

@@ -2968,7 +2968,207 @@ def api_conv_outcome(conv_id: str, body: OutcomeIn):
     return {"ok": True, "outcome": body.outcome}
 
 
-# ---------- Users / 간편 가입 (이메일만) ----------
+# ---------- Auth (JWT + bcrypt) — 묶음 N Commit 2 ----------
+import bcrypt as _bcrypt
+import jwt as _jwt
+from datetime import timedelta, timezone
+from fastapi import Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRY_DAYS = 7
+BCRYPT_ROUNDS = 12
+
+# 비밀번호 정책 — 8자 이상 + 영문 + 숫자 모두 포함
+_PASSWORD_POLICY_RE = re.compile(r"^(?=.*[A-Za-z])(?=.*\d).{8,}$")
+# 이메일 형식 — 단순 validation
+_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
+
+
+def _jwt_secret() -> str:
+    """JWT_SECRET env 필수 — 부재 시 startup 단계에서 에러."""
+    secret = os.environ.get("JWT_SECRET", "").strip()
+    if not secret or len(secret) < 32:
+        raise HTTPException(500, "JWT_SECRET 환경변수가 설정되지 않았어요. 관리자에게 문의해 주세요.")
+    return secret
+
+
+def encode_jwt(user_id: str, expires_in_days: int = JWT_EXPIRY_DAYS) -> str:
+    """user_id 로 JWT 발급 (HS256, 7일 만료)."""
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": user_id,
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(days=expires_in_days)).timestamp()),
+    }
+    return _jwt.encode(payload, _jwt_secret(), algorithm=JWT_ALGORITHM)
+
+
+def decode_jwt(token: str) -> Optional[str]:
+    """JWT decode → user_id (sub). 만료/무효 시 None."""
+    try:
+        payload = _jwt.decode(token, _jwt_secret(), algorithms=[JWT_ALGORITHM])
+        return payload.get("sub")
+    except _jwt.ExpiredSignatureError:
+        return None
+    except _jwt.InvalidTokenError:
+        return None
+    except HTTPException:
+        # JWT_SECRET 미설정 — 상위에서 처리
+        raise
+
+
+_security = HTTPBearer(auto_error=False)
+
+
+def get_current_user(creds: Optional[HTTPAuthorizationCredentials] = Depends(_security)) -> dict:
+    """JWT dependency — Authorization: Bearer <token> 검증.
+    is_active=1 인 user dict 반환. 실패 시 401.
+    """
+    if not creds or not creds.credentials:
+        raise HTTPException(401, "인증이 필요해요. 로그인해 주세요.")
+    user_id = decode_jwt(creds.credentials)
+    if not user_id:
+        raise HTTPException(401, "토큰이 만료되었거나 유효하지 않아요. 다시 로그인해 주세요.")
+    with get_db() as db:
+        row = db.execute(
+            "SELECT id, email, role, is_active FROM users WHERE id=?",
+            (user_id,),
+        ).fetchone()
+    if not row or not row["is_active"]:
+        raise HTTPException(401, "비활성 계정이에요. 관리자에게 문의해 주세요.")
+    return dict(row)
+
+
+def require_admin(user: dict = Depends(get_current_user)) -> dict:
+    """admin role 전용 dependency — Commit 3 admin endpoints 에서 사용."""
+    if user.get("role") != "admin":
+        raise HTTPException(403, "관리자만 접근할 수 있어요.")
+    return user
+
+
+# ---------- Auth endpoints ----------
+class RegisterIn(BaseModel):
+    email: str
+    password: str
+    invite_code: str
+    company: str = ""
+
+
+class LoginIn(BaseModel):
+    email: str
+    password: str
+
+
+@app.post("/api/auth/register")
+def api_auth_register(body: RegisterIn):
+    """초대 코드 검증 + 이메일/비밀번호 등록 + JWT 발급."""
+    email = body.email.strip().lower()
+    pw = body.password
+    invite_code = body.invite_code.strip()
+    company = body.company.strip()
+
+    if not _EMAIL_RE.match(email):
+        raise HTTPException(400, "이메일 형식을 확인해 주세요.")
+    if not _PASSWORD_POLICY_RE.match(pw):
+        raise HTTPException(400, "비밀번호는 8자 이상 + 영문 + 숫자를 포함해야 해요.")
+
+    with get_db() as db:
+        # 초대 코드 검증
+        ic = db.execute("SELECT * FROM invite_codes WHERE code=?", (invite_code,)).fetchone()
+        if not ic:
+            raise HTTPException(410, "초대 코드가 유효하지 않아요.")
+        if ic["used_by"]:
+            raise HTTPException(410, "이미 사용된 초대 코드예요.")
+        if ic["expires_at"]:
+            try:
+                exp = datetime.fromisoformat(ic["expires_at"])
+                if datetime.now() > exp:
+                    raise HTTPException(410, "만료된 초대 코드예요.")
+            except ValueError:
+                pass
+
+        # 활성 계정 중복 체크
+        existing = db.execute("SELECT id, is_active FROM users WHERE email=?", (email,)).fetchone()
+        if existing and existing["is_active"]:
+            raise HTTPException(409, "이미 활성화된 계정이에요. 로그인해 주세요.")
+
+        # bcrypt hash
+        pw_hash = _bcrypt.hashpw(pw.encode("utf-8"), _bcrypt.gensalt(rounds=BCRYPT_ROUNDS)).decode("utf-8")
+
+        if existing:
+            # wait-list 기존 row 활성화 (id 보존)
+            uid = existing["id"]
+            db.execute(
+                "UPDATE users SET password_hash=?, role='user', is_active=1, "
+                "company=COALESCE(NULLIF(?,''), company), last_login=datetime('now','localtime') "
+                "WHERE id=?",
+                (pw_hash, company, uid),
+            )
+        else:
+            uid = uuid.uuid4().hex[:12]
+            db.execute(
+                "INSERT INTO users(id,email,company,password_hash,role,is_active,last_login) "
+                "VALUES(?,?,?,?,?,1,datetime('now','localtime'))",
+                (uid, email, company, pw_hash, "user"),
+            )
+
+        # 초대 코드 사용 처리
+        db.execute(
+            "UPDATE invite_codes SET used_by=?, used_at=datetime('now','localtime') WHERE code=?",
+            (uid, invite_code),
+        )
+
+    token = encode_jwt(uid)
+    return {"token": token, "user": {"id": uid, "email": email, "role": "user"}}
+
+
+@app.post("/api/auth/login")
+def api_auth_login(body: LoginIn):
+    """이메일/비밀번호 검증 + JWT 발급."""
+    email = body.email.strip().lower()
+    pw = body.password
+
+    with get_db() as db:
+        row = db.execute(
+            "SELECT id, email, role, is_active, password_hash FROM users WHERE email=?",
+            (email,),
+        ).fetchone()
+
+    # 보안: 이메일 미존재 / 비밀번호 불일치 구분 X (모두 401)
+    if not row or not row["password_hash"]:
+        raise HTTPException(401, "이메일 또는 비밀번호가 일치하지 않아요.")
+
+    try:
+        ok = _bcrypt.checkpw(pw.encode("utf-8"), row["password_hash"].encode("utf-8"))
+    except (ValueError, TypeError):
+        ok = False
+    if not ok:
+        raise HTTPException(401, "이메일 또는 비밀번호가 일치하지 않아요.")
+
+    if not row["is_active"]:
+        raise HTTPException(403, "활성화 대기 중인 계정이에요. 관리자에게 초대 코드 발급을 요청해 주세요.")
+
+    with get_db() as db:
+        db.execute("UPDATE users SET last_login=datetime('now','localtime') WHERE id=?", (row["id"],))
+
+    token = encode_jwt(row["id"])
+    return {"token": token, "user": {"id": row["id"], "email": row["email"], "role": row["role"]}}
+
+
+@app.post("/api/auth/logout")
+def api_auth_logout():
+    """Stateless — 서버는 상태 없음. 프론트가 localStorage 토큰 삭제 처리."""
+    return {"ok": True}
+
+
+@app.get("/api/auth/me")
+def api_auth_me(user: dict = Depends(get_current_user)):
+    """현재 인증된 사용자 정보."""
+    return {"user": {"id": user["id"], "email": user["email"], "role": user["role"]}}
+
+
+# ---------- Deprecated: /api/signup (replaced by /api/auth/register) ----------
 class SignupIn(BaseModel):
     email: str
     company: str = ""
@@ -2976,21 +3176,11 @@ class SignupIn(BaseModel):
 
 @app.post("/api/signup")
 def api_signup(body: SignupIn):
-    email = body.email.strip().lower()
-    if "@" not in email or len(email) < 5:
-        raise HTTPException(400, "이메일 형식을 확인해 주세요.")
-    company = body.company.strip()
-    with get_db() as db:
-        row = db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
-        if row:
-            db.execute("UPDATE users SET last_login=datetime('now','localtime') WHERE email=?", (email,))
-            return {"ok": True, "returning": True, "email": email}
-        uid = uuid.uuid4().hex[:12]
-        db.execute(
-            "INSERT INTO users(id,email,company,last_login) VALUES(?,?,?,datetime('now','localtime'))",
-            (uid, email, company),
-        )
-    return {"ok": True, "returning": False, "email": email, "id": uid}
+    """⚠ Deprecated 2026-05-03 — use POST /api/auth/register instead."""
+    raise HTTPException(
+        410,
+        "이 엔드포인트는 더 이상 사용되지 않아요. POST /api/auth/register 를 사용해 주세요.",
+    )
 
 
 # ---------- 산출내역서 생성 ----------

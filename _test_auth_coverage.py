@@ -13,6 +13,8 @@ AUTH_EXEMPT_PATTERNS = [
     r"^/favicon\.ico$",
     r"^/static/",
     r"^/client/",          # SPA route fallback
+    r"^/login\.html$",     # 인증 페이지 (Commit 5)
+    r"^/register\.html$",  # 인증 페이지 (Commit 5)
     r"^/api/auth/",         # auth 자체
     r"^/api/signup$",       # deprecated (410)
 ]

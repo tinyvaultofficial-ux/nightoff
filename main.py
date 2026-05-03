@@ -1159,6 +1159,23 @@ def index():
     return HTMLResponse(_render_index())
 
 
+# ---- Auth pages — 정적 HTML 파일 서빙 (인증 면제) ----
+@app.get("/login.html")
+def login_page():
+    p = STATIC_DIR / "login.html"
+    if not p.exists():
+        raise HTTPException(404, "login page not found")
+    return FileResponse(str(p), media_type="text/html")
+
+
+@app.get("/register.html")
+def register_page():
+    p = STATIC_DIR / "register.html"
+    if not p.exists():
+        raise HTTPException(404, "register page not found")
+    return FileResponse(str(p), media_type="text/html")
+
+
 # ---- 헬스체크 전용 ---- DB / 정적 / 외부 의존 모두 회피 (Railway healthcheckPath)
 @app.get("/healthz")
 def healthz():

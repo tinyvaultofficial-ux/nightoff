@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>로그인 · NightOff</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+  <link rel="preload" as="font" href="/static/fonts/Paperlogy-9Black.ttf" type="font/ttf" crossorigin />
+  <link rel="preload" as="font" href="/static/fonts/Paperlogy-5Medium.ttf" type="font/ttf" crossorigin />
+  <link rel="preload" as="font" href="/static/fonts/Paperlogy-4Regular.ttf" type="font/ttf" crossorigin />
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    body { background: #FAFAFA; font-family: 'Paperlogy', sans-serif; }
+    .auth-shell { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .auth-card { width: 100%; max-width: 380px; background: #fff; border: 1px solid #DDD; border-radius: 10px; padding: 32px 28px; box-shadow: 0 4px 20px rgba(0,0,0,0.04); }
+    .auth-brand { font-weight: 900; font-size: 28px; margin-bottom: 4px; color: #1A1A1A; letter-spacing: -0.5px; }
+    .auth-tagline { font-size: 12px; color: #999; margin-bottom: 28px; }
+    .auth-h1 { font-weight: 700; font-size: 18px; margin-bottom: 18px; color: #1A1A1A; }
+    .auth-field { margin-bottom: 14px; }
+    .auth-field label { display: block; font-size: 12px; color: #666; margin-bottom: 6px; }
+    .auth-field input { width: 100%; padding: 10px 12px; font-size: 14px; border: 1px solid #DDD; border-radius: 6px; background: #FAFAFA; box-sizing: border-box; font-family: inherit; }
+    .auth-field input:focus { outline: none; border-color: #1A1A1A; background: #fff; }
+    .auth-btn { width: 100%; padding: 11px; background: #1A1A1A; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 8px; font-family: inherit; }
+    .auth-btn:hover { background: #333; }
+    .auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .auth-footer { text-align: center; font-size: 12px; color: #999; margin-top: 18px; }
+    .auth-footer a { color: #1A1A1A; font-weight: 600; text-decoration: none; }
+    .auth-footer a:hover { text-decoration: underline; }
+    .auth-error { font-size: 12px; color: #C0392B; margin-top: 12px; padding: 8px 10px; background: #FDEDEC; border-left: 3px solid #C0392B; border-radius: 4px; display: none; }
+    .auth-error.show { display: block; }
+  </style>
+</head>
+<body>
+  <div class="auth-shell">
+    <div class="auth-card">
+      <div class="auth-brand">NightOff</div>
+      <div class="auth-tagline">한국 공공입찰 정성 제안서 골조 도구</div>
+      <div class="auth-h1">로그인</div>
+      <form id="login-form">
+        <div class="auth-field">
+          <label for="email">이메일</label>
+          <input type="email" id="email" name="email" autocomplete="email" required />
+        </div>
+        <div class="auth-field">
+          <label for="password">비밀번호</label>
+          <input type="password" id="password" name="password" autocomplete="current-password" required />
+        </div>
+        <button type="submit" class="auth-btn" id="submit-btn">로그인</button>
+        <div class="auth-error" id="error-msg"></div>
+      </form>
+      <div class="auth-footer">
+        초대 코드가 있으세요? <a href="/register.html">회원가입</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const AUTH_TOKEN_KEY = "nightoff_jwt";
+    const form = document.getElementById("login-form");
+    const errorEl = document.getElementById("error-msg");
+    const btn = document.getElementById("submit-btn");
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.classList.add("show");
+    }
+    function clearError() {
+      errorEl.classList.remove("show");
+      errorEl.textContent = "";
+    }
+
+    // 이미 토큰 있으면 메인으로
+    if (localStorage.getItem(AUTH_TOKEN_KEY)) {
+      // 토큰 검증은 메인 페이지에서 me 호출로 처리
+      location.href = "/";
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      clearError();
+      btn.disabled = true;
+      btn.textContent = "로그인 중...";
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+      try {
+        const r = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          if (r.status === 401) showError("이메일 또는 비밀번호가 일치하지 않아요.");
+          else if (r.status === 403) showError("활성화 대기 중인 계정이에요. 초대 코드로 가입해 주세요.");
+          else showError(data.detail || "로그인에 실패했어요. 다시 시도해 주세요.");
+          return;
+        }
+        localStorage.setItem(AUTH_TOKEN_KEY, data.token);
+        location.href = "/";
+      } catch (err) {
+        showError("서버에 연결할 수 없어요. 네트워크를 확인해 주세요.");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "로그인";
+      }
+    });
+  </script>
+</body>
+</html>

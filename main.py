@@ -292,6 +292,17 @@ def init_db() -> None:
                 FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
             );
 
+            -- 베타 초대 코드 (admin 발급, 사용자 register 시 검증 후 사용 처리)
+            CREATE TABLE IF NOT EXISTS invite_codes (
+                code        TEXT PRIMARY KEY,
+                created_by  TEXT,
+                used_by     TEXT,
+                used_at     TEXT,
+                expires_at  TEXT,
+                note        TEXT DEFAULT '',
+                created_at  TEXT DEFAULT (datetime('now','localtime'))
+            );
+
             CREATE INDEX IF NOT EXISTS idx_conv_client ON conversations(client_id);
             CREATE INDEX IF NOT EXISTS idx_msg_conv ON messages(conversation_id);
             CREATE INDEX IF NOT EXISTS idx_nuance_client ON nuance_memories(client_id);
@@ -303,6 +314,12 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_conv_updated    ON conversations(updated_at DESC);
             CREATE INDEX IF NOT EXISTS idx_msg_created     ON messages(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_clients_updated ON clients(updated_at DESC);
+
+            -- 인증 인덱스 — 기존 / 신규 테이블 컬럼 의존 X
+            -- (idx_clients_user 는 user_id 컬럼 추가 후 _migrate_db 에서 별도 생성)
+            CREATE INDEX IF NOT EXISTS idx_users_email     ON users(email);
+            CREATE INDEX IF NOT EXISTS idx_invite_used_by  ON invite_codes(used_by);
+            CREATE INDEX IF NOT EXISTS idx_invite_created  ON invite_codes(created_by);
         """)
 
         # 구버전 competitors 테이블 흔적 제거 (있으면)
@@ -360,6 +377,15 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     # 발주처(공고기관) — RFP 분석에서 자동 추출. 과업명(name)과 분리.
     # 들여다보기 검색은 이 컬럼만 사용 (과업명은 검색에 영향 X)
     ("clients",       "organization",     "TEXT DEFAULT ''"),
+    # 베타 인증 — 묶음 N (Commit 1)
+    # users.password_hash : bcrypt hash. 기존 wait-list 7 rows 는 빈 값 유지 → is_active=0
+    # users.role          : 'user' | 'admin'
+    # users.is_active     : 0 (wait-list / 비활성) | 1 (인증 활성)
+    # clients.user_id     : 사용자별 데이터 분리 (Commit 6 마이그레이션에서 admin uid 일괄 설정)
+    ("users",         "password_hash",    "TEXT DEFAULT ''"),
+    ("users",         "role",             "TEXT DEFAULT 'user'"),
+    ("users",         "is_active",        "INTEGER DEFAULT 0"),
+    ("clients",       "user_id",          "TEXT DEFAULT ''"),
 ]
 
 
@@ -423,6 +449,12 @@ def _migrate_db() -> dict:
                 else:
                     failed.append(f"{table}.{col}: {str(e)[:120]}")
                     log.exception("마이그레이션 실패: %s.%s", table, col)
+
+        # 신규 컬럼 의존 인덱스 — ADD COLUMN 직후 (멱등 IF NOT EXISTS)
+        try:
+            db.execute("CREATE INDEX IF NOT EXISTS idx_clients_user ON clients(user_id)")
+        except Exception as e:
+            log.warning("idx_clients_user 생성 스킵: %s", e)
     return {"added": added, "skipped": skipped, "failed": failed}
 
 

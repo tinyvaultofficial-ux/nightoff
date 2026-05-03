@@ -17,9 +17,10 @@ from pathlib import Path
 from typing import Generator, Optional
 
 import anthropic
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -292,6 +293,17 @@ def init_db() -> None:
                 FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
             );
 
+            -- 베타 초대 코드 (admin 발급, 사용자 register 시 검증 후 사용 처리)
+            CREATE TABLE IF NOT EXISTS invite_codes (
+                code        TEXT PRIMARY KEY,
+                created_by  TEXT,
+                used_by     TEXT,
+                used_at     TEXT,
+                expires_at  TEXT,
+                note        TEXT DEFAULT '',
+                created_at  TEXT DEFAULT (datetime('now','localtime'))
+            );
+
             CREATE INDEX IF NOT EXISTS idx_conv_client ON conversations(client_id);
             CREATE INDEX IF NOT EXISTS idx_msg_conv ON messages(conversation_id);
             CREATE INDEX IF NOT EXISTS idx_nuance_client ON nuance_memories(client_id);
@@ -303,6 +315,12 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_conv_updated    ON conversations(updated_at DESC);
             CREATE INDEX IF NOT EXISTS idx_msg_created     ON messages(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_clients_updated ON clients(updated_at DESC);
+
+            -- 인증 인덱스 — 기존 / 신규 테이블 컬럼 의존 X
+            -- (idx_clients_user 는 user_id 컬럼 추가 후 _migrate_db 에서 별도 생성)
+            CREATE INDEX IF NOT EXISTS idx_users_email     ON users(email);
+            CREATE INDEX IF NOT EXISTS idx_invite_used_by  ON invite_codes(used_by);
+            CREATE INDEX IF NOT EXISTS idx_invite_created  ON invite_codes(created_by);
         """)
 
         # 구버전 competitors 테이블 흔적 제거 (있으면)
@@ -360,6 +378,15 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     # 발주처(공고기관) — RFP 분석에서 자동 추출. 과업명(name)과 분리.
     # 들여다보기 검색은 이 컬럼만 사용 (과업명은 검색에 영향 X)
     ("clients",       "organization",     "TEXT DEFAULT ''"),
+    # 베타 인증 — 묶음 N (Commit 1)
+    # users.password_hash : bcrypt hash. 기존 wait-list 7 rows 는 빈 값 유지 → is_active=0
+    # users.role          : 'user' | 'admin'
+    # users.is_active     : 0 (wait-list / 비활성) | 1 (인증 활성)
+    # clients.user_id     : 사용자별 데이터 분리 (Commit 6 마이그레이션에서 admin uid 일괄 설정)
+    ("users",         "password_hash",    "TEXT DEFAULT ''"),
+    ("users",         "role",             "TEXT DEFAULT 'user'"),
+    ("users",         "is_active",        "INTEGER DEFAULT 0"),
+    ("clients",       "user_id",          "TEXT DEFAULT ''"),
 ]
 
 
@@ -423,6 +450,12 @@ def _migrate_db() -> dict:
                 else:
                     failed.append(f"{table}.{col}: {str(e)[:120]}")
                     log.exception("마이그레이션 실패: %s.%s", table, col)
+
+        # 신규 컬럼 의존 인덱스 — ADD COLUMN 직후 (멱등 IF NOT EXISTS)
+        try:
+            db.execute("CREATE INDEX IF NOT EXISTS idx_clients_user ON clients(user_id)")
+        except Exception as e:
+            log.warning("idx_clients_user 생성 스킵: %s", e)
     return {"added": added, "skipped": skipped, "failed": failed}
 
 
@@ -465,6 +498,174 @@ def require_client() -> anthropic.Anthropic:
     if not key:
         raise HTTPException(status_code=400, detail="API 키가 설정되지 않았습니다. 좌하단 설정에서 등록해주세요.")
     return anthropic.Anthropic(api_key=key, timeout=300.0, max_retries=1)
+
+
+# ---------- Auth helpers (JWT + bcrypt) — 묶음 N Commit 2/4-1/4-4 ----------
+# 위치: 모든 endpoint 정의보다 앞 — Depends() default arg 평가 시점 OK.
+import bcrypt as _bcrypt
+import jwt as _jwt
+from datetime import timedelta, timezone
+
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRY_DAYS = 7
+BCRYPT_ROUNDS = 12
+
+# 비밀번호 정책 — 8자 이상 + 영문 + 숫자 모두 포함
+_PASSWORD_POLICY_RE = re.compile(r"^(?=.*[A-Za-z])(?=.*\d).{8,}$")
+# 이메일 형식 — 단순 validation
+_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
+
+
+def _jwt_secret() -> str:
+    """JWT_SECRET env 필수 — 부재 시 startup 단계에서 에러."""
+    secret = os.environ.get("JWT_SECRET", "").strip()
+    if not secret or len(secret) < 32:
+        raise HTTPException(500, "JWT_SECRET 환경변수가 설정되지 않았어요. 관리자에게 문의해 주세요.")
+    return secret
+
+
+def encode_jwt(user_id: str, expires_in_days: int = JWT_EXPIRY_DAYS) -> str:
+    """user_id 로 JWT 발급 (HS256, 7일 만료)."""
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": user_id,
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(days=expires_in_days)).timestamp()),
+    }
+    return _jwt.encode(payload, _jwt_secret(), algorithm=JWT_ALGORITHM)
+
+
+def decode_jwt(token: str) -> Optional[str]:
+    """JWT decode → user_id (sub). 만료/무효 시 None."""
+    try:
+        payload = _jwt.decode(token, _jwt_secret(), algorithms=[JWT_ALGORITHM])
+        return payload.get("sub")
+    except _jwt.ExpiredSignatureError:
+        return None
+    except _jwt.InvalidTokenError:
+        return None
+    except HTTPException:
+        raise
+
+
+_security = HTTPBearer(auto_error=False)
+
+
+def get_current_user(creds: Optional[HTTPAuthorizationCredentials] = Depends(_security)) -> dict:
+    """JWT dependency — Authorization: Bearer <token> 검증."""
+    if not creds or not creds.credentials:
+        raise HTTPException(401, "인증이 필요해요. 로그인해 주세요.")
+    user_id = decode_jwt(creds.credentials)
+    if not user_id:
+        raise HTTPException(401, "토큰이 만료되었거나 유효하지 않아요. 다시 로그인해 주세요.")
+    with get_db() as db:
+        row = db.execute(
+            "SELECT id, email, role, is_active FROM users WHERE id=?",
+            (user_id,),
+        ).fetchone()
+    if not row or not row["is_active"]:
+        raise HTTPException(401, "비활성 계정이에요. 관리자에게 문의해 주세요.")
+    return dict(row)
+
+
+def require_admin(user: dict = Depends(get_current_user)) -> dict:
+    """admin role 전용 dependency."""
+    if user.get("role") != "admin":
+        raise HTTPException(403, "관리자만 접근할 수 있어요.")
+    return user
+
+
+def _verify_client_owned_by_user(db, cid: str, user_id: str) -> None:
+    """nested resource ownership 검증 — clients.user_id 매칭 안 되면 404."""
+    row = db.execute("SELECT user_id FROM clients WHERE id=?", (cid,)).fetchone()
+    if not row or row["user_id"] != user_id:
+        raise HTTPException(404, "발주처를 찾을 수 없습니다.")
+
+
+def _verify_conv_owned_by_user(db, conv_id: str, user_id: str) -> dict:
+    """conversation_id → client_id → user_id chain 검증.
+    return: {"conv_id", "client_id"} on success. raise 404 on mismatch.
+    """
+    row = db.execute(
+        "SELECT cv.id AS conv_id, cv.client_id, c.user_id "
+        "FROM conversations cv JOIN clients c ON c.id=cv.client_id "
+        "WHERE cv.id=?",
+        (conv_id,),
+    ).fetchone()
+    if not row or row["user_id"] != user_id:
+        raise HTTPException(404, "대화를 찾을 수 없습니다.")
+    return {"conv_id": row["conv_id"], "client_id": row["client_id"]}
+
+
+# ---------- Migration helpers (묶음 N Commit 6) ----------
+def activate_admin_from_env() -> Optional[str]:
+    """startup 1회 호출 — ADMIN_EMAIL + ADMIN_PASSWORD_HASH env 로 admin 활성화.
+
+    멱등:
+    - 이미 활성된 admin row 발견 시 password_hash 갱신만 (env 변경 시 동기화)
+    - 매칭 row 없으면 새 row INSERT (베타 단계, 본인 wait-list 등록 안 한 경우)
+
+    Returns: admin user_id (활성화 성공 시) or None (env 미설정).
+
+    보안:
+    - ADMIN_PASSWORD_HASH 는 본인 머신에서 bcrypt(rounds=12) 생성 후 등록
+    - 평문 비밀번호 처리 X (Railway env 평문 잔존 위험 회피)
+    """
+    admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+    admin_pw_hash = os.environ.get("ADMIN_PASSWORD_HASH", "").strip()
+
+    if not admin_email or not admin_pw_hash:
+        log.warning("admin 활성화 스킵: ADMIN_EMAIL 또는 ADMIN_PASSWORD_HASH 미설정")
+        return None
+
+    with get_db() as db:
+        row = db.execute(
+            "SELECT id, role, is_active FROM users WHERE email=?",
+            (admin_email,),
+        ).fetchone()
+        if row:
+            already_active = row["role"] == "admin" and row["is_active"] == 1
+            db.execute(
+                "UPDATE users SET role='admin', is_active=1, password_hash=? WHERE id=?",
+                (admin_pw_hash, row["id"]),
+            )
+            if already_active:
+                log.info("admin 이미 활성 (password_hash 갱신만): %s", admin_email)
+            else:
+                log.info("admin 활성화 완료 (기존 row): %s · uid=%s", admin_email, row["id"])
+            return row["id"]
+        # 새 row INSERT
+        admin_id = uuid.uuid4().hex[:12]
+        db.execute(
+            "INSERT INTO users(id, email, password_hash, role, is_active, last_login) "
+            "VALUES(?, ?, ?, 'admin', 1, datetime('now','localtime'))",
+            (admin_id, admin_email, admin_pw_hash),
+        )
+        log.info("admin 신규 생성: %s · uid=%s", admin_email, admin_id)
+        return admin_id
+
+
+def migrate_legacy_clients_to_admin(admin_id: str) -> int:
+    """user_id='' 인 legacy clients 를 admin 소유로 마이그레이션 (멱등).
+
+    실행 시점:
+    - Commit 1 (12fe96b) 의 clients.user_id 컬럼 추가 직후 — DEFAULT '' 로 시작
+    - admin 활성화 직후 (이번 함수 호출) — '' 인 row 가 admin uid 로 update
+    - 후속 startup — '' 인 row 0 건 → no-op
+
+    Returns: 마이그레이션된 row 수
+    """
+    if not admin_id:
+        return 0
+    with get_db() as db:
+        cur = db.execute(
+            "UPDATE clients SET user_id=? WHERE user_id=''",
+            (admin_id,),
+        )
+        n = cur.rowcount
+    if n > 0:
+        log.info("clients 마이그레이션: user_id='' %d 건 → admin uid", n)
+    return n
 
 
 def translate_anthropic_error(exc: Exception) -> str:
@@ -965,6 +1166,13 @@ def _startup() -> None:
             log.warning("DB 마이그레이션 failed: %s", result["failed"])
     except Exception as e:
         log.exception("DB 마이그레이션 자체 실패 (무시): %s", e)
+    # 묶음 N Commit 6 — admin 활성화 + clients.user_id 마이그레이션 (멱등)
+    try:
+        admin_id = activate_admin_from_env()
+        if admin_id:
+            migrate_legacy_clients_to_admin(admin_id)
+    except Exception as e:
+        log.exception("admin 활성화 / 마이그레이션 실패 (무시): %s", e)
     # 키 출처 로깅 (실패해도 startup 종료 안 함)
     try:
         src = get_api_key_source()
@@ -1029,6 +1237,23 @@ def index():
     return HTMLResponse(_render_index())
 
 
+# ---- Auth pages — 정적 HTML 파일 서빙 (인증 면제) ----
+@app.get("/login.html")
+def login_page():
+    p = STATIC_DIR / "login.html"
+    if not p.exists():
+        raise HTTPException(404, "login page not found")
+    return FileResponse(str(p), media_type="text/html")
+
+
+@app.get("/register.html")
+def register_page():
+    p = STATIC_DIR / "register.html"
+    if not p.exists():
+        raise HTTPException(404, "register page not found")
+    return FileResponse(str(p), media_type="text/html")
+
+
 # ---- 헬스체크 전용 ---- DB / 정적 / 외부 의존 모두 회피 (Railway healthcheckPath)
 @app.get("/healthz")
 def healthz():
@@ -1045,8 +1270,8 @@ def healthz():
 
 
 @app.get("/api/diag/fonts")
-def diag_fonts():
-    """한글 폰트 + Paperlogy 설치 상태 진단 — Railway deploy 후 검증."""
+def diag_fonts(admin: dict = Depends(require_admin)):
+    """한글 폰트 + Paperlogy 설치 상태 진단 — Railway deploy 후 검증 (admin only)."""
     import subprocess
     out = {
         "ok": False,
@@ -1084,8 +1309,8 @@ def diag_fonts():
 
 
 @app.get("/api/r2/status")
-def r2_status():
-    """R2 연결 + 캐시 상태 진단."""
+def r2_status(admin: dict = Depends(require_admin)):
+    """R2 연결 + 캐시 상태 진단 (admin only)."""
     try:
         import r2_storage
         return JSONResponse(r2_storage.status())
@@ -1094,8 +1319,8 @@ def r2_status():
 
 
 @app.get("/api/diag/rag")
-def diag_rag():
-    """RAG 동작 상태 진단 — Railway deploy 후 RAG 활성 여부 확인."""
+def diag_rag(user: dict = Depends(get_current_user)):
+    """RAG 동작 상태 진단 — 시스템 전역 정보 (인증 사용자 모두 접근 OK)."""
     out = {
         "available": False,
         "openai_key_present": bool(os.environ.get("OPENAI_API_KEY", "").strip()),
@@ -1130,8 +1355,8 @@ def diag_rag():
 
 
 @app.post("/api/r2/sync")
-def r2_sync():
-    """수동 R2 재동기화 (관리자용)."""
+def r2_sync(admin: dict = Depends(require_admin)):
+    """수동 R2 재동기화 (admin only)."""
     try:
         import r2_storage
         result = r2_storage.sync_master_templates()
@@ -1174,8 +1399,9 @@ class ChatIn(BaseModel):
 
 
 # ---------- Settings ----------
+# admin only — Anthropic API key 관리는 본인 통제 (BYOK)
 @app.get("/api/settings")
-def api_settings_get():
+def api_settings_get(admin: dict = Depends(require_admin)):
     key = get_api_key()
     source = get_api_key_source()
     masked = ""
@@ -1191,7 +1417,7 @@ def api_settings_get():
 
 
 @app.post("/api/settings")
-def api_settings_set(body: SettingsIn):
+def api_settings_set(body: SettingsIn, admin: dict = Depends(require_admin)):
     # ⚠ 핵심 가드: Railway 환경변수가 활성 상태면 DB 키 쓰기 자체를 거부.
     # 이 가드가 없으면 env 가 살아있는데 DB 가 옆에서 누적되고,
     # env 가 풀리는 순간 DB 가 자동으로 선두에 서서 예측 불가능한 키가 적용됨.
@@ -1211,12 +1437,12 @@ def api_settings_set(body: SettingsIn):
             set_setting("anthropic_api_key", "")
     if body.model:
         set_setting("model", body.model.strip())
-    return api_settings_get()
+    return api_settings_get(admin)
 
 
 @app.post("/api/settings/test")
-def api_settings_test():
-    """현재 저장된 API 키로 최소 요청을 보내 유효성·크레딧 상태를 진단."""
+def api_settings_test(admin: dict = Depends(require_admin)):
+    """현재 저장된 API 키로 최소 요청을 보내 유효성·크레딧 상태를 진단 (admin only)."""
     key = get_api_key()
     if not key:
         return {"ok": False, "stage": "no_key", "message": "API 키가 설정되지 않았어요. 저장 후 다시 시도해 주세요."}
@@ -1281,27 +1507,57 @@ def api_settings_test():
 
 # ---------- Stats ----------
 @app.get("/api/stats")
-def api_stats():
+def api_stats(user: dict = Depends(get_current_user)):
+    """사용자별 통계 — clients.user_id 통해 본인 데이터만 집계."""
+    uid = user["id"]
     with get_db() as db:
-        total_clients = db.execute("SELECT COUNT(*) c FROM clients").fetchone()["c"]
-        total_convs = db.execute("SELECT COUNT(*) c FROM conversations").fetchone()["c"]
-        active_convs = db.execute("SELECT COUNT(*) c FROM conversations WHERE ended=0").fetchone()["c"]
-        total_msgs = db.execute("SELECT COUNT(*) c FROM messages").fetchone()["c"]
-        rfps = db.execute("SELECT COUNT(DISTINCT client_id) c FROM rfp_files").fetchone()["c"]
+        total_clients = db.execute("SELECT COUNT(*) c FROM clients WHERE user_id=?", (uid,)).fetchone()["c"]
+        total_convs = db.execute(
+            "SELECT COUNT(*) c FROM conversations cv JOIN clients c ON c.id=cv.client_id WHERE c.user_id=?",
+            (uid,),
+        ).fetchone()["c"]
+        active_convs = db.execute(
+            "SELECT COUNT(*) c FROM conversations cv JOIN clients c ON c.id=cv.client_id "
+            "WHERE c.user_id=? AND cv.ended=0",
+            (uid,),
+        ).fetchone()["c"]
+        total_msgs = db.execute(
+            "SELECT COUNT(*) c FROM messages m "
+            "JOIN conversations cv ON cv.id=m.conversation_id "
+            "JOIN clients c ON c.id=cv.client_id WHERE c.user_id=?",
+            (uid,),
+        ).fetchone()["c"]
+        rfps = db.execute(
+            "SELECT COUNT(DISTINCT rf.client_id) c FROM rfp_files rf "
+            "JOIN clients c ON c.id=rf.client_id WHERE c.user_id=?",
+            (uid,),
+        ).fetchone()["c"]
         # 이번 달 시작
         month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
         month_activity = db.execute(
-            "SELECT COUNT(*) c FROM messages WHERE created_at >= ?", (month_start,)
+            "SELECT COUNT(*) c FROM messages m "
+            "JOIN conversations cv ON cv.id=m.conversation_id "
+            "JOIN clients c ON c.id=cv.client_id "
+            "WHERE c.user_id=? AND m.created_at >= ?",
+            (uid, month_start),
         ).fetchone()["c"]
         # 대화 1건 = 제안서 1건으로 단순 집계
         total_proposals = db.execute(
-            "SELECT COUNT(DISTINCT conversation_id) c FROM messages WHERE role='assistant' "
-            "AND content LIKE '%class=\"proposal\"%'"
+            "SELECT COUNT(DISTINCT m.conversation_id) c FROM messages m "
+            "JOIN conversations cv ON cv.id=m.conversation_id "
+            "JOIN clients c ON c.id=cv.client_id "
+            "WHERE c.user_id=? AND m.role='assistant' "
+            "AND m.content LIKE '%class=\"proposal\"%'",
+            (uid,),
         ).fetchone()["c"]
     # 승패 집계
     with get_db() as db:
         outcomes = db.execute(
-            "SELECT outcome, COUNT(*) c FROM conversations WHERE outcome IN ('won','lost','in_progress') GROUP BY outcome"
+            "SELECT cv.outcome, COUNT(*) c FROM conversations cv "
+            "JOIN clients c ON c.id=cv.client_id "
+            "WHERE c.user_id=? AND cv.outcome IN ('won','lost','in_progress') "
+            "GROUP BY cv.outcome",
+            (uid,),
         ).fetchall()
     wins = next((o["c"] for o in outcomes if o["outcome"] == "won"), 0)
     losses = next((o["c"] for o in outcomes if o["outcome"] == "lost"), 0)
@@ -1325,12 +1581,16 @@ def api_stats():
 
 
 @app.get("/api/activity")
-def api_activity(limit: int = 12):
-    """최근 활동 피드 — 발주처 등록 / RFP 업로드 / 대화·제안서 생성."""
+def api_activity(limit: int = 12, user: dict = Depends(get_current_user)):
+    """최근 활동 피드 — 사용자 본인 발주처/RFP/대화/제안서 만 표시."""
+    uid = user["id"]
     events: list[dict] = []
     with get_db() as db:
-        # 발주처 등록
-        for r in db.execute("SELECT id,name,created_at FROM clients ORDER BY created_at DESC LIMIT 10").fetchall():
+        # 발주처 등록 — user 소유만
+        for r in db.execute(
+            "SELECT id,name,created_at FROM clients WHERE user_id=? ORDER BY created_at DESC LIMIT 10",
+            (uid,),
+        ).fetchall():
             events.append({
                 "type": "client_created",
                 "client_id": r["id"],
@@ -1338,10 +1598,12 @@ def api_activity(limit: int = 12):
                 "at": r["created_at"],
                 "icon": "building",
             })
-        # RFP 업로드
+        # RFP 업로드 — JOIN clients 로 user 소유만
         for r in db.execute(
             "SELECT rf.filename, rf.role, rf.created_at, c.id cid, c.name cname "
-            "FROM rfp_files rf JOIN clients c ON c.id=rf.client_id ORDER BY rf.created_at DESC LIMIT 10"
+            "FROM rfp_files rf JOIN clients c ON c.id=rf.client_id "
+            "WHERE c.user_id=? ORDER BY rf.created_at DESC LIMIT 10",
+            (uid,),
         ).fetchall():
             events.append({
                 "type": "rfp_uploaded",
@@ -1350,13 +1612,14 @@ def api_activity(limit: int = 12):
                 "at": r["created_at"],
                 "icon": "fileSearch",
             })
-        # 대화 / 제안서 생성
+        # 대화 / 제안서 생성 — JOIN clients 로 user 소유만
         for r in db.execute(
             "SELECT cv.id, cv.title, cv.updated_at, cv.client_id cid, c.name cname, "
             "  (SELECT COUNT(*) FROM messages m WHERE m.conversation_id=cv.id AND m.role='assistant' "
             "   AND m.content LIKE '%class=\"proposal\"%') proposal_count "
             "FROM conversations cv JOIN clients c ON c.id=cv.client_id "
-            "ORDER BY cv.updated_at DESC LIMIT 10"
+            "WHERE c.user_id=? ORDER BY cv.updated_at DESC LIMIT 10",
+            (uid,),
         ).fetchall():
             if r["proposal_count"] > 0:
                 events.append({
@@ -1383,7 +1646,7 @@ def api_activity(limit: int = 12):
 
 # ---------- Clients ----------
 @app.get("/api/clients")
-def api_clients_list():
+def api_clients_list(user: dict = Depends(get_current_user)):
     with get_db() as db:
         rows = db.execute("""
             SELECT c.*,
@@ -1393,8 +1656,9 @@ def api_clients_list():
               (SELECT COUNT(*) FROM nuance_memories n WHERE n.client_id=c.id) memory_count,
               (SELECT analysis_json FROM rfp_aggregated WHERE client_id=c.id) rfp_analysis_json
             FROM clients c
+            WHERE c.user_id = ?
             ORDER BY c.updated_at DESC
-        """).fetchall()
+        """, (user["id"],)).fetchall()
     out = []
     for r in rows:
         d = dict(r)
@@ -1413,32 +1677,36 @@ def api_clients_list():
 
 
 @app.post("/api/clients")
-def api_clients_create(body: ClientIn):
+def api_clients_create(body: ClientIn, user: dict = Depends(get_current_user)):
     cid = uuid.uuid4().hex[:12]
     with get_db() as db:
         db.execute(
-            "INSERT INTO clients(id,name,industry,manager,memo) VALUES(?,?,?,?,?)",
-            (cid, body.name, body.industry, body.manager, body.memo),
+            "INSERT INTO clients(id,name,industry,manager,memo,user_id) VALUES(?,?,?,?,?,?)",
+            (cid, body.name, body.industry, body.manager, body.memo, user["id"]),
         )
     return {"id": cid}
 
 
 @app.get("/api/clients/{cid}")
-def api_clients_get(cid: str):
+def api_clients_get(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
-        row = db.execute("SELECT * FROM clients WHERE id=?", (cid,)).fetchone()
+        row = db.execute(
+            "SELECT * FROM clients WHERE id=? AND user_id=?",
+            (cid, user["id"]),
+        ).fetchone()
         if not row:
+            # 다른 user 의 client 라도 404 (enumeration 방지 — 403 X)
             raise HTTPException(404, "발주처를 찾을 수 없습니다.")
         return dict(row)
 
 
 @app.patch("/api/clients/{cid}")
-def api_clients_update(cid: str, body: ClientIn):
+def api_clients_update(cid: str, body: ClientIn, user: dict = Depends(get_current_user)):
     with get_db() as db:
         cur = db.execute(
             "UPDATE clients SET name=?, industry=?, manager=?, memo=?, "
-            "updated_at=datetime('now','localtime') WHERE id=?",
-            (body.name, body.industry, body.manager, body.memo, cid),
+            "updated_at=datetime('now','localtime') WHERE id=? AND user_id=?",
+            (body.name, body.industry, body.manager, body.memo, cid, user["id"]),
         )
         if cur.rowcount == 0:
             raise HTTPException(404, "발주처를 찾을 수 없습니다.")
@@ -1446,16 +1714,22 @@ def api_clients_update(cid: str, body: ClientIn):
 
 
 @app.delete("/api/clients/{cid}")
-def api_clients_delete(cid: str):
+def api_clients_delete(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
-        db.execute("DELETE FROM clients WHERE id=?", (cid,))
+        cur = db.execute(
+            "DELETE FROM clients WHERE id=? AND user_id=?",
+            (cid, user["id"]),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
     return {"ok": True}
 
 
 # ---------- Conversations ----------
 @app.get("/api/clients/{cid}/conversations")
-def api_convs_list(cid: str):
+def api_convs_list(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
         rows = db.execute("""
             SELECT cv.*,
               (SELECT COUNT(*) FROM messages m WHERE m.conversation_id=cv.id) msg_count,
@@ -1469,22 +1743,19 @@ def api_convs_list(cid: str):
 
 
 @app.post("/api/clients/{cid}/conversations")
-def api_convs_create(cid: str):
+def api_convs_create(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
-        row = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
-        if not row:
-            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
+        _verify_client_owned_by_user(db, cid, user["id"])
         conv_id = uuid.uuid4().hex[:12]
         db.execute("INSERT INTO conversations(id,client_id) VALUES(?,?)", (conv_id, cid))
     return {"id": conv_id}
 
 
 @app.get("/api/conversations/{conv_id}")
-def api_conv_get(conv_id: str):
+def api_conv_get(conv_id: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        _verify_conv_owned_by_user(db, conv_id, user["id"])
         conv = db.execute("SELECT * FROM conversations WHERE id=?", (conv_id,)).fetchone()
-        if not conv:
-            raise HTTPException(404, "대화를 찾을 수 없습니다.")
         msgs = db.execute(
             "SELECT * FROM messages WHERE conversation_id=? ORDER BY created_at ASC",
             (conv_id,),
@@ -1499,19 +1770,19 @@ def api_conv_get(conv_id: str):
 
 
 @app.delete("/api/conversations/{conv_id}")
-def api_conv_delete(conv_id: str):
+def api_conv_delete(conv_id: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        _verify_conv_owned_by_user(db, conv_id, user["id"])
         db.execute("DELETE FROM conversations WHERE id=?", (conv_id,))
     return {"ok": True}
 
 
 @app.post("/api/conversations/{conv_id}/end")
-def api_conv_end(conv_id: str):
+def api_conv_end(conv_id: str, user: dict = Depends(get_current_user)):
     """대화 종료 시 Claude에게 뉘앙스 요약 요청 후 nuance_memories에 저장."""
     with get_db() as db:
+        _verify_conv_owned_by_user(db, conv_id, user["id"])
         conv = db.execute("SELECT * FROM conversations WHERE id=?", (conv_id,)).fetchone()
-        if not conv:
-            raise HTTPException(404, "대화를 찾을 수 없습니다.")
         msgs = db.execute(
             "SELECT role,content FROM messages WHERE conversation_id=? ORDER BY created_at",
             (conv_id,),
@@ -2128,11 +2399,11 @@ def _master_slot_cache_get(master_path) -> list[dict]:
 
 
 @app.post("/api/conversations/{conv_id}/chat")
-def api_chat(conv_id: str, body: ChatIn):
+def api_chat(conv_id: str, body: ChatIn, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        # ⚠ 핵심 — 다른 user 의 conversation 에 chat 메시지 INSERT 금지
+        _verify_conv_owned_by_user(db, conv_id, user["id"])
         conv = db.execute("SELECT * FROM conversations WHERE id=?", (conv_id,)).fetchone()
-        if not conv:
-            raise HTTPException(404, "대화를 찾을 수 없습니다.")
         client_id = conv["client_id"]
 
         # 사용자 메시지 저장
@@ -2205,7 +2476,7 @@ def api_chat(conv_id: str, body: ChatIn):
 # Multi-pass 제안서 생성 — Outline → 슬라이드별 도형 JSON → 병합
 # ---------------------------------------------------------------------------
 @app.post("/api/conversations/{conv_id}/proposals/generate")
-async def api_proposals_generate_multipass(conv_id: str):
+async def api_proposals_generate_multipass(conv_id: str, user: dict = Depends(get_current_user)):
     """
     Multi-pass 제안서 생성. SSE 로 진행률 실시간 push.
 
@@ -2217,14 +2488,17 @@ async def api_proposals_generate_multipass(conv_id: str):
          → 사용자가 PPTX 다운로드 누르면 기존 api_proposals_pptx 가 그대로 처리
 
     UI 측: SSE 받으면서 "목차 작성 중 → 슬라이드 1/28 ... → 병합 → 완료" 표시.
+
+    ⚠ 핵심 — 다른 user 의 conversation 에서 multi-pass 트리거 시 그 user 의
+       RFP/RAG/intel inject 가 호출자에게 노출됨. 청렴제·데이터 분리 핵심 layer.
     """
     import asyncio as _asyncio
     import proposal_multi_pass as mp
 
     with get_db() as db:
+        # ⚠ 핵심 ownership 검증 — 다른 user 의 conv 에서 ✨ 트리거 절대 금지
+        _verify_conv_owned_by_user(db, conv_id, user["id"])
         conv = db.execute("SELECT * FROM conversations WHERE id=?", (conv_id,)).fetchone()
-        if not conv:
-            raise HTTPException(404, "대화를 찾을 수 없습니다.")
         client_id = conv["client_id"]
     # company_name inject 제거 (한국 공공입찰 청렴제 — 본문 회사명 등장 비정상)
 
@@ -2624,12 +2898,13 @@ async def _save_rfp_file(cid: str, file: UploadFile, role: str) -> dict:
 
 
 @app.post("/api/clients/{cid}/rfp")
-async def api_rfp_upload_single(cid: str, file: UploadFile = File(...), role: str = Form("기타")):
+async def api_rfp_upload_single(
+    cid: str, file: UploadFile = File(...), role: str = Form("기타"),
+    user: dict = Depends(get_current_user),
+):
     """단일 파일 업로드 (기존 호환). role 없으면 기타."""
     with get_db() as db:
-        c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
-        if not c:
-            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
+        _verify_client_owned_by_user(db, cid, user["id"])
     info = await _save_rfp_file(cid, file, role)
     # 갈래 1: 과업 분석
     analysis = _run_rfp_aggregate(cid)
@@ -2648,12 +2923,11 @@ async def api_rfp_upload_multi(
     cid: str,
     files: list[UploadFile] = File(...),
     roles: str = Form("[]"),
+    user: dict = Depends(get_current_user),
 ):
     """여러 파일 동시 업로드. roles는 JSON 배열 문자열 (각 파일의 역할)."""
     with get_db() as db:
-        c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
-        if not c:
-            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
+        _verify_client_owned_by_user(db, cid, user["id"])
 
     try:
         role_list = json.loads(roles) if roles else []
@@ -2679,8 +2953,9 @@ async def api_rfp_upload_multi(
 
 
 @app.get("/api/clients/{cid}/rfp")
-def api_rfp_get(cid: str):
+def api_rfp_get(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
         files = db.execute(
             "SELECT id,filename,role,created_at FROM rfp_files WHERE client_id=? ORDER BY created_at",
             (cid,),
@@ -2706,10 +2981,11 @@ class RfpRoleUpdate(BaseModel):
 
 
 @app.patch("/api/clients/{cid}/rfp/files/{fid}")
-def api_rfp_update_role(cid: str, fid: str, body: RfpRoleUpdate):
+def api_rfp_update_role(cid: str, fid: str, body: RfpRoleUpdate, user: dict = Depends(get_current_user)):
     if body.role not in VALID_ROLES:
         raise HTTPException(400, f"역할은 {', '.join(VALID_ROLES)} 중 하나여야 해요.")
     with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
         cur = db.execute("UPDATE rfp_files SET role=? WHERE id=? AND client_id=?",
                          (body.role, fid, cid))
         if cur.rowcount == 0:
@@ -2726,8 +3002,9 @@ def api_rfp_update_role(cid: str, fid: str, body: RfpRoleUpdate):
 
 
 @app.delete("/api/clients/{cid}/rfp/files/{fid}")
-def api_rfp_delete_file(cid: str, fid: str):
+def api_rfp_delete_file(cid: str, fid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
         row = db.execute("SELECT filepath FROM rfp_files WHERE id=? AND client_id=?", (fid, cid)).fetchone()
         if not row:
             raise HTTPException(404, "파일을 찾을 수 없습니다.")
@@ -2742,8 +3019,9 @@ def api_rfp_delete_file(cid: str, fid: str):
 
 
 @app.delete("/api/clients/{cid}/rfp")
-def api_rfp_delete_all(cid: str):
+def api_rfp_delete_all(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
         rows = db.execute("SELECT filepath FROM rfp_files WHERE client_id=?", (cid,)).fetchall()
         for r in rows:
             if r["filepath"]:
@@ -2768,8 +3046,9 @@ def api_rfp_delete_all(cid: str):
 
 # ---------- Reference Library ----------
 @app.get("/api/clients/{cid}/references")
-def api_refs_list(cid: str):
+def api_refs_list(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
         rows = db.execute(
             "SELECT id,filename,filetype,filesize,summary,created_at FROM references_lib "
             "WHERE client_id=? ORDER BY created_at DESC",
@@ -2779,11 +3058,9 @@ def api_refs_list(cid: str):
 
 
 @app.post("/api/clients/{cid}/references")
-async def api_refs_upload(cid: str, file: UploadFile = File(...)):
+async def api_refs_upload(cid: str, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
     with get_db() as db:
-        c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
-        if not c:
-            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
+        _verify_client_owned_by_user(db, cid, user["id"])
 
     content = await read_and_validate_upload(file, allowed_exts=ALLOWED_UPLOAD_EXTS)
     safe_name = re.sub(r"[^\w\.\-가-힣]", "_", file.filename or "ref")
@@ -2841,10 +3118,18 @@ async def api_refs_upload(cid: str, file: UploadFile = File(...)):
 
 
 @app.delete("/api/references/{ref_id}")
-def api_ref_delete(ref_id: str):
+def api_ref_delete(ref_id: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
-        row = db.execute("SELECT filepath FROM references_lib WHERE id=?", (ref_id,)).fetchone()
-        if row and row["filepath"]:
+        # JOIN clients 로 ownership 검증 — ref_id 만으로는 cid 모름
+        row = db.execute(
+            "SELECT r.filepath FROM references_lib r "
+            "JOIN clients c ON c.id=r.client_id "
+            "WHERE r.id=? AND c.user_id=?",
+            (ref_id, user["id"]),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "레퍼런스를 찾을 수 없습니다.")
+        if row["filepath"]:
             try:
                 Path(row["filepath"]).unlink(missing_ok=True)
             except Exception:
@@ -2860,8 +3145,9 @@ def api_ref_delete(ref_id: str):
 
 # ---------- Client Profile + Company DNA + Outcome endpoints ----------
 @app.get("/api/clients/{cid}/profile")
-def api_client_profile_get(cid: str):
+def api_client_profile_get(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
         row = db.execute("SELECT * FROM client_profiles WHERE client_id=?", (cid,)).fetchone()
         # 승률 계산 — 이 발주처 대화 중 won/lost 기준
         outcomes = db.execute(
@@ -2889,13 +3175,15 @@ def api_client_profile_get(cid: str):
 
 
 @app.post("/api/clients/{cid}/profile/rebuild")
-def api_client_profile_rebuild(cid: str):
+def api_client_profile_rebuild(cid: str, user: dict = Depends(get_current_user)):
+    with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
     data = _rebuild_client_profile(cid)
     return {"ok": True, "data": data}
 
 
 @app.get("/api/company-dna")
-def api_company_dna_get():
+def api_company_dna_get(admin: dict = Depends(require_admin)):
     with get_db() as db:
         row = db.execute("SELECT * FROM company_dna WHERE id=1").fetchone()
         ref_count = db.execute("SELECT COUNT(*) c FROM references_lib").fetchone()["c"]
@@ -2914,7 +3202,7 @@ def api_company_dna_get():
 
 
 @app.post("/api/company-dna/rebuild")
-def api_company_dna_rebuild():
+def api_company_dna_rebuild(admin: dict = Depends(require_admin)):
     data = _rebuild_company_dna()
     return {"ok": True, "data": data}
 
@@ -2924,11 +3212,12 @@ class OutcomeIn(BaseModel):
 
 
 @app.patch("/api/conversations/{conv_id}/outcome")
-def api_conv_outcome(conv_id: str, body: OutcomeIn):
+def api_conv_outcome(conv_id: str, body: OutcomeIn, user: dict = Depends(get_current_user)):
     valid = {"", "in_progress", "won", "lost"}
     if body.outcome not in valid:
         raise HTTPException(400, "상태는 (빈값/in_progress/won/lost) 중 하나여야 해요.")
     with get_db() as db:
+        _verify_conv_owned_by_user(db, conv_id, user["id"])
         cur = db.execute("UPDATE conversations SET outcome=?, updated_at=datetime('now','localtime') WHERE id=?",
                          (body.outcome, conv_id))
         if cur.rowcount == 0:
@@ -2936,7 +3225,245 @@ def api_conv_outcome(conv_id: str, body: OutcomeIn):
     return {"ok": True, "outcome": body.outcome}
 
 
-# ---------- Users / 간편 가입 (이메일만) ----------
+# ---------- Auth endpoints ----------
+# (Auth helpers — encode_jwt / decode_jwt / get_current_user / require_admin —
+#  은 endpoint 정의보다 위 (clients 섹션 직전) 으로 이동됨, Commit 4-1)
+class RegisterIn(BaseModel):
+    email: str
+    password: str
+    invite_code: str
+    company: str = ""
+
+
+class LoginIn(BaseModel):
+    email: str
+    password: str
+
+
+@app.post("/api/auth/register")
+def api_auth_register(body: RegisterIn):
+    """초대 코드 검증 + 이메일/비밀번호 등록 + JWT 발급."""
+    email = body.email.strip().lower()
+    pw = body.password
+    invite_code = body.invite_code.strip()
+    company = body.company.strip()
+
+    if not _EMAIL_RE.match(email):
+        raise HTTPException(400, "이메일 형식을 확인해 주세요.")
+    if not _PASSWORD_POLICY_RE.match(pw):
+        raise HTTPException(400, "비밀번호는 8자 이상 + 영문 + 숫자를 포함해야 해요.")
+
+    with get_db() as db:
+        # 초대 코드 검증
+        ic = db.execute("SELECT * FROM invite_codes WHERE code=?", (invite_code,)).fetchone()
+        if not ic:
+            raise HTTPException(410, "초대 코드가 유효하지 않아요.")
+        if ic["used_by"]:
+            raise HTTPException(410, "이미 사용된 초대 코드예요.")
+        if ic["expires_at"]:
+            try:
+                exp = datetime.fromisoformat(ic["expires_at"])
+                if datetime.now() > exp:
+                    raise HTTPException(410, "만료된 초대 코드예요.")
+            except ValueError:
+                pass
+
+        # 활성 계정 중복 체크
+        existing = db.execute("SELECT id, is_active FROM users WHERE email=?", (email,)).fetchone()
+        if existing and existing["is_active"]:
+            raise HTTPException(409, "이미 활성화된 계정이에요. 로그인해 주세요.")
+
+        # bcrypt hash
+        pw_hash = _bcrypt.hashpw(pw.encode("utf-8"), _bcrypt.gensalt(rounds=BCRYPT_ROUNDS)).decode("utf-8")
+
+        if existing:
+            # wait-list 기존 row 활성화 (id 보존)
+            uid = existing["id"]
+            db.execute(
+                "UPDATE users SET password_hash=?, role='user', is_active=1, "
+                "company=COALESCE(NULLIF(?,''), company), last_login=datetime('now','localtime') "
+                "WHERE id=?",
+                (pw_hash, company, uid),
+            )
+        else:
+            uid = uuid.uuid4().hex[:12]
+            db.execute(
+                "INSERT INTO users(id,email,company,password_hash,role,is_active,last_login) "
+                "VALUES(?,?,?,?,?,1,datetime('now','localtime'))",
+                (uid, email, company, pw_hash, "user"),
+            )
+
+        # 초대 코드 사용 처리
+        db.execute(
+            "UPDATE invite_codes SET used_by=?, used_at=datetime('now','localtime') WHERE code=?",
+            (uid, invite_code),
+        )
+
+    token = encode_jwt(uid)
+    return {"token": token, "user": {"id": uid, "email": email, "role": "user"}}
+
+
+@app.post("/api/auth/login")
+def api_auth_login(body: LoginIn):
+    """이메일/비밀번호 검증 + JWT 발급."""
+    email = body.email.strip().lower()
+    pw = body.password
+
+    with get_db() as db:
+        row = db.execute(
+            "SELECT id, email, role, is_active, password_hash FROM users WHERE email=?",
+            (email,),
+        ).fetchone()
+
+    # 보안: 이메일 미존재 / 비밀번호 불일치 구분 X (모두 401)
+    if not row or not row["password_hash"]:
+        raise HTTPException(401, "이메일 또는 비밀번호가 일치하지 않아요.")
+
+    try:
+        ok = _bcrypt.checkpw(pw.encode("utf-8"), row["password_hash"].encode("utf-8"))
+    except (ValueError, TypeError):
+        ok = False
+    if not ok:
+        raise HTTPException(401, "이메일 또는 비밀번호가 일치하지 않아요.")
+
+    if not row["is_active"]:
+        raise HTTPException(403, "활성화 대기 중인 계정이에요. 관리자에게 초대 코드 발급을 요청해 주세요.")
+
+    with get_db() as db:
+        db.execute("UPDATE users SET last_login=datetime('now','localtime') WHERE id=?", (row["id"],))
+
+    token = encode_jwt(row["id"])
+    return {"token": token, "user": {"id": row["id"], "email": row["email"], "role": row["role"]}}
+
+
+@app.post("/api/auth/logout")
+def api_auth_logout():
+    """Stateless — 서버는 상태 없음. 프론트가 localStorage 토큰 삭제 처리."""
+    return {"ok": True}
+
+
+@app.get("/api/auth/me")
+def api_auth_me(user: dict = Depends(get_current_user)):
+    """현재 인증된 사용자 정보."""
+    return {"user": {"id": user["id"], "email": user["email"], "role": user["role"]}}
+
+
+# ---------- Admin endpoints (invite codes + users) — 묶음 N Commit 3 ----------
+import secrets as _secrets
+
+# 32-char alphabet: 헷갈리는 0/O/1/l/I 제외
+# 24 letters (대문자 only) + 8 digits = 32 chars → 32^4 = 1,048,576 조합
+_INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+_INVITE_PREFIX = "NIGHTOFF-"
+_INVITE_RE = re.compile(rf"^{_INVITE_PREFIX}[{re.escape(_INVITE_ALPHABET)}]{{4}}$")
+
+
+def generate_invite_code(max_attempts: int = 50) -> str:
+    """NIGHTOFF-XXXX 형식 초대 코드 생성. invite_codes 테이블 조회로 중복 회피."""
+    for _ in range(max_attempts):
+        suffix = "".join(_secrets.choice(_INVITE_ALPHABET) for _ in range(4))
+        code = f"{_INVITE_PREFIX}{suffix}"
+        with get_db() as db:
+            row = db.execute("SELECT 1 FROM invite_codes WHERE code=?", (code,)).fetchone()
+        if not row:
+            return code
+    raise HTTPException(500, "초대 코드 생성 실패. 관리자에게 문의해 주세요.")
+
+
+class InviteCreateIn(BaseModel):
+    count: int = 1
+    expires_at: Optional[str] = None
+    note: str = ""
+
+
+@app.post("/api/admin/invites")
+def api_admin_invites_create(body: InviteCreateIn, admin: dict = Depends(require_admin)):
+    """초대 코드 발급 (admin 전용). count 단위 batch 발급."""
+    if body.count < 1 or body.count > 50:
+        raise HTTPException(400, "count 는 1~50 사이여야 해요.")
+    expires_at = (body.expires_at or "").strip() or None
+    if expires_at:
+        try:
+            datetime.fromisoformat(expires_at)
+        except ValueError:
+            raise HTTPException(400, "expires_at 은 ISO datetime 형식이어야 해요 (예: 2026-12-31T23:59:59).")
+    note = body.note.strip()
+
+    created = []
+    with get_db() as db:
+        for _ in range(body.count):
+            code = generate_invite_code()
+            db.execute(
+                "INSERT INTO invite_codes(code, created_by, expires_at, note) VALUES(?,?,?,?)",
+                (code, admin["id"], expires_at, note),
+            )
+            row = db.execute(
+                "SELECT code, created_at, expires_at, note FROM invite_codes WHERE code=?",
+                (code,),
+            ).fetchone()
+            created.append(dict(row))
+    return {"codes": created}
+
+
+@app.get("/api/admin/invites")
+def api_admin_invites_list(admin: dict = Depends(require_admin)):
+    """초대 코드 목록 — 미사용 / 사용 / 만료 그룹별 (admin 전용)."""
+    now_iso = datetime.now().isoformat(timespec="seconds")
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT ic.code, ic.created_at, ic.expires_at, ic.note, ic.used_at, "
+            "       ic.used_by, u.email AS used_by_email "
+            "FROM invite_codes ic LEFT JOIN users u ON u.id=ic.used_by "
+            "ORDER BY ic.created_at DESC"
+        ).fetchall()
+
+    unused, used, expired = [], [], []
+    for r in rows:
+        d = dict(r)
+        if d["used_by"]:
+            used.append({
+                "code": d["code"], "created_at": d["created_at"],
+                "used_at": d["used_at"], "used_by_email": d["used_by_email"],
+                "note": d["note"],
+            })
+        elif d["expires_at"] and d["expires_at"] < now_iso:
+            expired.append({
+                "code": d["code"], "created_at": d["created_at"],
+                "expires_at": d["expires_at"], "note": d["note"],
+            })
+        else:
+            unused.append({
+                "code": d["code"], "created_at": d["created_at"],
+                "expires_at": d["expires_at"], "note": d["note"],
+            })
+    return {"unused": unused, "used": used, "expired": expired}
+
+
+@app.delete("/api/admin/invites/{code}")
+def api_admin_invites_revoke(code: str, admin: dict = Depends(require_admin)):
+    """미사용 초대 코드 폐기 (admin 전용)."""
+    with get_db() as db:
+        row = db.execute("SELECT used_by FROM invite_codes WHERE code=?", (code,)).fetchone()
+        if not row:
+            raise HTTPException(404, "초대 코드를 찾을 수 없어요.")
+        if row["used_by"]:
+            raise HTTPException(409, "이미 사용된 초대 코드는 폐기할 수 없어요.")
+        db.execute("DELETE FROM invite_codes WHERE code=?", (code,))
+    return {"ok": True, "code": code}
+
+
+@app.get("/api/admin/users")
+def api_admin_users_list(admin: dict = Depends(require_admin)):
+    """사용자 목록 — 최소 정보 (admin 전용)."""
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT id, email, role, is_active, created_at, last_login "
+            "FROM users ORDER BY created_at DESC"
+        ).fetchall()
+    return {"users": [dict(r) for r in rows]}
+
+
+# ---------- Deprecated: /api/signup (replaced by /api/auth/register) ----------
 class SignupIn(BaseModel):
     email: str
     company: str = ""
@@ -2944,21 +3471,11 @@ class SignupIn(BaseModel):
 
 @app.post("/api/signup")
 def api_signup(body: SignupIn):
-    email = body.email.strip().lower()
-    if "@" not in email or len(email) < 5:
-        raise HTTPException(400, "이메일 형식을 확인해 주세요.")
-    company = body.company.strip()
-    with get_db() as db:
-        row = db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
-        if row:
-            db.execute("UPDATE users SET last_login=datetime('now','localtime') WHERE email=?", (email,))
-            return {"ok": True, "returning": True, "email": email}
-        uid = uuid.uuid4().hex[:12]
-        db.execute(
-            "INSERT INTO users(id,email,company,last_login) VALUES(?,?,?,datetime('now','localtime'))",
-            (uid, email, company),
-        )
-    return {"ok": True, "returning": False, "email": email, "id": uid}
+    """⚠ Deprecated 2026-05-03 — use POST /api/auth/register instead."""
+    raise HTTPException(
+        410,
+        "이 엔드포인트는 더 이상 사용되지 않아요. POST /api/auth/register 를 사용해 주세요.",
+    )
 
 
 # ---------- 산출내역서 생성 ----------
@@ -3024,12 +3541,11 @@ class BudgetRequest(BaseModel):
 
 
 @app.post("/api/budget/generate")
-def api_budget_generate(body: BudgetRequest):
+def api_budget_generate(body: BudgetRequest, user: dict = Depends(get_current_user)):
     """대화의 최근 제안서 + RFP 분석을 토대로 산출내역서 생성."""
     with get_db() as db:
+        _verify_conv_owned_by_user(db, body.conversation_id, user["id"])
         conv = db.execute("SELECT * FROM conversations WHERE id=?", (body.conversation_id,)).fetchone()
-        if not conv:
-            raise HTTPException(404, "대화를 찾을 수 없습니다.")
         client_id = conv["client_id"]
         last_msg = db.execute(
             "SELECT content FROM messages WHERE conversation_id=? AND role='assistant' "
@@ -3071,12 +3587,13 @@ def api_budget_generate(body: BudgetRequest):
 
 # ---------- PPTX 미리보기 (PNG 슬라이드 캐러셀) ----------
 @app.get("/api/proposals/{conv_id}/preview")
-def api_proposals_preview(conv_id: str, regen: int = 0):
+def api_proposals_preview(conv_id: str, regen: int = 0, user: dict = Depends(get_current_user)):
     """저장된 PPTX 의 PNG 미리보기.
     LibreOffice 로 PPTX → PDF → 페이지별 PNG 변환 후 URL 리스트 반환.
     PNG 가 이미 있으면 재사용 (regen=1 이면 강제 재생성).
     """
     with get_db() as db:
+        _verify_conv_owned_by_user(db, conv_id, user["id"])
         cv = db.execute(
             "SELECT pptx_path FROM conversations WHERE id=?", (conv_id,)
         ).fetchone()
@@ -3146,8 +3663,10 @@ class AccentIn(BaseModel):
 
 
 @app.patch("/api/clients/{cid}/accent")
-def api_client_accent(cid: str, body: AccentIn):
+def api_client_accent(cid: str, body: AccentIn, user: dict = Depends(get_current_user)):
     """발주처별 제안서 포인트 컬러 저장 (#RRGGBB)."""
+    with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
     color = body.accent.strip()
     if not re.match(r"^#[0-9a-fA-F]{6}$", color):
         raise HTTPException(400, "#RRGGBB 형식의 색상을 입력해 주세요.")
@@ -3156,7 +3675,9 @@ def api_client_accent(cid: str, body: AccentIn):
 
 
 @app.get("/api/clients/{cid}/accent")
-def api_client_accent_get(cid: str):
+def api_client_accent_get(cid: str, user: dict = Depends(get_current_user)):
+    with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
     c = get_setting(f"accent:{cid}", "")
     return {"accent": c or None}
 
@@ -3164,8 +3685,9 @@ def api_client_accent_get(cid: str):
 
 # ---------- Nuance Memory ----------
 @app.get("/api/clients/{cid}/memories")
-def api_mem_list(cid: str):
+def api_mem_list(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
         rows = db.execute(
             "SELECT * FROM nuance_memories WHERE client_id=? ORDER BY created_at DESC",
             (cid,),
@@ -3179,8 +3701,17 @@ def api_mem_list(cid: str):
 
 
 @app.delete("/api/memories/{mem_id}")
-def api_mem_delete(mem_id: str):
+def api_mem_delete(mem_id: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        # JOIN clients 로 ownership 검증 (path 에 cid 없음)
+        row = db.execute(
+            "SELECT m.id FROM nuance_memories m "
+            "JOIN clients c ON c.id=m.client_id "
+            "WHERE m.id=? AND c.user_id=?",
+            (mem_id, user["id"]),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "메모리를 찾을 수 없습니다.")
         db.execute("DELETE FROM nuance_memories WHERE id=?", (mem_id,))
     return {"ok": True}
 
@@ -3195,14 +3726,16 @@ def api_mem_delete(mem_id: str):
 
 
 @app.get("/api/strengths/catalog")
-def api_strengths_catalog():
-    """[DEPRECATED] 강점 기능 제거됨. 빈 카탈로그 반환."""
+def api_strengths_catalog(user: dict = Depends(get_current_user)):
+    """[DEPRECATED] 강점 기능 제거됨. 빈 카탈로그 반환. 인증만 검증 (글로벌 자원)."""
     return {"catalog": [], "deprecated": True}
 
 
 @app.get("/api/clients/{cid}/strengths")
-def api_client_strengths_get(cid: str):
+def api_client_strengths_get(cid: str, user: dict = Depends(get_current_user)):
     """[DEPRECATED] 강점 기능 제거됨. 빈 응답."""
+    with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
     return {
         "category": "", "capabilities": [], "updated_at": None,
         "suggested_category": "", "project_domain": "",
@@ -3401,8 +3934,9 @@ def _run_client_intel(cid: str) -> dict:
 
 
 @app.get("/api/clients/{cid}/intel")
-def api_client_intel_get(cid: str):
+def api_client_intel_get(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
         row = db.execute("SELECT intel_json,updated_at FROM client_intel WHERE client_id=?", (cid,)).fetchone()
     if not row:
         return {"intel": {}, "updated_at": None}
@@ -3414,11 +3948,9 @@ def api_client_intel_get(cid: str):
 
 
 @app.post("/api/clients/{cid}/intel/rebuild")
-def api_client_intel_rebuild(cid: str):
+def api_client_intel_rebuild(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
-        c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
-        if not c:
-            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
+        _verify_client_owned_by_user(db, cid, user["id"])
     intel = _run_client_intel(cid)
     return {"intel": intel}
 
@@ -3561,7 +4093,7 @@ def _build_pptx_from_pages(pages: list[dict], title: str, output_path: Path,
 
 
 @app.post("/api/proposals/pptx")
-def api_proposals_pptx(body: PptxExportIn):
+def api_proposals_pptx(body: PptxExportIn, user: dict = Depends(get_current_user)):
     """대화의 최신 제안서 → .pptx (마스터 템플릿 우선, 없으면 폴백).
     파일명: '{발주처명}_제안서.pptx', /static/exports/ 영구 보관.
     """
@@ -3571,6 +4103,7 @@ def api_proposals_pptx(body: PptxExportIn):
         raise HTTPException(500, "python-pptx 가 설치돼 있지 않아요. requirements.txt 를 확인해 주세요.")
 
     with get_db() as db:
+        _verify_conv_owned_by_user(db, body.conversation_id, user["id"])
         # JSON 또는 HTML 형식 제안서 메시지 찾기 (둘 다 지원)
         # [중요] LIKE '%"slides"%' — 코드펜스(```json\n{...})·평문 prefix·깔끔한 JSON
         #        모두 매칭. 이전 '{%"slides"%' 패턴은 첫 글자가 { 여야만 매칭되는
@@ -3942,7 +4475,7 @@ class AuditIn(BaseModel):
 
 
 @app.post("/api/proposals/audit")
-def api_proposals_audit(body: AuditIn):
+def api_proposals_audit(body: AuditIn, user: dict = Depends(get_current_user)):
     """🔍 자체 검증 — Compliance + Red Team 통합 분석.
 
     동작:
@@ -3951,6 +4484,8 @@ def api_proposals_audit(body: AuditIn):
       3. Claude 에 audit 프롬프트 → JSON 결과
       4. compliance (커버리지) + red_team (예상 점수) 반환
     """
+    with get_db() as db:
+        _verify_conv_owned_by_user(db, body.conversation_id, user["id"])
     # 1. 제안서 JSON
     proposal = _get_proposal_json_for_conv(body.conversation_id)
     if not proposal:
@@ -4038,8 +4573,10 @@ class PtScriptIn(BaseModel):
 
 
 @app.post("/api/proposals/script")
-def api_pt_script(body: PtScriptIn):
+def api_pt_script(body: PtScriptIn, user: dict = Depends(get_current_user)):
     """발표 큐시트 생성."""
+    with get_db() as db:
+        _verify_conv_owned_by_user(db, body.conversation_id, user["id"])
     proposal_text = _get_proposal_text_for_conv(body.conversation_id)
     if not proposal_text:
         raise HTTPException(404, "이 대화에서 작성된 제안서를 찾지 못했어요.")
@@ -4070,8 +4607,10 @@ class PtQaIn(BaseModel):
 
 
 @app.post("/api/proposals/qa")
-def api_pt_qa(body: PtQaIn):
+def api_pt_qa(body: PtQaIn, user: dict = Depends(get_current_user)):
     """예상 Q&A 생성."""
+    with get_db() as db:
+        _verify_conv_owned_by_user(db, body.conversation_id, user["id"])
     proposal_text = _get_proposal_text_for_conv(body.conversation_id)
     if not proposal_text:
         raise HTTPException(404, "이 대화에서 작성된 제안서를 찾지 못했어요.")

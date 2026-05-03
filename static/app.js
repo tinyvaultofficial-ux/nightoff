@@ -167,6 +167,19 @@ async function _parseErrorResponse(r) {
   return typeof msg === "string" ? msg : JSON.stringify(msg);
 }
 
+// ---------- Auth — JWT localStorage helpers (묶음 N Commit 5) ----------
+const AUTH_TOKEN_KEY = "nightoff_jwt";
+const AUTH_PUBLIC_PAGES = new Set(["/login.html", "/register.html"]);
+
+function getToken() { return localStorage.getItem(AUTH_TOKEN_KEY) || ""; }
+function setToken(t) { localStorage.setItem(AUTH_TOKEN_KEY, t || ""); }
+function clearToken() { localStorage.removeItem(AUTH_TOKEN_KEY); }
+
+function redirectToLogin() {
+  if (AUTH_PUBLIC_PAGES.has(location.pathname)) return;  // 이미 공개 페이지
+  location.href = "/login.html";
+}
+
 async function _call(method, path, { body, form, signal, timeoutMs = 60000 } = {}) {
   const ctrl = new AbortController();
   const signals = [ctrl.signal];
@@ -175,17 +188,26 @@ async function _call(method, path, { body, form, signal, timeoutMs = 60000 } = {
   // [디버그 강화] 요청 정보 로깅 — 422 나오면 어느 path 인지 즉시 알 수 있게
   const debugBody = body !== undefined ? JSON.stringify(body) : null;
   try {
-    const init = { method, signal: ctrl.signal };
+    const init = { method, signal: ctrl.signal, headers: {} };
+    // JWT Authorization header 자동 추가 (auth endpoints 도 OK — 토큰 있으면 첨부)
+    const tok = getToken();
+    if (tok) init.headers["Authorization"] = `Bearer ${tok}`;
     if (form) {
       init.body = form;
     } else if (body !== undefined) {
-      init.headers = { "Content-Type": "application/json" };
+      init.headers["Content-Type"] = "application/json";
       init.body = body ? JSON.stringify(body) : null;
     }
     const r = await fetch(path, init);
     if (!r.ok) {
+      // 401 → 토큰 만료/무효 → 로그인 페이지로 redirect
+      // 단, /api/auth/login 같은 인증 endpoint 의 401 은 로그인 실패 (UI 가 처리)
+      if (r.status === 401 && !path.startsWith("/api/auth/")) {
+        clearToken();
+        redirectToLogin();
+        // redirect 직전이라도 caller 가 throw 받도록 error 진행
+      }
       const msg = await _parseErrorResponse(r);
-      // [디버그 강화] 422 등 에러일 때 console 에 모든 정보 덤프
       console.warn(
         `[API ERROR] ${method} ${path}\n` +
         `  status: ${r.status}\n` +
@@ -4557,7 +4579,23 @@ function bootNavToggle() {
 
 // ---------- Boot ----------
 // 최초 방문 체크
-window.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("DOMContentLoaded", async () => {
+  // ── 묶음 N Commit 5 — 인증 게이트 ──
+  // login/register 페이지는 토큰 검증 X (공개 페이지)
+  if (!AUTH_PUBLIC_PAGES.has(location.pathname)) {
+    if (!getToken()) {
+      redirectToLogin();
+      return;
+    }
+    // 토큰 검증 — /api/auth/me 호출
+    try {
+      const me = await api.get("/api/auth/me");
+      window.__nightoff_user = me.user;  // 다른 곳에서 활용 가능
+    } catch (e) {
+      // 401 은 _call 안에서 redirect 처리됨. 다른 에러는 route() 진행
+      if (e && e.status === 401) return;
+    }
+  }
   if (!localStorage.getItem("nightoff.email")) {
     // 비동기 — 페이지 렌더 후 모달
     setTimeout(() => ensureSignup(), 400);

@@ -2358,6 +2358,8 @@ def _run_rfp_aggregate(cid: str) -> dict:
     if not files:
         with get_db() as db:
             db.execute("DELETE FROM rfp_aggregated WHERE client_id=?", (cid,))
+            # 발주처 들여다보기 (client_intel) 도 함께 정리 — RFP 0 건 시 stale intel 잔존 방지
+            db.execute("DELETE FROM client_intel WHERE client_id=?", (cid,))
         return {}
 
     # 역할별 텍스트 조합 (공고문 → 과업지시서 → 제안요청서 → 기타 순서)
@@ -2751,6 +2753,8 @@ def api_rfp_delete_all(cid: str):
                     pass
         db.execute("DELETE FROM rfp_files WHERE client_id=?", (cid,))
         db.execute("DELETE FROM rfp_aggregated WHERE client_id=?", (cid,))
+        # 발주처 들여다보기 (client_intel) 도 함께 정리 — RFP 전체 삭제 시 stale intel 잔존 방지
+        db.execute("DELETE FROM client_intel WHERE client_id=?", (cid,))
         # 구 테이블 정리
         old = db.execute("SELECT filepath FROM rfp_docs WHERE client_id=?", (cid,)).fetchone()
         if old and old["filepath"]:

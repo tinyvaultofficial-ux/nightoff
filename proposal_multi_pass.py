@@ -1099,11 +1099,21 @@ async def orchestrate(
     t0 = time.time()
     yield {"type": "phase", "phase": "outline", "message": "목차 / 슬라이드 구성 작성 중..."}
 
-    try:
-        outline = await generate_outline(client, rfp_block, rag_block_global, intel_block, extra_block, model)
-    except Exception as e:
-        yield {"type": "error", "error": f"outline 실패: {e}"}
-        return
+    # outline 호출은 60~180초 소요 → Cloudflare/Railway proxy idle timeout (~60-100s) 회피
+    # 25초 간격 heartbeat event yield. asyncio.shield 로 task 취소 방지.
+    outline_task = asyncio.create_task(
+        generate_outline(client, rfp_block, rag_block_global, intel_block, extra_block, model)
+    )
+    outline = None
+    while True:
+        try:
+            outline = await asyncio.wait_for(asyncio.shield(outline_task), timeout=25.0)
+            break
+        except asyncio.TimeoutError:
+            yield {"type": "heartbeat", "phase": "outline"}
+        except Exception as e:
+            yield {"type": "error", "error": f"outline 실패: {e}"}
+            return
 
     yield {
         "type": "outline_done",

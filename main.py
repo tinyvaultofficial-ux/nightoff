@@ -597,6 +597,77 @@ def _verify_conv_owned_by_user(db, conv_id: str, user_id: str) -> dict:
     return {"conv_id": row["conv_id"], "client_id": row["client_id"]}
 
 
+# ---------- Migration helpers (묶음 N Commit 6) ----------
+def activate_admin_from_env() -> Optional[str]:
+    """startup 1회 호출 — ADMIN_EMAIL + ADMIN_PASSWORD_HASH env 로 admin 활성화.
+
+    멱등:
+    - 이미 활성된 admin row 발견 시 password_hash 갱신만 (env 변경 시 동기화)
+    - 매칭 row 없으면 새 row INSERT (베타 단계, 본인 wait-list 등록 안 한 경우)
+
+    Returns: admin user_id (활성화 성공 시) or None (env 미설정).
+
+    보안:
+    - ADMIN_PASSWORD_HASH 는 본인 머신에서 bcrypt(rounds=12) 생성 후 등록
+    - 평문 비밀번호 처리 X (Railway env 평문 잔존 위험 회피)
+    """
+    admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+    admin_pw_hash = os.environ.get("ADMIN_PASSWORD_HASH", "").strip()
+
+    if not admin_email or not admin_pw_hash:
+        log.warning("admin 활성화 스킵: ADMIN_EMAIL 또는 ADMIN_PASSWORD_HASH 미설정")
+        return None
+
+    with get_db() as db:
+        row = db.execute(
+            "SELECT id, role, is_active FROM users WHERE email=?",
+            (admin_email,),
+        ).fetchone()
+        if row:
+            already_active = row["role"] == "admin" and row["is_active"] == 1
+            db.execute(
+                "UPDATE users SET role='admin', is_active=1, password_hash=? WHERE id=?",
+                (admin_pw_hash, row["id"]),
+            )
+            if already_active:
+                log.info("admin 이미 활성 (password_hash 갱신만): %s", admin_email)
+            else:
+                log.info("admin 활성화 완료 (기존 row): %s · uid=%s", admin_email, row["id"])
+            return row["id"]
+        # 새 row INSERT
+        admin_id = uuid.uuid4().hex[:12]
+        db.execute(
+            "INSERT INTO users(id, email, password_hash, role, is_active, last_login) "
+            "VALUES(?, ?, ?, 'admin', 1, datetime('now','localtime'))",
+            (admin_id, admin_email, admin_pw_hash),
+        )
+        log.info("admin 신규 생성: %s · uid=%s", admin_email, admin_id)
+        return admin_id
+
+
+def migrate_legacy_clients_to_admin(admin_id: str) -> int:
+    """user_id='' 인 legacy clients 를 admin 소유로 마이그레이션 (멱등).
+
+    실행 시점:
+    - Commit 1 (12fe96b) 의 clients.user_id 컬럼 추가 직후 — DEFAULT '' 로 시작
+    - admin 활성화 직후 (이번 함수 호출) — '' 인 row 가 admin uid 로 update
+    - 후속 startup — '' 인 row 0 건 → no-op
+
+    Returns: 마이그레이션된 row 수
+    """
+    if not admin_id:
+        return 0
+    with get_db() as db:
+        cur = db.execute(
+            "UPDATE clients SET user_id=? WHERE user_id=''",
+            (admin_id,),
+        )
+        n = cur.rowcount
+    if n > 0:
+        log.info("clients 마이그레이션: user_id='' %d 건 → admin uid", n)
+    return n
+
+
 def translate_anthropic_error(exc: Exception) -> str:
     """Anthropic SDK 예외를 사용자용 친절 메시지로 변환."""
     name = type(exc).__name__
@@ -1095,6 +1166,13 @@ def _startup() -> None:
             log.warning("DB 마이그레이션 failed: %s", result["failed"])
     except Exception as e:
         log.exception("DB 마이그레이션 자체 실패 (무시): %s", e)
+    # 묶음 N Commit 6 — admin 활성화 + clients.user_id 마이그레이션 (멱등)
+    try:
+        admin_id = activate_admin_from_env()
+        if admin_id:
+            migrate_legacy_clients_to_admin(admin_id)
+    except Exception as e:
+        log.exception("admin 활성화 / 마이그레이션 실패 (무시): %s", e)
     # 키 출처 로깅 (실패해도 startup 종료 안 함)
     try:
         src = get_api_key_source()

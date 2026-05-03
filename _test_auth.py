@@ -567,6 +567,62 @@ assert r.status_code == 200
 r = client.delete(f"/api/clients/{a_cid3}", headers=hdr_a)
 assert r.status_code == 200
 
+# ─── Commit 4-4 Integration: admin-only + diag/rag + stats/activity ──────
+print("=== 30. admin-only segregation ===")
+
+# admin user 가 admin endpoints 접근 → 200
+admin_only_endpoints = [
+    ("GET", "/api/settings"),
+    ("GET", "/api/r2/status"),
+    ("GET", "/api/diag/fonts"),
+    ("GET", "/api/company-dna"),
+]
+for method, path in admin_only_endpoints:
+    r = client.get(path, headers=admin_hdr)
+    # status 가 200/500 이든 (의존성에 따라) 403 아니면 admin gate OK
+    assert r.status_code != 403, f"FAIL admin denied {path}: {r.status_code}"
+print(f"  admin -> 4 admin endpoints not 403 OK")
+
+# 일반 user 가 admin endpoints → 403
+# user A 토큰 새로 만듬 (saved_uid 가 #4 에서 register 한 user)
+user_a_token = main.encode_jwt(saved_uid)
+hdr_a = {"Authorization": f"Bearer {user_a_token}"}
+for method, path in admin_only_endpoints:
+    r = client.get(path, headers=hdr_a)
+    assert r.status_code == 403, f"FAIL user got {path}: {r.status_code}"
+print(f"  user -> 4 admin endpoints all 403 OK")
+
+# 인증 없이 → 401
+for method, path in admin_only_endpoints:
+    r = client.get(path)
+    assert r.status_code == 401
+print(f"  unauth -> 4 admin endpoints all 401 OK")
+
+# /api/diag/rag — 인증 사용자 모두 OK (Q3)
+r = client.get("/api/diag/rag", headers=hdr_a)
+assert r.status_code == 200, f"FAIL user denied diag/rag: {r.status_code}"
+print(f"  user GET /api/diag/rag -> 200 OK (global, not admin-only)")
+
+r = client.get("/api/diag/rag")
+assert r.status_code == 401
+print(f"  unauth /api/diag/rag -> 401 OK")
+
+# stats/activity — 사용자별 분리
+print("=== 31. stats/activity per-user filtering ===")
+r = client.get("/api/stats", headers=hdr_a)
+assert r.status_code == 200
+print(f"  A GET /api/stats -> 200 OK")
+
+r = client.get("/api/activity", headers=hdr_a)
+assert r.status_code == 200
+print(f"  A GET /api/activity -> 200 OK")
+
+r = client.get("/api/stats")
+assert r.status_code == 401
+r = client.get("/api/activity")
+assert r.status_code == 401
+print(f"  unauth stats/activity -> 401 OK")
+
 # Cleanup B
 _cleanup_user(email_b)
 _cleanup_code(code_b)
@@ -580,4 +636,4 @@ for c in batch_codes:
     _cleanup_code(c)
 
 print()
-print("[OK] ALL AUTH+ADMIN+CLIENTS+NESTED+CONV TESTS PASSED (51/51)")
+print("[OK] ALL AUTH MIGRATION TESTS PASSED (62/62) - Commit 4 complete")

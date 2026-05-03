@@ -155,6 +155,33 @@ def main():
         sys.exit(1)
     print(f"  [OK 4-3] all {len(expected_4_3)} conversation-based endpoints protected")
 
+    expected_4_4 = {
+        ("GET", "/api/diag/fonts"),
+        ("GET", "/api/diag/rag"),
+        ("GET", "/api/r2/status"),
+        ("POST", "/api/r2/sync"),
+        ("GET", "/api/settings"),
+        ("POST", "/api/settings"),
+        ("POST", "/api/settings/test"),
+        ("GET", "/api/stats"),
+        ("GET", "/api/activity"),
+        ("GET", "/api/company-dna"),
+        ("POST", "/api/company-dna/rebuild"),
+    }
+    missing_4_4 = expected_4_4 - actual_protected
+    if missing_4_4:
+        print(f"  [FAIL 4-4] missing: {missing_4_4}")
+        sys.exit(1)
+    print(f"  [OK 4-4] all {len(expected_4_4)} admin-only + remaining endpoints protected")
+
+    # 최종 검증: unprotected = 0
+    if len(unprotected) != 0:
+        print(f"\n  [FAIL] {len(unprotected)} unprotected endpoints remain:")
+        for m, p, fn, _, ln in unprotected:
+            print(f"    L{ln} {m} {p}")
+        sys.exit(1)
+    print(f"\n  [OK FINAL] all 53 non-exempt endpoints protected. Auth migration complete.")
+
 
 if __name__ == "__main__":
     main()

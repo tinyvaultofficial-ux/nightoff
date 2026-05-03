@@ -500,6 +500,103 @@ def require_client() -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=key, timeout=300.0, max_retries=1)
 
 
+# ---------- Auth helpers (JWT + bcrypt) — 묶음 N Commit 2/4-1/4-4 ----------
+# 위치: 모든 endpoint 정의보다 앞 — Depends() default arg 평가 시점 OK.
+import bcrypt as _bcrypt
+import jwt as _jwt
+from datetime import timedelta, timezone
+
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRY_DAYS = 7
+BCRYPT_ROUNDS = 12
+
+# 비밀번호 정책 — 8자 이상 + 영문 + 숫자 모두 포함
+_PASSWORD_POLICY_RE = re.compile(r"^(?=.*[A-Za-z])(?=.*\d).{8,}$")
+# 이메일 형식 — 단순 validation
+_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
+
+
+def _jwt_secret() -> str:
+    """JWT_SECRET env 필수 — 부재 시 startup 단계에서 에러."""
+    secret = os.environ.get("JWT_SECRET", "").strip()
+    if not secret or len(secret) < 32:
+        raise HTTPException(500, "JWT_SECRET 환경변수가 설정되지 않았어요. 관리자에게 문의해 주세요.")
+    return secret
+
+
+def encode_jwt(user_id: str, expires_in_days: int = JWT_EXPIRY_DAYS) -> str:
+    """user_id 로 JWT 발급 (HS256, 7일 만료)."""
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": user_id,
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(days=expires_in_days)).timestamp()),
+    }
+    return _jwt.encode(payload, _jwt_secret(), algorithm=JWT_ALGORITHM)
+
+
+def decode_jwt(token: str) -> Optional[str]:
+    """JWT decode → user_id (sub). 만료/무효 시 None."""
+    try:
+        payload = _jwt.decode(token, _jwt_secret(), algorithms=[JWT_ALGORITHM])
+        return payload.get("sub")
+    except _jwt.ExpiredSignatureError:
+        return None
+    except _jwt.InvalidTokenError:
+        return None
+    except HTTPException:
+        raise
+
+
+_security = HTTPBearer(auto_error=False)
+
+
+def get_current_user(creds: Optional[HTTPAuthorizationCredentials] = Depends(_security)) -> dict:
+    """JWT dependency — Authorization: Bearer <token> 검증."""
+    if not creds or not creds.credentials:
+        raise HTTPException(401, "인증이 필요해요. 로그인해 주세요.")
+    user_id = decode_jwt(creds.credentials)
+    if not user_id:
+        raise HTTPException(401, "토큰이 만료되었거나 유효하지 않아요. 다시 로그인해 주세요.")
+    with get_db() as db:
+        row = db.execute(
+            "SELECT id, email, role, is_active FROM users WHERE id=?",
+            (user_id,),
+        ).fetchone()
+    if not row or not row["is_active"]:
+        raise HTTPException(401, "비활성 계정이에요. 관리자에게 문의해 주세요.")
+    return dict(row)
+
+
+def require_admin(user: dict = Depends(get_current_user)) -> dict:
+    """admin role 전용 dependency."""
+    if user.get("role") != "admin":
+        raise HTTPException(403, "관리자만 접근할 수 있어요.")
+    return user
+
+
+def _verify_client_owned_by_user(db, cid: str, user_id: str) -> None:
+    """nested resource ownership 검증 — clients.user_id 매칭 안 되면 404."""
+    row = db.execute("SELECT user_id FROM clients WHERE id=?", (cid,)).fetchone()
+    if not row or row["user_id"] != user_id:
+        raise HTTPException(404, "발주처를 찾을 수 없습니다.")
+
+
+def _verify_conv_owned_by_user(db, conv_id: str, user_id: str) -> dict:
+    """conversation_id → client_id → user_id chain 검증.
+    return: {"conv_id", "client_id"} on success. raise 404 on mismatch.
+    """
+    row = db.execute(
+        "SELECT cv.id AS conv_id, cv.client_id, c.user_id "
+        "FROM conversations cv JOIN clients c ON c.id=cv.client_id "
+        "WHERE cv.id=?",
+        (conv_id,),
+    ).fetchone()
+    if not row or row["user_id"] != user_id:
+        raise HTTPException(404, "대화를 찾을 수 없습니다.")
+    return {"conv_id": row["conv_id"], "client_id": row["client_id"]}
+
+
 def translate_anthropic_error(exc: Exception) -> str:
     """Anthropic SDK 예외를 사용자용 친절 메시지로 변환."""
     name = type(exc).__name__
@@ -1078,8 +1175,8 @@ def healthz():
 
 
 @app.get("/api/diag/fonts")
-def diag_fonts():
-    """한글 폰트 + Paperlogy 설치 상태 진단 — Railway deploy 후 검증."""
+def diag_fonts(admin: dict = Depends(require_admin)):
+    """한글 폰트 + Paperlogy 설치 상태 진단 — Railway deploy 후 검증 (admin only)."""
     import subprocess
     out = {
         "ok": False,
@@ -1117,8 +1214,8 @@ def diag_fonts():
 
 
 @app.get("/api/r2/status")
-def r2_status():
-    """R2 연결 + 캐시 상태 진단."""
+def r2_status(admin: dict = Depends(require_admin)):
+    """R2 연결 + 캐시 상태 진단 (admin only)."""
     try:
         import r2_storage
         return JSONResponse(r2_storage.status())
@@ -1127,8 +1224,8 @@ def r2_status():
 
 
 @app.get("/api/diag/rag")
-def diag_rag():
-    """RAG 동작 상태 진단 — Railway deploy 후 RAG 활성 여부 확인."""
+def diag_rag(user: dict = Depends(get_current_user)):
+    """RAG 동작 상태 진단 — 시스템 전역 정보 (인증 사용자 모두 접근 OK)."""
     out = {
         "available": False,
         "openai_key_present": bool(os.environ.get("OPENAI_API_KEY", "").strip()),
@@ -1163,8 +1260,8 @@ def diag_rag():
 
 
 @app.post("/api/r2/sync")
-def r2_sync():
-    """수동 R2 재동기화 (관리자용)."""
+def r2_sync(admin: dict = Depends(require_admin)):
+    """수동 R2 재동기화 (admin only)."""
     try:
         import r2_storage
         result = r2_storage.sync_master_templates()
@@ -1207,8 +1304,9 @@ class ChatIn(BaseModel):
 
 
 # ---------- Settings ----------
+# admin only — Anthropic API key 관리는 본인 통제 (BYOK)
 @app.get("/api/settings")
-def api_settings_get():
+def api_settings_get(admin: dict = Depends(require_admin)):
     key = get_api_key()
     source = get_api_key_source()
     masked = ""
@@ -1224,7 +1322,7 @@ def api_settings_get():
 
 
 @app.post("/api/settings")
-def api_settings_set(body: SettingsIn):
+def api_settings_set(body: SettingsIn, admin: dict = Depends(require_admin)):
     # ⚠ 핵심 가드: Railway 환경변수가 활성 상태면 DB 키 쓰기 자체를 거부.
     # 이 가드가 없으면 env 가 살아있는데 DB 가 옆에서 누적되고,
     # env 가 풀리는 순간 DB 가 자동으로 선두에 서서 예측 불가능한 키가 적용됨.
@@ -1244,12 +1342,12 @@ def api_settings_set(body: SettingsIn):
             set_setting("anthropic_api_key", "")
     if body.model:
         set_setting("model", body.model.strip())
-    return api_settings_get()
+    return api_settings_get(admin)
 
 
 @app.post("/api/settings/test")
-def api_settings_test():
-    """현재 저장된 API 키로 최소 요청을 보내 유효성·크레딧 상태를 진단."""
+def api_settings_test(admin: dict = Depends(require_admin)):
+    """현재 저장된 API 키로 최소 요청을 보내 유효성·크레딧 상태를 진단 (admin only)."""
     key = get_api_key()
     if not key:
         return {"ok": False, "stage": "no_key", "message": "API 키가 설정되지 않았어요. 저장 후 다시 시도해 주세요."}
@@ -1314,27 +1412,57 @@ def api_settings_test():
 
 # ---------- Stats ----------
 @app.get("/api/stats")
-def api_stats():
+def api_stats(user: dict = Depends(get_current_user)):
+    """사용자별 통계 — clients.user_id 통해 본인 데이터만 집계."""
+    uid = user["id"]
     with get_db() as db:
-        total_clients = db.execute("SELECT COUNT(*) c FROM clients").fetchone()["c"]
-        total_convs = db.execute("SELECT COUNT(*) c FROM conversations").fetchone()["c"]
-        active_convs = db.execute("SELECT COUNT(*) c FROM conversations WHERE ended=0").fetchone()["c"]
-        total_msgs = db.execute("SELECT COUNT(*) c FROM messages").fetchone()["c"]
-        rfps = db.execute("SELECT COUNT(DISTINCT client_id) c FROM rfp_files").fetchone()["c"]
+        total_clients = db.execute("SELECT COUNT(*) c FROM clients WHERE user_id=?", (uid,)).fetchone()["c"]
+        total_convs = db.execute(
+            "SELECT COUNT(*) c FROM conversations cv JOIN clients c ON c.id=cv.client_id WHERE c.user_id=?",
+            (uid,),
+        ).fetchone()["c"]
+        active_convs = db.execute(
+            "SELECT COUNT(*) c FROM conversations cv JOIN clients c ON c.id=cv.client_id "
+            "WHERE c.user_id=? AND cv.ended=0",
+            (uid,),
+        ).fetchone()["c"]
+        total_msgs = db.execute(
+            "SELECT COUNT(*) c FROM messages m "
+            "JOIN conversations cv ON cv.id=m.conversation_id "
+            "JOIN clients c ON c.id=cv.client_id WHERE c.user_id=?",
+            (uid,),
+        ).fetchone()["c"]
+        rfps = db.execute(
+            "SELECT COUNT(DISTINCT rf.client_id) c FROM rfp_files rf "
+            "JOIN clients c ON c.id=rf.client_id WHERE c.user_id=?",
+            (uid,),
+        ).fetchone()["c"]
         # 이번 달 시작
         month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
         month_activity = db.execute(
-            "SELECT COUNT(*) c FROM messages WHERE created_at >= ?", (month_start,)
+            "SELECT COUNT(*) c FROM messages m "
+            "JOIN conversations cv ON cv.id=m.conversation_id "
+            "JOIN clients c ON c.id=cv.client_id "
+            "WHERE c.user_id=? AND m.created_at >= ?",
+            (uid, month_start),
         ).fetchone()["c"]
         # 대화 1건 = 제안서 1건으로 단순 집계
         total_proposals = db.execute(
-            "SELECT COUNT(DISTINCT conversation_id) c FROM messages WHERE role='assistant' "
-            "AND content LIKE '%class=\"proposal\"%'"
+            "SELECT COUNT(DISTINCT m.conversation_id) c FROM messages m "
+            "JOIN conversations cv ON cv.id=m.conversation_id "
+            "JOIN clients c ON c.id=cv.client_id "
+            "WHERE c.user_id=? AND m.role='assistant' "
+            "AND m.content LIKE '%class=\"proposal\"%'",
+            (uid,),
         ).fetchone()["c"]
     # 승패 집계
     with get_db() as db:
         outcomes = db.execute(
-            "SELECT outcome, COUNT(*) c FROM conversations WHERE outcome IN ('won','lost','in_progress') GROUP BY outcome"
+            "SELECT cv.outcome, COUNT(*) c FROM conversations cv "
+            "JOIN clients c ON c.id=cv.client_id "
+            "WHERE c.user_id=? AND cv.outcome IN ('won','lost','in_progress') "
+            "GROUP BY cv.outcome",
+            (uid,),
         ).fetchall()
     wins = next((o["c"] for o in outcomes if o["outcome"] == "won"), 0)
     losses = next((o["c"] for o in outcomes if o["outcome"] == "lost"), 0)
@@ -1358,12 +1486,16 @@ def api_stats():
 
 
 @app.get("/api/activity")
-def api_activity(limit: int = 12):
-    """최근 활동 피드 — 발주처 등록 / RFP 업로드 / 대화·제안서 생성."""
+def api_activity(limit: int = 12, user: dict = Depends(get_current_user)):
+    """최근 활동 피드 — 사용자 본인 발주처/RFP/대화/제안서 만 표시."""
+    uid = user["id"]
     events: list[dict] = []
     with get_db() as db:
-        # 발주처 등록
-        for r in db.execute("SELECT id,name,created_at FROM clients ORDER BY created_at DESC LIMIT 10").fetchall():
+        # 발주처 등록 — user 소유만
+        for r in db.execute(
+            "SELECT id,name,created_at FROM clients WHERE user_id=? ORDER BY created_at DESC LIMIT 10",
+            (uid,),
+        ).fetchall():
             events.append({
                 "type": "client_created",
                 "client_id": r["id"],
@@ -1371,10 +1503,12 @@ def api_activity(limit: int = 12):
                 "at": r["created_at"],
                 "icon": "building",
             })
-        # RFP 업로드
+        # RFP 업로드 — JOIN clients 로 user 소유만
         for r in db.execute(
             "SELECT rf.filename, rf.role, rf.created_at, c.id cid, c.name cname "
-            "FROM rfp_files rf JOIN clients c ON c.id=rf.client_id ORDER BY rf.created_at DESC LIMIT 10"
+            "FROM rfp_files rf JOIN clients c ON c.id=rf.client_id "
+            "WHERE c.user_id=? ORDER BY rf.created_at DESC LIMIT 10",
+            (uid,),
         ).fetchall():
             events.append({
                 "type": "rfp_uploaded",
@@ -1383,13 +1517,14 @@ def api_activity(limit: int = 12):
                 "at": r["created_at"],
                 "icon": "fileSearch",
             })
-        # 대화 / 제안서 생성
+        # 대화 / 제안서 생성 — JOIN clients 로 user 소유만
         for r in db.execute(
             "SELECT cv.id, cv.title, cv.updated_at, cv.client_id cid, c.name cname, "
             "  (SELECT COUNT(*) FROM messages m WHERE m.conversation_id=cv.id AND m.role='assistant' "
             "   AND m.content LIKE '%class=\"proposal\"%') proposal_count "
             "FROM conversations cv JOIN clients c ON c.id=cv.client_id "
-            "ORDER BY cv.updated_at DESC LIMIT 10"
+            "WHERE c.user_id=? ORDER BY cv.updated_at DESC LIMIT 10",
+            (uid,),
         ).fetchall():
             if r["proposal_count"] > 0:
                 events.append({
@@ -1412,111 +1547,6 @@ def api_activity(limit: int = 12):
     # 시간 내림차순 정렬 후 limit
     events.sort(key=lambda e: e["at"] or "", reverse=True)
     return events[:limit]
-
-
-# ---------- Auth helpers (JWT + bcrypt) — 묶음 N Commit 2/4-1 ----------
-# 위치: Clients endpoints 보다 앞에 정의 — endpoint Depends() default arg 평가 시점 OK.
-import bcrypt as _bcrypt
-import jwt as _jwt
-from datetime import timedelta, timezone
-
-JWT_ALGORITHM = "HS256"
-JWT_EXPIRY_DAYS = 7
-BCRYPT_ROUNDS = 12
-
-# 비밀번호 정책 — 8자 이상 + 영문 + 숫자 모두 포함
-_PASSWORD_POLICY_RE = re.compile(r"^(?=.*[A-Za-z])(?=.*\d).{8,}$")
-# 이메일 형식 — 단순 validation
-_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
-
-
-def _jwt_secret() -> str:
-    """JWT_SECRET env 필수 — 부재 시 startup 단계에서 에러."""
-    secret = os.environ.get("JWT_SECRET", "").strip()
-    if not secret or len(secret) < 32:
-        raise HTTPException(500, "JWT_SECRET 환경변수가 설정되지 않았어요. 관리자에게 문의해 주세요.")
-    return secret
-
-
-def encode_jwt(user_id: str, expires_in_days: int = JWT_EXPIRY_DAYS) -> str:
-    """user_id 로 JWT 발급 (HS256, 7일 만료)."""
-    now = datetime.now(timezone.utc)
-    payload = {
-        "sub": user_id,
-        "iat": int(now.timestamp()),
-        "exp": int((now + timedelta(days=expires_in_days)).timestamp()),
-    }
-    return _jwt.encode(payload, _jwt_secret(), algorithm=JWT_ALGORITHM)
-
-
-def decode_jwt(token: str) -> Optional[str]:
-    """JWT decode → user_id (sub). 만료/무효 시 None."""
-    try:
-        payload = _jwt.decode(token, _jwt_secret(), algorithms=[JWT_ALGORITHM])
-        return payload.get("sub")
-    except _jwt.ExpiredSignatureError:
-        return None
-    except _jwt.InvalidTokenError:
-        return None
-    except HTTPException:
-        # JWT_SECRET 미설정 — 상위에서 처리
-        raise
-
-
-_security = HTTPBearer(auto_error=False)
-
-
-def get_current_user(creds: Optional[HTTPAuthorizationCredentials] = Depends(_security)) -> dict:
-    """JWT dependency — Authorization: Bearer <token> 검증.
-    is_active=1 인 user dict 반환. 실패 시 401.
-    """
-    if not creds or not creds.credentials:
-        raise HTTPException(401, "인증이 필요해요. 로그인해 주세요.")
-    user_id = decode_jwt(creds.credentials)
-    if not user_id:
-        raise HTTPException(401, "토큰이 만료되었거나 유효하지 않아요. 다시 로그인해 주세요.")
-    with get_db() as db:
-        row = db.execute(
-            "SELECT id, email, role, is_active FROM users WHERE id=?",
-            (user_id,),
-        ).fetchone()
-    if not row or not row["is_active"]:
-        raise HTTPException(401, "비활성 계정이에요. 관리자에게 문의해 주세요.")
-    return dict(row)
-
-
-def require_admin(user: dict = Depends(get_current_user)) -> dict:
-    """admin role 전용 dependency — Commit 3 admin endpoints 에서 사용."""
-    if user.get("role") != "admin":
-        raise HTTPException(403, "관리자만 접근할 수 있어요.")
-    return user
-
-
-def _verify_client_owned_by_user(db, cid: str, user_id: str) -> None:
-    """nested resource ownership 검증 — clients.user_id 매칭 안 되면 404.
-    Commit 4-2: 모든 /api/clients/{cid}/* nested endpoint 에서 호출.
-    cross-user 접근은 enumeration 방지 위해 일관 404 (403 X).
-    """
-    row = db.execute("SELECT user_id FROM clients WHERE id=?", (cid,)).fetchone()
-    if not row or row["user_id"] != user_id:
-        raise HTTPException(404, "발주처를 찾을 수 없습니다.")
-
-
-def _verify_conv_owned_by_user(db, conv_id: str, user_id: str) -> dict:
-    """conversation_id → client_id → user_id chain 검증.
-    Commit 4-3: chat / multi-pass / proposals 출력 endpoints 에서 호출.
-    return: {"conv_id", "client_id"} on success
-    raise: HTTPException(404) on mismatch (cross-user enumeration 방지)
-    """
-    row = db.execute(
-        "SELECT cv.id AS conv_id, cv.client_id, c.user_id "
-        "FROM conversations cv JOIN clients c ON c.id=cv.client_id "
-        "WHERE cv.id=?",
-        (conv_id,),
-    ).fetchone()
-    if not row or row["user_id"] != user_id:
-        raise HTTPException(404, "대화를 찾을 수 없습니다.")
-    return {"conv_id": row["conv_id"], "client_id": row["client_id"]}
 
 
 # ---------- Clients ----------
@@ -3058,7 +3088,7 @@ def api_client_profile_rebuild(cid: str, user: dict = Depends(get_current_user))
 
 
 @app.get("/api/company-dna")
-def api_company_dna_get():
+def api_company_dna_get(admin: dict = Depends(require_admin)):
     with get_db() as db:
         row = db.execute("SELECT * FROM company_dna WHERE id=1").fetchone()
         ref_count = db.execute("SELECT COUNT(*) c FROM references_lib").fetchone()["c"]
@@ -3077,7 +3107,7 @@ def api_company_dna_get():
 
 
 @app.post("/api/company-dna/rebuild")
-def api_company_dna_rebuild():
+def api_company_dna_rebuild(admin: dict = Depends(require_admin)):
     data = _rebuild_company_dna()
     return {"ok": True, "data": data}
 

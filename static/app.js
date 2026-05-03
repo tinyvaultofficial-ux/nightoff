@@ -4462,68 +4462,6 @@ $("#test-key")?.addEventListener("click", async () => {
   }
 });
 
-// ---------- 이메일 간편 가입 (랜딩 CTA → 모달) ----------
-function ensureSignup(onDone) {
-  const cached = localStorage.getItem("nightoff.email");
-  if (cached) { if (onDone) onDone(cached); return; }
-
-  const backdrop = h("div", { class: "modal-backdrop" });
-  const modal = h("div", { class: "modal", style: "max-width: 440px;" });
-  modal.appendChild(h("div", { class: "modal-header" }, [h("h3", {}, "시작하기")]));
-  const emailIn = h("input", { class: "input", type: "email", placeholder: "이메일", autocomplete: "email" });
-  const compIn = h("input", { class: "input", type: "text", placeholder: "회사명 (선택)" });
-
-  // 제출 핸들러 — 버튼 클릭 / Enter 모두 같은 흐름
-  let submitting = false;
-  const submitBtn = h("button", { class: "btn btn-primary" }, "시작하기");
-  const doSubmit = async () => {
-    if (submitting) return;
-    const email = emailIn.value.trim();
-    const company = compIn.value.trim();
-    if (!email || !email.includes("@")) {
-      toast("이메일을 확인해 주세요", "error");
-      emailIn.focus();
-      return;
-    }
-    submitting = true;
-    submitBtn.disabled = true;
-    submitBtn.textContent = "잠시만요…";
-    try {
-      const r = await api.post("/api/signup", { email, company });
-      localStorage.setItem("nightoff.email", r.email);
-      localStorage.setItem("nightoff.company", company);
-      backdrop.remove();
-      toast(r.returning ? "다시 오신 것을 환영합니다!" : "시작해요!", "success");
-      if (onDone) onDone(r.email);
-    } catch (err) {
-      toast(err.message || "가입 실패", "error");
-      submitBtn.disabled = false;
-      submitBtn.textContent = "시작하기";
-      submitting = false;
-    }
-  };
-  submitBtn.addEventListener("click", doSubmit);
-
-  // Enter 키 어디서든 제출 (한국어 IME 조합 중에는 무시 — keyCode 229 / isComposing)
-  const onEnter = (e) => {
-    if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
-    e.preventDefault();
-    doSubmit();
-  };
-  emailIn.addEventListener("keydown", onEnter);
-  compIn.addEventListener("keydown", onEnter);
-
-  modal.appendChild(h("div", { class: "modal-body" }, [
-    h("p", { class: "small muted", style: "margin: 0 0 10px;" }, "비밀번호 없이 이메일만으로 시작할 수 있어요. 같은 이메일로 재방문 시 자동 로그인됩니다."),
-    h("div", { class: "field" }, [h("label", {}, "이메일"), emailIn]),
-    h("div", { class: "field" }, [h("label", {}, "회사명"), compIn]),
-  ]));
-  modal.appendChild(h("div", { class: "modal-footer" }, [submitBtn]));
-  backdrop.appendChild(modal);
-  document.body.appendChild(backdrop);
-  setTimeout(() => emailIn.focus(), 100);
-}
-
 // ---------- 체류시간 인체 캐릭터 ----------
 // 단계: [분 임계값, 알림 zone, 메시지, 색 단계]
 //   alert/warn 은 body-zone 클래스에 .alert / .warn 적용
@@ -4698,10 +4636,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       if (e && e.status === 401) return;
     }
   }
-  if (!localStorage.getItem("nightoff.email")) {
-    // 비동기 — 페이지 렌더 후 모달
-    setTimeout(() => ensureSignup(), 400);
-  }
+  // (legacy ensureSignup 모달 — 묶음 N 인증 시스템 전환 후 폐기됨.
+  //  가입 흐름은 랜딩 CTA "지금 시작하기 ✨" -> /register.html 으로 이동.)
   // 체류시간 인체 캐릭터 시작
   bootBodyCharacter();
   // 반응형 햄버거 토글

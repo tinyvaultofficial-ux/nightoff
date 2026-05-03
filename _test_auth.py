@@ -324,6 +324,79 @@ r = client.post("/api/admin/invites", json={"count": 1})
 assert r.status_code == 401
 print("  no auth -> 401 OK")
 
+# ─── Commit 4-1 Integration: clients user_id filtering (A vs B) ────────────
+
+print("=== 27. clients integration: A creates, B cannot see ===")
+# user A token (이미 saved_uid 가 있음 — Commit 2 register flow)
+user_a_token = main.encode_jwt(saved_uid)
+hdr_a = {"Authorization": f"Bearer {user_a_token}"}
+
+# user B 새로 만들기
+code_b = _seed_invite_code(f"TEST-{uuid.uuid4().hex[:6]}")
+email_b = f"userb-{uuid.uuid4().hex[:4]}@example.com"
+r = client.post("/api/auth/register", json={
+    "email": email_b, "password": "Test1234", "invite_code": code_b,
+})
+assert r.status_code == 200
+user_b = r.json()
+hdr_b = {"Authorization": f"Bearer {user_b['user']['id']}"}  # 일부러 잘못된 헤더 (테스트)
+hdr_b = {"Authorization": f"Bearer {user_b['token']}"}
+
+# A 가 client 생성
+r = client.post("/api/clients",
+    json={"name": "A의 발주처", "industry": "festival", "manager": "A", "memo": ""},
+    headers=hdr_a)
+assert r.status_code == 200, f"A create: {r.status_code} {r.text}"
+a_cid = r.json()["id"]
+print(f"  A created client {a_cid[:8]}...")
+
+# A 가 자기 client list 보기 → A_cid 포함
+r = client.get("/api/clients", headers=hdr_a)
+assert r.status_code == 200
+a_cids = [c["id"] for c in r.json()]
+assert a_cid in a_cids, "fail: A cannot see own client"
+print(f"  A sees own client OK ({len(a_cids)} clients)")
+
+# B 가 list 보기 → A_cid 없음
+r = client.get("/api/clients", headers=hdr_b)
+assert r.status_code == 200
+b_cids = [c["id"] for c in r.json()]
+assert a_cid not in b_cids, "FAIL: B sees A's client (data leak!)"
+print(f"  B does NOT see A's client OK ({len(b_cids)} clients in B's list)")
+
+# B 가 직접 GET A_cid → 404 (enumeration 방지)
+r = client.get(f"/api/clients/{a_cid}", headers=hdr_b)
+assert r.status_code == 404, f"FAIL: B got {r.status_code} for A's cid"
+print("  B GET A's cid -> 404 OK (enumeration prevented)")
+
+# B 가 PATCH A_cid → 404
+r = client.patch(f"/api/clients/{a_cid}",
+    json={"name": "hijacked", "industry": "", "manager": "", "memo": ""},
+    headers=hdr_b)
+assert r.status_code == 404, f"FAIL: B PATCH got {r.status_code}"
+print("  B PATCH A's cid -> 404 OK")
+
+# B 가 DELETE A_cid → 404
+r = client.delete(f"/api/clients/{a_cid}", headers=hdr_b)
+assert r.status_code == 404
+print("  B DELETE A's cid -> 404 OK")
+
+# A 가 자기 client 삭제 → 200
+r = client.delete(f"/api/clients/{a_cid}", headers=hdr_a)
+assert r.status_code == 200
+print("  A DELETE own cid -> 200 OK")
+
+# 인증 없이 → 401
+r = client.get("/api/clients")
+assert r.status_code == 401
+r = client.post("/api/clients", json={"name": "x", "industry": "", "manager": "", "memo": ""})
+assert r.status_code == 401
+print("  unauthenticated -> 401 OK")
+
+# Cleanup B
+_cleanup_user(email_b)
+_cleanup_code(code_b)
+
 # ─── Cleanup ───────────────────────────────────────────────────────────────
 _cleanup_user(test_email)
 _cleanup_user(used_email)
@@ -333,4 +406,4 @@ for c in batch_codes:
     _cleanup_code(c)
 
 print()
-print("[OK] ALL AUTH+ADMIN TESTS PASSED (26/26)")
+print("[OK] ALL AUTH+ADMIN+CLIENTS TESTS PASSED (27/27)")

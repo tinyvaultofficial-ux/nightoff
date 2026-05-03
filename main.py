@@ -17,9 +17,10 @@ from pathlib import Path
 from typing import Generator, Optional
 
 import anthropic
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -1413,9 +1414,87 @@ def api_activity(limit: int = 12):
     return events[:limit]
 
 
+# ---------- Auth helpers (JWT + bcrypt) — 묶음 N Commit 2/4-1 ----------
+# 위치: Clients endpoints 보다 앞에 정의 — endpoint Depends() default arg 평가 시점 OK.
+import bcrypt as _bcrypt
+import jwt as _jwt
+from datetime import timedelta, timezone
+
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRY_DAYS = 7
+BCRYPT_ROUNDS = 12
+
+# 비밀번호 정책 — 8자 이상 + 영문 + 숫자 모두 포함
+_PASSWORD_POLICY_RE = re.compile(r"^(?=.*[A-Za-z])(?=.*\d).{8,}$")
+# 이메일 형식 — 단순 validation
+_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
+
+
+def _jwt_secret() -> str:
+    """JWT_SECRET env 필수 — 부재 시 startup 단계에서 에러."""
+    secret = os.environ.get("JWT_SECRET", "").strip()
+    if not secret or len(secret) < 32:
+        raise HTTPException(500, "JWT_SECRET 환경변수가 설정되지 않았어요. 관리자에게 문의해 주세요.")
+    return secret
+
+
+def encode_jwt(user_id: str, expires_in_days: int = JWT_EXPIRY_DAYS) -> str:
+    """user_id 로 JWT 발급 (HS256, 7일 만료)."""
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": user_id,
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(days=expires_in_days)).timestamp()),
+    }
+    return _jwt.encode(payload, _jwt_secret(), algorithm=JWT_ALGORITHM)
+
+
+def decode_jwt(token: str) -> Optional[str]:
+    """JWT decode → user_id (sub). 만료/무효 시 None."""
+    try:
+        payload = _jwt.decode(token, _jwt_secret(), algorithms=[JWT_ALGORITHM])
+        return payload.get("sub")
+    except _jwt.ExpiredSignatureError:
+        return None
+    except _jwt.InvalidTokenError:
+        return None
+    except HTTPException:
+        # JWT_SECRET 미설정 — 상위에서 처리
+        raise
+
+
+_security = HTTPBearer(auto_error=False)
+
+
+def get_current_user(creds: Optional[HTTPAuthorizationCredentials] = Depends(_security)) -> dict:
+    """JWT dependency — Authorization: Bearer <token> 검증.
+    is_active=1 인 user dict 반환. 실패 시 401.
+    """
+    if not creds or not creds.credentials:
+        raise HTTPException(401, "인증이 필요해요. 로그인해 주세요.")
+    user_id = decode_jwt(creds.credentials)
+    if not user_id:
+        raise HTTPException(401, "토큰이 만료되었거나 유효하지 않아요. 다시 로그인해 주세요.")
+    with get_db() as db:
+        row = db.execute(
+            "SELECT id, email, role, is_active FROM users WHERE id=?",
+            (user_id,),
+        ).fetchone()
+    if not row or not row["is_active"]:
+        raise HTTPException(401, "비활성 계정이에요. 관리자에게 문의해 주세요.")
+    return dict(row)
+
+
+def require_admin(user: dict = Depends(get_current_user)) -> dict:
+    """admin role 전용 dependency — Commit 3 admin endpoints 에서 사용."""
+    if user.get("role") != "admin":
+        raise HTTPException(403, "관리자만 접근할 수 있어요.")
+    return user
+
+
 # ---------- Clients ----------
 @app.get("/api/clients")
-def api_clients_list():
+def api_clients_list(user: dict = Depends(get_current_user)):
     with get_db() as db:
         rows = db.execute("""
             SELECT c.*,
@@ -1425,8 +1504,9 @@ def api_clients_list():
               (SELECT COUNT(*) FROM nuance_memories n WHERE n.client_id=c.id) memory_count,
               (SELECT analysis_json FROM rfp_aggregated WHERE client_id=c.id) rfp_analysis_json
             FROM clients c
+            WHERE c.user_id = ?
             ORDER BY c.updated_at DESC
-        """).fetchall()
+        """, (user["id"],)).fetchall()
     out = []
     for r in rows:
         d = dict(r)
@@ -1445,32 +1525,36 @@ def api_clients_list():
 
 
 @app.post("/api/clients")
-def api_clients_create(body: ClientIn):
+def api_clients_create(body: ClientIn, user: dict = Depends(get_current_user)):
     cid = uuid.uuid4().hex[:12]
     with get_db() as db:
         db.execute(
-            "INSERT INTO clients(id,name,industry,manager,memo) VALUES(?,?,?,?,?)",
-            (cid, body.name, body.industry, body.manager, body.memo),
+            "INSERT INTO clients(id,name,industry,manager,memo,user_id) VALUES(?,?,?,?,?,?)",
+            (cid, body.name, body.industry, body.manager, body.memo, user["id"]),
         )
     return {"id": cid}
 
 
 @app.get("/api/clients/{cid}")
-def api_clients_get(cid: str):
+def api_clients_get(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
-        row = db.execute("SELECT * FROM clients WHERE id=?", (cid,)).fetchone()
+        row = db.execute(
+            "SELECT * FROM clients WHERE id=? AND user_id=?",
+            (cid, user["id"]),
+        ).fetchone()
         if not row:
+            # 다른 user 의 client 라도 404 (enumeration 방지 — 403 X)
             raise HTTPException(404, "발주처를 찾을 수 없습니다.")
         return dict(row)
 
 
 @app.patch("/api/clients/{cid}")
-def api_clients_update(cid: str, body: ClientIn):
+def api_clients_update(cid: str, body: ClientIn, user: dict = Depends(get_current_user)):
     with get_db() as db:
         cur = db.execute(
             "UPDATE clients SET name=?, industry=?, manager=?, memo=?, "
-            "updated_at=datetime('now','localtime') WHERE id=?",
-            (body.name, body.industry, body.manager, body.memo, cid),
+            "updated_at=datetime('now','localtime') WHERE id=? AND user_id=?",
+            (body.name, body.industry, body.manager, body.memo, cid, user["id"]),
         )
         if cur.rowcount == 0:
             raise HTTPException(404, "발주처를 찾을 수 없습니다.")
@@ -1478,9 +1562,14 @@ def api_clients_update(cid: str, body: ClientIn):
 
 
 @app.delete("/api/clients/{cid}")
-def api_clients_delete(cid: str):
+def api_clients_delete(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
-        db.execute("DELETE FROM clients WHERE id=?", (cid,))
+        cur = db.execute(
+            "DELETE FROM clients WHERE id=? AND user_id=?",
+            (cid, user["id"]),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
     return {"ok": True}
 
 
@@ -2968,86 +3057,9 @@ def api_conv_outcome(conv_id: str, body: OutcomeIn):
     return {"ok": True, "outcome": body.outcome}
 
 
-# ---------- Auth (JWT + bcrypt) — 묶음 N Commit 2 ----------
-import bcrypt as _bcrypt
-import jwt as _jwt
-from datetime import timedelta, timezone
-from fastapi import Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
-JWT_ALGORITHM = "HS256"
-JWT_EXPIRY_DAYS = 7
-BCRYPT_ROUNDS = 12
-
-# 비밀번호 정책 — 8자 이상 + 영문 + 숫자 모두 포함
-_PASSWORD_POLICY_RE = re.compile(r"^(?=.*[A-Za-z])(?=.*\d).{8,}$")
-# 이메일 형식 — 단순 validation
-_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
-
-
-def _jwt_secret() -> str:
-    """JWT_SECRET env 필수 — 부재 시 startup 단계에서 에러."""
-    secret = os.environ.get("JWT_SECRET", "").strip()
-    if not secret or len(secret) < 32:
-        raise HTTPException(500, "JWT_SECRET 환경변수가 설정되지 않았어요. 관리자에게 문의해 주세요.")
-    return secret
-
-
-def encode_jwt(user_id: str, expires_in_days: int = JWT_EXPIRY_DAYS) -> str:
-    """user_id 로 JWT 발급 (HS256, 7일 만료)."""
-    now = datetime.now(timezone.utc)
-    payload = {
-        "sub": user_id,
-        "iat": int(now.timestamp()),
-        "exp": int((now + timedelta(days=expires_in_days)).timestamp()),
-    }
-    return _jwt.encode(payload, _jwt_secret(), algorithm=JWT_ALGORITHM)
-
-
-def decode_jwt(token: str) -> Optional[str]:
-    """JWT decode → user_id (sub). 만료/무효 시 None."""
-    try:
-        payload = _jwt.decode(token, _jwt_secret(), algorithms=[JWT_ALGORITHM])
-        return payload.get("sub")
-    except _jwt.ExpiredSignatureError:
-        return None
-    except _jwt.InvalidTokenError:
-        return None
-    except HTTPException:
-        # JWT_SECRET 미설정 — 상위에서 처리
-        raise
-
-
-_security = HTTPBearer(auto_error=False)
-
-
-def get_current_user(creds: Optional[HTTPAuthorizationCredentials] = Depends(_security)) -> dict:
-    """JWT dependency — Authorization: Bearer <token> 검증.
-    is_active=1 인 user dict 반환. 실패 시 401.
-    """
-    if not creds or not creds.credentials:
-        raise HTTPException(401, "인증이 필요해요. 로그인해 주세요.")
-    user_id = decode_jwt(creds.credentials)
-    if not user_id:
-        raise HTTPException(401, "토큰이 만료되었거나 유효하지 않아요. 다시 로그인해 주세요.")
-    with get_db() as db:
-        row = db.execute(
-            "SELECT id, email, role, is_active FROM users WHERE id=?",
-            (user_id,),
-        ).fetchone()
-    if not row or not row["is_active"]:
-        raise HTTPException(401, "비활성 계정이에요. 관리자에게 문의해 주세요.")
-    return dict(row)
-
-
-def require_admin(user: dict = Depends(get_current_user)) -> dict:
-    """admin role 전용 dependency — Commit 3 admin endpoints 에서 사용."""
-    if user.get("role") != "admin":
-        raise HTTPException(403, "관리자만 접근할 수 있어요.")
-    return user
-
-
 # ---------- Auth endpoints ----------
+# (Auth helpers — encode_jwt / decode_jwt / get_current_user / require_admin —
+#  은 endpoint 정의보다 위 (clients 섹션 직전) 으로 이동됨, Commit 4-1)
 class RegisterIn(BaseModel):
     email: str
     password: str

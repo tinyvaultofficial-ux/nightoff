@@ -678,6 +678,8 @@ function showBetaNotice() {
   modal.appendChild(h("div", { class: "beta-notice-section bn-warn" }, [
     h("h3", { class: "beta-notice-section-title" }, "⚠ 아직 부족한 것"),
     h("p", { class: "beta-notice-paragraph" },
+      "RFP 분석과 제안서 생성에는 딥 리서치가 내장되어 있어 시간이 조금 걸려요. 좀 더 정확한 결과를 위한 시간이라 생각해주시면 좋을 것 같아요."),
+    h("p", { class: "beta-notice-paragraph" },
       "생성되는 제안서는 약 70% 정도의 완성도예요. 가끔 텍스트 정렬이 어긋나거나 슬라이드를 살짝 넘어가는 경우가 있어서, 디자이너나 디자인 가능한 기획자가 마무리해주셔야 합니다."),
   ]));
 

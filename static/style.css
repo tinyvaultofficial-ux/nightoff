@@ -5544,6 +5544,8 @@ body.landing-fullscreen .main {
   line-height: 1.7;
   color: #333;
 }
+/* 같은 섹션 안 paragraph 2개 이상일 때 사이 간격 */
+.beta-notice-paragraph + .beta-notice-paragraph { margin-top: 12px; }
 
 .beta-notice-actions {
   display: flex;

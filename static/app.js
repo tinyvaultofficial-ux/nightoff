@@ -3297,30 +3297,10 @@ async function renderChat(cid, convId) {
     const progress = createStreamProgress();
     asstEl.querySelector(".msg-body").insertBefore(progress.el, bubble);
 
-    // ─── Multi-pass 분기 — 명시적 키워드만 매칭 (오트리거 방지) ───
-    // 명시적 "제안서 생성" 버튼이 주 트리거. 채팅에서도 매우 명확한 표현일 때만 트리거.
-    // 단순 "제안개요 써줘" / "목차 잡아줘" 는 일반 chat 으로 → 부분 작업 가능
-    const isProposalRequest =
-      /(전체|풀|풀버전|모든|전부|완성).*제안서/.test(text) ||
-      /제안서.*(생성|만들어줘|작성해줘|뽑아줘|풀로|전체로|다 써|모두)/.test(text) ||
-      /multi[-\s]?pass/i.test(text);
-    if (isProposalRequest) {
-      try {
-        await runMultiPassProposal({
-          convId, asstEl, bubble, progress, body, msgs,
-          aborter: aborter,
-        });
-      } catch (e) {
-        console.error("multi-pass 실패:", e);
-        bubble.innerHTML = `<span style="color:var(--danger);">❌ ${escapeHtml(e.message || String(e))}</span>`;
-        progress.finish(false);
-      } finally {
-        streaming = false; sendBtn.disabled = false; ta.disabled = false;
-        sendBtn.classList.remove("hidden"); stopBtn.classList.add("hidden");
-        aborter = null;
-      }
-      return;
-    }
+    // 채팅 입력 = CHAT_SYSTEM_PROMPT 로 응답만 받음.
+    // 제안서 생성은 ✨ 버튼만 진입. 채팅 키워드 매칭 트리거 (이전 isProposalRequest)
+    // 는 사용자 함정·오트리거 위험이 커서 제거됨. AI 가 CHAT_SYSTEM_PROMPT 의
+    // A3 안내 (b219730) 에 따라 자연어로 ✨ 버튼 안내함.
 
     aborter = new AbortController();
     let targetText = "";    // 서버에서 받아 누적한 실제 full text

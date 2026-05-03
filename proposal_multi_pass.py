@@ -35,9 +35,9 @@ from typing import AsyncIterator, Optional
 log = logging.getLogger("multi_pass")
 
 
-# ─── 도메인 톤 매트릭스 (PROPOSAL_SYSTEM_PROMPT 의 LAYER 2 발췌) ─────────────
+# ─── 도메인 톤 매트릭스 (도메인별 어미·톤·어휘·레지스터) ─────────────
 # Phase 2 슬라이드별 호출 시 outline.domain 값에 따라 해당 도메인의 톤 가이드를
-# user prompt 에 동적 inline. PROPOSAL_SYSTEM_PROMPT 의 LAYER 2 와 동일 source 유지.
+# user prompt 에 동적 inline. main.py 의 _format_chat_block_domain_tone 과 동일 source.
 DOMAIN_TONE_MATRIX: dict[str, dict] = {
     "festival": {
         "label": "축제·행사·기념식",

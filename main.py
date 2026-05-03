@@ -3168,6 +3168,121 @@ def api_auth_me(user: dict = Depends(get_current_user)):
     return {"user": {"id": user["id"], "email": user["email"], "role": user["role"]}}
 
 
+# ---------- Admin endpoints (invite codes + users) — 묶음 N Commit 3 ----------
+import secrets as _secrets
+
+# 32-char alphabet: 헷갈리는 0/O/1/l/I 제외
+# 24 letters (대문자 only) + 8 digits = 32 chars → 32^4 = 1,048,576 조합
+_INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+_INVITE_PREFIX = "NIGHTOFF-"
+_INVITE_RE = re.compile(rf"^{_INVITE_PREFIX}[{re.escape(_INVITE_ALPHABET)}]{{4}}$")
+
+
+def generate_invite_code(max_attempts: int = 50) -> str:
+    """NIGHTOFF-XXXX 형식 초대 코드 생성. invite_codes 테이블 조회로 중복 회피."""
+    for _ in range(max_attempts):
+        suffix = "".join(_secrets.choice(_INVITE_ALPHABET) for _ in range(4))
+        code = f"{_INVITE_PREFIX}{suffix}"
+        with get_db() as db:
+            row = db.execute("SELECT 1 FROM invite_codes WHERE code=?", (code,)).fetchone()
+        if not row:
+            return code
+    raise HTTPException(500, "초대 코드 생성 실패. 관리자에게 문의해 주세요.")
+
+
+class InviteCreateIn(BaseModel):
+    count: int = 1
+    expires_at: Optional[str] = None
+    note: str = ""
+
+
+@app.post("/api/admin/invites")
+def api_admin_invites_create(body: InviteCreateIn, admin: dict = Depends(require_admin)):
+    """초대 코드 발급 (admin 전용). count 단위 batch 발급."""
+    if body.count < 1 or body.count > 50:
+        raise HTTPException(400, "count 는 1~50 사이여야 해요.")
+    expires_at = (body.expires_at or "").strip() or None
+    if expires_at:
+        try:
+            datetime.fromisoformat(expires_at)
+        except ValueError:
+            raise HTTPException(400, "expires_at 은 ISO datetime 형식이어야 해요 (예: 2026-12-31T23:59:59).")
+    note = body.note.strip()
+
+    created = []
+    with get_db() as db:
+        for _ in range(body.count):
+            code = generate_invite_code()
+            db.execute(
+                "INSERT INTO invite_codes(code, created_by, expires_at, note) VALUES(?,?,?,?)",
+                (code, admin["id"], expires_at, note),
+            )
+            row = db.execute(
+                "SELECT code, created_at, expires_at, note FROM invite_codes WHERE code=?",
+                (code,),
+            ).fetchone()
+            created.append(dict(row))
+    return {"codes": created}
+
+
+@app.get("/api/admin/invites")
+def api_admin_invites_list(admin: dict = Depends(require_admin)):
+    """초대 코드 목록 — 미사용 / 사용 / 만료 그룹별 (admin 전용)."""
+    now_iso = datetime.now().isoformat(timespec="seconds")
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT ic.code, ic.created_at, ic.expires_at, ic.note, ic.used_at, "
+            "       ic.used_by, u.email AS used_by_email "
+            "FROM invite_codes ic LEFT JOIN users u ON u.id=ic.used_by "
+            "ORDER BY ic.created_at DESC"
+        ).fetchall()
+
+    unused, used, expired = [], [], []
+    for r in rows:
+        d = dict(r)
+        if d["used_by"]:
+            used.append({
+                "code": d["code"], "created_at": d["created_at"],
+                "used_at": d["used_at"], "used_by_email": d["used_by_email"],
+                "note": d["note"],
+            })
+        elif d["expires_at"] and d["expires_at"] < now_iso:
+            expired.append({
+                "code": d["code"], "created_at": d["created_at"],
+                "expires_at": d["expires_at"], "note": d["note"],
+            })
+        else:
+            unused.append({
+                "code": d["code"], "created_at": d["created_at"],
+                "expires_at": d["expires_at"], "note": d["note"],
+            })
+    return {"unused": unused, "used": used, "expired": expired}
+
+
+@app.delete("/api/admin/invites/{code}")
+def api_admin_invites_revoke(code: str, admin: dict = Depends(require_admin)):
+    """미사용 초대 코드 폐기 (admin 전용)."""
+    with get_db() as db:
+        row = db.execute("SELECT used_by FROM invite_codes WHERE code=?", (code,)).fetchone()
+        if not row:
+            raise HTTPException(404, "초대 코드를 찾을 수 없어요.")
+        if row["used_by"]:
+            raise HTTPException(409, "이미 사용된 초대 코드는 폐기할 수 없어요.")
+        db.execute("DELETE FROM invite_codes WHERE code=?", (code,))
+    return {"ok": True, "code": code}
+
+
+@app.get("/api/admin/users")
+def api_admin_users_list(admin: dict = Depends(require_admin)):
+    """사용자 목록 — 최소 정보 (admin 전용)."""
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT id, email, role, is_active, created_at, last_login "
+            "FROM users ORDER BY created_at DESC"
+        ).fetchall()
+    return {"users": [dict(r) for r in rows]}
+
+
 # ---------- Deprecated: /api/signup (replaced by /api/auth/register) ----------
 class SignupIn(BaseModel):
     email: str

@@ -200,9 +200,137 @@ r = client.post("/api/signup", json={"email": "x@y.com", "company": "X"})
 assert r.status_code == 410, f"fail: expected 410, got {r.status_code}"
 print("  deprecated -> 410 Gone OK")
 
+# ─── Admin tests (Commit 3) ────────────────────────────────────────────────
+
+# admin 계정 seed (test 전용)
+admin_email = f"admin-{uuid.uuid4().hex[:6]}@example.com"
+admin_uid = uuid.uuid4().hex[:12]
+admin_pw_hash = bcrypt.hashpw(b"AdminPass1", bcrypt.gensalt(rounds=4)).decode()  # 빠른 해시 (테스트 전용 rounds=4)
+with main.get_db() as db:
+    db.execute(
+        "INSERT INTO users(id,email,password_hash,role,is_active) VALUES(?,?,?,'admin',1)",
+        (admin_uid, admin_email, admin_pw_hash),
+    )
+admin_token = main.encode_jwt(admin_uid)
+admin_hdr = {"Authorization": f"Bearer {admin_token}"}
+
+# ─── 16. generate_invite_code 형식 + 충돌 검사 ─────────────────────────────
+print("=== 16. generate_invite_code format ===")
+for _ in range(20):
+    c = main.generate_invite_code()
+    assert main._INVITE_RE.match(c), f"fail: format {c}"
+    # 헷갈리는 문자 제외 확인
+    suffix = c.split("-")[1]
+    for ch in suffix:
+        assert ch not in "0O1lI", f"fail: ambiguous char {ch} in {c}"
+print("  format + ambiguous-char-exclusion OK (20 samples)")
+
+# ─── 17. POST /api/admin/invites 정상 ──────────────────────────────────────
+print("=== 17. POST /api/admin/invites batch=3 ===")
+r = client.post("/api/admin/invites",
+    json={"count": 3, "note": "test batch"}, headers=admin_hdr)
+assert r.status_code == 200, f"fail: {r.status_code} {r.text}"
+codes = r.json()["codes"]
+assert len(codes) == 3
+batch_codes = [c["code"] for c in codes]
+for c in batch_codes:
+    assert main._INVITE_RE.match(c)
+print(f"  batch issue OK - {batch_codes}")
+
+# ─── 18. POST /api/admin/invites count 범위 ───────────────────────────────
+print("=== 18. count out-of-range ===")
+r = client.post("/api/admin/invites", json={"count": 100}, headers=admin_hdr)
+assert r.status_code == 400
+print("  count=100 -> 400 OK")
+r = client.post("/api/admin/invites", json={"count": 0}, headers=admin_hdr)
+assert r.status_code == 400
+print("  count=0 -> 400 OK")
+
+# ─── 19. POST /api/admin/invites expires_at 형식 ──────────────────────────
+print("=== 19. invalid expires_at ===")
+r = client.post("/api/admin/invites",
+    json={"expires_at": "not-an-iso-date"}, headers=admin_hdr)
+assert r.status_code == 400
+print("  bad expires_at -> 400 OK")
+
+# ─── 20. GET /api/admin/invites 그룹 ───────────────────────────────────────
+print("=== 20. GET /api/admin/invites grouping ===")
+r = client.get("/api/admin/invites", headers=admin_hdr)
+assert r.status_code == 200
+groups = r.json()
+assert "unused" in groups and "used" in groups and "expired" in groups
+unused_codes = [c["code"] for c in groups["unused"]]
+for c in batch_codes:
+    assert c in unused_codes, f"fail: {c} not in unused"
+print(f"  grouping OK (unused={len(groups['unused'])}, used={len(groups['used'])}, expired={len(groups['expired'])})")
+
+# ─── 21. DELETE /api/admin/invites/{code} 미사용 ───────────────────────────
+print("=== 21. DELETE unused invite ===")
+target = batch_codes[0]
+r = client.delete(f"/api/admin/invites/{target}", headers=admin_hdr)
+assert r.status_code == 200
+print(f"  revoke unused OK - {target}")
+
+# ─── 22. DELETE /api/admin/invites/{code} 존재 X ──────────────────────────
+print("=== 22. DELETE non-existent invite ===")
+r = client.delete("/api/admin/invites/NIGHTOFF-XXXX", headers=admin_hdr)
+assert r.status_code == 404
+print("  non-existent -> 404 OK")
+
+# ─── 23. DELETE 이미 사용된 invite ─────────────────────────────────────────
+print("=== 23. DELETE used invite ===")
+# batch_codes[1] 을 register 로 사용 처리
+used_email = f"used-{uuid.uuid4().hex[:4]}@example.com"
+r = client.post("/api/auth/register", json={
+    "email": used_email, "password": "Test1234", "invite_code": batch_codes[1],
+})
+assert r.status_code == 200
+# 이제 batch_codes[1] 폐기 시도
+r = client.delete(f"/api/admin/invites/{batch_codes[1]}", headers=admin_hdr)
+assert r.status_code == 409, f"fail: expected 409, got {r.status_code}"
+print(f"  revoke used -> 409 OK")
+
+# ─── 24. GET /api/admin/users ──────────────────────────────────────────────
+print("=== 24. GET /api/admin/users ===")
+r = client.get("/api/admin/users", headers=admin_hdr)
+assert r.status_code == 200
+users_body = r.json()
+assert "users" in users_body
+emails = [u["email"] for u in users_body["users"]]
+assert admin_email in emails
+assert used_email in emails
+print(f"  users list OK ({len(users_body['users'])} users)")
+
+# ─── 25. user role 로 admin endpoint 호출 → 403 ────────────────────────────
+print("=== 25. require_admin gating ===")
+# test_email user (Commit 2 에서 register 했음, role=user)
+user_token = main.encode_jwt(saved_uid)
+user_hdr = {"Authorization": f"Bearer {user_token}"}
+for path, method in [("/api/admin/invites", "GET"), ("/api/admin/users", "GET")]:
+    if method == "GET":
+        r = client.get(path, headers=user_hdr)
+    assert r.status_code == 403, f"fail: {path} {method} -> {r.status_code}"
+r = client.post("/api/admin/invites", json={"count": 1}, headers=user_hdr)
+assert r.status_code == 403
+r = client.delete(f"/api/admin/invites/{batch_codes[2]}", headers=user_hdr)
+assert r.status_code == 403
+print("  user -> admin endpoints all 403 OK")
+
+# ─── 26. 인증 없이 admin endpoint → 401 ───────────────────────────────────
+print("=== 26. admin endpoints without auth ===")
+r = client.get("/api/admin/users")
+assert r.status_code == 401
+r = client.post("/api/admin/invites", json={"count": 1})
+assert r.status_code == 401
+print("  no auth -> 401 OK")
+
 # ─── Cleanup ───────────────────────────────────────────────────────────────
 _cleanup_user(test_email)
+_cleanup_user(used_email)
+_cleanup_user(admin_email)
 _cleanup_code(code)
+for c in batch_codes:
+    _cleanup_code(c)
 
 print()
-print("[OK] ALL AUTH TESTS PASSED")
+print("[OK] ALL AUTH+ADMIN TESTS PASSED (26/26)")

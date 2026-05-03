@@ -5431,3 +5431,166 @@ body.landing-fullscreen .main {
   cursor: pointer;
 }
 .mp-retry-btn:hover { background: #333; }
+
+/* ─── Beta Notice Modal — 랜딩 첫 진입 시 1회 표시 ─── */
+.beta-notice-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 12, 30, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 24px;
+  animation: bnFadeIn 0.32s ease-out;
+}
+.beta-notice-overlay.fade-out {
+  animation: bnFadeOut 0.24s ease-in forwards;
+}
+@keyframes bnFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes bnFadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+.beta-notice-modal {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  background: #FFFFFF;
+  border-radius: 20px;
+  padding: 40px 36px 32px;
+  box-shadow:
+    0 24px 64px rgba(20, 16, 50, 0.32),
+    0 4px 12px rgba(0, 0, 0, 0.06);
+  animation: bnScaleUp 0.36s cubic-bezier(0.2, 0.7, 0.2, 1);
+  font-family: 'Paperlogy', 'SUIT Variable', SUIT, Pretendard, sans-serif;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+@keyframes bnScaleUp {
+  from { transform: scale(0.95) translateY(8px); opacity: 0; }
+  to   { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+.beta-notice-close {
+  position: absolute;
+  top: 16px;
+  right: 18px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  color: #999;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: color 0.18s, background 0.18s;
+  font-family: inherit;
+}
+.beta-notice-close:hover { color: #1A1A1A; background: #F5F5F5; }
+
+.beta-notice-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #1A1A1A;
+  margin: 0 0 8px 0;
+  letter-spacing: -0.3px;
+}
+.beta-notice-subtitle {
+  font-size: 14px;
+  color: #666;
+  margin: 0 0 28px 0;
+  line-height: 1.5;
+}
+
+.beta-notice-section {
+  margin-top: 22px;
+  padding-left: 14px;
+  border-left: 3px solid #DDD;
+}
+.beta-notice-section.bn-good { border-left-color: #6366F1; }
+.beta-notice-section.bn-warn { border-left-color: #999; }
+.beta-notice-section.bn-soon {
+  border-left-color: transparent;
+  border-image: linear-gradient(180deg, #6366F1, #8B5CF6) 1;
+}
+.beta-notice-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1A1A1A;
+  margin: 0 0 10px 0;
+  letter-spacing: -0.2px;
+}
+
+.beta-notice-list {
+  margin: 0;
+  padding-left: 20px;
+  color: #333;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.beta-notice-list li { margin-bottom: 4px; }
+.beta-notice-list li::marker { color: #999; }
+
+.beta-notice-paragraph {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #333;
+}
+
+.beta-notice-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 1px solid #EEE;
+}
+
+.beta-notice-btn-secondary {
+  background: transparent;
+  color: #666;
+  border: none;
+  padding: 11px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 10px;
+  font-family: inherit;
+  transition: color 0.18s, background 0.18s;
+}
+.beta-notice-btn-secondary:hover { color: #1A1A1A; background: #F5F5F5; }
+
+.beta-notice-btn-primary {
+  background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+  color: #FFFFFF;
+  border: none;
+  padding: 11px 26px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 12px;
+  font-family: inherit;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.34);
+  transition: transform 0.18s, box-shadow 0.18s;
+}
+.beta-notice-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(99, 102, 241, 0.42);
+}
+.beta-notice-btn-primary:active { transform: translateY(0); }
+
+@media (max-width: 600px) {
+  .beta-notice-modal { padding: 30px 22px 24px; border-radius: 16px; }
+  .beta-notice-title { font-size: 20px; }
+  .beta-notice-actions { flex-direction: column-reverse; gap: 8px; }
+  .beta-notice-btn-primary,
+  .beta-notice-btn-secondary { width: 100%; }
+}

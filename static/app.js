@@ -4632,8 +4632,15 @@ window.addEventListener("DOMContentLoaded", async () => {
       const me = await api.get("/api/auth/me");
       window.__nightoff_user = me.user;  // 다른 곳에서 활용 가능
     } catch (e) {
-      // 401 은 _call 안에서 redirect 처리됨. 다른 에러는 route() 진행
-      if (e && e.status === 401) return;
+      // /api/auth/me 의 401 은 _call() 안 redirect 분기에서 path.startsWith("/api/auth/")
+      // 가드로 skip 됨 — 여기서 명시적으로 token clear + redirect.
+      // (이전엔 silent return 이었어서 stale token 유지 -> dashboard 깜빡 -> 다른 endpoint
+      //  401 -> redirect 의 마찰 흐름이 발생)
+      if (e && e.status === 401) {
+        clearToken();
+        redirectToLogin();
+        return;
+      }
     }
   }
   // (legacy ensureSignup 모달 — 묶음 N 인증 시스템 전환 후 폐기됨.

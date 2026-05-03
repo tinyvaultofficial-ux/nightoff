@@ -91,22 +91,49 @@ def main():
         print(f"  L{ln:<5} {m:<7} {p}  ({fn})")
     print()
 
-    # 4-1 검증: clients 5 개 모두 protected 인지
-    print("=== 4-1 verification: clients endpoints all protected? ===")
-    expected = {
+    # 4-1 + 4-2 검증
+    print("=== 4-1 + 4-2 verification ===")
+    expected_4_1 = {
         ("GET", "/api/clients"),
         ("POST", "/api/clients"),
         ("GET", "/api/clients/{cid}"),
         ("PATCH", "/api/clients/{cid}"),
         ("DELETE", "/api/clients/{cid}"),
     }
+    expected_4_2 = {
+        ("GET", "/api/clients/{cid}/conversations"),
+        ("POST", "/api/clients/{cid}/conversations"),
+        ("POST", "/api/clients/{cid}/rfp"),
+        ("POST", "/api/clients/{cid}/rfp/upload"),
+        ("GET", "/api/clients/{cid}/rfp"),
+        ("PATCH", "/api/clients/{cid}/rfp/files/{fid}"),
+        ("DELETE", "/api/clients/{cid}/rfp/files/{fid}"),
+        ("DELETE", "/api/clients/{cid}/rfp"),
+        ("GET", "/api/clients/{cid}/references"),
+        ("POST", "/api/clients/{cid}/references"),
+        ("DELETE", "/api/references/{ref_id}"),
+        ("GET", "/api/clients/{cid}/profile"),
+        ("POST", "/api/clients/{cid}/profile/rebuild"),
+        ("GET", "/api/strengths/catalog"),
+        ("GET", "/api/clients/{cid}/strengths"),
+        ("GET", "/api/clients/{cid}/memories"),
+        ("DELETE", "/api/memories/{mem_id}"),
+        ("GET", "/api/clients/{cid}/intel"),
+        ("POST", "/api/clients/{cid}/intel/rebuild"),
+        ("PATCH", "/api/clients/{cid}/accent"),
+        ("GET", "/api/clients/{cid}/accent"),
+    }
     actual_protected = {(m, p) for m, p, _, _, _ in protected}
-    missing = expected - actual_protected
-    if missing:
-        print(f"  [FAIL] missing protection: {missing}")
+    missing_4_1 = expected_4_1 - actual_protected
+    missing_4_2 = expected_4_2 - actual_protected
+    if missing_4_1:
+        print(f"  [FAIL 4-1] missing: {missing_4_1}")
         sys.exit(1)
-    else:
-        print(f"  [OK] all 5 clients endpoints protected")
+    print(f"  [OK 4-1] all {len(expected_4_1)} clients endpoints protected")
+    if missing_4_2:
+        print(f"  [FAIL 4-2] missing: {missing_4_2}")
+        sys.exit(1)
+    print(f"  [OK 4-2] all {len(expected_4_2)} clients-nested endpoints protected")
 
 
 if __name__ == "__main__":

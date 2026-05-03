@@ -1492,6 +1492,16 @@ def require_admin(user: dict = Depends(get_current_user)) -> dict:
     return user
 
 
+def _verify_client_owned_by_user(db, cid: str, user_id: str) -> None:
+    """nested resource ownership 검증 — clients.user_id 매칭 안 되면 404.
+    Commit 4-2: 모든 /api/clients/{cid}/* nested endpoint 에서 호출.
+    cross-user 접근은 enumeration 방지 위해 일관 404 (403 X).
+    """
+    row = db.execute("SELECT user_id FROM clients WHERE id=?", (cid,)).fetchone()
+    if not row or row["user_id"] != user_id:
+        raise HTTPException(404, "발주처를 찾을 수 없습니다.")
+
+
 # ---------- Clients ----------
 @app.get("/api/clients")
 def api_clients_list(user: dict = Depends(get_current_user)):
@@ -1575,8 +1585,9 @@ def api_clients_delete(cid: str, user: dict = Depends(get_current_user)):
 
 # ---------- Conversations ----------
 @app.get("/api/clients/{cid}/conversations")
-def api_convs_list(cid: str):
+def api_convs_list(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
         rows = db.execute("""
             SELECT cv.*,
               (SELECT COUNT(*) FROM messages m WHERE m.conversation_id=cv.id) msg_count,
@@ -1590,11 +1601,9 @@ def api_convs_list(cid: str):
 
 
 @app.post("/api/clients/{cid}/conversations")
-def api_convs_create(cid: str):
+def api_convs_create(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
-        row = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
-        if not row:
-            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
+        _verify_client_owned_by_user(db, cid, user["id"])
         conv_id = uuid.uuid4().hex[:12]
         db.execute("INSERT INTO conversations(id,client_id) VALUES(?,?)", (conv_id, cid))
     return {"id": conv_id}
@@ -2745,12 +2754,13 @@ async def _save_rfp_file(cid: str, file: UploadFile, role: str) -> dict:
 
 
 @app.post("/api/clients/{cid}/rfp")
-async def api_rfp_upload_single(cid: str, file: UploadFile = File(...), role: str = Form("기타")):
+async def api_rfp_upload_single(
+    cid: str, file: UploadFile = File(...), role: str = Form("기타"),
+    user: dict = Depends(get_current_user),
+):
     """단일 파일 업로드 (기존 호환). role 없으면 기타."""
     with get_db() as db:
-        c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
-        if not c:
-            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
+        _verify_client_owned_by_user(db, cid, user["id"])
     info = await _save_rfp_file(cid, file, role)
     # 갈래 1: 과업 분석
     analysis = _run_rfp_aggregate(cid)
@@ -2769,12 +2779,11 @@ async def api_rfp_upload_multi(
     cid: str,
     files: list[UploadFile] = File(...),
     roles: str = Form("[]"),
+    user: dict = Depends(get_current_user),
 ):
     """여러 파일 동시 업로드. roles는 JSON 배열 문자열 (각 파일의 역할)."""
     with get_db() as db:
-        c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
-        if not c:
-            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
+        _verify_client_owned_by_user(db, cid, user["id"])
 
     try:
         role_list = json.loads(roles) if roles else []
@@ -2800,8 +2809,9 @@ async def api_rfp_upload_multi(
 
 
 @app.get("/api/clients/{cid}/rfp")
-def api_rfp_get(cid: str):
+def api_rfp_get(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
         files = db.execute(
             "SELECT id,filename,role,created_at FROM rfp_files WHERE client_id=? ORDER BY created_at",
             (cid,),
@@ -2827,10 +2837,11 @@ class RfpRoleUpdate(BaseModel):
 
 
 @app.patch("/api/clients/{cid}/rfp/files/{fid}")
-def api_rfp_update_role(cid: str, fid: str, body: RfpRoleUpdate):
+def api_rfp_update_role(cid: str, fid: str, body: RfpRoleUpdate, user: dict = Depends(get_current_user)):
     if body.role not in VALID_ROLES:
         raise HTTPException(400, f"역할은 {', '.join(VALID_ROLES)} 중 하나여야 해요.")
     with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
         cur = db.execute("UPDATE rfp_files SET role=? WHERE id=? AND client_id=?",
                          (body.role, fid, cid))
         if cur.rowcount == 0:
@@ -2847,8 +2858,9 @@ def api_rfp_update_role(cid: str, fid: str, body: RfpRoleUpdate):
 
 
 @app.delete("/api/clients/{cid}/rfp/files/{fid}")
-def api_rfp_delete_file(cid: str, fid: str):
+def api_rfp_delete_file(cid: str, fid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
         row = db.execute("SELECT filepath FROM rfp_files WHERE id=? AND client_id=?", (fid, cid)).fetchone()
         if not row:
             raise HTTPException(404, "파일을 찾을 수 없습니다.")
@@ -2863,8 +2875,9 @@ def api_rfp_delete_file(cid: str, fid: str):
 
 
 @app.delete("/api/clients/{cid}/rfp")
-def api_rfp_delete_all(cid: str):
+def api_rfp_delete_all(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
         rows = db.execute("SELECT filepath FROM rfp_files WHERE client_id=?", (cid,)).fetchall()
         for r in rows:
             if r["filepath"]:
@@ -2889,8 +2902,9 @@ def api_rfp_delete_all(cid: str):
 
 # ---------- Reference Library ----------
 @app.get("/api/clients/{cid}/references")
-def api_refs_list(cid: str):
+def api_refs_list(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
         rows = db.execute(
             "SELECT id,filename,filetype,filesize,summary,created_at FROM references_lib "
             "WHERE client_id=? ORDER BY created_at DESC",
@@ -2900,11 +2914,9 @@ def api_refs_list(cid: str):
 
 
 @app.post("/api/clients/{cid}/references")
-async def api_refs_upload(cid: str, file: UploadFile = File(...)):
+async def api_refs_upload(cid: str, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
     with get_db() as db:
-        c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
-        if not c:
-            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
+        _verify_client_owned_by_user(db, cid, user["id"])
 
     content = await read_and_validate_upload(file, allowed_exts=ALLOWED_UPLOAD_EXTS)
     safe_name = re.sub(r"[^\w\.\-가-힣]", "_", file.filename or "ref")
@@ -2962,10 +2974,18 @@ async def api_refs_upload(cid: str, file: UploadFile = File(...)):
 
 
 @app.delete("/api/references/{ref_id}")
-def api_ref_delete(ref_id: str):
+def api_ref_delete(ref_id: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
-        row = db.execute("SELECT filepath FROM references_lib WHERE id=?", (ref_id,)).fetchone()
-        if row and row["filepath"]:
+        # JOIN clients 로 ownership 검증 — ref_id 만으로는 cid 모름
+        row = db.execute(
+            "SELECT r.filepath FROM references_lib r "
+            "JOIN clients c ON c.id=r.client_id "
+            "WHERE r.id=? AND c.user_id=?",
+            (ref_id, user["id"]),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "레퍼런스를 찾을 수 없습니다.")
+        if row["filepath"]:
             try:
                 Path(row["filepath"]).unlink(missing_ok=True)
             except Exception:
@@ -2981,8 +3001,9 @@ def api_ref_delete(ref_id: str):
 
 # ---------- Client Profile + Company DNA + Outcome endpoints ----------
 @app.get("/api/clients/{cid}/profile")
-def api_client_profile_get(cid: str):
+def api_client_profile_get(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
         row = db.execute("SELECT * FROM client_profiles WHERE client_id=?", (cid,)).fetchone()
         # 승률 계산 — 이 발주처 대화 중 won/lost 기준
         outcomes = db.execute(
@@ -3010,7 +3031,9 @@ def api_client_profile_get(cid: str):
 
 
 @app.post("/api/clients/{cid}/profile/rebuild")
-def api_client_profile_rebuild(cid: str):
+def api_client_profile_rebuild(cid: str, user: dict = Depends(get_current_user)):
+    with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
     data = _rebuild_client_profile(cid)
     return {"ok": True, "data": data}
 
@@ -3495,8 +3518,10 @@ class AccentIn(BaseModel):
 
 
 @app.patch("/api/clients/{cid}/accent")
-def api_client_accent(cid: str, body: AccentIn):
+def api_client_accent(cid: str, body: AccentIn, user: dict = Depends(get_current_user)):
     """발주처별 제안서 포인트 컬러 저장 (#RRGGBB)."""
+    with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
     color = body.accent.strip()
     if not re.match(r"^#[0-9a-fA-F]{6}$", color):
         raise HTTPException(400, "#RRGGBB 형식의 색상을 입력해 주세요.")
@@ -3505,7 +3530,9 @@ def api_client_accent(cid: str, body: AccentIn):
 
 
 @app.get("/api/clients/{cid}/accent")
-def api_client_accent_get(cid: str):
+def api_client_accent_get(cid: str, user: dict = Depends(get_current_user)):
+    with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
     c = get_setting(f"accent:{cid}", "")
     return {"accent": c or None}
 
@@ -3513,8 +3540,9 @@ def api_client_accent_get(cid: str):
 
 # ---------- Nuance Memory ----------
 @app.get("/api/clients/{cid}/memories")
-def api_mem_list(cid: str):
+def api_mem_list(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
         rows = db.execute(
             "SELECT * FROM nuance_memories WHERE client_id=? ORDER BY created_at DESC",
             (cid,),
@@ -3528,8 +3556,17 @@ def api_mem_list(cid: str):
 
 
 @app.delete("/api/memories/{mem_id}")
-def api_mem_delete(mem_id: str):
+def api_mem_delete(mem_id: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        # JOIN clients 로 ownership 검증 (path 에 cid 없음)
+        row = db.execute(
+            "SELECT m.id FROM nuance_memories m "
+            "JOIN clients c ON c.id=m.client_id "
+            "WHERE m.id=? AND c.user_id=?",
+            (mem_id, user["id"]),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "메모리를 찾을 수 없습니다.")
         db.execute("DELETE FROM nuance_memories WHERE id=?", (mem_id,))
     return {"ok": True}
 
@@ -3544,14 +3581,16 @@ def api_mem_delete(mem_id: str):
 
 
 @app.get("/api/strengths/catalog")
-def api_strengths_catalog():
-    """[DEPRECATED] 강점 기능 제거됨. 빈 카탈로그 반환."""
+def api_strengths_catalog(user: dict = Depends(get_current_user)):
+    """[DEPRECATED] 강점 기능 제거됨. 빈 카탈로그 반환. 인증만 검증 (글로벌 자원)."""
     return {"catalog": [], "deprecated": True}
 
 
 @app.get("/api/clients/{cid}/strengths")
-def api_client_strengths_get(cid: str):
+def api_client_strengths_get(cid: str, user: dict = Depends(get_current_user)):
     """[DEPRECATED] 강점 기능 제거됨. 빈 응답."""
+    with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
     return {
         "category": "", "capabilities": [], "updated_at": None,
         "suggested_category": "", "project_domain": "",
@@ -3750,8 +3789,9 @@ def _run_client_intel(cid: str) -> dict:
 
 
 @app.get("/api/clients/{cid}/intel")
-def api_client_intel_get(cid: str):
+def api_client_intel_get(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
         row = db.execute("SELECT intel_json,updated_at FROM client_intel WHERE client_id=?", (cid,)).fetchone()
     if not row:
         return {"intel": {}, "updated_at": None}
@@ -3763,11 +3803,9 @@ def api_client_intel_get(cid: str):
 
 
 @app.post("/api/clients/{cid}/intel/rebuild")
-def api_client_intel_rebuild(cid: str):
+def api_client_intel_rebuild(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
-        c = db.execute("SELECT id FROM clients WHERE id=?", (cid,)).fetchone()
-        if not c:
-            raise HTTPException(404, "발주처를 찾을 수 없습니다.")
+        _verify_client_owned_by_user(db, cid, user["id"])
     intel = _run_client_intel(cid)
     return {"intel": intel}
 

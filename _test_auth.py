@@ -393,6 +393,82 @@ r = client.post("/api/clients", json={"name": "x", "industry": "", "manager": ""
 assert r.status_code == 401
 print("  unauthenticated -> 401 OK")
 
+# ─── Commit 4-2 Integration: nested resources ─────────────────────────────
+# A 가 client 다시 만들고 nested resource (memories) 생성
+# B 가 cross-user 접근 → 모두 404 검증
+
+print("=== 28. nested resources (4-2): cross-user denial ===")
+r = client.post("/api/clients",
+    json={"name": "A의 발주처 v2", "industry": "festival", "manager": "A", "memo": ""},
+    headers=hdr_a)
+assert r.status_code == 200
+a_cid2 = r.json()["id"]
+
+# A 가 자신 cid 의 memories list 보기 → 200
+r = client.get(f"/api/clients/{a_cid2}/memories", headers=hdr_a)
+assert r.status_code == 200, f"A own memories: {r.status_code}"
+print(f"  A GET own/memories -> 200 OK")
+
+# B 가 같은 cid 의 memories → 404
+r = client.get(f"/api/clients/{a_cid2}/memories", headers=hdr_b)
+assert r.status_code == 404, f"B cross memories: {r.status_code}"
+print("  B GET A's/memories -> 404 OK")
+
+# B 가 cid RFP 목록 → 404
+r = client.get(f"/api/clients/{a_cid2}/rfp", headers=hdr_b)
+assert r.status_code == 404
+print("  B GET A's/rfp -> 404 OK")
+
+# B 가 cid references 목록 → 404
+r = client.get(f"/api/clients/{a_cid2}/references", headers=hdr_b)
+assert r.status_code == 404
+print("  B GET A's/references -> 404 OK")
+
+# B 가 cid profile → 404
+r = client.get(f"/api/clients/{a_cid2}/profile", headers=hdr_b)
+assert r.status_code == 404
+print("  B GET A's/profile -> 404 OK")
+
+# B 가 cid intel → 404
+r = client.get(f"/api/clients/{a_cid2}/intel", headers=hdr_b)
+assert r.status_code == 404
+print("  B GET A's/intel -> 404 OK")
+
+# B 가 cid strengths → 404 (deprecated stub 도 ownership 검증)
+r = client.get(f"/api/clients/{a_cid2}/strengths", headers=hdr_b)
+assert r.status_code == 404
+print("  B GET A's/strengths -> 404 OK")
+
+# B 가 accent PATCH → 404
+r = client.patch(f"/api/clients/{a_cid2}/accent",
+    json={"accent": "#FF0000"}, headers=hdr_b)
+assert r.status_code == 404
+print("  B PATCH A's/accent -> 404 OK")
+
+# B 가 RFP 전체 삭제 시도 → 404
+r = client.delete(f"/api/clients/{a_cid2}/rfp", headers=hdr_b)
+assert r.status_code == 404
+print("  B DELETE A's/rfp -> 404 OK")
+
+# 인증 없이 → 401
+r = client.get(f"/api/clients/{a_cid2}/memories")
+assert r.status_code == 401
+print("  unauth nested -> 401 OK")
+
+# /api/strengths/catalog 글로벌 — A 인증 시 200
+r = client.get("/api/strengths/catalog", headers=hdr_a)
+assert r.status_code == 200
+print("  /api/strengths/catalog (global) with auth -> 200 OK")
+
+# 인증 없이 catalog → 401
+r = client.get("/api/strengths/catalog")
+assert r.status_code == 401
+print("  catalog unauth -> 401 OK")
+
+# Cleanup
+r = client.delete(f"/api/clients/{a_cid2}", headers=hdr_a)
+assert r.status_code == 200
+
 # Cleanup B
 _cleanup_user(email_b)
 _cleanup_code(code_b)
@@ -406,4 +482,4 @@ for c in batch_codes:
     _cleanup_code(c)
 
 print()
-print("[OK] ALL AUTH+ADMIN+CLIENTS TESTS PASSED (27/27)")
+print("[OK] ALL AUTH+ADMIN+CLIENTS+NESTED TESTS PASSED (38/38)")

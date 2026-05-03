@@ -234,10 +234,10 @@ window.addEventListener("unhandledrejection", (e) => {
 });
 
 // ---------- Toast ----------
-function toast(msg, kind = "") {
+function toast(msg, kind = "", duration = 2800) {
   const el = h("div", { class: `toast ${kind}` }, msg);
   $("#toast-root").appendChild(el);
-  setTimeout(() => el.remove(), 2800);
+  setTimeout(() => el.remove(), duration);
 }
 
 // ---------- Soft pulse loader with fading emoji + text sequence ----------
@@ -3174,6 +3174,8 @@ async function renderChat(cid, convId) {
             ]),
           ]);
           msgs.appendChild(userBubble);
+          // 5초 toast — 작업 시간 + 페이지 이동 경고
+          toast("5~10분 소요. 작업 진행 중 페이지 이동·새로고침 X", "", 5000);
           const asstEl = msgElement("assistant", "", new Date().toISOString());
           msgs.appendChild(asstEl);
           const bubble = asstEl.querySelector(".msg-bubble");
@@ -3185,7 +3187,18 @@ async function renderChat(cid, convId) {
             await runMultiPassProposal({ convId, asstEl, bubble, progress, body, msgs });
           } catch (e) {
             console.error("multi-pass 실패:", e);
-            bubble.innerHTML = `<span style="color:var(--danger);">❌ ${escapeHtml(e.message || String(e))}</span>`;
+            // 실패 시 inline 재시도 버튼 — history 보존 (사용자 결정 Q4 옵션 a)
+            bubble.innerHTML =
+              `<div style="color:var(--danger); margin-bottom:8px;">❌ ${escapeHtml(e.message || String(e))}</div>` +
+              `<button class="mp-retry-btn" type="button">🔄 다시 시도</button>`;
+            const retryBtn = bubble.querySelector(".mp-retry-btn");
+            if (retryBtn) retryBtn.addEventListener("click", (ev) => {
+              ev.preventDefault();
+              const sparkle = Array.from(document.querySelectorAll("button.btn-primary"))
+                .find((b) => b.textContent.includes("제안서 생성"));
+              if (sparkle) sparkle.click();
+              else toast("✨ 버튼을 다시 눌러주세요", "error");
+            });
             progress.finish(false);
           }
         },
@@ -3297,30 +3310,10 @@ async function renderChat(cid, convId) {
     const progress = createStreamProgress();
     asstEl.querySelector(".msg-body").insertBefore(progress.el, bubble);
 
-    // ─── Multi-pass 분기 — 명시적 키워드만 매칭 (오트리거 방지) ───
-    // 명시적 "제안서 생성" 버튼이 주 트리거. 채팅에서도 매우 명확한 표현일 때만 트리거.
-    // 단순 "제안개요 써줘" / "목차 잡아줘" 는 일반 chat 으로 → 부분 작업 가능
-    const isProposalRequest =
-      /(전체|풀|풀버전|모든|전부|완성).*제안서/.test(text) ||
-      /제안서.*(생성|만들어줘|작성해줘|뽑아줘|풀로|전체로|다 써|모두)/.test(text) ||
-      /multi[-\s]?pass/i.test(text);
-    if (isProposalRequest) {
-      try {
-        await runMultiPassProposal({
-          convId, asstEl, bubble, progress, body, msgs,
-          aborter: aborter,
-        });
-      } catch (e) {
-        console.error("multi-pass 실패:", e);
-        bubble.innerHTML = `<span style="color:var(--danger);">❌ ${escapeHtml(e.message || String(e))}</span>`;
-        progress.finish(false);
-      } finally {
-        streaming = false; sendBtn.disabled = false; ta.disabled = false;
-        sendBtn.classList.remove("hidden"); stopBtn.classList.add("hidden");
-        aborter = null;
-      }
-      return;
-    }
+    // 채팅 입력 = CHAT_SYSTEM_PROMPT 로 응답만 받음.
+    // 제안서 생성은 ✨ 버튼만 진입. 채팅 키워드 매칭 트리거 (이전 isProposalRequest)
+    // 는 사용자 함정·오트리거 위험이 커서 제거됨. AI 가 CHAT_SYSTEM_PROMPT 의
+    // A3 안내 (b219730) 에 따라 자연어로 ✨ 버튼 안내함.
 
     aborter = new AbortController();
     let targetText = "";    // 서버에서 받아 누적한 실제 full text
@@ -3863,20 +3856,42 @@ function createStreamProgress() {
 
 // ─── Multi-pass 제안서 생성 — SSE 받으면서 진행률 표시 + 끝나면 PPTX 변환 ───
 async function runMultiPassProposal({ convId, asstEl, bubble, progress, body, msgs }) {
+  // 영구 안내 + 목차 작성 placeholder
   bubble.innerHTML =
-    '<div class="json-stream-placeholder">' +
+    '<div class="mp-warning">⚠ 5~10분 소요. 작업 진행 중 페이지 이동·새로고침 시 진행 사라짐</div>' +
+    '<div class="mp-outline-status">' +
       '<span class="loading-dots"><span></span><span></span><span></span></span>' +
-      '<span class="muted">목차 작성을 시작합니다…</span>' +
+      '<span class="mp-substep muted">RFP 분석 중...</span>' +
     '</div>';
 
   // 우측 미리보기 패널 preparing 모드
   try { window.shellSetSidePanelPng && window.shellSetSidePanelPng("preparing"); } catch {}
 
+  // ─ outline phase sub-step heuristic (시간 기반) ─
+  const outlineStart = Date.now();
+  const OUTLINE_SUBSTEPS = [
+    { sec: 0,   msg: "RFP 분석 중..." },
+    { sec: 10,  msg: "RAG 검색 중..." },
+    { sec: 30,  msg: "프롬프트 빌드 중..." },
+    { sec: 60,  msg: "목차 작성 중... (보통 60~180초)" },
+    { sec: 180, msg: "목차 작성 중... (긴 RFP — 잠시만 더)" },
+  ];
+  let outlineTimer = setInterval(() => {
+    const elapsed = (Date.now() - outlineStart) / 1000;
+    let msg = OUTLINE_SUBSTEPS[0].msg;
+    for (const s of OUTLINE_SUBSTEPS) if (elapsed >= s.sec) msg = s.msg;
+    const sub = bubble.querySelector(".mp-substep");
+    if (sub) sub.textContent = msg;
+  }, 1000);
+  function stopOutlineTimer() {
+    if (outlineTimer) { clearInterval(outlineTimer); outlineTimer = null; }
+  }
+
   const resp = await fetch(`/api/conversations/${convId}/proposals/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
   });
-  if (!resp.ok) throw new Error(await resp.text());
+  if (!resp.ok) { stopOutlineTimer(); throw new Error(await resp.text()); }
 
   const reader = resp.body.getReader();
   const dec = new TextDecoder();
@@ -3885,6 +3900,8 @@ async function runMultiPassProposal({ convId, asstEl, bubble, progress, body, ms
   let okCount = 0;
   let failCount = 0;
   let outlineLines = [];
+  let outlineList = [];   // [{page, section, governing, status}]
+  let slidesStart = 0;
   let finalDone = false;
 
   // progress UI 헬퍼
@@ -3892,6 +3909,42 @@ async function runMultiPassProposal({ convId, asstEl, bubble, progress, body, ms
   const countEl = progress.el.querySelector(".sp-count");
   const fillEl = progress.el.querySelector(".sp-bar-fill");
   progress.el.classList.remove("indeterminate");
+
+  // ─ ETA 계산 ─ slide_done 마다 평균 갱신
+  function calcEta(doneCount, total) {
+    if (slidesStart === 0 || doneCount === 0) return "";
+    const elapsed = (Date.now() - slidesStart) / 1000;
+    const avg = elapsed / doneCount;
+    const remaining = Math.max(0, total - doneCount);
+    const sec = Math.round(remaining * avg);
+    if (sec <= 0) return "마무리 중";
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return m > 0 ? `약 ${m}분 ${s}초 남음` : `약 ${s}초 남음`;
+  }
+
+  // ─ 슬라이드 list 마커 transition ─
+  function renderSlideList() {
+    const items = outlineList.map((o) => {
+      let mark = "·", cls = "mp-pending";
+      if (o.status === "doing") { mark = "🔄"; cls = "mp-doing"; }
+      else if (o.status === "ok") { mark = "✓"; cls = "mp-done"; }
+      else if (o.status === "fail") { mark = "✗"; cls = "mp-fail"; }
+      return `<div class="mp-slide-item ${cls}"><span class="mp-mark">${mark}</span> p${o.page}. ${escapeHtml(o.section)} <span class="muted small">· ${escapeHtml(o.governing || "")}</span></div>`;
+    }).join("");
+    return items;
+  }
+  function updateBubble(eta) {
+    const headerHtml =
+      `<div class="mp-warning">⚠ 5~10분 소요. 작업 진행 중 페이지 이동·새로고침 시 진행 사라짐</div>` +
+      `<div class="mp-progress-head">` +
+        `<div style="font-weight:600;">📑 슬라이드 ${okCount + failCount} / ${totalSlides} 작성 중</div>` +
+        (eta ? `<div class="mp-eta muted small">${escapeHtml(eta)}</div>` : "") +
+      `</div>`;
+    bubble.innerHTML =
+      headerHtml +
+      `<div class="mp-slide-list">${renderSlideList()}</div>`;
+  }
 
   while (true) {
     const { value, done } = await reader.read();
@@ -3911,37 +3964,50 @@ async function runMultiPassProposal({ convId, asstEl, bubble, progress, body, ms
           progress.el.classList.add("indeterminate");
         } else {
           progress.el.classList.remove("indeterminate");
+          stopOutlineTimer();
         }
         countEl.textContent = ev.phase === "outline" ? "분석 중" : "";
       } else if (ev.type === "outline_done") {
+        stopOutlineTimer();
         totalSlides = ev.total_slides || (ev.outline || []).length;
         outlineLines = (ev.outline || []).map(o => `p${o.page}. ${o.section} · ${o.governing}`);
+        outlineList = (ev.outline || []).map(o => ({
+          page: o.page, section: o.section, governing: o.governing, status: "pending",
+        }));
+        slidesStart = Date.now();
         progress.el.classList.remove("indeterminate");
         sectionEl.textContent = `목차 작성 완료 — 슬라이드 ${totalSlides}장 병렬 작성 시작`;
         countEl.textContent = `0 / ${totalSlides}`;
         fillEl.style.width = "5%";
-        // bubble 에 목차 미리보기
-        bubble.innerHTML =
-          `<div class="json-stream-placeholder">` +
-            `<div style="font-weight:600; margin-bottom:6px;">📑 목차 작성 완료 — ${totalSlides}장</div>` +
-            `<div style="font-size:12px; color:#666; max-height:200px; overflow:auto;">` +
-              outlineLines.map(l => `<div>${escapeHtml(l)}</div>`).join("") +
-            `</div>` +
-            `<div style="margin-top:8px;">` +
-              `<span class="loading-dots"><span></span><span></span><span></span></span>` +
-              `<span class="muted">슬라이드별 도형 그리는 중… (병렬)</span>` +
-            `</div>` +
-          `</div>`;
+        updateBubble("");
       } else if (ev.type === "slide_done") {
         if (ev.ok) okCount++;
         else { failCount++; console.warn(`slide ${ev.page} 실패: ${ev.error}`); }
+        // 마커 transition: 해당 슬라이드 done, 다음 pending 슬라이드 doing 으로
+        const item = outlineList.find(o => o.page === ev.page);
+        if (item) item.status = ev.ok ? "ok" : "fail";
+        const nextPending = outlineList.find(o => o.status === "pending");
+        if (nextPending) nextPending.status = "doing";
         const progressPct = Math.min(95, 5 + Math.round((ev.progress / Math.max(1, ev.total)) * 90));
         fillEl.style.width = `${progressPct}%`;
         sectionEl.textContent = `슬라이드 작성 중 — ${ev.section}`;
         countEl.textContent = `${ev.progress} / ${ev.total}`;
+        updateBubble(calcEta(ev.progress, ev.total));
       } else if (ev.type === "error") {
+        stopOutlineTimer();
         progress.finish(false);
-        bubble.innerHTML = `<span style="color:var(--danger);">❌ ${escapeHtml(ev.error)}</span>`;
+        bubble.innerHTML =
+          `<div style="color:var(--danger); margin-bottom:8px;">❌ ${escapeHtml(ev.error)}</div>` +
+          `<button class="mp-retry-btn" type="button">🔄 다시 시도</button>`;
+        const btn = bubble.querySelector(".mp-retry-btn");
+        if (btn) btn.addEventListener("click", () => {
+          const retryBtn = document.querySelector('button.btn-primary[title*=""], button.btn-primary');
+          // ✨ 메인 버튼 자동 트리거 — DOM 의 첫 primary 버튼 (✨ 제안서 생성)
+          const sparkle = Array.from(document.querySelectorAll("button.btn-primary"))
+            .find((b) => b.textContent.includes("제안서 생성"));
+          if (sparkle) sparkle.click();
+          else toast("✨ 버튼을 다시 눌러주세요", "");
+        });
         return;
       } else if (ev.type === "done") {
         finalDone = true;
@@ -3958,6 +4024,7 @@ async function runMultiPassProposal({ convId, asstEl, bubble, progress, body, ms
     }
   }
 
+  stopOutlineTimer();
   if (!finalDone) throw new Error("제안서 생성이 완료되지 않았어요.");
 
   progress.finish(true);

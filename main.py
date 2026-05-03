@@ -1502,6 +1502,23 @@ def _verify_client_owned_by_user(db, cid: str, user_id: str) -> None:
         raise HTTPException(404, "발주처를 찾을 수 없습니다.")
 
 
+def _verify_conv_owned_by_user(db, conv_id: str, user_id: str) -> dict:
+    """conversation_id → client_id → user_id chain 검증.
+    Commit 4-3: chat / multi-pass / proposals 출력 endpoints 에서 호출.
+    return: {"conv_id", "client_id"} on success
+    raise: HTTPException(404) on mismatch (cross-user enumeration 방지)
+    """
+    row = db.execute(
+        "SELECT cv.id AS conv_id, cv.client_id, c.user_id "
+        "FROM conversations cv JOIN clients c ON c.id=cv.client_id "
+        "WHERE cv.id=?",
+        (conv_id,),
+    ).fetchone()
+    if not row or row["user_id"] != user_id:
+        raise HTTPException(404, "대화를 찾을 수 없습니다.")
+    return {"conv_id": row["conv_id"], "client_id": row["client_id"]}
+
+
 # ---------- Clients ----------
 @app.get("/api/clients")
 def api_clients_list(user: dict = Depends(get_current_user)):
@@ -1610,11 +1627,10 @@ def api_convs_create(cid: str, user: dict = Depends(get_current_user)):
 
 
 @app.get("/api/conversations/{conv_id}")
-def api_conv_get(conv_id: str):
+def api_conv_get(conv_id: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        _verify_conv_owned_by_user(db, conv_id, user["id"])
         conv = db.execute("SELECT * FROM conversations WHERE id=?", (conv_id,)).fetchone()
-        if not conv:
-            raise HTTPException(404, "대화를 찾을 수 없습니다.")
         msgs = db.execute(
             "SELECT * FROM messages WHERE conversation_id=? ORDER BY created_at ASC",
             (conv_id,),
@@ -1629,19 +1645,19 @@ def api_conv_get(conv_id: str):
 
 
 @app.delete("/api/conversations/{conv_id}")
-def api_conv_delete(conv_id: str):
+def api_conv_delete(conv_id: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        _verify_conv_owned_by_user(db, conv_id, user["id"])
         db.execute("DELETE FROM conversations WHERE id=?", (conv_id,))
     return {"ok": True}
 
 
 @app.post("/api/conversations/{conv_id}/end")
-def api_conv_end(conv_id: str):
+def api_conv_end(conv_id: str, user: dict = Depends(get_current_user)):
     """대화 종료 시 Claude에게 뉘앙스 요약 요청 후 nuance_memories에 저장."""
     with get_db() as db:
+        _verify_conv_owned_by_user(db, conv_id, user["id"])
         conv = db.execute("SELECT * FROM conversations WHERE id=?", (conv_id,)).fetchone()
-        if not conv:
-            raise HTTPException(404, "대화를 찾을 수 없습니다.")
         msgs = db.execute(
             "SELECT role,content FROM messages WHERE conversation_id=? ORDER BY created_at",
             (conv_id,),
@@ -2258,11 +2274,11 @@ def _master_slot_cache_get(master_path) -> list[dict]:
 
 
 @app.post("/api/conversations/{conv_id}/chat")
-def api_chat(conv_id: str, body: ChatIn):
+def api_chat(conv_id: str, body: ChatIn, user: dict = Depends(get_current_user)):
     with get_db() as db:
+        # ⚠ 핵심 — 다른 user 의 conversation 에 chat 메시지 INSERT 금지
+        _verify_conv_owned_by_user(db, conv_id, user["id"])
         conv = db.execute("SELECT * FROM conversations WHERE id=?", (conv_id,)).fetchone()
-        if not conv:
-            raise HTTPException(404, "대화를 찾을 수 없습니다.")
         client_id = conv["client_id"]
 
         # 사용자 메시지 저장
@@ -2335,7 +2351,7 @@ def api_chat(conv_id: str, body: ChatIn):
 # Multi-pass 제안서 생성 — Outline → 슬라이드별 도형 JSON → 병합
 # ---------------------------------------------------------------------------
 @app.post("/api/conversations/{conv_id}/proposals/generate")
-async def api_proposals_generate_multipass(conv_id: str):
+async def api_proposals_generate_multipass(conv_id: str, user: dict = Depends(get_current_user)):
     """
     Multi-pass 제안서 생성. SSE 로 진행률 실시간 push.
 
@@ -2347,14 +2363,17 @@ async def api_proposals_generate_multipass(conv_id: str):
          → 사용자가 PPTX 다운로드 누르면 기존 api_proposals_pptx 가 그대로 처리
 
     UI 측: SSE 받으면서 "목차 작성 중 → 슬라이드 1/28 ... → 병합 → 완료" 표시.
+
+    ⚠ 핵심 — 다른 user 의 conversation 에서 multi-pass 트리거 시 그 user 의
+       RFP/RAG/intel inject 가 호출자에게 노출됨. 청렴제·데이터 분리 핵심 layer.
     """
     import asyncio as _asyncio
     import proposal_multi_pass as mp
 
     with get_db() as db:
+        # ⚠ 핵심 ownership 검증 — 다른 user 의 conv 에서 ✨ 트리거 절대 금지
+        _verify_conv_owned_by_user(db, conv_id, user["id"])
         conv = db.execute("SELECT * FROM conversations WHERE id=?", (conv_id,)).fetchone()
-        if not conv:
-            raise HTTPException(404, "대화를 찾을 수 없습니다.")
         client_id = conv["client_id"]
     # company_name inject 제거 (한국 공공입찰 청렴제 — 본문 회사명 등장 비정상)
 
@@ -3068,11 +3087,12 @@ class OutcomeIn(BaseModel):
 
 
 @app.patch("/api/conversations/{conv_id}/outcome")
-def api_conv_outcome(conv_id: str, body: OutcomeIn):
+def api_conv_outcome(conv_id: str, body: OutcomeIn, user: dict = Depends(get_current_user)):
     valid = {"", "in_progress", "won", "lost"}
     if body.outcome not in valid:
         raise HTTPException(400, "상태는 (빈값/in_progress/won/lost) 중 하나여야 해요.")
     with get_db() as db:
+        _verify_conv_owned_by_user(db, conv_id, user["id"])
         cur = db.execute("UPDATE conversations SET outcome=?, updated_at=datetime('now','localtime') WHERE id=?",
                          (body.outcome, conv_id))
         if cur.rowcount == 0:
@@ -3396,12 +3416,11 @@ class BudgetRequest(BaseModel):
 
 
 @app.post("/api/budget/generate")
-def api_budget_generate(body: BudgetRequest):
+def api_budget_generate(body: BudgetRequest, user: dict = Depends(get_current_user)):
     """대화의 최근 제안서 + RFP 분석을 토대로 산출내역서 생성."""
     with get_db() as db:
+        _verify_conv_owned_by_user(db, body.conversation_id, user["id"])
         conv = db.execute("SELECT * FROM conversations WHERE id=?", (body.conversation_id,)).fetchone()
-        if not conv:
-            raise HTTPException(404, "대화를 찾을 수 없습니다.")
         client_id = conv["client_id"]
         last_msg = db.execute(
             "SELECT content FROM messages WHERE conversation_id=? AND role='assistant' "
@@ -3443,12 +3462,13 @@ def api_budget_generate(body: BudgetRequest):
 
 # ---------- PPTX 미리보기 (PNG 슬라이드 캐러셀) ----------
 @app.get("/api/proposals/{conv_id}/preview")
-def api_proposals_preview(conv_id: str, regen: int = 0):
+def api_proposals_preview(conv_id: str, regen: int = 0, user: dict = Depends(get_current_user)):
     """저장된 PPTX 의 PNG 미리보기.
     LibreOffice 로 PPTX → PDF → 페이지별 PNG 변환 후 URL 리스트 반환.
     PNG 가 이미 있으면 재사용 (regen=1 이면 강제 재생성).
     """
     with get_db() as db:
+        _verify_conv_owned_by_user(db, conv_id, user["id"])
         cv = db.execute(
             "SELECT pptx_path FROM conversations WHERE id=?", (conv_id,)
         ).fetchone()
@@ -3948,7 +3968,7 @@ def _build_pptx_from_pages(pages: list[dict], title: str, output_path: Path,
 
 
 @app.post("/api/proposals/pptx")
-def api_proposals_pptx(body: PptxExportIn):
+def api_proposals_pptx(body: PptxExportIn, user: dict = Depends(get_current_user)):
     """대화의 최신 제안서 → .pptx (마스터 템플릿 우선, 없으면 폴백).
     파일명: '{발주처명}_제안서.pptx', /static/exports/ 영구 보관.
     """
@@ -3958,6 +3978,7 @@ def api_proposals_pptx(body: PptxExportIn):
         raise HTTPException(500, "python-pptx 가 설치돼 있지 않아요. requirements.txt 를 확인해 주세요.")
 
     with get_db() as db:
+        _verify_conv_owned_by_user(db, body.conversation_id, user["id"])
         # JSON 또는 HTML 형식 제안서 메시지 찾기 (둘 다 지원)
         # [중요] LIKE '%"slides"%' — 코드펜스(```json\n{...})·평문 prefix·깔끔한 JSON
         #        모두 매칭. 이전 '{%"slides"%' 패턴은 첫 글자가 { 여야만 매칭되는
@@ -4329,7 +4350,7 @@ class AuditIn(BaseModel):
 
 
 @app.post("/api/proposals/audit")
-def api_proposals_audit(body: AuditIn):
+def api_proposals_audit(body: AuditIn, user: dict = Depends(get_current_user)):
     """🔍 자체 검증 — Compliance + Red Team 통합 분석.
 
     동작:
@@ -4338,6 +4359,8 @@ def api_proposals_audit(body: AuditIn):
       3. Claude 에 audit 프롬프트 → JSON 결과
       4. compliance (커버리지) + red_team (예상 점수) 반환
     """
+    with get_db() as db:
+        _verify_conv_owned_by_user(db, body.conversation_id, user["id"])
     # 1. 제안서 JSON
     proposal = _get_proposal_json_for_conv(body.conversation_id)
     if not proposal:
@@ -4425,8 +4448,10 @@ class PtScriptIn(BaseModel):
 
 
 @app.post("/api/proposals/script")
-def api_pt_script(body: PtScriptIn):
+def api_pt_script(body: PtScriptIn, user: dict = Depends(get_current_user)):
     """발표 큐시트 생성."""
+    with get_db() as db:
+        _verify_conv_owned_by_user(db, body.conversation_id, user["id"])
     proposal_text = _get_proposal_text_for_conv(body.conversation_id)
     if not proposal_text:
         raise HTTPException(404, "이 대화에서 작성된 제안서를 찾지 못했어요.")
@@ -4457,8 +4482,10 @@ class PtQaIn(BaseModel):
 
 
 @app.post("/api/proposals/qa")
-def api_pt_qa(body: PtQaIn):
+def api_pt_qa(body: PtQaIn, user: dict = Depends(get_current_user)):
     """예상 Q&A 생성."""
+    with get_db() as db:
+        _verify_conv_owned_by_user(db, body.conversation_id, user["id"])
     proposal_text = _get_proposal_text_for_conv(body.conversation_id)
     if not proposal_text:
         raise HTTPException(404, "이 대화에서 작성된 제안서를 찾지 못했어요.")

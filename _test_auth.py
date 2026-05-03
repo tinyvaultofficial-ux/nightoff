@@ -465,8 +465,106 @@ r = client.get("/api/strengths/catalog")
 assert r.status_code == 401
 print("  catalog unauth -> 401 OK")
 
-# Cleanup
+# Cleanup nested
 r = client.delete(f"/api/clients/{a_cid2}", headers=hdr_a)
+assert r.status_code == 200
+
+# ─── Commit 4-3 Integration: conversation-based endpoints (A vs B) ─────────
+print("=== 29. conversation-based 4-3: cross-user denial ===")
+
+# A 가 client + conversation 생성
+r = client.post("/api/clients",
+    json={"name": "A의 발주처 4-3", "industry": "festival", "manager": "A", "memo": ""},
+    headers=hdr_a)
+assert r.status_code == 200
+a_cid3 = r.json()["id"]
+
+r = client.post(f"/api/clients/{a_cid3}/conversations", headers=hdr_a)
+assert r.status_code == 200
+a_conv_id = r.json()["id"]
+print(f"  A created conv {a_conv_id[:8]}...")
+
+# B 가 A 의 conv 의 모든 endpoint 시도 → 모두 404
+r = client.get(f"/api/conversations/{a_conv_id}", headers=hdr_b)
+assert r.status_code == 404, f"GET conv: {r.status_code}"
+print("  B GET conv -> 404 OK")
+
+r = client.delete(f"/api/conversations/{a_conv_id}", headers=hdr_b)
+assert r.status_code == 404
+print("  B DELETE conv -> 404 OK")
+
+r = client.post(f"/api/conversations/{a_conv_id}/end", headers=hdr_b)
+assert r.status_code == 404
+print("  B POST conv/end -> 404 OK")
+
+r = client.patch(f"/api/conversations/{a_conv_id}/outcome",
+    json={"outcome": "won"}, headers=hdr_b)
+assert r.status_code == 404
+print("  B PATCH outcome -> 404 OK")
+
+# ⚠ 핵심 — chat endpoint
+r = client.post(f"/api/conversations/{a_conv_id}/chat",
+    json={"message": "hijack attempt"}, headers=hdr_b)
+assert r.status_code == 404, f"FAIL chat: {r.status_code}"
+print("  [CRITICAL] B POST chat -> 404 OK (no message injection)")
+
+# ⚠ 가장 핵심 — multi-pass generate
+r = client.post(f"/api/conversations/{a_conv_id}/proposals/generate", headers=hdr_b)
+assert r.status_code == 404, f"FAIL generate: {r.status_code}"
+print("  [CRITICAL] B POST proposals/generate -> 404 OK (no RAG/intel leak)")
+
+# preview
+r = client.get(f"/api/proposals/{a_conv_id}/preview", headers=hdr_b)
+assert r.status_code == 404
+print("  B GET proposals/preview -> 404 OK")
+
+# pptx (body 에 conv_id)
+r = client.post("/api/proposals/pptx",
+    json={"conversation_id": a_conv_id}, headers=hdr_b)
+assert r.status_code == 404
+print("  B POST proposals/pptx -> 404 OK")
+
+# audit
+r = client.post("/api/proposals/audit",
+    json={"conversation_id": a_conv_id}, headers=hdr_b)
+assert r.status_code == 404
+print("  B POST proposals/audit -> 404 OK")
+
+# script
+r = client.post("/api/proposals/script",
+    json={"conversation_id": a_conv_id, "duration_min": 10}, headers=hdr_b)
+assert r.status_code == 404
+print("  B POST proposals/script -> 404 OK")
+
+# qa
+r = client.post("/api/proposals/qa",
+    json={"conversation_id": a_conv_id}, headers=hdr_b)
+assert r.status_code == 404
+print("  B POST proposals/qa -> 404 OK")
+
+# budget
+r = client.post("/api/budget/generate",
+    json={"conversation_id": a_conv_id}, headers=hdr_b)
+assert r.status_code == 404
+print("  B POST budget/generate -> 404 OK")
+
+# A 본인 → 정상
+r = client.get(f"/api/conversations/{a_conv_id}", headers=hdr_a)
+assert r.status_code == 200
+print("  A GET own conv -> 200 OK")
+
+# 인증 없이 → 401
+r = client.post(f"/api/conversations/{a_conv_id}/chat",
+    json={"message": "no auth"})
+assert r.status_code == 401
+r = client.post(f"/api/conversations/{a_conv_id}/proposals/generate")
+assert r.status_code == 401
+print("  unauth chat/generate -> 401 OK")
+
+# Cleanup conv + client
+r = client.delete(f"/api/conversations/{a_conv_id}", headers=hdr_a)
+assert r.status_code == 200
+r = client.delete(f"/api/clients/{a_cid3}", headers=hdr_a)
 assert r.status_code == 200
 
 # Cleanup B
@@ -482,4 +580,4 @@ for c in batch_codes:
     _cleanup_code(c)
 
 print()
-print("[OK] ALL AUTH+ADMIN+CLIENTS+NESTED TESTS PASSED (38/38)")
+print("[OK] ALL AUTH+ADMIN+CLIENTS+NESTED+CONV TESTS PASSED (51/51)")

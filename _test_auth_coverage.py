@@ -135,6 +135,26 @@ def main():
         sys.exit(1)
     print(f"  [OK 4-2] all {len(expected_4_2)} clients-nested endpoints protected")
 
+    expected_4_3 = {
+        ("GET", "/api/conversations/{conv_id}"),
+        ("DELETE", "/api/conversations/{conv_id}"),
+        ("POST", "/api/conversations/{conv_id}/end"),
+        ("PATCH", "/api/conversations/{conv_id}/outcome"),
+        ("POST", "/api/conversations/{conv_id}/chat"),
+        ("POST", "/api/conversations/{conv_id}/proposals/generate"),
+        ("GET", "/api/proposals/{conv_id}/preview"),
+        ("POST", "/api/proposals/pptx"),
+        ("POST", "/api/proposals/audit"),
+        ("POST", "/api/proposals/script"),
+        ("POST", "/api/proposals/qa"),
+        ("POST", "/api/budget/generate"),
+    }
+    missing_4_3 = expected_4_3 - actual_protected
+    if missing_4_3:
+        print(f"  [FAIL 4-3] missing: {missing_4_3}")
+        sys.exit(1)
+    print(f"  [OK 4-3] all {len(expected_4_3)} conversation-based endpoints protected")
+
 
 if __name__ == "__main__":
     main()

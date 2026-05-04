@@ -82,7 +82,10 @@ def _adapt_sql(sql: str) -> str:
     # datetime('now','localtime') → KST 시각 텍스트
     dt_repl = "TO_CHAR(NOW() AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD HH24:MI:SS')"
     sql = re.sub(r"datetime\(\s*'now'\s*,\s*'localtime'\s*\)", dt_repl, sql, flags=re.IGNORECASE)
-    # ? 플레이스홀더 → %s (이 프로젝트 쿼리는 문자열 안에 ? 미사용, 안전)
+    # ⚠ 순서 핵심: literal '%' 를 '%%' 로 escape (psycopg 의 placeholder 충돌 방지) 먼저.
+    # LIKE '%foo%' 같은 패턴이 PG 에서 placeholder 로 잘못 해석되는 사고 방지.
+    # 그 후 '?' → '%s' placeholder 변환.
+    sql = sql.replace("%", "%%")
     sql = sql.replace("?", "%s")
     # CHECK 제약 (id = 1) 같은 것도 PG에서 동작하므로 그대로 둠
     return sql

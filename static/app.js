@@ -687,6 +687,7 @@ function showBetaNotice() {
   modal.appendChild(h("div", { class: "beta-notice-section bn-soon" }, [
     h("h3", { class: "beta-notice-section-title" }, "🚀 곧 업데이트"),
     h("ul", { class: "beta-notice-list" }, [
+      h("li", {}, "디자인 패키지(2D 키비주얼 + 3D 공간연출)도 함께 구성할 거예요"),
       h("li", {}, "발주처 성향을 자동으로 학습해요"),
       h("li", {}, "AI 평가위원과 PT 연습할 수 있어요"),
       h("li", {}, "나라장터 공고를 자동으로 매칭해드려요"),

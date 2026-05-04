@@ -2497,7 +2497,12 @@ async function renderRfpSection(cid) {
       const fd = new FormData();
       for (const f of files) fd.append("files", f);
       fd.append("roles", JSON.stringify(roles));
-      const r = await fetch(`/api/clients/${cid}/rfp/upload`, { method: "POST", body: fd });
+      const r = await fetch(`/api/clients/${cid}/rfp/upload`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${getToken()}` },
+        body: fd,
+      });
+      if (r.status === 401) { clearToken(); redirectToLogin(); throw new Error("인증이 만료됐어요."); }
       if (!r.ok) {
         const err = await r.json().catch(() => ({ error: r.statusText }));
         throw new Error(err.error || "업로드 실패");
@@ -3486,10 +3491,14 @@ async function renderChat(cid, convId) {
     try {
       const resp = await fetch(`/api/conversations/${convId}/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${getToken()}`,
+        },
         body: JSON.stringify({ message: text }),
         signal: aborter.signal,
       });
+      if (resp.status === 401) { clearToken(); redirectToLogin(); throw new Error("인증이 만료됐어요."); }
       if (!resp.ok) throw new Error(await resp.text());
 
       const reader = resp.body.getReader();
@@ -4015,8 +4024,17 @@ async function runMultiPassProposal({ convId, asstEl, bubble, progress, body, ms
 
   const resp = await fetch(`/api/conversations/${convId}/proposals/generate`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${getToken()}`,
+    },
   });
+  if (resp.status === 401) {
+    stopOutlineTimer();
+    clearToken();
+    redirectToLogin();
+    throw new Error("인증이 만료됐어요.");
+  }
   if (!resp.ok) { stopOutlineTimer(); throw new Error(await resp.text()); }
 
   const reader = resp.body.getReader();

@@ -104,6 +104,14 @@ class _PgConnWrapper:
     def __init__(self, conn):
         self.conn = conn
     def execute(self, sql, params=()):
+        # PG TEXT/VARCHAR 는 \x00 거부 (UntranslatableCharacter) — SQLite 는 허용.
+        # pypdf 등 일부 추출기가 \x00 포함 텍스트 반환 → INSERT 500 사고 방지용 사전 strip.
+        # SQLite path 는 _PgConnWrapper 자체를 안 거치므로 영향 0.
+        if params:
+            params = tuple(
+                p.replace("\x00", "") if isinstance(p, str) else p
+                for p in params
+            )
         cur = self.conn.cursor()
         cur.execute(_adapt_sql(sql), params)
         return cur  # psycopg 커서는 fetchone/fetchall/rowcount 지원

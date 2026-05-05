@@ -365,18 +365,26 @@ body.right-panel-off .right-panel { display: none; }
   line-height: 1.6;
 }
 
-/* ===== 체류시간 인체 캐릭터 (퇴근 마스코트) ===== */
+/* ===== 건강 체크 — 6 자세·휴식 가이드 순환 ===== */
 .rp-body-card {
-  background: linear-gradient(180deg, #FFF8F0 0%, #FFEEE0 100%);   /* 노을 톤 */
-  border: none;
+  background: #FAFAFA;
+  border: 1px solid #EEE;
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
-  padding: var(--space-4) var(--space-3) var(--space-4);
+  padding: var(--space-3) var(--space-3) var(--space-4);
   display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
 }
-.rp-body-svg {
-  width: 100%; max-width: 130px; height: auto;
-  display: block;
+.rp-body-img-btn {
+  appearance: none; background: transparent; border: 0; padding: 0; cursor: pointer;
+  width: 100%; max-width: 140px; aspect-ratio: 280 / 497;
+  border-radius: 8px; overflow: hidden;
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.rp-body-img-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 14px -8px rgba(0,0,0,0.18); }
+.rp-body-img-btn:active { transform: translateY(0); }
+.rp-body-img {
+  width: 100%; height: 100%; display: block; object-fit: cover;
+  border-radius: 8px;
 }
 .rp-body-msg {
   min-height: 36px;
@@ -392,25 +400,6 @@ body.right-panel-off .right-panel { display: none; }
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
 }
-/* 인체 부위 색상 (전신/손목/목/허리) — JS 가 클래스 토글 */
-.body-zone { fill: #10b981; transition: fill .25s; }
-.body-zone.warn { fill: #f59e0b; }
-.body-zone.alert { fill: #ef4444; }
-@keyframes breathe-slow {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.018); }
-}
-@keyframes breathe-mid {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.024); }
-}
-@keyframes blink-fast {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
-}
-.rp-body-svg.pulse-slow { animation: breathe-slow 4.5s ease-in-out infinite; transform-origin: 50% 50%; }
-.rp-body-svg.pulse-mid  { animation: breathe-mid  2.6s ease-in-out infinite; transform-origin: 50% 50%; }
-.rp-body-svg .alert-blink { animation: blink-fast 0.7s ease-in-out infinite; }
 .main-header {
   position: sticky; top: 0; z-index: 30;
   display: flex; align-items: center; justify-content: space-between;
@@ -5043,8 +5032,8 @@ body.nav-open .nav-backdrop { opacity: 1; pointer-events: auto; }
   .modal { max-width: 92vw !important; max-height: 88vh !important; }
   .toast-root { left: 12px; right: 12px; bottom: 16px; }
 
-  /* 우측 패널의 인체 캐릭터 — 모바일 데스크탑에선 안 보이지만 혹시 모를 케이스 대응 */
-  .rp-body-svg { max-width: 100px; }
+  /* 우측 패널의 건강 체크 이미지 — 모바일 데스크탑에선 안 보이지만 혹시 모를 케이스 대응 */
+  .rp-body-img-btn { max-width: 110px; }
 }
 
 /* ===== ≤480px: 매우 작은 모바일 ===== */

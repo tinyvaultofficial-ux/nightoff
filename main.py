@@ -1547,6 +1547,152 @@ def api_settings_test(admin: dict = Depends(require_admin)):
                 "message": "진단 중 알 수 없는 오류", "raw": str(e)[:240]}
 
 
+# ---------- Dashboard Widgets ----------
+# 나라장터 마감 임박 공고 위젯 영역 — D-7 이내 + 6 키워드 매칭 공고 노출.
+#
+# ⚠ 키워드 6개 = 백엔드 전담 영역, 사용자 노출 X. 응답 스키마 안에 포함하지 않음.
+# 데이터 source: data.go.kr 조달청_나라장터 입찰공고정보서비스 (서비스 용역 검색 영역).
+# 인증: ServiceKey query parameter (env: NARAJANGTER_API_KEY).
+# 캐시: 1 시간 메모리 dict (Railway 단일 인스턴스 영역 OK).
+_NARAJANGTER_API_BASE = "http://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancListInfoServcPPSSrch"
+_NARAJANGTER_KEYWORDS = ["행사", "홍보마케팅", "박람회", "축제", "포럼", "심포지엄"]
+_NARAJANGTER_CACHE: dict = {"data": None, "fetched_at": 0.0, "error": None}
+_NARAJANGTER_CACHE_TTL_SEC = 3600  # 1 시간
+
+
+def _parse_g2b_dt(s: str) -> Optional[datetime]:
+    """나라장터 'YYYY-MM-DD HH:MM:SS' 또는 'YYYY-MM-DD HH:MM' 영역 → datetime."""
+    if not s:
+        return None
+    s = s.strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _fetch_g2b_one_keyword(keyword: str, bgn_yyyymmdd: str, end_yyyymmdd: str, service_key: str) -> list[dict]:
+    """단일 키워드로 나라장터 API 호출 → items list 반환. 실패 시 빈 리스트."""
+    import urllib.parse as _urlp
+    import urllib.request as _urlr
+    params = {
+        "type": "json",
+        "inqryDiv": "2",                       # 개찰일시 기준 검색 영역
+        "inqryBgnDt": f"{bgn_yyyymmdd}0000",
+        "inqryEndDt": f"{end_yyyymmdd}2359",
+        "numOfRows": "100",
+        "pageNo": "1",
+        "bidNtceNm": keyword,
+        "ServiceKey": service_key,
+    }
+    url = f"{_NARAJANGTER_API_BASE}?{_urlp.urlencode(params)}"
+    try:
+        req = _urlr.Request(url, headers={"Accept": "application/json"})
+        with _urlr.urlopen(req, timeout=10) as resp:
+            raw = resp.read().decode("utf-8", errors="ignore")
+    except Exception as e:
+        log.warning("나라장터 API 호출 실패 · keyword=%r · err=%s", keyword, e)
+        return []
+    try:
+        payload = json.loads(raw)
+    except Exception as e:
+        log.warning("나라장터 응답 JSON 파싱 실패 · keyword=%r · raw 200자=%r", keyword, raw[:200])
+        return []
+    # data.go.kr 표준 응답 영역: response.body.items
+    body = ((payload.get("response") or {}).get("body") or {})
+    items = body.get("items") or []
+    if isinstance(items, dict):  # 원소 1개 단일 dict 영역 방어
+        items = [items]
+    if not isinstance(items, list):
+        return []
+    return items
+
+
+def _build_closing_notices_payload() -> dict:
+    """6 키워드 호출 → bidClseDt 기준 D-7 + 오늘 시간 미도달 필터 → 중복 제거 → 정렬."""
+    service_key = os.environ.get("NARAJANGTER_API_KEY", "").strip()
+    if not service_key:
+        return {
+            "notices": [], "total_count": 0,
+            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "error": "NARAJANGTER_API_KEY 미설정",
+        }
+
+    now = datetime.now()
+    bgn = now.strftime("%Y%m%d")
+    end = (now + timedelta(days=7)).strftime("%Y%m%d")
+
+    # 6 키워드 호출 (직렬 — TPS 30 한계 대비 보수적, 6번 = 충분한 영역)
+    seen: dict[str, dict] = {}
+    api_failed_count = 0
+    for kw in _NARAJANGTER_KEYWORDS:
+        items = _fetch_g2b_one_keyword(kw, bgn, end, service_key)
+        if not items:
+            api_failed_count += 1
+            continue
+        for it in items:
+            # unique 키 = bidNtceNo + bidNtceOrd
+            uniq = f"{it.get('bidNtceNo','')}_{it.get('bidNtceOrd','')}"
+            if not uniq.strip("_"):
+                continue
+            if uniq in seen:
+                continue
+            # bidClseDt 기준 D-day 필터 (오늘 시간 미도달만)
+            close_dt = _parse_g2b_dt(it.get("bidClseDt") or "")
+            if not close_dt or close_dt <= now:
+                continue
+            d_day = (close_dt.date() - now.date()).days
+            if d_day < 0 or d_day > 7:
+                continue
+            # 정제된 카드 영역
+            seen[uniq] = {
+                "title": (it.get("bidNtceNm") or "").strip(),
+                "agency": (it.get("ntceInsttNm") or it.get("dminsttNm") or "").strip(),
+                "deadline": close_dt.strftime("%Y-%m-%d"),
+                "d_day": d_day,
+                "budget": (it.get("presmptPrce") or "").strip() or None,
+                "url": (it.get("bidNtceUrl") or "").strip() or None,
+            }
+
+    notices = sorted(seen.values(), key=lambda n: n["d_day"])
+
+    err = None
+    if api_failed_count == len(_NARAJANGTER_KEYWORDS) and not notices:
+        err = "나라장터 API 일시 응답 X"
+
+    return {
+        "notices": notices,
+        "total_count": len(notices),
+        "fetched_at": datetime.now().isoformat(timespec="seconds"),
+        "error": err,
+    }
+
+
+@app.get("/api/dashboard/closing-notices")
+def api_closing_notices(user: dict = Depends(get_current_user)):
+    """대시보드 마감 임박 공고 위젯 영역 — D-7 이내 + 키워드 매칭 공고.
+
+    응답 스키마:
+        {"notices": [{title, agency, deadline, d_day, budget, url}],
+         "total_count": int, "fetched_at": ISO datetime, "error": null|str}
+
+    캐시: 1 시간 메모리. 동일 시간 안 동일 응답 영역 — 사용자 단위 캐시 X (정적 데이터).
+    인증: 일반 사용자 OK (require_auth).
+    """
+    import time as _time
+    now_ts = _time.time()
+    cached = _NARAJANGTER_CACHE
+    if cached["data"] is not None and (now_ts - cached["fetched_at"]) < _NARAJANGTER_CACHE_TTL_SEC:
+        return cached["data"]
+    payload = _build_closing_notices_payload()
+    _NARAJANGTER_CACHE["data"] = payload
+    _NARAJANGTER_CACHE["fetched_at"] = now_ts
+    _NARAJANGTER_CACHE["error"] = payload.get("error")
+    return payload
+
+
 # ---------- Stats ----------
 @app.get("/api/stats")
 def api_stats(user: dict = Depends(get_current_user)):

@@ -1454,27 +1454,13 @@ async function renderDashboard() {
     ]));
   }
 
-  // ── 하단: 좌(메인 위젯 영역) / 우(오늘의 팁 + 가짜 광고)
-  // 좌측 = 다음 작업 (나라장터 마감 임박 공고 위젯) 의 자리 사전 확보.
-  // 이번 작업에서는 placeholder 카드만 노출 — 폭/높이/패딩이 실제 위젯과 정합.
+  // ── 하단: 좌(나라장터 마감 임박 공고 위젯) / 우(오늘의 팁 + 가짜 광고)
   const twoCol = h("div", { class: "dashboard-two-col" });
   content.appendChild(twoCol);
 
-  // [좌] 위젯 placeholder — "📡 마감 임박 공고"
+  // [좌] 마감 임박 공고 위젯 — 비동기 로딩 (위젯 자체가 fetch + 롤링 관리)
   const leftCol = h("section");
-  leftCol.appendChild(h("div", { class: "card widget-placeholder" }, [
-    h("div", { class: "widget-placeholder-head" }, [
-      h("span", { class: "widget-placeholder-icon" }, "📡"),
-      h("h2", { class: "widget-placeholder-title" }, "마감 임박 공고"),
-    ]),
-    h("p", { class: "widget-placeholder-body" },
-      "곧 업데이트 — 마감 임박 입찰 공고를 NightOff 가 자동으로 가져올게요"),
-    h("div", { class: "widget-placeholder-meta" }, [
-      h("span", { class: "widget-placeholder-meta-row" }, "D-7 이내"),
-      h("span", { class: "widget-placeholder-meta-sep" }, "·"),
-      h("span", { class: "widget-placeholder-meta-row" }, "행사 · 홍보 · 축제 · 박람회 · 포럼 · 심포지엄"),
-    ]),
-  ]));
+  leftCol.appendChild(renderClosingNoticesWidget());
   twoCol.appendChild(leftCol);
 
   // [우] 오늘의 팁 + 가짜 광고
@@ -1647,6 +1633,197 @@ function ddayBadge(diff) {
   else if (diff <= 6)   cls = "dday-soon";
   else if (diff <= 14)  cls = "dday-mid";
   return h("span", { class: `dday-badge ${cls}`, title: `마감까지 ${diff}일` }, label);
+}
+
+// ---------- 📡 마감 임박 공고 위젯 (대시보드 메인 영역) ----------
+// 데이터 source: GET /api/dashboard/closing-notices (백엔드 캐시 1시간)
+// 표시 영역: 5개 묶음 + 7초 자동 롤링 + 좌우 화살표 + 도트 인디케이터
+// 인터랙션: 카드 클릭 = 새 탭 (target="_blank" + rel="noopener noreferrer")
+//          hover 시 자동 롤링 정지, "전체 보기" → 모달
+// ⚠ 키워드 6개 영역 = 백엔드 전담, 사용자 노출 X
+function renderClosingNoticesWidget() {
+  const PAGE_SIZE = 5;
+  const ROLL_MS = 7000;
+
+  const wrap = h("div", { class: "card closing-widget" });
+  // 헤더
+  wrap.appendChild(h("div", { class: "closing-widget-head" }, [
+    h("span", { class: "closing-widget-icon" }, "📡"),
+    h("h2", { class: "closing-widget-title" }, "D-7 마감임박 공고, NightOff로 도전하세요!"),
+  ]));
+  // 본문 (로딩 / 에러 / 빈 / 카드 list)
+  const body = h("div", { class: "closing-widget-body" });
+  wrap.appendChild(body);
+  // 푸터 (도트 인디케이터 + 좌우 화살표 + 전체 보기)
+  const footer = h("div", { class: "closing-widget-footer" });
+  wrap.appendChild(footer);
+
+  // 초기 로딩
+  body.appendChild(h("p", { class: "closing-widget-loading" }, "공고를 불러오는 중…"));
+
+  let notices = [];
+  let pageIdx = 0;
+  let totalPages = 1;
+  let rollTimer = null;
+  let hovered = false;
+
+  function startRoll() {
+    if (rollTimer) clearInterval(rollTimer);
+    if (totalPages <= 1) return;  // 1 페이지 이하 = 롤링 X
+    rollTimer = setInterval(() => {
+      if (hovered) return;
+      pageIdx = (pageIdx + 1) % totalPages;
+      renderPage();
+    }, ROLL_MS);
+  }
+  function stopRoll() {
+    if (rollTimer) { clearInterval(rollTimer); rollTimer = null; }
+  }
+
+  function renderPage() {
+    const start = pageIdx * PAGE_SIZE;
+    const slice = notices.slice(start, start + PAGE_SIZE);
+    body.innerHTML = "";
+    const list = h("div", { class: "closing-card-list" });
+    slice.forEach((n) => list.appendChild(renderClosingCard(n)));
+    body.appendChild(list);
+    // 도트 인디케이터 갱신
+    const dotsEl = footer.querySelector(".closing-widget-dots");
+    if (dotsEl) {
+      dotsEl.innerHTML = "";
+      for (let i = 0; i < totalPages; i++) {
+        const dot = h("button", {
+          class: "closing-widget-dot" + (i === pageIdx ? " active" : ""),
+          "aria-label": `페이지 ${i + 1}`,
+          onclick: () => { pageIdx = i; renderPage(); },
+        });
+        dotsEl.appendChild(dot);
+      }
+    }
+  }
+
+  function renderEmpty() {
+    body.innerHTML = "";
+    body.appendChild(h("div", { class: "closing-widget-empty" }, [
+      h("div", { class: "closing-widget-empty-icon" }, "📭"),
+      h("p", { class: "closing-widget-empty-msg" }, "오늘은 마감 임박 공고가 없어요"),
+      h("p", { class: "closing-widget-empty-sub" }, "내일 다시 들러주세요"),
+    ]));
+  }
+  function renderError(msg) {
+    body.innerHTML = "";
+    body.appendChild(h("div", { class: "closing-widget-empty" }, [
+      h("div", { class: "closing-widget-empty-icon" }, "⚠️"),
+      h("p", { class: "closing-widget-empty-msg" }, "잠시 정보를 가져올 수 없어요"),
+      h("p", { class: "closing-widget-empty-sub" }, msg || "잠시 후 다시 시도해 주세요"),
+    ]));
+  }
+
+  // hover → 자동 롤링 정지
+  wrap.addEventListener("mouseenter", () => { hovered = true; });
+  wrap.addEventListener("mouseleave", () => { hovered = false; });
+
+  // 데이터 로드 + 렌더 (비동기)
+  api.get("/api/dashboard/closing-notices").then((res) => {
+    if (!res || res.error) {
+      renderError(res?.error);
+      return;
+    }
+    notices = Array.isArray(res.notices) ? res.notices : [];
+    if (notices.length === 0) {
+      renderEmpty();
+      return;
+    }
+    totalPages = Math.ceil(notices.length / PAGE_SIZE);
+    pageIdx = 0;
+    // 푸터 재구성 (좌화살표 + 도트 + 우화살표 + 전체보기)
+    footer.innerHTML = "";
+    if (totalPages > 1) {
+      footer.appendChild(h("button", {
+        class: "closing-widget-arrow",
+        "aria-label": "이전 페이지",
+        onclick: () => { pageIdx = (pageIdx - 1 + totalPages) % totalPages; renderPage(); },
+      }, "‹"));
+      footer.appendChild(h("div", { class: "closing-widget-dots" }));
+      footer.appendChild(h("button", {
+        class: "closing-widget-arrow",
+        "aria-label": "다음 페이지",
+        onclick: () => { pageIdx = (pageIdx + 1) % totalPages; renderPage(); },
+      }, "›"));
+    }
+    footer.appendChild(h("button", {
+      class: "closing-widget-all-link",
+      onclick: () => openClosingNoticesModal(notices),
+    }, `전체 보기 (총 ${notices.length}건)`));
+    renderPage();
+    startRoll();
+  }).catch((e) => {
+    renderError(e?.message);
+  });
+
+  return wrap;
+}
+
+function renderClosingCard(n) {
+  const dday = Number(n.d_day);
+  const urgent = dday >= 0 && dday <= 2;
+  const ddayLabel = dday === 0 ? "D-day" : `D-${dday}`;
+  // ⚠ 카드 클릭 = 새 탭 (target="_blank" + rel="noopener noreferrer")
+  const a = h("a", {
+    class: "closing-card",
+    href: n.url || "#",
+    target: "_blank",
+    rel: "noopener noreferrer",
+  }, [
+    h("span", { class: "closing-card-dday" + (urgent ? " urgent" : "") }, ddayLabel),
+    h("div", { class: "closing-card-info" }, [
+      h("p", { class: "closing-card-title", title: n.title || "" }, n.title || "(제목 없음)"),
+      h("p", { class: "closing-card-meta" }, [
+        h("span", { class: "closing-card-agency" }, n.agency || "발주기관 미상"),
+        n.budget ? h("span", { class: "closing-card-sep" }, "·") : null,
+        n.budget ? h("span", { class: "closing-card-budget" }, n.budget) : null,
+      ]),
+    ]),
+    h("span", { class: "closing-card-cta" }, "상세 →"),
+  ]);
+  // url 없으면 클릭 막기 (보안 + UX)
+  if (!n.url) {
+    a.addEventListener("click", (e) => e.preventDefault());
+    a.classList.add("disabled");
+  }
+  return a;
+}
+
+// "전체 보기" 모달 — 모든 D-7 공고 list (세로 스크롤)
+function openClosingNoticesModal(notices) {
+  // 기존 모달 제거 (중복 방지)
+  document.querySelectorAll(".closing-modal-backdrop").forEach((el) => el.remove());
+
+  const list = h("div", { class: "closing-modal-list" });
+  (notices || []).forEach((n) => list.appendChild(renderClosingCard(n)));
+
+  const close = () => {
+    backdrop.classList.add("closing-modal-closing");
+    setTimeout(() => backdrop.remove(), 180);
+    document.removeEventListener("keydown", onKey);
+  };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+
+  const backdrop = h("div", {
+    class: "closing-modal-backdrop",
+    onclick: (e) => { if (e.target === backdrop) close(); },
+  }, [
+    h("div", { class: "closing-modal" }, [
+      h("div", { class: "closing-modal-head" }, [
+        h("h3", { class: "closing-modal-title" }, "📡 D-7 마감 임박 공고 전체"),
+        h("button", { class: "closing-modal-close", "aria-label": "닫기", onclick: close }, "×"),
+      ]),
+      h("div", { class: "closing-modal-meta" }, `총 ${(notices || []).length}건`),
+      list,
+    ]),
+  ]);
+  document.body.appendChild(backdrop);
+  document.addEventListener("keydown", onKey);
 }
 
 function clientCard(c) {

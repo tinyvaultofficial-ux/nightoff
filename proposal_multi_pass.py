@@ -994,8 +994,10 @@ async def generate_outline(
     user_parts.append("\n위 정보를 바탕으로 outline JSON 을 출력해라.")
     user = "\n\n".join(user_parts)
 
+    # max_tokens 32000 — 50 슬라이드 outline (추정 9-20k 토큰) 의 응답 영역 안전 확보.
+    # 사고 영역: 16000 도달 → stop_reason=max_tokens → JSON 잘림 → 파싱 실패.
     raw = await asyncio.to_thread(
-        _call_anthropic_sync, client, OUTLINE_SYSTEM_PROMPT, user, 16000, model,
+        _call_anthropic_sync, client, OUTLINE_SYSTEM_PROMPT, user, 32000, model,
     )
     parsed = _parse_json_safely(raw)
     if not parsed or not isinstance(parsed.get("outline"), list):

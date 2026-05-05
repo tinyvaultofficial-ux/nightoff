@@ -4483,31 +4483,24 @@ $("#test-key")?.addEventListener("click", async () => {
   }
 });
 
-// ---------- 체류시간 인체 캐릭터 ----------
-// 단계: [분 임계값, 알림 zone, 메시지, 색 단계]
-//   alert/warn 은 body-zone 클래스에 .alert / .warn 적용
-//   pulse-* 클래스는 SVG 전체 호흡 속도
-const BODY_STAGES = [
-  { upTo: 30,    pulse: "pulse-slow", warn: [],          alert: [],          face: "happy",   msg: "오늘도 화이팅! 💪 일찍 끝내봐요" },
-  { upTo: 120,   pulse: "pulse-mid",  warn: ["torso", "head", "arm-l", "arm-r", "leg-l", "leg-r", "waist", "neck"], alert: [], face: "happy", msg: "잘 하고 있어요 😊 6시에 만나요" },
-  { upTo: 240,   pulse: "pulse-mid",  warn: ["torso", "head", "arm-l", "arm-r", "leg-l", "leg-r", "waist", "neck"], alert: ["wrist"], face: "tired", msg: "손목 좀 쉬어줘요 🤸 스트레칭 한 번!" },
-  { upTo: 360,   pulse: "pulse-mid",  warn: ["torso", "head", "arm-l", "arm-r", "leg-l", "leg-r", "waist"],          alert: ["neck", "wrist"], face: "tired", msg: "목 돌리고 물 한 잔 어때요? 💧" },
-  { upTo: 480,   pulse: "pulse-mid",  warn: ["torso", "head", "arm-l", "arm-r", "leg-l", "leg-r"],                   alert: ["waist", "neck", "wrist"], face: "tired", msg: "이만하면 충분! 일어나서 걸어요 🚶" },
-  { upTo: Infinity, pulse: "pulse-mid", warn: [], alert: ["head","torso","waist","neck","wrist","arm-l","arm-r","leg-l","leg-r","feet"], face: "exhausted", msg: "이만 들어가요 🏡 내일 또 봐요!" },
+// ---------- 건강 체크 — 6 자세·휴식 가이드 순환 ----------
+// 사용자가 직접 만든 6개 일러스트 + 매핑된 콘텐츠. 5분마다 자동 순환 + 클릭 시 다음 팁.
+const HEALTH_TIPS = [
+  { img: "1_neck",     text: "목을 좌우로 천천히 5번씩 돌려보세요" },
+  { img: "2_shoulder", text: "어깨를 위로 으쓱 → 천천히 내려요. 5번 반복" },
+  { img: "3_wrist",    text: "손목을 시계방향 5번, 반시계방향 5번 돌려보세요" },
+  { img: "4_ankle",    text: "발목 펌핑: 발끝을 위아래로 10번" },
+  { img: "5_monitor",  text: "모니터 상단이 눈높이와 같아야 해요" },
+  { img: "6_chair",    text: "등받이에 등을 완전히 기대 보세요" },
 ];
-
-const BODY_FACES = {
-  happy:     { eyeL: "M 41 30 q 2 -1.5 4 0", eyeR: "M 55 30 q 2 -1.5 4 0", mouth: "M 45 38 q 5 4 10 0" },
-  tired:     { eyeL: "M 41 30 l 4 0",         eyeR: "M 55 30 l 4 0",         mouth: "M 45 39 q 5 -2 10 0" },
-  exhausted: { eyeL: "M 40 30 l 6 2 m 0 -2 l -6 2", eyeR: "M 54 30 l 6 2 m 0 -2 l -6 2", mouth: "M 45 40 q 5 -3 10 0" },
-};
 
 let _bodyStartedAt = null;
 let _bodyTypingTimer = null;
-let _bodyLastStageIdx = -1;
+let _healthTipIdx = 0;
+let _healthRotateTimer = null;
 
 function ensureBodyClock() {
-  // localStorage 에 세션 시작 시각 저장 (브라우저 세션 단위)
+  // sessionStorage 에 세션 시작 시각 저장 (브라우저 세션 단위)
   let t = sessionStorage.getItem("nightoff.bodyStartedAt");
   if (!t) {
     t = String(Date.now());
@@ -4516,45 +4509,19 @@ function ensureBodyClock() {
   _bodyStartedAt = parseInt(t, 10);
 }
 
-function pickBodyStage(elapsedMin) {
-  for (let i = 0; i < BODY_STAGES.length; i++) {
-    if (elapsedMin <= BODY_STAGES[i].upTo) return i;
-  }
-  return BODY_STAGES.length - 1;
-}
-
-function applyBodyStage(stageIdx) {
-  const svg = document.getElementById("rp-body-svg");
+function applyHealthTip(idx, animate) {
+  const tips = HEALTH_TIPS;
+  if (!tips.length) return;
+  _healthTipIdx = ((idx % tips.length) + tips.length) % tips.length;
+  const tip = tips[_healthTipIdx];
+  const imgEl = document.getElementById("rp-body-img");
+  const webpEl = document.getElementById("rp-body-img-webp");
   const msgEl = document.getElementById("rp-body-msg");
-  if (!svg || !msgEl) return;
-  const stage = BODY_STAGES[stageIdx];
-  // pulse 클래스 토글
-  svg.classList.remove("pulse-slow", "pulse-mid");
-  svg.classList.add(stage.pulse);
-  // 모든 zone 초기화
-  svg.querySelectorAll(".body-zone").forEach((g) => {
-    g.classList.remove("warn", "alert", "alert-blink");
-  });
-  stage.warn.forEach((zone) => {
-    svg.querySelectorAll(`.zone-${zone}`).forEach((g) => g.classList.add("warn"));
-  });
-  stage.alert.forEach((zone) => {
-    svg.querySelectorAll(`.zone-${zone}`).forEach((g) => {
-      g.classList.add("alert", "alert-blink");
-    });
-  });
-  // 표정 변경
-  const face = BODY_FACES[stage.face] || BODY_FACES.happy;
-  const eyeL = document.getElementById("rp-eye-l");
-  const eyeR = document.getElementById("rp-eye-r");
-  const mouth = document.getElementById("rp-mouth");
-  if (eyeL) eyeL.setAttribute("d", face.eyeL);
-  if (eyeR) eyeR.setAttribute("d", face.eyeR);
-  if (mouth) mouth.setAttribute("d", face.mouth);
-  // 메시지 타이핑 효과 — 단계 변할 때만 재타이핑
-  if (stageIdx !== _bodyLastStageIdx) {
-    _bodyLastStageIdx = stageIdx;
-    typeBodyMessage(msgEl, stage.msg);
+  if (imgEl) imgEl.src = `/static/images/health/${tip.img}.png`;
+  if (webpEl) webpEl.srcset = `/static/images/health/${tip.img}.webp`;
+  if (msgEl) {
+    if (animate) typeBodyMessage(msgEl, tip.text);
+    else msgEl.textContent = tip.text;
   }
 }
 
@@ -4566,7 +4533,7 @@ function typeBodyMessage(el, msg) {
     if (i >= msg.length) {
       clearInterval(_bodyTypingTimer);
       _bodyTypingTimer = null;
-      el.textContent = msg;   // 커서 없이 깔끔하게 마무리
+      el.textContent = msg;
       return;
     }
     i++;
@@ -4574,13 +4541,10 @@ function typeBodyMessage(el, msg) {
   }, 35);
 }
 
-function tickBody() {
+function tickBodyTime() {
   if (!_bodyStartedAt) return;
   const elapsedMs = Date.now() - _bodyStartedAt;
   const elapsedMin = elapsedMs / 60000;
-  const stageIdx = pickBodyStage(elapsedMin);
-  applyBodyStage(stageIdx);
-  // 시간 표시
   const timeEl = document.getElementById("rp-body-time");
   if (timeEl) {
     const h = Math.floor(elapsedMin / 60);
@@ -4591,9 +4555,23 @@ function tickBody() {
 
 function bootBodyCharacter() {
   ensureBodyClock();
-  tickBody();
-  // 30초마다 갱신
-  setInterval(tickBody, 30 * 1000);
+  // 초기 팁 — 세션마다 랜덤 시작 (같은 팁 매번 보지 X)
+  const startIdx = Math.floor(Math.random() * HEALTH_TIPS.length);
+  applyHealthTip(startIdx, false);
+  tickBodyTime();
+  // 시간 표시 30초마다 갱신
+  setInterval(tickBodyTime, 30 * 1000);
+  // 5분마다 다음 팁 자동 순환
+  if (_healthRotateTimer) clearInterval(_healthRotateTimer);
+  _healthRotateTimer = setInterval(() => {
+    applyHealthTip(_healthTipIdx + 1, true);
+  }, 5 * 60 * 1000);
+  // 클릭 시 즉시 다음 팁
+  const btn = document.getElementById("rp-body-img-btn");
+  if (btn && !btn.dataset.bound) {
+    btn.dataset.bound = "1";
+    btn.addEventListener("click", () => applyHealthTip(_healthTipIdx + 1, true));
+  }
 }
 
 // ---------- 햄버거 사이드바 토글 (반응형: 1024px 미만) ----------

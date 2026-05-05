@@ -91,78 +91,18 @@
       <p class="rp-coming-tagline">열심히 만들고 있어요 🔨<br>조금만 기다려줘요!</p>
     </section>
 
-    <!-- 체류시간 인체 캐릭터 -->
+    <!-- 건강 체크 — PM 자세·휴식 가이드 (6 팁 순환) -->
     <section class="rp-section" id="rp-body-section">
       <p class="rp-title">건강 체크</p>
       <div class="rp-body-card">
-        <!-- SVG 인체 캐릭터 (귀엽고 위트있는 2~3등신) — JS 가 클래스 토글로 색상/애니 제어 -->
-        <svg id="rp-body-svg" class="rp-body-svg pulse-slow" viewBox="0 0 100 160" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <radialGradient id="bodyGrad" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stop-color="#ffffff" stop-opacity="0.6"/>
-              <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
-            </radialGradient>
-          </defs>
-          <!-- 백팩 (등 뒤 가방) — 퇴근 마스코트 시그니처 -->
-          <g class="body-bag" aria-hidden="true">
-            <rect x="22" y="60" width="14" height="22" rx="4" fill="#FF8E5C" opacity="0.95"/>
-            <rect x="24" y="64" width="10" height="2" rx="1" fill="#fff" opacity="0.6"/>
-            <!-- 가방 끈 -->
-            <path d="M 28 60 Q 30 52 36 56" stroke="#FF8E5C" stroke-width="2" fill="none" opacity="0.9"/>
-          </g>
-          <!-- 머리 (큰 동글동글) -->
-          <g class="body-zone zone-head" data-zone="head">
-            <circle cx="50" cy="32" r="22"/>
-            <!-- 광택 -->
-            <circle cx="42" cy="24" r="6" fill="url(#bodyGrad)"/>
-          </g>
-          <!-- 표정 (눈 + 입 — JS 가 표정 바꿈) -->
-          <g id="rp-face" stroke="#1f2937" stroke-width="1.6" stroke-linecap="round" fill="none">
-            <!-- 눈 -->
-            <path id="rp-eye-l" d="M 41 30 q 2 -1.5 4 0"/>
-            <path id="rp-eye-r" d="M 55 30 q 2 -1.5 4 0"/>
-            <!-- 입 (행복) -->
-            <path id="rp-mouth" d="M 45 38 q 5 4 10 0"/>
-          </g>
-          <!-- 목 -->
-          <g class="body-zone zone-neck" data-zone="neck">
-            <rect x="46" y="50" width="8" height="8" rx="2"/>
-          </g>
-          <!-- 몸통 (둥글둥글) -->
-          <g class="body-zone zone-torso" data-zone="torso">
-            <rect x="32" y="58" width="36" height="42" rx="14"/>
-          </g>
-          <!-- 허리 (몸통 아래쪽) -->
-          <g class="body-zone zone-waist" data-zone="waist">
-            <rect x="34" y="92" width="32" height="14" rx="7"/>
-          </g>
-          <!-- 왼팔 -->
-          <g class="body-zone zone-arm-l" data-zone="arm-l">
-            <rect x="20" y="62" width="10" height="32" rx="5"/>
-          </g>
-          <!-- 오른팔 -->
-          <g class="body-zone zone-arm-r" data-zone="arm-r">
-            <rect x="70" y="62" width="10" height="32" rx="5"/>
-          </g>
-          <!-- 손목 (양쪽) -->
-          <g class="body-zone zone-wrist" data-zone="wrist">
-            <circle cx="25" cy="98" r="6"/>
-            <circle cx="75" cy="98" r="6"/>
-          </g>
-          <!-- 다리 -->
-          <g class="body-zone zone-leg-l" data-zone="leg-l">
-            <rect x="36" y="106" width="11" height="40" rx="5.5"/>
-          </g>
-          <g class="body-zone zone-leg-r" data-zone="leg-r">
-            <rect x="53" y="106" width="11" height="40" rx="5.5"/>
-          </g>
-          <!-- 발 -->
-          <g class="body-zone zone-feet" data-zone="feet">
-            <ellipse cx="40" cy="150" rx="8" ry="5"/>
-            <ellipse cx="60" cy="150" rx="8" ry="5"/>
-          </g>
-        </svg>
-        <p id="rp-body-msg" class="rp-body-msg">오늘도 화이팅! 💪</p>
+        <!-- 6 가지 자세·휴식 가이드 이미지 — JS 가 콘텐츠와 함께 순환 (5분 간격 + 클릭) -->
+        <button id="rp-body-img-btn" class="rp-body-img-btn" aria-label="다음 팁 보기" title="클릭하면 다음 팁">
+          <picture>
+            <source id="rp-body-img-webp" type="image/webp" srcset="/static/images/health/1_neck.webp" />
+            <img id="rp-body-img" class="rp-body-img" src="/static/images/health/1_neck.png" alt="건강 체크 일러스트" loading="lazy" />
+          </picture>
+        </button>
+        <p id="rp-body-msg" class="rp-body-msg">목을 좌우로 천천히 5번씩 돌려보세요</p>
         <p id="rp-body-time" class="rp-body-time">0분</p>
       </div>
     </section>

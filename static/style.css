@@ -2999,12 +2999,16 @@ body, .msg-bubble, .card, .strengths-intro,
   .dashboard-two-col { grid-template-columns: minmax(0, 1fr) 280px; }
 }
 
-/* ===== 📡 마감 임박 공고 위젯 (대시보드 좌측 메인 영역) ===== */
+/* ===== 📡 마감 임박 공고 위젯 (대시보드 좌측 메인 영역) =====
+   시각 강조 영역 — 다른 카드 영역과 차별화:
+   · 배경: 연한 보라 톤 (#FAF7FF) — 흑백 6색 정체성 안 보라 액센트 영역
+   · 그림자: 보라 톤 (rgba(107,70,229,0.10)) — 자연스럽게 떠 있는 영역
+   · 카드는 흰색 유지 (위젯 배경과 대비) */
 .closing-widget {
   padding: 24px;
-  background: var(--card, #fff);
+  background: #FAF7FF;
   border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 4px 16px rgba(107, 70, 229, 0.10);
   border: 1px solid var(--border);
   display: flex; flex-direction: column; gap: 16px;
   min-height: 280px;

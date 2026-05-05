@@ -182,7 +182,8 @@ def main():
         for m, p, fn, _, ln in unprotected:
             print(f"    L{ln} {m} {p}")
         sys.exit(1)
-    print(f"\n  [OK FINAL] all 53 non-exempt endpoints protected. Auth migration complete.")
+    # 메시지 카운트 동적화 — 새 endpoint 추가 시 자동 갱신 (현재 54: dashboard/closing-notices 포함).
+    print(f"\n  [OK FINAL] all {len(protected)} non-exempt endpoints protected. Auth migration complete.")
 
 
 if __name__ == "__main__":

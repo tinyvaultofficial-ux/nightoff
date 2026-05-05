@@ -1693,6 +1693,135 @@ def api_closing_notices(user: dict = Depends(get_current_user)):
     return payload
 
 
+# ---------- 업계 뉴스 위젯 (구글 뉴스 RSS) ----------
+# MICE / 홍보마케팅 도메인 영역 — 5 키워드 통합 + 중복 제거 + 발행일 정렬.
+# 인증: ServiceKey 영역 X (구글 뉴스 RSS 영역 = 공개). 메모리 캐시 1시간.
+_GOOGLE_NEWS_RSS_BASE = "https://news.google.com/rss/search"
+_GOOGLE_NEWS_KEYWORDS = ["MICE", "컨벤션", "박람회", "이벤트", "홍보마케팅"]
+_GOOGLE_NEWS_CACHE: dict = {"data": None, "fetched_at": 0.0}
+_GOOGLE_NEWS_CACHE_TTL_SEC = 3600  # 1 시간
+
+
+def _parse_rss_pubdate(s: str) -> Optional[datetime]:
+    """RSS pubDate 영역 (RFC 822) 파싱 — 'Mon, 05 May 2026 12:34:56 GMT' 형식."""
+    if not s:
+        return None
+    from email.utils import parsedate_to_datetime
+    try:
+        dt = parsedate_to_datetime(s)
+        # tz 정보 영역 제거 (naive datetime 으로 통일)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(tz=None).replace(tzinfo=None)
+        return dt
+    except Exception:
+        return None
+
+
+def _fetch_google_news_one_keyword(keyword: str) -> list[dict]:
+    """단일 키워드로 구글 뉴스 RSS 호출 → item list. 실패 시 빈 리스트."""
+    import urllib.parse as _urlp
+    import urllib.request as _urlr
+    import xml.etree.ElementTree as _ET
+    params = {"q": keyword, "hl": "ko", "gl": "KR", "ceid": "KR:ko"}
+    url = f"{_GOOGLE_NEWS_RSS_BASE}?{_urlp.urlencode(params)}"
+    try:
+        req = _urlr.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (compatible; NightOff/1.0)",
+            "Accept": "application/rss+xml, application/xml",
+        })
+        with _urlr.urlopen(req, timeout=10) as resp:
+            raw = resp.read()
+    except Exception as e:
+        log.warning("구글 뉴스 RSS 호출 실패 · keyword=%r · err=%s", keyword, e)
+        return []
+    try:
+        root = _ET.fromstring(raw)
+    except Exception as e:
+        log.warning("구글 뉴스 XML 파싱 실패 · keyword=%r · err=%s", keyword, e)
+        return []
+    # RSS 표준 영역: rss > channel > item
+    channel = root.find("channel")
+    if channel is None:
+        return []
+    items: list[dict] = []
+    for it in channel.findall("item"):
+        title_el = it.find("title")
+        link_el = it.find("link")
+        pub_el = it.find("pubDate")
+        source_el = it.find("source")
+        title = (title_el.text if title_el is not None else "") or ""
+        link = (link_el.text if link_el is not None else "") or ""
+        pub_date = (pub_el.text if pub_el is not None else "") or ""
+        source = (source_el.text if source_el is not None else "") or ""
+        if not title.strip() or not link.strip():
+            continue
+        items.append({
+            "title": title.strip(),
+            "url": link.strip(),
+            "pub_date_raw": pub_date.strip(),
+            "source": source.strip(),
+        })
+    return items
+
+
+def _build_news_payload() -> dict:
+    """5 키워드 RSS 호출 → URL 기준 중복 제거 → 발행일 내림차순 정렬."""
+    seen: dict[str, dict] = {}
+    api_failed_count = 0
+    for kw in _GOOGLE_NEWS_KEYWORDS:
+        items = _fetch_google_news_one_keyword(kw)
+        if not items:
+            api_failed_count += 1
+            continue
+        for it in items:
+            url = it["url"]
+            if url in seen:
+                continue
+            pub_dt = _parse_rss_pubdate(it["pub_date_raw"])
+            seen[url] = {
+                "title": it["title"],
+                "source": it["source"] or "구글 뉴스",
+                "pub_date": pub_dt.strftime("%Y-%m-%d %H:%M") if pub_dt else "",
+                "_pub_dt": pub_dt or datetime.min,  # 정렬용 내부 영역
+                "url": url,
+            }
+    # 최신순 정렬 + 내부 _pub_dt 영역 제거
+    sorted_news = sorted(seen.values(), key=lambda n: n["_pub_dt"], reverse=True)
+    for n in sorted_news:
+        n.pop("_pub_dt", None)
+
+    err = None
+    if api_failed_count == len(_GOOGLE_NEWS_KEYWORDS) and not sorted_news:
+        err = "구글 뉴스 RSS 일시 응답 X"
+
+    return {
+        "news": sorted_news,
+        "fetched_at": datetime.now().isoformat(timespec="seconds"),
+        "error": err,
+    }
+
+
+@app.get("/api/dashboard/news")
+def api_dashboard_news(user: dict = Depends(get_current_user)):
+    """대시보드 업계 뉴스 위젯 영역 — MICE / 홍보마케팅 도메인 RSS 통합.
+
+    응답 스키마:
+        {"news": [{title, source, pub_date, url}],
+         "fetched_at": ISO datetime, "error": null|str}
+
+    캐시: 1 시간 메모리. 인증: 일반 사용자 OK (require_auth).
+    """
+    import time as _time
+    now_ts = _time.time()
+    cached = _GOOGLE_NEWS_CACHE
+    if cached["data"] is not None and (now_ts - cached["fetched_at"]) < _GOOGLE_NEWS_CACHE_TTL_SEC:
+        return cached["data"]
+    payload = _build_news_payload()
+    _GOOGLE_NEWS_CACHE["data"] = payload
+    _GOOGLE_NEWS_CACHE["fetched_at"] = now_ts
+    return payload
+
+
 # ---------- Stats ----------
 @app.get("/api/stats")
 def api_stats(user: dict = Depends(get_current_user)):

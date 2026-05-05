@@ -448,16 +448,30 @@ document.addEventListener("click", (e) => {
 // 일반 SaaS 패턴 정합 (Linear / Notion / Vercel 등):
 //   상단 = 로고 (홈 복귀)
 //   상단 액션 = "+ 새 과업" 버튼 (항상 노출)
+//   📊 Stats 영역 = 한 줄 1개 (4줄, 작은 폰트)
 //   본문 = 과업 목록 (스크롤, URL 매칭 = 보라 액센트)
 //   하단 = 설정 / 로그아웃
 //
-// 과업 데이터는 caller 가 미리 fetch 해서 넘기면 재요청 X (renderDashboard 등).
+// 데이터 영역: caller 가 미리 fetch 해서 넘기면 재요청 X (renderDashboard 등).
 // 미전달 시 자체 fetch (renderClientDetail / renderChat / renderClientForm 호출 케이스).
-async function renderSidebar(active = "clients", currentClientId = null, preloadedClients = null) {
+async function renderSidebar(active = "clients", currentClientId = null, preloadedClients = null, preloadedStats = null) {
   let clients = preloadedClients;
   if (!Array.isArray(clients)) {
     try { clients = await api.get("/api/clients"); } catch { clients = []; }
   }
+  let stats = preloadedStats;
+  if (!stats || typeof stats !== "object") {
+    try { stats = await api.get("/api/stats"); } catch { stats = {}; }
+  }
+  // Stats 4줄 영역 — 사이드바 작은 텍스트 영역 (한 줄 1개, 라벨/값 분리)
+  const winRate = (stats.win_rate === null || stats.win_rate === undefined) ? "—" : `${stats.win_rate}%`;
+  const winLossLabel = `${stats.wins ?? 0}승 ${stats.losses ?? 0}패`;
+  const statsRows = [
+    { label: "등록 과업", value: `${stats.total_clients ?? 0}개` },
+    { label: "작성 제안서", value: `${stats.total_proposals ?? 0}건` },
+    { label: "이번 달 활동", value: `${stats.month_activity ?? 0}회` },
+    { label: `수주율 (${winLossLabel})`, value: winRate },
+  ];
 
   const tasksListEl = h("div", { class: "sidebar-tasks-list" });
   if (!clients.length) {
@@ -498,6 +512,13 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
         html: `${iconHtml("plus", 16)}<span>새 과업</span>`,
       }),
     ]),
+    // 📊 Stats 영역 — 4줄, 사이드바 안 작은 텍스트 영역 (메인에서 이동됨)
+    h("div", { class: "sidebar-stats" },
+      statsRows.map((s) => h("div", { class: "sidebar-stats-row" }, [
+        h("span", { class: "sidebar-stats-label" }, s.label),
+        h("span", { class: "sidebar-stats-value" }, s.value),
+      ]))
+    ),
     // 본문 — 과업 목록 (스크롤)
     h("nav", { class: "sidebar-nav" }, [tasksListEl]),
     // 하단 — 설정 / 로그아웃
@@ -764,7 +785,7 @@ function renderHeroBanner() {
   banner.appendChild(h("div", { class: "hero-main-card hero-main-compact" }, [
     h("div", { class: "hero-main-emoji" }, "🖋"),
     h("div", { class: "hero-main-text" }, [
-      h("h2", { class: "hero-main-title" }, "든든한 AI 작가"),
+      h("h2", { class: "hero-main-title" }, "세계 최고의 B2G / B2B 제안 자동화 플랫폼, NightOff !!"),
       h("p", { class: "hero-main-desc" },
         "수백 건의 실제 수주 제안서를 학습한 AI 가, 사용자 옆에서 직접 펜을 잡고 써내려가요"),
     ]),
@@ -1365,21 +1386,19 @@ async function renderDashboard() {
   const activity = Array.isArray(activityR) ? activityR : [];
   const dna = (dnaR && typeof dnaR === "object" && !Array.isArray(dnaR)) ? dnaR : { exists: false, ref_count: 0 };
 
-  // 사이드바 — 미리 fetch 한 clients 전달 (renderSidebar 가 재요청 안 하게 최적화).
-  // 대시보드 화면이라 currentClientId = null (선택된 과업 없음).
-  root.appendChild(await renderSidebar("clients", null, clients));
+  // 사이드바 — clients + stats 모두 preload 전달 (재요청 X).
+  // Stats 4개 영역은 사이드바로 이동됨 (메인 영역 정리).
+  root.appendChild(await renderSidebar("clients", null, clients, stats));
 
   const main = h("main", { class: "main" });
   root.appendChild(main);
 
+  // 메인 헤더 — 작은 로고 제거. "대시보드" 워딩 = 사이드바 우측 끝에 자연스럽게 인접.
   main.appendChild(h("header", { class: "main-header" }, [
-    h("div", { class: "flex-row", style: "gap: 18px;" }, [
-      h("img", { class: "header-logo", src: "/static/logo.png", alt: "NightOff", onclick: () => navigate("/") }),
-      h("div", {}, [
-        h("h1", {}, "대시보드"),
-        // 시간대별 인사 (item 11-C)
-        h("p", {}, getTimeBasedGreeting()),
-      ]),
+    h("div", {}, [
+      h("h1", {}, "대시보드"),
+      // 시간대별 인사 (item 11-C)
+      h("p", {}, getTimeBasedGreeting()),
     ]),
     // "+ 새 과업" 버튼은 사이드바 상단으로 단일화됨 (이중 진입점 제거).
   ]));
@@ -1390,57 +1409,8 @@ async function renderDashboard() {
   // ── 최상단: 핵심 기능 히어로 배너 (1 메인 + 3 서브)
   content.appendChild(renderHeroBanner());
 
-  // ── 핵심 스탯 4개 (승률 포함)
-  const winRateDisplay = stats.win_rate === null || stats.win_rate === undefined ? "—" : `${stats.win_rate}`;
-  const winRateUnit = stats.win_rate === null || stats.win_rate === undefined ? "" : "%";
-  const statItems = [
-    { label: "등록 과업",    value: stats.total_clients ?? 0,    unit: "개", icon: "users",    tint: "var(--primary-soft)", fg: "var(--primary)" },
-    { label: "작성 제안서",  value: stats.total_proposals ?? 0,  unit: "건", icon: "file",     tint: "var(--success-soft)", fg: "var(--success)" },
-    { label: "이번 달 활동", value: stats.month_activity ?? 0,   unit: "회", icon: "activity", tint: "var(--warning-soft)", fg: "var(--warning)" },
-    { label: `수주율 (${stats.wins ?? 0}승 ${stats.losses ?? 0}패)`,
-                              value: winRateDisplay,             unit: winRateUnit, icon: "trending", tint: "var(--accent)", fg: "var(--accent-fg)" },
-  ];
-  const statsGrid = h("div", { class: "stats-grid stats-grid-4" });
-  statItems.forEach((s, idx) => {
-    // stagger 진입 (item 11-A) — 카드별 50ms 지연
-    const valueNode = document.createTextNode("0");
-    const card = h("div", {
-      class: "card stat-card stagger-in",
-      style: `--stagger-delay: ${idx * 60}ms;`,
-    }, [
-      h("div", { class: "flex-between", style: "align-items: flex-start;" }, [
-        h("div", {}, [
-          h("p", { class: "stat-label" }, s.label),
-          h("p", { class: "stat-value", style: "margin: 0;" }, [
-            valueNode,
-            h("span", { class: "stat-unit" }, s.unit),
-          ]),
-        ]),
-        h("div", { class: "stat-icon-wrap", style: `background: ${s.tint}; color: ${s.fg};`, html: iconHtml(s.icon, 22) }),
-      ]),
-    ]);
-    statsGrid.appendChild(card);
-    // 숫자 roll-up (item 11-B) — 0 → 실제 값 0.6s
-    const target = Number(s.value);
-    if (Number.isFinite(target) && target > 0) {
-      const dur = 600;
-      const t0 = performance.now();
-      // 진입 stagger 끝나고 시작
-      setTimeout(() => {
-        const tick = (now) => {
-          const p = Math.min(1, (now - t0) / dur);
-          const eased = 1 - Math.pow(1 - p, 3);  // easeOutCubic
-          valueNode.nodeValue = String(Math.round(target * eased));
-          if (p < 1) requestAnimationFrame(tick);
-          else valueNode.nodeValue = String(target);
-        };
-        requestAnimationFrame(tick);
-      }, idx * 60 + 80);
-    } else {
-      valueNode.nodeValue = String(s.value);
-    }
-  });
-  content.appendChild(h("section", { style: "margin-bottom: 28px;" }, statsGrid));
+  // ── Stats 4개 영역 → 사이드바로 이동됨. 자리 = 업계 뉴스 가로 롤링 위젯.
+  content.appendChild(renderNewsWidget());
 
   // ── 중단: 큰 CTA — 과업이 없을 때만 노출 (있으면 사이드바·상단 버튼으로 추가)
   if (clients.length === 0) {
@@ -1634,6 +1604,131 @@ function ddayBadge(diff) {
   else if (diff <= 14)  cls = "dday-mid";
   return h("span", { class: `dday-badge ${cls}`, title: `마감까지 ${diff}일` }, label);
 }
+
+// ---------- 📰 업계 뉴스 가로 롤링 위젯 (대시보드 메인 영역) ----------
+// 데이터 source: GET /api/dashboard/news (백엔드 캐시 1시간, 구글 뉴스 RSS 통합)
+// 표시 영역: 4개 카드 가로 + 7초 자동 롤링 + 좌우 화살표 + 도트 인디케이터
+// 인터랙션: 카드 클릭 = 새 탭 (target="_blank" + rel="noopener noreferrer"),
+//          hover 시 자동 롤링 정지
+function renderNewsWidget() {
+  const PAGE_SIZE = 4;
+  const ROLL_MS = 7000;
+
+  const wrap = h("section", { class: "news-widget" });
+  wrap.appendChild(h("div", { class: "news-widget-head" }, [
+    h("span", { class: "news-widget-icon" }, "📰"),
+    h("h3", { class: "news-widget-title" }, "업계 뉴스"),
+  ]));
+  const body = h("div", { class: "news-widget-body" });
+  wrap.appendChild(body);
+  const footer = h("div", { class: "news-widget-footer" });
+  wrap.appendChild(footer);
+
+  body.appendChild(h("p", { class: "news-widget-loading" }, "뉴스를 불러오는 중…"));
+
+  let news = [];
+  let pageIdx = 0;
+  let totalPages = 1;
+  let rollTimer = null;
+  let hovered = false;
+
+  function startRoll() {
+    if (rollTimer) clearInterval(rollTimer);
+    if (totalPages <= 1) return;
+    rollTimer = setInterval(() => {
+      if (hovered) return;
+      pageIdx = (pageIdx + 1) % totalPages;
+      renderPage();
+    }, ROLL_MS);
+  }
+
+  function renderPage() {
+    const start = pageIdx * PAGE_SIZE;
+    const slice = news.slice(start, start + PAGE_SIZE);
+    body.innerHTML = "";
+    const list = h("div", { class: "news-card-list" });
+    slice.forEach((n) => list.appendChild(renderNewsCard(n)));
+    body.appendChild(list);
+    const dotsEl = footer.querySelector(".news-widget-dots");
+    if (dotsEl) {
+      dotsEl.innerHTML = "";
+      for (let i = 0; i < totalPages; i++) {
+        const dot = h("button", {
+          class: "news-widget-dot" + (i === pageIdx ? " active" : ""),
+          "aria-label": `페이지 ${i + 1}`,
+          onclick: () => { pageIdx = i; renderPage(); },
+        });
+        dotsEl.appendChild(dot);
+      }
+    }
+  }
+
+  function renderEmpty() {
+    body.innerHTML = "";
+    body.appendChild(h("div", { class: "news-widget-empty" }, [
+      h("span", { class: "news-widget-empty-icon" }, "📭"),
+      h("span", { class: "news-widget-empty-msg" }, "오늘은 새 뉴스가 없어요"),
+    ]));
+  }
+  function renderError() {
+    body.innerHTML = "";
+    body.appendChild(h("div", { class: "news-widget-empty" }, [
+      h("span", { class: "news-widget-empty-icon" }, "⚠️"),
+      h("span", { class: "news-widget-empty-msg" }, "뉴스를 불러올 수 없어요"),
+    ]));
+  }
+
+  wrap.addEventListener("mouseenter", () => { hovered = true; });
+  wrap.addEventListener("mouseleave", () => { hovered = false; });
+
+  api.get("/api/dashboard/news").then((res) => {
+    if (!res || res.error) { renderError(); return; }
+    news = Array.isArray(res.news) ? res.news : [];
+    if (news.length === 0) { renderEmpty(); return; }
+    totalPages = Math.ceil(news.length / PAGE_SIZE);
+    pageIdx = 0;
+    footer.innerHTML = "";
+    if (totalPages > 1) {
+      footer.appendChild(h("button", {
+        class: "news-widget-arrow",
+        "aria-label": "이전",
+        onclick: () => { pageIdx = (pageIdx - 1 + totalPages) % totalPages; renderPage(); },
+      }, "‹"));
+      footer.appendChild(h("div", { class: "news-widget-dots" }));
+      footer.appendChild(h("button", {
+        class: "news-widget-arrow",
+        "aria-label": "다음",
+        onclick: () => { pageIdx = (pageIdx + 1) % totalPages; renderPage(); },
+      }, "›"));
+    }
+    renderPage();
+    startRoll();
+  }).catch(() => renderError());
+
+  return wrap;
+}
+
+function renderNewsCard(n) {
+  const a = h("a", {
+    class: "news-card",
+    href: n.url || "#",
+    target: "_blank",
+    rel: "noopener noreferrer",
+  }, [
+    h("p", { class: "news-card-title", title: n.title || "" }, n.title || "(제목 없음)"),
+    h("div", { class: "news-card-meta" }, [
+      h("span", { class: "news-card-source" }, n.source || ""),
+      n.pub_date ? h("span", { class: "news-card-sep" }, "·") : null,
+      n.pub_date ? h("span", { class: "news-card-date" }, n.pub_date) : null,
+    ]),
+  ]);
+  if (!n.url) {
+    a.addEventListener("click", (e) => e.preventDefault());
+    a.classList.add("disabled");
+  }
+  return a;
+}
+
 
 // ---------- 📡 마감 임박 공고 위젯 (대시보드 메인 영역) ----------
 // 데이터 source: GET /api/dashboard/closing-notices (백엔드 캐시 1시간)

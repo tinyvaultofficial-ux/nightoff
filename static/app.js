@@ -1605,128 +1605,147 @@ function ddayBadge(diff) {
   return h("span", { class: `dday-badge ${cls}`, title: `마감까지 ${diff}일` }, label);
 }
 
-// ---------- 📰 업계 뉴스 가로 롤링 위젯 (대시보드 메인 영역) ----------
+// ---------- 📰 업계 뉴스 한 줄 롤링 위젯 (네이버 검색창 영역 패턴) ----------
 // 데이터 source: GET /api/dashboard/news (백엔드 캐시 1시간, 구글 뉴스 RSS 통합)
-// 표시 영역: 4개 카드 가로 + 7초 자동 롤링 + 좌우 화살표 + 도트 인디케이터
-// 인터랙션: 카드 클릭 = 새 탭 (target="_blank" + rel="noopener noreferrer"),
-//          hover 시 자동 롤링 정지
+// 표시 영역: 한 줄 (높이 ~44px), 한 번에 1개 뉴스 노출 + fade 전환
+// 인터랙션: 6초마다 다음 뉴스로 fade-cross, 좌우 화살표 (수동), hover 시 자동 롤링 정지,
+//          카드 클릭 = 새 탭 (target="_blank" + rel="noopener noreferrer")
 function renderNewsWidget() {
-  const PAGE_SIZE = 4;
-  const ROLL_MS = 7000;
+  const ROLL_MS = 6000;        // 5~7 초 영역 안 (사용자 명시)
+  const FADE_MS = 350;         // 300~500ms 영역 안 (사용자 명시)
 
   const wrap = h("section", { class: "news-widget" });
-  wrap.appendChild(h("div", { class: "news-widget-head" }, [
-    h("span", { class: "news-widget-icon" }, "📰"),
-    h("h3", { class: "news-widget-title" }, "업계 뉴스"),
-  ]));
-  const body = h("div", { class: "news-widget-body" });
-  wrap.appendChild(body);
-  const footer = h("div", { class: "news-widget-footer" });
-  wrap.appendChild(footer);
+  const icon = h("span", { class: "news-widget-icon" }, "📰");
+  const linkEl = h("a", {
+    class: "news-widget-link",
+    href: "#",
+    target: "_blank",
+    rel: "noopener noreferrer",
+  }, "뉴스를 불러오는 중…");
+  // 좌우 화살표 — 수동 전환 (자동 롤링 reset)
+  const prevBtn = h("button", {
+    class: "news-widget-arrow",
+    "aria-label": "이전",
+    type: "button",
+  }, "‹");
+  const nextBtn = h("button", {
+    class: "news-widget-arrow",
+    "aria-label": "다음",
+    type: "button",
+  }, "›");
 
-  body.appendChild(h("p", { class: "news-widget-loading" }, "뉴스를 불러오는 중…"));
+  wrap.appendChild(icon);
+  wrap.appendChild(linkEl);
+  wrap.appendChild(prevBtn);
+  wrap.appendChild(nextBtn);
 
   let news = [];
-  let pageIdx = 0;
-  let totalPages = 1;
+  let idx = 0;
   let rollTimer = null;
   let hovered = false;
+  let busy = false;  // fade 영역 중복 트리거 방지
+
+  function applyItem(n) {
+    if (n && n.url) {
+      linkEl.setAttribute("href", n.url);
+      linkEl.classList.remove("disabled");
+    } else {
+      linkEl.setAttribute("href", "#");
+      linkEl.classList.add("disabled");
+    }
+    linkEl.title = n ? n.title || "" : "";
+    linkEl.innerHTML = "";
+    linkEl.appendChild(h("span", { class: "news-widget-text-title" }, (n && n.title) || ""));
+    if (n && (n.source || n.pub_date)) {
+      linkEl.appendChild(h("span", { class: "news-widget-text-sep" }, "·"));
+      linkEl.appendChild(h("span", { class: "news-widget-text-meta" },
+        [n.source, n.pub_date].filter(Boolean).join(" · ")));
+    }
+  }
+
+  function fadeTo(nextIdx) {
+    if (busy || !news.length) return;
+    if (nextIdx === idx) return;
+    busy = true;
+    linkEl.classList.add("fading");
+    setTimeout(() => {
+      idx = ((nextIdx % news.length) + news.length) % news.length;
+      applyItem(news[idx]);
+      // 다음 frame 에서 fade-in
+      requestAnimationFrame(() => {
+        linkEl.classList.remove("fading");
+        busy = false;
+      });
+    }, FADE_MS);
+  }
 
   function startRoll() {
     if (rollTimer) clearInterval(rollTimer);
-    if (totalPages <= 1) return;
+    if (news.length <= 1) return;
     rollTimer = setInterval(() => {
       if (hovered) return;
-      pageIdx = (pageIdx + 1) % totalPages;
-      renderPage();
+      fadeTo(idx + 1);
     }, ROLL_MS);
   }
-
-  function renderPage() {
-    const start = pageIdx * PAGE_SIZE;
-    const slice = news.slice(start, start + PAGE_SIZE);
-    body.innerHTML = "";
-    const list = h("div", { class: "news-card-list" });
-    slice.forEach((n) => list.appendChild(renderNewsCard(n)));
-    body.appendChild(list);
-    const dotsEl = footer.querySelector(".news-widget-dots");
-    if (dotsEl) {
-      dotsEl.innerHTML = "";
-      for (let i = 0; i < totalPages; i++) {
-        const dot = h("button", {
-          class: "news-widget-dot" + (i === pageIdx ? " active" : ""),
-          "aria-label": `페이지 ${i + 1}`,
-          onclick: () => { pageIdx = i; renderPage(); },
-        });
-        dotsEl.appendChild(dot);
-      }
-    }
+  function resetRoll() {
+    if (rollTimer) clearInterval(rollTimer);
+    startRoll();
   }
 
-  function renderEmpty() {
-    body.innerHTML = "";
-    body.appendChild(h("div", { class: "news-widget-empty" }, [
-      h("span", { class: "news-widget-empty-icon" }, "📭"),
-      h("span", { class: "news-widget-empty-msg" }, "오늘은 새 뉴스가 없어요"),
-    ]));
-  }
-  function renderError() {
-    body.innerHTML = "";
-    body.appendChild(h("div", { class: "news-widget-empty" }, [
-      h("span", { class: "news-widget-empty-icon" }, "⚠️"),
-      h("span", { class: "news-widget-empty-msg" }, "뉴스를 불러올 수 없어요"),
-    ]));
-  }
+  prevBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    fadeTo(idx - 1);
+    resetRoll();
+  });
+  nextBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    fadeTo(idx + 1);
+    resetRoll();
+  });
+  // url 없으면 클릭 무력화 (보안 + UX)
+  linkEl.addEventListener("click", (e) => {
+    if (linkEl.classList.contains("disabled")) e.preventDefault();
+  });
 
+  // hover 정지 (자연스러운 UX)
   wrap.addEventListener("mouseenter", () => { hovered = true; });
   wrap.addEventListener("mouseleave", () => { hovered = false; });
 
+  function showEmpty() {
+    wrap.classList.add("news-widget-static");
+    icon.textContent = "📰";
+    linkEl.removeAttribute("href");
+    linkEl.classList.add("disabled");
+    linkEl.innerHTML = "";
+    linkEl.appendChild(h("span", { class: "news-widget-text-title" }, "새 뉴스가 없어요"));
+    prevBtn.style.display = "none";
+    nextBtn.style.display = "none";
+  }
+  function showError() {
+    wrap.classList.add("news-widget-static");
+    icon.textContent = "📰";
+    linkEl.removeAttribute("href");
+    linkEl.classList.add("disabled");
+    linkEl.innerHTML = "";
+    linkEl.appendChild(h("span", { class: "news-widget-text-title" }, "뉴스를 불러올 수 없어요"));
+    prevBtn.style.display = "none";
+    nextBtn.style.display = "none";
+  }
+
   api.get("/api/dashboard/news").then((res) => {
-    if (!res || res.error) { renderError(); return; }
+    if (!res || res.error) { showError(); return; }
     news = Array.isArray(res.news) ? res.news : [];
-    if (news.length === 0) { renderEmpty(); return; }
-    totalPages = Math.ceil(news.length / PAGE_SIZE);
-    pageIdx = 0;
-    footer.innerHTML = "";
-    if (totalPages > 1) {
-      footer.appendChild(h("button", {
-        class: "news-widget-arrow",
-        "aria-label": "이전",
-        onclick: () => { pageIdx = (pageIdx - 1 + totalPages) % totalPages; renderPage(); },
-      }, "‹"));
-      footer.appendChild(h("div", { class: "news-widget-dots" }));
-      footer.appendChild(h("button", {
-        class: "news-widget-arrow",
-        "aria-label": "다음",
-        onclick: () => { pageIdx = (pageIdx + 1) % totalPages; renderPage(); },
-      }, "›"));
+    if (news.length === 0) { showEmpty(); return; }
+    idx = 0;
+    applyItem(news[0]);
+    if (news.length <= 1) {
+      prevBtn.style.display = "none";
+      nextBtn.style.display = "none";
     }
-    renderPage();
     startRoll();
-  }).catch(() => renderError());
+  }).catch(() => showError());
 
   return wrap;
-}
-
-function renderNewsCard(n) {
-  const a = h("a", {
-    class: "news-card",
-    href: n.url || "#",
-    target: "_blank",
-    rel: "noopener noreferrer",
-  }, [
-    h("p", { class: "news-card-title", title: n.title || "" }, n.title || "(제목 없음)"),
-    h("div", { class: "news-card-meta" }, [
-      h("span", { class: "news-card-source" }, n.source || ""),
-      n.pub_date ? h("span", { class: "news-card-sep" }, "·") : null,
-      n.pub_date ? h("span", { class: "news-card-date" }, n.pub_date) : null,
-    ]),
-  ]);
-  if (!n.url) {
-    a.addEventListener("click", (e) => e.preventDefault());
-    a.classList.add("disabled");
-  }
-  return a;
 }
 
 

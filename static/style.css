@@ -214,6 +214,33 @@ input, select, textarea { font-family: inherit; color: inherit; }
 .sidebar-new-task-btn:active { transform: translateY(0); }
 .sidebar-new-task-btn svg { width: 16px; height: 16px; }
 
+/* 📊 Stats 영역 — 4줄, 작은 텍스트, 사이드바 안 컴팩트 영역 */
+.sidebar-stats {
+  padding: 6px 14px 14px;
+  display: flex; flex-direction: column; gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+.sidebar-stats-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 0;
+  font-size: 12px;
+  line-height: 1.3;
+}
+.sidebar-stats-label {
+  color: var(--fg-2);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 70%;
+}
+.sidebar-stats-value {
+  color: var(--fg-strong, var(--fg));
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .sidebar-nav { flex: 1; padding: 8px 8px 12px; overflow-y: auto; min-height: 0; }
 
 /* 과업 목록 (사이드바 본문) */
@@ -2997,6 +3024,121 @@ body, .msg-bubble, .card, .strengths-intro,
 /* 작은 뷰포트 (1100px 이하) — 사이드 컬럼 더 좁게 */
 @media (max-width: 1280px) {
   .dashboard-two-col { grid-template-columns: minmax(0, 1fr) 280px; }
+}
+
+/* ===== 📰 업계 뉴스 가로 롤링 위젯 (Stats 4개 자리에 노출) ===== */
+.news-widget {
+  margin-bottom: 28px;
+  padding: 16px 18px;
+  background: var(--card, #fff);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.news-widget-head {
+  display: flex; align-items: center; gap: 8px;
+}
+.news-widget-icon { font-size: 16px; }
+.news-widget-title {
+  margin: 0;
+  font-size: 13px; font-weight: 600;
+  color: var(--fg-2);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.news-widget-body {
+  display: flex; flex-direction: column;
+  min-height: 84px;
+}
+.news-widget-loading,
+.news-widget-empty {
+  margin: auto;
+  font-size: 12.5px;
+  color: var(--fg-2);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.news-widget-empty-icon { font-size: 16px; }
+
+.news-card-list {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  animation: news-fade-in .3s ease;
+}
+@keyframes news-fade-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.news-card {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #fff;
+  text-decoration: none;
+  color: inherit;
+  min-height: 70px;
+  transition: border-color .15s ease, transform .12s ease;
+  cursor: pointer;
+}
+.news-card:hover {
+  border-color: var(--primary);
+  transform: translateY(-1px);
+}
+.news-card.disabled { cursor: default; opacity: 0.6; }
+.news-card.disabled:hover { transform: none; border-color: var(--border); }
+.news-card-title {
+  margin: 0;
+  font-size: 12.5px; font-weight: 500;
+  color: var(--fg);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: keep-all;
+}
+.news-card-meta {
+  margin-top: auto;
+  display: flex; align-items: center; gap: 5px;
+  font-size: 10.5px; color: var(--fg-2);
+}
+.news-card-source { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+.news-card-sep { color: var(--border-strong, #DDD); }
+.news-card-date { font-variant-numeric: tabular-nums; }
+
+.news-widget-footer {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+}
+.news-widget-arrow {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: #fff;
+  font-size: 14px; font-weight: 600;
+  color: var(--fg-2);
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: all .15s ease;
+}
+.news-widget-arrow:hover { border-color: var(--primary); color: var(--primary); }
+.news-widget-dots { display: inline-flex; align-items: center; gap: 5px; }
+.news-widget-dot {
+  width: 6px; height: 6px; border-radius: 50%; border: 0;
+  background: var(--border-strong, #DDD); padding: 0; cursor: pointer;
+  transition: background .15s ease, transform .15s ease;
+}
+.news-widget-dot.active { background: var(--primary); transform: scale(1.2); }
+.news-widget-dot:hover { background: var(--primary); opacity: 0.7; }
+
+/* 모바일 (≤768px) — 뉴스 카드 영역 축소 */
+@media (max-width: 768px) {
+  .news-card-list { grid-template-columns: repeat(2, 1fr); }
+  .news-widget { padding: 12px 14px; }
+}
+@media (max-width: 480px) {
+  .news-card-list { grid-template-columns: 1fr; }
 }
 
 /* ===== 📡 마감 임박 공고 위젯 (대시보드 좌측 메인 영역) =====

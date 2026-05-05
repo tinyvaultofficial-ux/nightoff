@@ -47,6 +47,8 @@ const ICO = {
   printer: `<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>`,
   save: `<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>`,
   eye: `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`,
+  settings: `<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>`,
+  logout: `<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>`,
 };
 
 // "야근 OFF · 퇴근 동료" 시그니처 일러스트 — 빈 상태 / 성공 모먼트에 사용
@@ -443,49 +445,83 @@ document.addEventListener("click", (e) => {
 });
 
 // ---------- Sidebar ----------
-async function renderSidebar(active = "clients") {
-  // 사이드바 — 로고 + 메뉴 + (하단) 최근 활동 3줄
-  let activity = [];
-  try { activity = await api.get("/api/activity"); } catch {}
-  if (!Array.isArray(activity)) activity = [];
+// 일반 SaaS 패턴 정합 (Linear / Notion / Vercel 등):
+//   상단 = 로고 (홈 복귀)
+//   상단 액션 = "+ 새 과업" 버튼 (항상 노출)
+//   본문 = 과업 목록 (스크롤, URL 매칭 = 보라 액센트)
+//   하단 = 설정 / 로그아웃
+//
+// 과업 데이터는 caller 가 미리 fetch 해서 넘기면 재요청 X (renderDashboard 등).
+// 미전달 시 자체 fetch (renderClientDetail / renderChat / renderClientForm 호출 케이스).
+async function renderSidebar(active = "clients", currentClientId = null, preloadedClients = null) {
+  let clients = preloadedClients;
+  if (!Array.isArray(clients)) {
+    try { clients = await api.get("/api/clients"); } catch { clients = []; }
+  }
 
-  const recentBlock = h("div", { class: "sidebar-recent" }, [
-    h("p", { class: "sidebar-recent-title" }, "최근 활동"),
-    activity.length === 0
-      ? h("p", { class: "sidebar-recent-empty" }, "아직 활동이 없어요 🌙")
-      : h("div", { class: "sidebar-recent-list" },
-          activity.slice(0, 3).map((ev) =>
-            h("button", {
-              class: "sidebar-recent-row",
-              onclick: () => {
-                if (ev.conv_id && ev.client_id) navigate(`/client/${ev.client_id}/chat/${ev.conv_id}`);
-                else if (ev.client_id) navigate(`/client/${ev.client_id}`);
-              },
-              title: ev.title,
-            }, [
-              h("span", { class: "sidebar-recent-icon", html: iconHtml(ev.icon || "activity", 12) }),
-              h("span", { class: "sidebar-recent-text" }, [
-                h("span", { class: "sidebar-recent-text-title" }, ev.title || ""),
-                h("span", { class: "sidebar-recent-text-time" }, relativeTime(ev.at)),
-              ]),
-            ])
-          )
-        ),
-  ]);
+  const tasksListEl = h("div", { class: "sidebar-tasks-list" });
+  if (!clients.length) {
+    tasksListEl.appendChild(h("p", { class: "sidebar-tasks-empty" }, "아직 과업이 없어요 🌙"));
+  } else {
+    clients.forEach((c) => {
+      const dday = calcDday(c.deadline);
+      const isActive = currentClientId === c.id;
+      const children = [
+        h("span", { class: "sidebar-task-name", title: c.name || "과업" }, c.name || "과업"),
+      ];
+      if (dday !== null && dday !== undefined) {
+        const urgent = dday >= 0 && dday <= 2;
+        const past = dday < 0;
+        const label = past ? "마감" : (dday === 0 ? "D-day" : `D-${dday}`);
+        children.push(h("span", {
+          class: "sidebar-task-dday" + (urgent ? " urgent" : "") + (past ? " past" : ""),
+        }, label));
+      }
+      tasksListEl.appendChild(h("button", {
+        class: "sidebar-task-item" + (isActive ? " active" : ""),
+        onclick: () => navigate(`/client/${c.id}`),
+        title: c.name || "",
+      }, children));
+    });
+  }
 
   const side = h("aside", { class: "sidebar" }, [
+    // 상단 — 로고 (홈 복귀)
     h("div", { class: "sidebar-logo", role: "button", tabindex: "0", title: "메인으로", onclick: () => navigate("/"), onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } } }, [
       h("img", { class: "sidebar-logo-img", src: "/static/logo.png", alt: "NightOff" }),
     ]),
-    h("nav", { class: "sidebar-nav" }, [
+    // 상단 액션 — "+ 새 과업" (항상 노출)
+    h("div", { class: "sidebar-top-actions" }, [
       h("button", {
-        class: "sidebar-item" + (active === "clients" ? " active" : ""),
-        onclick: () => navigate("/"),
-        html: `${iconHtml("users")}<span>과업 목록</span>`,
+        class: "sidebar-new-task-btn",
+        onclick: () => navigate("/client/new"),
+        html: `${iconHtml("plus", 16)}<span>새 과업</span>`,
       }),
     ]),
-    recentBlock,
+    // 본문 — 과업 목록 (스크롤)
+    h("nav", { class: "sidebar-nav" }, [tasksListEl]),
+    // 하단 — 설정 / 로그아웃
+    h("div", { class: "sidebar-footer" }, [
+      h("button", {
+        class: "sidebar-footer-btn",
+        onclick: () => { if (typeof openSettings === "function") openSettings(); },
+        title: "설정",
+      }, [
+        h("span", { class: "sidebar-footer-btn-icon", html: iconHtml("settings", 16) }),
+        h("span", {}, "설정"),
+      ]),
+      h("button", {
+        class: "sidebar-footer-btn sidebar-footer-btn-logout",
+        onclick: () => { clearToken(); redirectToLogin(); },
+        title: "로그아웃",
+      }, [
+        h("span", { class: "sidebar-footer-btn-icon", html: iconHtml("logout", 16) }),
+        h("span", {}, "로그아웃"),
+      ]),
+    ]),
   ]);
+  // 'active' 인자는 향후 다른 메뉴 추가 대비 (현재는 과업 목록 단일).
+  void active;
   return side;
 }
 function iconHtml(name, size = 18) {
@@ -1316,10 +1352,6 @@ async function renderDashboard() {
   const root = $("#app-root");
   if (!root) return;  // SPA 라우트 밖 호출 방어
   root.innerHTML = "";
-  root.appendChild(await renderSidebar("clients"));
-
-  const main = h("main", { class: "main" });
-  root.appendChild(main);
 
   const [statsR, clientsR, activityR, dnaR] = await Promise.all([
     api.get("/api/stats").catch(() => ({})),
@@ -1333,6 +1365,13 @@ async function renderDashboard() {
   const activity = Array.isArray(activityR) ? activityR : [];
   const dna = (dnaR && typeof dnaR === "object" && !Array.isArray(dnaR)) ? dnaR : { exists: false, ref_count: 0 };
 
+  // 사이드바 — 미리 fetch 한 clients 전달 (renderSidebar 가 재요청 안 하게 최적화).
+  // 대시보드 화면이라 currentClientId = null (선택된 과업 없음).
+  root.appendChild(await renderSidebar("clients", null, clients));
+
+  const main = h("main", { class: "main" });
+  root.appendChild(main);
+
   main.appendChild(h("header", { class: "main-header" }, [
     h("div", { class: "flex-row", style: "gap: 18px;" }, [
       h("img", { class: "header-logo", src: "/static/logo.png", alt: "NightOff", onclick: () => navigate("/") }),
@@ -1342,11 +1381,7 @@ async function renderDashboard() {
         h("p", {}, getTimeBasedGreeting()),
       ]),
     ]),
-    h("button", {
-      class: "btn btn-primary btn-lg",
-      onclick: () => navigate("/client/new"),
-      html: `${iconHtml("plus", 18)}<span>새 과업</span>`,
-    }),
+    // "+ 새 과업" 버튼은 사이드바 상단으로 단일화됨 (이중 진입점 제거).
   ]));
 
   const content = h("div", { class: "main-content" });
@@ -1419,28 +1454,30 @@ async function renderDashboard() {
     ]));
   }
 
-  // ── 하단: 좌(과업 목록) / 우(오늘의 팁 + 최근 활동)
+  // ── 하단: 좌(메인 위젯 영역) / 우(오늘의 팁 + 가짜 광고)
+  // 좌측 = 다음 작업 (나라장터 마감 임박 공고 위젯) 의 자리 사전 확보.
+  // 이번 작업에서는 placeholder 카드만 노출 — 폭/높이/패딩이 실제 위젯과 정합.
   const twoCol = h("div", { class: "dashboard-two-col" });
   content.appendChild(twoCol);
 
-  // [좌] 과업 목록
+  // [좌] 위젯 placeholder — "📡 마감 임박 공고"
   const leftCol = h("section");
-  leftCol.appendChild(h("h2", { class: "dashboard-section-label" }, "과업 목록"));
-  if (clients.length === 0) {
-    // 빈 상태 — 노을 일러스트 + 따뜻한 카피
-    leftCol.appendChild(h("div", { class: "card empty-state empty-state-lg" }, [
-      h("div", { class: "empty-illust", html: SVG_ILLUST.sunset }),
-      h("p", { class: "empty-title" }, "오늘은 어떤 과업부터 시작해볼까요?"),
-      h("p", { class: "empty-desc muted" }, "RFP만 넣으면 분석부터 초안까지 — 같이 일찍 끝내봐요 ✨"),
-    ]));
-  } else {
-    const grid = h("div", { class: "client-grid client-grid-2" });
-    clients.forEach((c) => grid.appendChild(clientCard(c)));
-    leftCol.appendChild(grid);
-  }
+  leftCol.appendChild(h("div", { class: "card widget-placeholder" }, [
+    h("div", { class: "widget-placeholder-head" }, [
+      h("span", { class: "widget-placeholder-icon" }, "📡"),
+      h("h2", { class: "widget-placeholder-title" }, "마감 임박 공고"),
+    ]),
+    h("p", { class: "widget-placeholder-body" },
+      "곧 업데이트 — 마감 임박 입찰 공고를 NightOff 가 자동으로 가져올게요"),
+    h("div", { class: "widget-placeholder-meta" }, [
+      h("span", { class: "widget-placeholder-meta-row" }, "D-7 이내"),
+      h("span", { class: "widget-placeholder-meta-sep" }, "·"),
+      h("span", { class: "widget-placeholder-meta-row" }, "행사 · 홍보 · 축제 · 박람회 · 포럼 · 심포지엄"),
+    ]),
+  ]));
   twoCol.appendChild(leftCol);
 
-  // [우] 오늘의 팁 + 가짜 광고 (최근 활동은 좌측 사이드바 하단으로 이동됨)
+  // [우] 오늘의 팁 + 가짜 광고
   const rightCol = h("aside", { class: "dashboard-side-col" });
 
   // 1) 오늘의 팁 (5초 롤링)
@@ -1675,7 +1712,8 @@ const TASK_NAME_EXAMPLES = [
 async function renderClientForm(mode, id = null) {
   const root = $("#app-root");
   root.innerHTML = "";
-  root.appendChild(await renderSidebar());
+  // edit 모드 = 해당 과업이 사이드바에서 active. create 모드 = active 없음.
+  root.appendChild(await renderSidebar("clients", mode === "edit" ? id : null));
   const main = h("main", { class: "main" });
   root.appendChild(main);
   main.appendChild(h("header", { class: "main-header" }, [
@@ -1755,7 +1793,8 @@ async function renderClientForm(mode, id = null) {
 async function renderClientDetail(cid) {
   const root = $("#app-root");
   root.innerHTML = "";
-  root.appendChild(await renderSidebar());
+  // 현재 보고 있는 과업 = 사이드바에서 active 표시 (보라 액센트).
+  root.appendChild(await renderSidebar("clients", cid));
   const main = h("main", { class: "main" });
   root.appendChild(main);
 
@@ -2979,7 +3018,8 @@ async function renderChat(cid, convId) {
     return;
   }
 
-  root.appendChild(await renderSidebar());
+  // 채팅 중인 과업 = 사이드바에서 active 표시.
+  root.appendChild(await renderSidebar("clients", cid));
 
   // 좌우 분할 컨테이너 — 좌: 대화 / 우: 제안서 미리보기 (제안서 생성 시 자동 노출)
   const splitWrap = h("main", { class: "chat-split-wrap" });

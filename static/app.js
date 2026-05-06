@@ -3963,26 +3963,44 @@ async function renderChat(cid, convId) {
         },
       }),
       // 산출내역서 버튼 — 조건부 활성화 (제안서 생성 후만 클릭 가능).
-      // 활성화 판별: data.conversation.pptx_path 영역. multi-pass 완료 시 동적 enable.
-      // 비활성화 영역 = opacity ↓ + cursor not-allowed + onclick 차단 (사용자 안내 toast).
+      // 시각 영역 (사용자 명시):
+      //   활성화 = 흰 배경 + 보라 outline + 보라 텍스트 + 💰 (✨ 버튼과 동등 사이즈)
+      //   비활성화 = 흰 배경 + 회색 outline + 회색 텍스트 + cursor not-allowed
+      //   hover (비활성화 시) = toast "제안서를 먼저 생성해 주세요" — 5초 throttle
+      // 활성화 판별: data.conversation.pptx_path. multi-pass 완료 시 동적 enable.
       (function () {
         const hasPptx = !!(data.conversation && data.conversation.pptx_path);
+        let lastHoverToastAt = 0;
         const btn = h("button", {
-          class: "btn btn-outline budget-btn" + (hasPptx ? "" : " disabled"),
-          html: `${iconHtml("file", 14)}<span>산출내역서</span>`,
+          class: "btn budget-btn" + (hasPptx ? " active" : " disabled"),
+          html: `<span style="margin-right:4px;">💰</span><span>산출내역서</span>`,
           title: hasPptx ? "산출내역서 생성" : "제안서 생성 후 사용 가능해요",
           onclick: () => {
             if (btn.classList.contains("disabled")) {
-              toast("제안서를 먼저 생성해 주세요 (✨ 버튼)", "");
+              // 클릭 영역도 toast (hover 영역 X 사용자 영역 안전망)
+              const now = Date.now();
+              if (now - lastHoverToastAt > 4000) {
+                toast("제안서를 먼저 생성해 주세요 (✨ 버튼)", "", 3500);
+                lastHoverToastAt = now;
+              }
               return;
             }
             openBudgetModal(convId);
           },
         });
+        // 비활성화 영역 hover toast — mouseenter 영역, 5초 throttle 영역
+        btn.addEventListener("mouseenter", () => {
+          if (!btn.classList.contains("disabled")) return;
+          const now = Date.now();
+          if (now - lastHoverToastAt < 5000) return;
+          lastHoverToastAt = now;
+          toast("제안서를 먼저 생성해 주세요 (✨ 버튼)", "", 3500);
+        });
         // multi-pass 완료 시 동적 enable — window 영역 hook 통해 외부에서 호출 가능.
         // (runMultiPassProposal 영역에서 PPTX 변환 완료 후 호출)
         window.__nightoff_enableBudgetBtn = () => {
           btn.classList.remove("disabled");
+          btn.classList.add("active");
           btn.setAttribute("title", "산출내역서 생성");
         };
         return btn;

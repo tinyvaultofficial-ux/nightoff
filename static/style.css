@@ -3331,18 +3331,16 @@ body, .msg-bubble, .card, .strengths-intro,
 }
 
 /* ===== 📋 입찰참가자격 모달 영역 (closing-modal 패턴 재활용 + 자격 카드) ===== */
-.qual-modal-list {
-  padding: 16px 22px 22px;
-  display: flex; flex-direction: column; gap: 4px;
-  overflow-y: auto;
-  flex: 1;
+/* 입찰참가자격 카드 본문 영역 — 발주처 상세 페이지 인라인 영역 (모달 영역 X) */
+.qual-list {
+  display: flex; flex-direction: column; gap: 0;
 }
 .qual-section {
-  padding: 14px 0;
+  padding: 12px 0;
   border-bottom: 1px solid var(--border);
 }
 .qual-section:last-child { border-bottom: 0; padding-bottom: 4px; }
-.qual-section:first-child { padding-top: 8px; }
+.qual-section:first-child { padding-top: 4px; }
 .qual-section-head {
   display: flex; align-items: center; gap: 8px;
   margin-bottom: 8px;

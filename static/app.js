@@ -879,14 +879,18 @@ function renderHeroBanner() {
   const banner = h("section", { class: "hero-banner" });
 
   // 메인 카드 — 핵심 가치 (든든한 AI 작가)
+  // 다크 영역 (NightOff "밤" 정체성) — 타이틀 흰색, "NightOff !!" 영역만 보라 액센트
   banner.appendChild(h("div", { class: "hero-main-card hero-main-compact" }, [
     h("div", { class: "hero-main-emoji" }, "🖋"),
     h("div", { class: "hero-main-text" }, [
-      h("h2", { class: "hero-main-title" }, "국내 최초의 B2G / B2B 제안 자동화 플랫폼, NightOff !!"),
+      h("h2", { class: "hero-main-title" }, [
+        document.createTextNode("국내 최초의 B2G / B2B 제안 자동화 플랫폼, "),
+        h("span", { class: "hero-main-title-brand" }, "NightOff !!"),
+      ]),
       h("p", { class: "hero-main-desc" },
         "수백 건의 실제 수주 제안서를 학습한 AI 가, 사용자 옆에서 직접 펜을 잡고 써내려가요"),
     ]),
-    h("div", { class: "hero-main-sparkles" }, "✨"),
+    h("div", { class: "hero-main-sparkles" }, "🌙 ✨"),
   ]));
 
   // 서브 카드 3개 — 메인을 뒷받침하는 도구들

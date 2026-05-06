@@ -5140,13 +5140,13 @@ input.locked-by-env::placeholder {
 .hero-main-card {
   display: flex; align-items: center; gap: var(--space-4);
   padding: var(--space-5) var(--space-5);
-  /* 보라 → 노을 그라데이션 — "야근 OFF" 시그니처 */
-  background: linear-gradient(135deg, #6B46E5 0%, #A855F7 45%, #FF8E5C 100%);
+  /* 다크 영역 — NightOff "밤" 정체성 (보라 → 살구 그라데이션 영역에서 변경) */
+  background: linear-gradient(135deg, #1A1A2E 0%, #0F0E17 100%);
   border-radius: var(--radius-lg);
   color: #fff;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 14px 32px -14px rgba(107, 70, 229, 0.45);
+  box-shadow: 0 14px 32px -14px rgba(0, 0, 0, 0.55);
 }
 /* 더 컴팩트한 변형 — 사용자 요청 (item 6) */
 .hero-main-card.hero-main-compact {
@@ -5154,11 +5154,17 @@ input.locked-by-env::placeholder {
   gap: 16px;
 }
 .hero-main-card::before {
+  /* 우상단 보라 glow — 다크 배경 영역 깊이 영역 */
   content: ""; position: absolute;
   top: -40px; right: -30px;
   width: 180px; height: 180px;
-  background: radial-gradient(circle, rgba(255,255,255,0.18) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(155, 127, 232, 0.18) 0%, transparent 70%);
   pointer-events: none;
+}
+/* "NightOff !!" 영역 보라 액센트 — 다크 배경 영역 가독성 ↑ */
+.hero-main-title-brand {
+  color: #9B7FE8;
+  font-weight: 800;
 }
 .hero-main-emoji {
   font-size: 42px;
@@ -5179,7 +5185,8 @@ input.locked-by-env::placeholder {
   margin: 0;
   font-size: 14.5px;
   line-height: 1.55;
-  opacity: 0.92;
+  /* 다크 배경 영역 위계 영역 — 타이틀 흰색 (1.0) > 부제 흰색 + opacity 0.7 */
+  opacity: 0.7;
   letter-spacing: -0.005em;
   word-break: keep-all;
 }

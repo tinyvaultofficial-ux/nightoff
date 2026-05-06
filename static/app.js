@@ -1231,6 +1231,13 @@ async function openBudgetModal(convId) {
   }
   recalcBudget(data);
   renderBudget(body, footer, data, backdrop);
+  // 백엔드 영역에서 자동 조정 영역 발생 시 = toast 안내 영역
+  // (예산 영역 초과 영역 → 비례 영역 ↓ 영역 자동 적용됨)
+  if (data.auto_adjusted) {
+    const limit = Number(data.budget_limit) || 0;
+    const limitFmt = limit > 0 ? `₩${limit.toLocaleString("ko-KR")}` : "총 예산";
+    toast(`총 예산 (${limitFmt}) 안에 들어가도록 자동 조정됐어요. 항목 단가를 검토해 주세요.`, "", 6000);
+  }
 }
 
 function renderBudget(body, footer, data, backdrop) {

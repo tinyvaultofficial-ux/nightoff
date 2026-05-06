@@ -3851,6 +3851,38 @@ def api_admin_users_list(admin: dict = Depends(require_admin)):
     return {"users": [dict(r) for r in rows]}
 
 
+@app.post("/api/admin/users/{user_id}/reset-password")
+def api_admin_users_reset_password(user_id: str, admin: dict = Depends(require_admin)):
+    """사용자 비밀번호 재설정 (admin 전용).
+
+    body 영역 X — 자동 8자리 임시 비밀번호 영역 생성 (보안 영역).
+    Alphabet = invite code 영역 동일 (대문자 24 + 숫자 8 = 32자, 헷갈리는 0/O/1/l/I 제외).
+    bcrypt 해시 영역 → users.password_hash 영역 저장.
+    응답 영역의 temp_password 영역은 1회 노출 — admin 영역에서 사용자에게 전달.
+    """
+    # 자동 8자리 임시 비번 생성 — 32^8 ≈ 1.1조 조합 영역, 보안 충분
+    temp_password = "".join(_secrets.choice(_INVITE_ALPHABET) for _ in range(8))
+    pw_hash = _bcrypt.hashpw(temp_password.encode("utf-8"), _bcrypt.gensalt(rounds=BCRYPT_ROUNDS)).decode("utf-8")
+
+    with get_db() as db:
+        row = db.execute("SELECT id, email FROM users WHERE id=?", (user_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "사용자를 찾을 수 없어요.")
+        db.execute(
+            "UPDATE users SET password_hash=? WHERE id=?",
+            (pw_hash, user_id),
+        )
+
+    log.info("admin 비밀번호 재설정 · admin=%s · target_user=%s · email=%s",
+             admin.get("email", ""), user_id[:12], row["email"])
+    return {
+        "ok": True,
+        "user_id": user_id,
+        "email": row["email"],
+        "temp_password": temp_password,
+    }
+
+
 # ---------- Deprecated: /api/signup (replaced by /api/auth/register) ----------
 class SignupIn(BaseModel):
     email: str

@@ -950,6 +950,71 @@ function recalcBudget(data) {
   return data;
 }
 
+// ===== 📋 입찰참가자격 모달 (RFP 분석 결과 영역) =====
+// data: {legal[], financial[], performance[], personnel[], other[]}
+// onClose: 모달 닫기 시 호출 영역 (선택)
+function openQualificationsModal(data, onClose) {
+  const SECTIONS = [
+    { key: "legal",       label: "법적 자격", icon: "⚖️" },
+    { key: "financial",   label: "재무 자격", icon: "💰" },
+    { key: "performance", label: "실적 자격", icon: "📊" },
+    { key: "personnel",   label: "인력 자격", icon: "👥" },
+    { key: "other",       label: "기타", icon: "📝" },
+  ];
+
+  const close = () => {
+    backdrop.classList.add("closing-modal-closing");
+    setTimeout(() => {
+      backdrop.remove();
+      if (typeof onClose === "function") {
+        try { onClose(); } catch {}
+      }
+    }, 180);
+    document.removeEventListener("keydown", onKey);
+  };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+
+  const list = h("div", { class: "qual-modal-list" });
+  SECTIONS.forEach((sec) => {
+    const items = (data && Array.isArray(data[sec.key])) ? data[sec.key] : [];
+    const section = h("div", { class: "qual-section" }, [
+      h("div", { class: "qual-section-head" }, [
+        h("span", { class: "qual-section-icon" }, sec.icon),
+        h("span", { class: "qual-section-label" }, sec.label),
+      ]),
+    ]);
+    if (items.length > 0) {
+      const ul = h("ul", { class: "qual-section-items" });
+      items.forEach((it) => {
+        ul.appendChild(h("li", {}, String(it).trim()));
+      });
+      section.appendChild(ul);
+    } else {
+      section.appendChild(h("p", { class: "qual-section-empty" },
+        "RFP 에 명시 없음"));
+    }
+    list.appendChild(section);
+  });
+
+  const backdrop = h("div", {
+    class: "closing-modal-backdrop",
+    onclick: (e) => { if (e.target === backdrop) close(); },
+  }, [
+    h("div", { class: "closing-modal qual-modal" }, [
+      h("div", { class: "closing-modal-head" }, [
+        h("h3", { class: "closing-modal-title" }, "📋 입찰참가자격"),
+        h("button", { class: "closing-modal-close", "aria-label": "닫기", onclick: close }, "×"),
+      ]),
+      h("div", { class: "closing-modal-meta" },
+        "RFP 분석 결과 영역. 우리 회사가 참여 가능한지 빠르게 확인하세요."),
+      list,
+    ]),
+  ]);
+  document.body.appendChild(backdrop);
+  document.addEventListener("keydown", onKey);
+}
+
+
 // ===== 🔍 자체 검증 모달 (Compliance + Red Team) =====
 async function openAuditModal(convId) {
   const backdrop = h("div", { class: "modal-backdrop", onclick: (e) => { if (e.target === backdrop) backdrop.remove(); } });
@@ -2939,10 +3004,21 @@ async function renderRfpSection(cid) {
       if (result?.analysis?.error) {
         loader.finish("⚠️", "업로드 완료 · 분석 실패", 900);
         toast(result.analysis.error, "error");
+        setTimeout(() => renderClientDetail(cid), 1100);
       } else {
         loader.finish("✅", "분석 완료!", 700);
+        // 자격 카드 모달 영역 — RFP 안에 입찰참가자격 영역 추출됐으면 노출.
+        // 모달 닫기 시 renderClientDetail 영역으로 이동 (기존 흐름 보존).
+        const quals = result?.analysis?.qualifications;
+        const hasAnyQual = quals && Object.values(quals).some((v) => Array.isArray(v) && v.length > 0);
+        if (hasAnyQual) {
+          setTimeout(() => {
+            openQualificationsModal(quals, () => renderClientDetail(cid));
+          }, 800);
+        } else {
+          setTimeout(() => renderClientDetail(cid), 1100);
+        }
       }
-      setTimeout(() => renderClientDetail(cid), 1100);
     } catch (e) {
       loader.stop();
       toast(e.message || "업로드 실패", "error");
@@ -3763,29 +3839,31 @@ async function renderChat(cid, convId) {
           }
         },
       }),
-      // 자체 검증 버튼 (Compliance + Red Team)
-      h("button", {
-        class: "btn btn-outline", title: "RFP 요구사항 누락·예상 점수 점검",
-        html: `<span style="margin-right:4px;">🔍</span><span>자체 검증</span>`,
-        onclick: () => openAuditModal(convId),
-      }),
-      // 산출내역서 버튼
-      h("button", {
-        class: "btn btn-outline", html: `${iconHtml("file", 14)}<span>산출내역서</span>`,
-        onclick: () => openBudgetModal(convId),
-      }),
-      h("button", {
-        class: "btn btn-outline", html: `${iconHtml("save", 14)}<span>대화 마치기</span>`,
-        onclick: async () => {
-          if (!confirm("대화를 종료하고 기억을 저장하시겠습니까? AI가 대화에서 뉘앙스를 추출해 과업에 저장합니다.")) return;
-          toast("대화 기억 저장 중…", "");
-          try {
-            const r = await api.post(`/api/conversations/${convId}/end`);
-            toast(`${r.memories_added}개 기억이 저장되었습니다`, "success");
-            navigate(`/client/${cid}`);
-          } catch (e) { toast(String(e.message || e), "error"); }
-        },
-      }),
+      // 산출내역서 버튼 — 조건부 활성화 (제안서 생성 후만 클릭 가능).
+      // 활성화 판별: data.conversation.pptx_path 영역. multi-pass 완료 시 동적 enable.
+      // 비활성화 영역 = opacity ↓ + cursor not-allowed + onclick 차단 (사용자 안내 toast).
+      (function () {
+        const hasPptx = !!(data.conversation && data.conversation.pptx_path);
+        const btn = h("button", {
+          class: "btn btn-outline budget-btn" + (hasPptx ? "" : " disabled"),
+          html: `${iconHtml("file", 14)}<span>산출내역서</span>`,
+          title: hasPptx ? "산출내역서 생성" : "제안서 생성 후 사용 가능해요",
+          onclick: () => {
+            if (btn.classList.contains("disabled")) {
+              toast("제안서를 먼저 생성해 주세요 (✨ 버튼)", "");
+              return;
+            }
+            openBudgetModal(convId);
+          },
+        });
+        // multi-pass 완료 시 동적 enable — window 영역 hook 통해 외부에서 호출 가능.
+        // (runMultiPassProposal 영역에서 PPTX 변환 완료 후 호출)
+        window.__nightoff_enableBudgetBtn = () => {
+          btn.classList.remove("disabled");
+          btn.setAttribute("title", "산출내역서 생성");
+        };
+        return btn;
+      })(),
     ]),
   ]);
   shell.appendChild(header);
@@ -4071,6 +4149,8 @@ async function renderChat(cid, convId) {
                   });
                   log("step 6 · 미리보기 패널 ready 표시 완료");
                 } catch (e2) { log("setSidePanelPng ready 실패:", e2); }
+                // 산출내역서 버튼 영역 활성화 (PPTX 변환 완료 → 활성화 조건 도달).
+                try { window.__nightoff_enableBudgetBtn && window.__nightoff_enableBudgetBtn(); } catch {}
               } else {
                 log("⚠ slides 비어있음 ·", r);
                 doneBubble.textContent =

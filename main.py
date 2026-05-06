@@ -3940,6 +3940,26 @@ BUDGET_TABLE_PROMPT = """당신은 용역/행사 분야 산출내역서(Cost Bre
 {CONTEXT}
 ---
 
+⚠⚠⚠ 절대 원칙 — 총 예산 영역 안에서 산출 ⚠⚠⚠
+
+B2G 입찰 영역에서 **VAT 포함 최종 제안가 영역 > 총 예산** 영역이면 즉시 입찰 자격 박탈.
+시세 영역과 충돌 시 = **총 예산 영역 우선**. 항목 단가 영역 절충해서라도 영역 한계 영역 안 산정.
+
+역산 영역 (총 예산 → 항목 합계 한계):
+- 총 예산 ≥ VAT 포함 최종 제안가
+- VAT 포함 최종 제안가 = 항목 합계 × 1.08 (일반관리비) × 1.10 (대행료) × 1.10 (VAT)
+- ⇒ 항목 합계 한계 ≈ 총 예산 ÷ 1.30 (≈ 0.77 × 총 예산)
+
+예시 영역:
+- 총 예산 ₩110,000,000 → 항목 합계 한계 약 ₩84,200,000
+- 총 예산 ₩200,000,000 → 항목 합계 한계 약 ₩153,800,000
+- 총 예산 ₩50,000,000  → 항목 합계 한계 약 ₩38,400,000
+
+권장 영역: 한계 영역의 **95% 이내 영역** (5% 마진 영역) 산정.
+- 총 예산 ₩110,000,000 → 권장 항목 합계 ₩80,000,000 ~ ₩84,200,000
+
+⚠ 컨텍스트 영역의 "예산:" 영역 X 또는 빈 값 영역 시 = 업계 시세 영역 기반 영역 자유 산정 (다만 합리 영역 범위 영역).
+
 고정 양식 (열): 구분 → 항목 → 세부내역 → 단가 → 수량 → 단위 → 기간 → 투입율 → 금액 → 비고
 
 JSON 스키마 (금액·단가는 원 단위 정수):
@@ -3988,6 +4008,123 @@ JSON 스키마 (금액·단가는 원 단위 정수):
 JSON만 출력. 설명문·코드블록 금지."""
 
 
+def _parse_budget_to_int(s: str) -> Optional[int]:
+    """RFP 예산 텍스트 영역 → int (원 단위). 실패 시 None.
+
+    지원 영역:
+      "110,000,000원"        → 110000000
+      "₩110,000,000"         → 110000000
+      "1.1억원"              → 110000000
+      "110백만원"            → 110000000
+      "VAT 포함 110,000,000" → 110000000  (부가세 포함 영역도 그대로 수용)
+      "추정가 110,000,000원" → 110000000
+    """
+    if not s:
+        return None
+    txt = str(s).strip().replace(",", "").replace(" ", "")
+    if not txt:
+        return None
+    # 한국어 단위 영역 — 억 / 만 / 천만 / 백만 / 천 영역 처리
+    # "1.1억" = 1.1 × 100000000
+    m_eok = re.search(r"(\d+(?:\.\d+)?)\s*억", txt)
+    if m_eok:
+        try:
+            n = float(m_eok.group(1)) * 100_000_000
+            return int(round(n))
+        except Exception:
+            pass
+    m_baekm = re.search(r"(\d+(?:\.\d+)?)\s*백만", txt)
+    if m_baekm:
+        try:
+            n = float(m_baekm.group(1)) * 1_000_000
+            return int(round(n))
+        except Exception:
+            pass
+    m_man = re.search(r"(\d+(?:\.\d+)?)\s*만", txt)
+    if m_man:
+        try:
+            n = float(m_man.group(1)) * 10_000
+            return int(round(n))
+        except Exception:
+            pass
+    # 숫자 영역만 추출 (가장 큰 영역 = 예산 영역 가정)
+    nums = re.findall(r"\d+", txt)
+    if not nums:
+        return None
+    try:
+        # 가장 큰 숫자 영역 (예산 영역 = 큰 자릿수 영역)
+        n = max(int(x) for x in nums)
+        # 1000원 미만 영역 = 예산 영역 X (의미 X), None
+        if n < 1000:
+            return None
+        return n
+    except Exception:
+        return None
+
+
+def _validate_and_adjust_budget(data: dict, budget_limit: int) -> tuple[dict, bool]:
+    """산출내역서 데이터 영역 정합 영역 검증 + 자동 조정.
+
+    영역 흐름:
+      1. AI 영역 응답 영역의 모든 amount 영역 합산 (subtotal_sum)
+      2. VAT 포함 grand_total 영역 계산 (subtotal × 1.08 × 1.10 × 1.10)
+      3. grand_total > budget_limit 영역이면 = 비례 영역 ↓
+         factor = budget_limit ÷ grand_total × 0.95 (5% 마진 영역)
+         모든 unit_price 영역에 factor 영역 적용 → amount 영역 재계산
+
+    return: (adjusted_data, was_adjusted)
+    """
+    if not budget_limit or budget_limit <= 0:
+        return data, False
+    cats = data.get("categories") or []
+    if not cats:
+        return data, False
+
+    # 1. subtotal_sum 영역 계산
+    subtotal_sum = 0
+    for cat in cats:
+        for it in (cat.get("items") or []):
+            up = int(it.get("unit_price") or 0)
+            qty = float(it.get("qty") or 0)
+            util = float(it.get("utilization") or 100)
+            mult = util / 100.0 if util > 0 else 1.0
+            amt = round(up * qty * mult)
+            it["amount"] = amt
+            subtotal_sum += amt
+
+    if subtotal_sum <= 0:
+        return data, False
+
+    # 2. VAT 포함 grand_total 영역 계산
+    admin_fee = round(subtotal_sum * 0.08)
+    agency_fee = round((subtotal_sum + admin_fee) * 0.10)
+    total = subtotal_sum + admin_fee + agency_fee
+    proposed = (total // 10000) * 10000  # 만원 단위 절사
+    vat = round(proposed * 0.10)
+    grand_total = proposed + vat
+
+    if grand_total <= budget_limit:
+        return data, False
+
+    # 3. 비례 영역 ↓ — 5% 마진 영역 적용
+    target_subtotal = (budget_limit / 1.10 / 1.10 / 1.08) * 0.95
+    factor = target_subtotal / subtotal_sum
+    log.info("산출내역서 자동 조정 · 예산 %s · grand_total %s → factor %.4f",
+             f"{budget_limit:,}", f"{grand_total:,}", factor)
+
+    for cat in cats:
+        for it in (cat.get("items") or []):
+            up = int(it.get("unit_price") or 0)
+            new_up = max(1, round(up * factor))
+            it["unit_price"] = new_up
+            qty = float(it.get("qty") or 0)
+            util = float(it.get("utilization") or 100)
+            mult = util / 100.0 if util > 0 else 1.0
+            it["amount"] = round(new_up * qty * mult)
+
+    return data, True
+
+
 class BudgetRequest(BaseModel):
     conversation_id: str
 
@@ -4011,8 +4148,22 @@ def api_budget_generate(body: BudgetRequest, user: dict = Depends(get_current_us
     proposal_text = re.sub(r"<[^>]+>", " ", proposal_html)
     proposal_text = re.sub(r"\s+", " ", proposal_text)[:8000]
 
+    # RFP 예산 영역 parse — 검증 / 자동 조정 영역에서 사용
+    budget_raw = rfp.get("budget", "") or ""
+    budget_limit = _parse_budget_to_int(budget_raw)
+
+    # 컨텍스트 영역에 항목 합계 한계 영역 명시 (AI 영역에 강제 신호 ↑)
+    if budget_limit:
+        item_limit = int(budget_limit / 1.10 / 1.10 / 1.08 * 0.95)  # 5% 마진 영역
+        budget_hint = (
+            f"예산: {budget_raw} (≈ ₩{budget_limit:,})\n"
+            f"⚠ 항목 합계 한계 영역 (5% 마진 영역 적용): ₩{item_limit:,} 이하로 산정"
+        )
+    else:
+        budget_hint = f"예산: {budget_raw}"
+
     ctx = f"""사업명: {rfp.get('title', '')}
-예산: {rfp.get('budget', '')}
+{budget_hint}
 요구사항: {json.dumps(rfp.get('key_requirements', []), ensure_ascii=False)}
 
 제안서 본문 요약:
@@ -4034,6 +4185,17 @@ def api_budget_generate(body: BudgetRequest, user: dict = Depends(get_current_us
         raise HTTPException(502, translate_anthropic_error(e))
     except json.JSONDecodeError:
         raise HTTPException(502, "산출내역서 AI 응답을 이해하지 못했어요. 다시 시도해 주세요.")
+
+    # 백엔드 영역 정합 검증 + 자동 조정 영역 (옵션 B)
+    # AI 영역 시스템 프롬프트 영역 강제 후에도 영역 한계 영역 초과 시 영역 안전망.
+    auto_adjusted = False
+    if budget_limit:
+        data, auto_adjusted = _validate_and_adjust_budget(data, budget_limit)
+
+    # 응답 영역 metadata 영역 — 프론트 영역 toast 영역 안내 영역에 사용
+    data["budget_limit"] = budget_limit
+    data["budget_raw"] = budget_raw
+    data["auto_adjusted"] = auto_adjusted
     return data
 
 

@@ -7,6 +7,8 @@ pypdfium2==5.7.1
 Pillow==12.1.1
 python-docx==1.1.2
 python-pptx==1.0.2
+# 산출내역서 .xlsx 다운로드 (B2G 입찰 양식 정합)
+openpyxl==3.1.5
 psycopg[binary]==3.2.10
 # Cloudflare R2 (S3 호환) — 마스터 PPTX 클라우드 스토리지
 boto3==1.35.92

@@ -398,6 +398,9 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     ("users",         "role",             "TEXT DEFAULT 'user'"),
     ("users",         "is_active",        "INTEGER DEFAULT 0"),
     ("clients",       "user_id",          "TEXT DEFAULT ''"),
+    # 채팅 첫 진입 안내 팝업 — "다시 보지 않기" 영구 저장 (계정 단위).
+    # INTEGER 0/1 — SQLite/PG 양쪽 호환 (BOOLEAN native 회피).
+    ("users",         "chat_intro_dismissed", "INTEGER DEFAULT 0"),
 ]
 
 
@@ -3663,6 +3666,30 @@ def api_auth_logout():
 def api_auth_me(user: dict = Depends(get_current_user)):
     """현재 인증된 사용자 정보."""
     return {"user": {"id": user["id"], "email": user["email"], "role": user["role"]}}
+
+
+# ---------- /api/me/* — 사용자 본인 영역 메타 (UI 상태 등) ----------
+@app.get("/api/me/chat-intro-status")
+def api_me_chat_intro_status(user: dict = Depends(get_current_user)):
+    """채팅 첫 진입 안내 팝업 노출 여부. INTEGER 0/1 → bool 변환."""
+    with get_db() as db:
+        row = db.execute(
+            "SELECT chat_intro_dismissed FROM users WHERE id=?",
+            (user["id"],),
+        ).fetchone()
+    dismissed = bool(row and (row["chat_intro_dismissed"] or 0))
+    return {"dismissed": dismissed}
+
+
+@app.post("/api/me/dismiss-chat-intro")
+def api_me_dismiss_chat_intro(user: dict = Depends(get_current_user)):
+    """채팅 첫 진입 안내 팝업 '다시 보지 않기' 저장 (계정 단위 영구)."""
+    with get_db() as db:
+        db.execute(
+            "UPDATE users SET chat_intro_dismissed=1 WHERE id=?",
+            (user["id"],),
+        )
+    return {"ok": True}
 
 
 # ---------- Admin endpoints (invite codes + users) — 묶음 N Commit 3 ----------

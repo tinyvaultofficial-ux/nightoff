@@ -776,6 +776,103 @@ function showBetaNotice() {
   document.addEventListener("keydown", onEsc);
 }
 
+// ── 채팅 첫 진입 안내 모달 ─────────────────────────────────────────────────
+// 베타 안내 패턴 재활용 (.beta-notice-* 영역 + .chat-intro-* 추가 영역).
+// "다시 보지 않기" → POST /api/me/dismiss-chat-intro (계정 단위 영구).
+// 꿀팁 클릭 → 채팅 입력창 (textarea) 자동 입력 + 모달 닫기 (전송은 사용자 Enter).
+function showChatIntroNotice(taElement) {
+  if (document.querySelector(".chat-intro-overlay")) return;
+
+  const TIPS = [
+    "이번 과업의 핵심사항은 뭐야?",
+    "목차는 어떻게 꾸릴까?",
+    "차별화 포인트 3개만 뽑아줘",
+  ];
+
+  const close = (dismissForever = false) => {
+    if (dismissForever) {
+      // 비동기 — 응답 안 기다리고 즉시 닫기 (UX 영역). 실패해도 다음 진입 시 또 노출, 영구 dismissal X.
+      api.post("/api/me/dismiss-chat-intro", {}).catch(() => {});
+    }
+    overlay.classList.add("fade-out");
+    setTimeout(() => overlay.remove(), 240);
+    document.removeEventListener("keydown", onEsc);
+  };
+
+  const overlay = h("div", {
+    class: "beta-notice-overlay chat-intro-overlay",
+    onclick: (ev) => { if (ev.target === overlay) close(false); },
+  });
+  const modal = h("div", { class: "beta-notice-modal" });
+  overlay.appendChild(modal);
+
+  // 닫기 ✕
+  modal.appendChild(h("button", {
+    class: "beta-notice-close", "aria-label": "닫기",
+    onclick: () => close(false),
+  }, "✕"));
+
+  // 헤더
+  modal.appendChild(h("h2", { class: "beta-notice-title" }, "💬 NightOff 시작하기"));
+
+  // 섹션 1 — 꿀팁 3개 (클릭 시 채팅 입력창 자동 입력)
+  const tipsSection = h("div", { class: "beta-notice-section bn-good" }, [
+    h("h3", { class: "beta-notice-section-title" }, "💡 똑똑하게 이용하는 꿀팁"),
+    h("p", { class: "beta-notice-paragraph chat-intro-tip-hint" },
+      "원하는 꿀팁을 클릭하면 입력창에 자동으로 들어가요. Enter 로 전송!"),
+  ]);
+  const tipsList = h("div", { class: "chat-intro-tips" });
+  TIPS.forEach((tip) => {
+    tipsList.appendChild(h("button", {
+      class: "chat-intro-tip-btn",
+      onclick: () => {
+        if (taElement) {
+          taElement.value = tip;
+          // input 이벤트 트리거 — 자동 높이 + 전송 버튼 활성화
+          taElement.dispatchEvent(new Event("input", { bubbles: true }));
+          taElement.focus();
+        }
+        close(false);
+      },
+    }, tip));
+  });
+  tipsSection.appendChild(tipsList);
+  modal.appendChild(tipsSection);
+
+  // 섹션 2 — 폰트 안내 + 다운로드
+  modal.appendChild(h("div", { class: "beta-notice-section bn-soon" }, [
+    h("h3", { class: "beta-notice-section-title" }, "🎨 폰트 안내"),
+    h("p", { class: "beta-notice-paragraph" },
+      "NightOff 가 만드는 제안서는 '페이퍼로지(Paperlogy)' 폰트를 사용해요. PC 에 페이퍼로지가 없으면 다른 폰트로 자동 대체되어 정렬이 살짝 어긋날 수 있어요."),
+    h("p", { class: "beta-notice-paragraph" },
+      "더 깔끔한 결과물을 보고 싶다면, 무료 폰트인 페이퍼로지를 설치해 주세요."),
+    h("a", {
+      class: "chat-intro-font-btn",
+      href: "/static/fonts/Paperlogy.zip",
+      download: "Paperlogy.zip",
+      onclick: () => {
+        // 다운로드는 진행하되 모달은 닫지 않음 (사용자가 안내 영역 더 볼 수 있게)
+      },
+    }, "📥 페이퍼로지 다운로드 (.zip)"),
+  ]));
+
+  // 액션 버튼
+  modal.appendChild(h("div", { class: "beta-notice-actions" }, [
+    h("button", {
+      class: "beta-notice-btn-secondary",
+      onclick: () => close(true),
+    }, "다시 보지 않기"),
+    h("button", {
+      class: "beta-notice-btn-primary",
+      onclick: () => close(false),
+    }, "확인"),
+  ]));
+
+  document.body.appendChild(overlay);
+  const onEsc = (e) => { if (e.key === "Escape") close(false); };
+  document.addEventListener("keydown", onEsc);
+}
+
 // ---------- Dashboard ----------
 // 🧠 핵심 기능 히어로 배너 (대시보드 최상단) — 1 메인 + 3 서브, 상시 펼침
 function renderHeroBanner() {
@@ -4012,6 +4109,12 @@ async function renderChat(cid, convId) {
   });
 
   ta.focus();
+
+  // 채팅 첫 진입 안내 팝업 hook — DB 영역 dismissed=0 이면 노출.
+  // ta (textarea) ref 전달 → 꿀팁 클릭 시 자동 입력 영역.
+  api.get("/api/me/chat-intro-status").then((status) => {
+    if (status && !status.dismissed) showChatIntroNotice(ta);
+  }).catch(() => {});
 }
 
 function msgElement(role, content, ts) {

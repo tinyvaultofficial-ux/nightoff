@@ -3330,6 +3330,70 @@ body, .msg-bubble, .card, .strengths-intro,
   flex: 1;
 }
 
+/* ===== 📋 입찰참가자격 모달 영역 (closing-modal 패턴 재활용 + 자격 카드) ===== */
+.qual-modal-list {
+  padding: 16px 22px 22px;
+  display: flex; flex-direction: column; gap: 4px;
+  overflow-y: auto;
+  flex: 1;
+}
+.qual-section {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+.qual-section:last-child { border-bottom: 0; padding-bottom: 4px; }
+.qual-section:first-child { padding-top: 8px; }
+.qual-section-head {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 8px;
+}
+.qual-section-icon { font-size: 16px; }
+.qual-section-label {
+  font-size: 14px; font-weight: 600;
+  color: var(--fg-strong, var(--fg));
+  letter-spacing: -0.01em;
+}
+.qual-section-items {
+  margin: 0; padding: 0 0 0 28px;
+  list-style: none;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.qual-section-items li {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--fg);
+  position: relative;
+}
+.qual-section-items li::before {
+  content: "•";
+  position: absolute;
+  left: -14px;
+  color: var(--primary);
+  font-weight: 600;
+}
+.qual-section-empty {
+  margin: 0 0 0 28px;
+  font-size: 12.5px;
+  color: var(--fg-2);
+  font-style: italic;
+}
+
+/* 산출내역서 버튼 비활성화 영역 — 채팅 헤더 영역 */
+.budget-btn.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--bg-2, #F5F5F5);
+  color: var(--fg-2);
+  border-color: var(--border);
+}
+.budget-btn.disabled:hover {
+  background: var(--bg-2, #F5F5F5);
+  color: var(--fg-2);
+  border-color: var(--border);
+  transform: none;
+  box-shadow: none;
+}
+
 /* 모바일 (≤768px) — 위젯 + 모달 영역 정합 */
 @media (max-width: 768px) {
   .closing-card { padding: 10px 12px; gap: 10px; }

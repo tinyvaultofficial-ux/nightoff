@@ -785,7 +785,7 @@ function renderHeroBanner() {
   banner.appendChild(h("div", { class: "hero-main-card hero-main-compact" }, [
     h("div", { class: "hero-main-emoji" }, "🖋"),
     h("div", { class: "hero-main-text" }, [
-      h("h2", { class: "hero-main-title" }, "세계 최고의 B2G / B2B 제안 자동화 플랫폼, NightOff !!"),
+      h("h2", { class: "hero-main-title" }, "국내 최초의 B2G / B2B 제안 자동화 플랫폼, NightOff !!"),
       h("p", { class: "hero-main-desc" },
         "수백 건의 실제 수주 제안서를 학습한 AI 가, 사용자 옆에서 직접 펜을 잡고 써내려가요"),
     ]),

@@ -5933,3 +5933,62 @@ body.landing-fullscreen .main {
   .beta-notice-btn-primary,
   .beta-notice-btn-secondary { width: 100%; }
 }
+
+/* ===== 채팅 첫 진입 안내 모달 (.beta-notice-* 패턴 재활용 + 추가 영역) ===== */
+.chat-intro-tip-hint {
+  margin: 0 0 10px !important;
+  font-size: 12.5px;
+  color: var(--fg-2);
+  font-style: italic;
+}
+.chat-intro-tips {
+  display: flex; flex-direction: column; gap: 8px;
+}
+.chat-intro-tip-btn {
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--fg);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease, transform .12s ease, color .15s ease;
+}
+.chat-intro-tip-btn::before {
+  content: "💬 ";
+  margin-right: 4px;
+}
+.chat-intro-tip-btn:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft, rgba(107, 70, 229, 0.10));
+  color: var(--primary);
+  transform: translateX(2px);
+}
+.chat-intro-tip-btn:active { transform: translateX(0); }
+.chat-intro-font-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  margin-top: 4px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: var(--primary);
+  color: var(--primary-fg, #fff);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background .15s ease, transform .12s ease, box-shadow .15s ease;
+  box-shadow: 0 2px 6px -2px rgba(107, 70, 229, 0.35);
+}
+.chat-intro-font-btn:hover {
+  background: var(--primary-hover, #5a3bd0);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px -2px rgba(107, 70, 229, 0.45);
+}
+.chat-intro-font-btn:active { transform: translateY(0); }
+
+@media (max-width: 600px) {
+  .chat-intro-tip-btn { font-size: 13px; padding: 10px 12px; }
+  .chat-intro-font-btn { width: 100%; }
+}

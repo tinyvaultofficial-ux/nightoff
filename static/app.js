@@ -909,17 +909,22 @@ function renderHeroBanner() {
   return banner;
 }
 
-// ===== 산출내역서 (고정 양식: 구분→항목→세부내역→단가→수량→단위→기간→투입율→금액→비고) =====
+// ===== 산출내역서 (B2G 표준 12 컬럼 양식) =====
+// 컬럼: 구분(cat) → 항목 → 소항목 → 산출근거 → 단가 → 수량 → 단위(개체) → 기간 → 단위(주기) → 투입율 → 제출금액 → 비고
+// 일반관리비 = 7% (이전 8% → 사용자 결정 변경)
+// 투입율 = 분수 영역 (0~1, 인건비 = 0.1/0.3 등 / 외 = 1)
 const BUDGET_COLS = [
-  { key: "item",         label: "항목",     width: "13%", align: "left" },
-  { key: "spec",         label: "세부내역", width: "20%", align: "left" },
-  { key: "unit_price",   label: "단가",     width: "10%", align: "right", num: true },
-  { key: "qty",          label: "수량",     width: "6%",  align: "right", num: true },
-  { key: "unit",         label: "단위",     width: "6%",  align: "center" },
-  { key: "period",       label: "기간",     width: "8%",  align: "center" },
-  { key: "utilization",  label: "투입율",   width: "7%",  align: "right", num: true, suffix: "%" },
-  { key: "amount",       label: "금액",     width: "12%", align: "right", num: true, bold: true },
-  { key: "note",         label: "비고",     width: "12%", align: "left" },
+  { key: "item",         label: "항목",       width: "10%", align: "left" },
+  { key: "subitem",      label: "소항목",     width: "8%",  align: "left" },
+  { key: "spec",         label: "산출근거",   width: "18%", align: "left" },
+  { key: "unit_price",   label: "단가",       width: "9%",  align: "right", num: true },
+  { key: "qty",          label: "수량",       width: "5%",  align: "right", num: true },
+  { key: "unit",         label: "단위",       width: "5%",  align: "center" },
+  { key: "period_qty",   label: "기간",       width: "5%",  align: "right", num: true },
+  { key: "period_unit",  label: "단위",       width: "6%",  align: "center" },
+  { key: "utilization",  label: "투입율",     width: "6%",  align: "right", num: true, frac: true },
+  { key: "amount",       label: "제출금액",   width: "11%", align: "right", num: true, bold: true },
+  { key: "note",         label: "비고",       width: "10%", align: "left" },
 ];
 
 function _n(v) { const n = Number(String(v).replace(/[^\d.-]/g, "")); return isFinite(n) ? n : 0; }
@@ -932,16 +937,20 @@ function recalcBudget(data) {
     (cat.items || []).forEach((it) => {
       const up = _n(it.unit_price);
       const qty = _n(it.qty);
-      const util = _n(it.utilization);
-      // amount = unit_price × qty × (util/100 or 1)
-      const mult = util > 0 ? util / 100 : 1;
-      it.amount = Math.round(up * qty * mult);
+      const periodQty = _n(it.period_qty);
+      let util = _n(it.utilization);
+      // 안전 영역: util > 1.5 = 잘못된 % 표기 영역 → 100 으로 나눔
+      if (util > 1.5) util = util / 100;
+      if (util <= 0) util = 1;
+      const periodMult = periodQty > 0 ? periodQty : 1;
+      // amount = unit_price × qty × period_qty × utilization
+      it.amount = Math.round(up * qty * periodMult * util);
       cat.subtotal += it.amount;
     });
     subtotalSum += cat.subtotal;
   });
   data.subtotal_sum = subtotalSum;
-  data.admin_fee   = Math.round(subtotalSum * 0.08);            // 일반관리비 8%
+  data.admin_fee   = Math.round(subtotalSum * 0.07);            // 일반관리비 7%
   data.agency_fee  = Math.round((subtotalSum + data.admin_fee) * 0.10);  // 대행료 10%
   data.total       = subtotalSum + data.admin_fee + data.agency_fee;
   data.proposed    = Math.floor(data.total / 10000) * 10000;    // 만원 단위 절사
@@ -1336,7 +1345,7 @@ function renderBudget(body, footer, data, backdrop) {
     summary.innerHTML = "";
     const rows = [
       { label: "소계 합", value: data.subtotal_sum },
-      { label: "일반관리비 (소계합 × 8%)", value: data.admin_fee },
+      { label: "일반관리비 (소계합 × 7%)", value: data.admin_fee },
       { label: "대행료 ((소계합+일반관리비) × 10%)", value: data.agency_fee },
       { label: "합계", value: data.total, strong: true },
       { label: "제안가 (만원 단위 절사)", value: data.proposed, strong: true, accent: true },
@@ -1363,9 +1372,63 @@ function renderBudget(body, footer, data, backdrop) {
   }));
   footer.appendChild(h("button", {
     class: "btn btn-primary",
-    html: `${iconHtml("save", 14)}<span>엑셀 다운로드</span>`,
-    onclick: () => downloadBudgetCsv(data),
+    html: `${iconHtml("save", 14)}<span>엑셀 다운로드 (.xlsx)</span>`,
+    onclick: () => downloadBudgetXlsx(data),
   }));
+}
+
+// .xlsx 다운로드 — 백엔드 영역 openpyxl (B2G 표준 양식 영역)
+async function downloadBudgetXlsx(data) {
+  const grandTotal = Number(data.grand_total) || 0;
+  const koreanText = _korean_amount(grandTotal);
+  const today = new Date().toISOString().slice(0, 10);
+  const reqBody = {
+    title: data.title || "산출내역서",
+    organization: data.organization || (data._rfp && data._rfp.organization) || "",
+    project_name: data.title || "",
+    quote_date: today,
+    grand_total: grandTotal,
+    grand_total_text: `일금 ${koreanText}정 (₩${grandTotal.toLocaleString("ko-KR")}) / VAT포함`,
+    categories: data.categories || [],
+  };
+  try {
+    const r = await fetch("/api/budget/xlsx", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${getToken()}`,
+      },
+      body: JSON.stringify(reqBody),
+    });
+    if (r.status === 401) { clearToken(); redirectToLogin(); return; }
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: r.statusText }));
+      throw new Error(err.detail || "엑셀 다운로드 실패");
+    }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `산출내역서_${(data.title || "제안").replace(/\s+/g, "_")}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    toast(e.message || "엑셀 다운로드 실패", "error");
+  }
+}
+
+// 한국어 금액 표기 영역 — '1억2천5백만' 형태 (간소: 억/만 단위)
+function _korean_amount(n) {
+  if (!n) return "영원";
+  const eok = Math.floor(n / 100000000);
+  const rest = n % 100000000;
+  const man = Math.floor(rest / 10000);
+  const won = rest % 10000;
+  const parts = [];
+  if (eok) parts.push(`${eok}억`);
+  if (man) parts.push(`${man.toLocaleString("ko-KR")}만`);
+  if (won) parts.push(`${won.toLocaleString("ko-KR")}`);
+  return (parts.join("") || "영") + "원";
 }
 
 function downloadBudgetCsv(data) {

@@ -15,6 +15,8 @@ AUTH_EXEMPT_PATTERNS = [
     r"^/client/",          # SPA route fallback
     r"^/login\.html$",     # 인증 페이지 (Commit 5)
     r"^/register\.html$",  # 인증 페이지 (Commit 5)
+    r"^/terms$",            # 법률 페이지 (정적 HTML, 외부 영역 직접 접근 OK)
+    r"^/privacy$",          # 법률 페이지 (정적 HTML, 외부 영역 직접 접근 OK)
     r"^/api/auth/",         # auth 자체
     r"^/api/signup$",       # deprecated (410)
 ]

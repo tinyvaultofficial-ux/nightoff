@@ -1321,6 +1321,25 @@ def register_page():
     return FileResponse(str(p), media_type="text/html")
 
 
+# ---- 법률 문서 페이지 — 정적 HTML 파일 서빙 (인증 면제, 외부 영역 직접 접근 OK) ----
+@app.get("/terms")
+def terms_page():
+    """이용약관 페이지 (정적 HTML, _build_legal_pages.py 빌드 결과)."""
+    p = STATIC_DIR / "terms.html"
+    if not p.exists():
+        raise HTTPException(404, "terms page not found")
+    return FileResponse(str(p), media_type="text/html")
+
+
+@app.get("/privacy")
+def privacy_page():
+    """개인정보처리방침 페이지 (정적 HTML, _build_legal_pages.py 빌드 결과)."""
+    p = STATIC_DIR / "privacy.html"
+    if not p.exists():
+        raise HTTPException(404, "privacy page not found")
+    return FileResponse(str(p), media_type="text/html")
+
+
 # ---- 헬스체크 전용 ---- DB / 정적 / 외부 의존 모두 회피 (Railway healthcheckPath)
 @app.get("/healthz")
 def healthz():

@@ -3441,18 +3441,42 @@ body, .msg-bubble, .card, .strengths-intro,
   font-style: italic;
 }
 
-/* 산출내역서 버튼 비활성화 영역 — 채팅 헤더 영역 */
+/* ===== 산출내역서 버튼 — 채팅 헤더 영역 (✨ 동등 사이즈, outline 영역) =====
+   사용자 명시:
+     활성화 = 흰 배경 + 보라 outline + 보라 텍스트
+     비활성화 = 흰 배경 + 회색 outline + 회색 텍스트 + cursor not-allowed
+*/
+.budget-btn {
+  background: #fff;
+  border: 1.5px solid var(--primary);
+  color: var(--primary);
+  font-weight: 600;
+  transition: background .15s ease, color .15s ease, border-color .15s ease,
+              transform .12s ease, box-shadow .15s ease;
+}
+.budget-btn.active {
+  background: #fff;
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.budget-btn.active:hover {
+  background: var(--primary-soft, rgba(107, 70, 229, 0.10));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px -4px rgba(107, 70, 229, 0.30);
+}
+.budget-btn.active:active { transform: translateY(0); }
+
 .budget-btn.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  background: var(--bg-2, #F5F5F5);
-  color: var(--fg-2);
+  background: #fff;
   border-color: var(--border);
+  color: var(--fg-2);
+  cursor: not-allowed;
+  font-weight: 500;
 }
 .budget-btn.disabled:hover {
-  background: var(--bg-2, #F5F5F5);
-  color: var(--fg-2);
+  background: #fff;
   border-color: var(--border);
+  color: var(--fg-2);
   transform: none;
   box-shadow: none;
 }

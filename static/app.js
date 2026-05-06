@@ -930,6 +930,9 @@ const BUDGET_COLS = [
 function _n(v) { const n = Number(String(v).replace(/[^\d.-]/g, "")); return isFinite(n) ? n : 0; }
 function _fmt(n) { return (Number(n) || 0).toLocaleString("ko-KR"); }
 
+// 기본 투찰율 영역 — 사용자 영역 변경 가능 (90~100%, 0.1 step)
+const DEFAULT_BID_RATE = 0.94;
+
 function recalcBudget(data) {
   let subtotalSum = 0;
   (data.categories || []).forEach((cat) => {
@@ -953,9 +956,14 @@ function recalcBudget(data) {
   data.admin_fee   = Math.round(subtotalSum * 0.07);            // 일반관리비 7%
   data.agency_fee  = Math.round((subtotalSum + data.admin_fee) * 0.10);  // 대행료 10%
   data.total       = subtotalSum + data.admin_fee + data.agency_fee;
-  data.proposed    = Math.floor(data.total / 10000) * 10000;    // 만원 단위 절사
-  data.vat         = Math.round(data.proposed * 0.10);
-  data.grand_total = data.proposed + data.vat;
+  data.vat         = Math.round(data.total * 0.10);
+  data.grand_total = data.total + data.vat;                     // 총합계 (VAT 포함)
+  // 투찰율 영역 적용 영역 — 사용자 입력 (없으면 기본 94%)
+  if (typeof data.bid_rate !== "number" || data.bid_rate < 0.5 || data.bid_rate > 1) {
+    data.bid_rate = DEFAULT_BID_RATE;
+  }
+  // 투찰가 = 총합계 × 투찰율 → 만원 절사 (= 견적금액)
+  data.bid_price = Math.floor(data.grand_total * data.bid_rate / 10000) * 10000;
   return data;
 }
 
@@ -1343,21 +1351,71 @@ function renderBudget(body, footer, data, backdrop) {
 
   const rerenderSummary = () => {
     summary.innerHTML = "";
+    // 새 흐름 (3단계 — 투찰율 영역 도입):
+    //   소계합 → 일반관리비 → 대행료 → 합계 → 부가세 → 총합계
+    //   → 투찰율 (사용자 입력, 슬라이더+숫자) → 투찰가 (= 견적금액 영역)
     const rows = [
       { label: "소계 합", value: data.subtotal_sum },
       { label: "일반관리비 (소계합 × 7%)", value: data.admin_fee },
       { label: "대행료 ((소계합+일반관리비) × 10%)", value: data.agency_fee },
       { label: "합계", value: data.total, strong: true },
-      { label: "제안가 (만원 단위 절사)", value: data.proposed, strong: true, accent: true },
-      { label: "부가세 (제안가 × 10%)", value: data.vat },
-      { label: "최종 제안가 (VAT 포함)", value: data.grand_total, huge: true, accent: true },
+      { label: "부가세 (합계 × 10%)", value: data.vat },
+      { label: "총합계 (VAT 포함)", value: data.grand_total, strong: true },
     ];
     rows.forEach((r) => {
-      summary.appendChild(h("div", { class: "budget-sum-row " + (r.accent ? "accent" : "") + (r.huge ? " huge" : "") }, [
+      summary.appendChild(h("div", { class: "budget-sum-row " + (r.accent ? "accent" : "") }, [
         h("div", { class: "sum-label" }, r.label),
         h("div", { class: "sum-value" + (r.strong ? " strong" : ""), }, _fmt(r.value) + "원"),
       ]));
     });
+
+    // ─── 투찰율 영역 (총합계 직후) — 슬라이더 + 숫자 결합 ───
+    const rate = (data.bid_rate || DEFAULT_BID_RATE);
+    const ratePct = (rate * 100).toFixed(1);  // "94.0"
+
+    const slider = h("input", {
+      type: "range", min: "90", max: "100", step: "0.1",
+      value: ratePct,
+      class: "bid-rate-slider",
+    });
+    const numberInput = h("input", {
+      type: "number", min: "90", max: "100", step: "0.1",
+      value: ratePct,
+      class: "bid-rate-number",
+    });
+
+    const onChange = (newPct) => {
+      // 90~100 영역 clamp
+      const v = Math.max(90, Math.min(100, Number(newPct) || 94));
+      data.bid_rate = v / 100;
+      slider.value = v.toFixed(1);
+      numberInput.value = v.toFixed(1);
+      // 96% 이상 영역 = warning toast (가격 평가 영역 불리)
+      if (v >= 96 && !rerenderSummary._warned) {
+        rerenderSummary._warned = true;
+        toast(`투찰율 ${v.toFixed(1)}% — 가격 평가 영역 불리할 수 있어요 (일반 영역 92~95%)`, "", 5000);
+      }
+      recalcBudget(data);
+      rerenderSummary();
+    };
+    slider.addEventListener("input", (e) => onChange(e.target.value));
+    numberInput.addEventListener("change", (e) => onChange(e.target.value));
+
+    const rateRow = h("div", { class: "budget-sum-row bid-rate-row" }, [
+      h("div", { class: "sum-label" }, "투찰율"),
+      h("div", { class: "bid-rate-controls" }, [
+        slider,
+        numberInput,
+        h("span", { class: "bid-rate-pct-suffix" }, "%"),
+      ]),
+    ]);
+    summary.appendChild(rateRow);
+
+    // ─── 투찰가 (= 견적금액 영역, 만원 절사) — 노랑 강조 ───
+    summary.appendChild(h("div", { class: "budget-sum-row huge accent bid-price-row" }, [
+      h("div", { class: "sum-label" }, "투찰가 (만원 절사)"),
+      h("div", { class: "sum-value strong" }, _fmt(data.bid_price) + "원"),
+    ]));
   };
 
   rerenderRows();
@@ -1379,16 +1437,19 @@ function renderBudget(body, footer, data, backdrop) {
 
 // .xlsx 다운로드 — 백엔드 영역 openpyxl (B2G 표준 양식 영역)
 async function downloadBudgetXlsx(data) {
-  const grandTotal = Number(data.grand_total) || 0;
-  const koreanText = _korean_amount(grandTotal);
+  const bidRate = (typeof data.bid_rate === "number" && data.bid_rate >= 0.5 && data.bid_rate <= 1)
+    ? data.bid_rate : DEFAULT_BID_RATE;
+  const bidPrice = Number(data.bid_price) || 0;
+  const koreanText = _korean_amount(bidPrice);
   const today = new Date().toISOString().slice(0, 10);
   const reqBody = {
     title: data.title || "산출내역서",
     organization: data.organization || (data._rfp && data._rfp.organization) || "",
     project_name: data.title || "",
     quote_date: today,
-    grand_total: grandTotal,
-    grand_total_text: `일금 ${koreanText}정 (₩${grandTotal.toLocaleString("ko-KR")}) / VAT포함`,
+    bid_rate: bidRate,
+    bid_price: bidPrice,
+    bid_price_text: `일금 ${koreanText}정 (₩${bidPrice.toLocaleString("ko-KR")}) / VAT포함`,
     categories: data.categories || [],
   };
   try {
@@ -1472,16 +1533,18 @@ function printBudget(data) {
       <tr>
         ${i === 0 ? `<td rowspan="${rc + 1}" class="cat">${escapeHtml(cat.name || "")}</td>` : ""}
         <td>${escapeHtml(it.item || "")}</td>
+        <td>${escapeHtml(it.subitem || "")}</td>
         <td>${escapeHtml(it.spec || "")}</td>
         <td class="num">${_fmt(it.unit_price)}</td>
         <td class="num">${_fmt(it.qty)}</td>
         <td class="c">${escapeHtml(it.unit || "")}</td>
-        <td class="c">${escapeHtml(it.period || "")}</td>
-        <td class="num">${_fmt(it.utilization)}%</td>
+        <td class="num">${_fmt(it.period_qty || "")}</td>
+        <td class="c">${escapeHtml(it.period_unit || "")}</td>
+        <td class="num">${(typeof it.utilization === "number" ? it.utilization.toFixed(2) : (it.utilization || ""))}</td>
         <td class="num bold">${_fmt(it.amount)}</td>
         <td>${escapeHtml(it.note || "")}</td>
       </tr>`).join("");
-    const sub = `<tr class="sub"><td colspan="8" class="r">소계</td><td class="num bold accent">${_fmt(cat.subtotal)}원</td><td></td></tr>`;
+    const sub = `<tr class="sub"><td colspan="10" class="r">소계</td><td class="num bold accent">${_fmt(cat.subtotal)}원</td><td></td></tr>`;
     return items + sub;
   }).join("");
   w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>산출내역서 · ${escapeHtml(data.title || "")}</title>
@@ -1506,20 +1569,21 @@ tr.sub{background:#fafafa;}
 </style></head><body>
 <h1>산출내역서 · ${escapeHtml(data.title || "")}</h1>
 <table>
-<colgroup><col style="width:13%"/><col style="width:13%"/><col style="width:20%"/><col style="width:10%"/><col style="width:6%"/><col style="width:6%"/><col style="width:8%"/><col style="width:7%"/><col style="width:12%"/><col style="width:12%"/></colgroup>
+<colgroup><col style="width:8%"/><col style="width:8%"/><col style="width:7%"/><col style="width:18%"/><col style="width:9%"/><col style="width:5%"/><col style="width:5%"/><col style="width:5%"/><col style="width:6%"/><col style="width:6%"/><col style="width:11%"/><col style="width:8%"/></colgroup>
 <thead><tr>
-<th>구분</th><th>항목</th><th>세부내역</th><th>단가</th><th>수량</th><th>단위</th><th>기간</th><th>투입율</th><th>금액</th><th>비고</th>
+<th>구분</th><th>항목</th><th>소항목</th><th>산출근거</th><th>단가</th><th>수량</th><th>단위</th><th>기간</th><th>단위</th><th>투입율</th><th>제출금액</th><th>비고</th>
 </tr></thead>
 <tbody>${rowHtml}</tbody>
 </table>
 <div class="summary">
 <div class="summary-row"><span>소계 합</span><span class="val">${_fmt(data.subtotal_sum)}원</span></div>
-<div class="summary-row"><span>일반관리비 (소계합 × 8%)</span><span class="val">${_fmt(data.admin_fee)}원</span></div>
+<div class="summary-row"><span>일반관리비 (소계합 × 7%)</span><span class="val">${_fmt(data.admin_fee)}원</span></div>
 <div class="summary-row"><span>대행료 ((소계합+관리비) × 10%)</span><span class="val">${_fmt(data.agency_fee)}원</span></div>
 <div class="summary-row"><span><b>합계</b></span><span class="val"><b>${_fmt(data.total)}원</b></span></div>
-<div class="summary-row accent"><span>제안가 (만원 단위 절사)</span><span class="val">${_fmt(data.proposed)}원</span></div>
-<div class="summary-row"><span>부가세 (제안가 × 10%)</span><span class="val">${_fmt(data.vat)}원</span></div>
-<div class="summary-row huge"><span>최종 제안가 (VAT 포함)</span><span class="val">${_fmt(data.grand_total)}원</span></div>
+<div class="summary-row"><span>부가세 (합계 × 10%)</span><span class="val">${_fmt(data.vat)}원</span></div>
+<div class="summary-row"><span><b>총합계 (VAT 포함)</b></span><span class="val"><b>${_fmt(data.grand_total)}원</b></span></div>
+<div class="summary-row"><span>투찰율</span><span class="val">${((data.bid_rate || DEFAULT_BID_RATE) * 100).toFixed(1)}%</span></div>
+<div class="summary-row huge accent"><span>투찰가 (만원 절사)</span><span class="val">${_fmt(data.bid_price)}원</span></div>
 </div>
 <script>setTimeout(()=>window.print(),300);</script>
 </body></html>`);

@@ -3940,24 +3940,31 @@ BUDGET_TABLE_PROMPT = """당신은 용역/행사 분야 산출내역서(Cost Bre
 {CONTEXT}
 ---
 
-⚠⚠⚠ 절대 원칙 — 총 예산 영역 안에서 산출 ⚠⚠⚠
+⚠⚠⚠ 절대 원칙 — 총 예산 영역 안에서 산출 (투찰율 94% 영역 적용 후 정합) ⚠⚠⚠
 
-B2G 입찰 영역에서 **VAT 포함 최종 제안가 영역 > 총 예산** 영역이면 즉시 입찰 자격 박탈.
+B2G 입찰 영역에서 **투찰가 영역 > 총 예산** 영역이면 즉시 입찰 자격 박탈.
 시세 영역과 충돌 시 = **총 예산 영역 우선**. 항목 단가 영역 절충해서라도 영역 한계 영역 안 산정.
 
-역산 영역 (총 예산 → 항목 합계 한계):
-- 총 예산 ≥ VAT 포함 최종 제안가
-- VAT 포함 최종 제안가 = 항목 합계 × 1.07 (일반관리비) × 1.10 (대행료) × 1.10 (VAT)
-- ⇒ 항목 합계 한계 ≈ 총 예산 ÷ 1.295 (≈ 0.772 × 총 예산)
+투찰율 영역 본질:
+- 투찰율 = 투찰가 / 총 예산 (B2G 본질)
+- 일반 영역 92~95% (가격 평가 영역 정합)
+- 100% 영역 = 입찰 자격 박탈 또는 가격 평가 ↓
+- 기본 영역 = 94% (사용자 영역 변경 가능)
 
-예시 영역:
-- 총 예산 ₩110,000,000 → 항목 합계 한계 약 ₩84,946,000
-- 총 예산 ₩200,000,000 → 항목 합계 한계 약 ₩154,447,000
-- 총 예산 ₩50,000,000  → 항목 합계 한계 약 ₩38,612,000
+역산 영역 (투찰율 94% 영역 적용 후 = 총 예산 영역 안):
+- 투찰가 = 총합계 × 투찰율
+- 총합계 = 합계 × 1.10 (VAT)
+- 합계 = 항목 합계 × 1.07 (일반관리비) × 1.10 (대행료)
+- ⇒ 항목 합계 한계 = 총 예산 × 0.94 ÷ 1.07 ÷ 1.10 ÷ 1.10 ≈ 총 예산 × **0.726**
 
-권장 영역: 한계 영역의 **95% 이내 영역** (5% 마진 영역) 산정.
-- 총 예산 ₩110,000,000 → 권장 항목 합계 ₩80,700,000 ~ ₩84,946,000
+예시 영역 (투찰율 94% 영역 + 5% 마진):
+- 총 예산 ₩110,000,000 → 항목 합계 한계 약 ₩75,800,000
+- 총 예산 ₩200,000,000 → 항목 합계 한계 약 ₩137,800,000
+- 총 예산 ₩50,000,000  → 항목 합계 한계 약 ₩34,500,000
 
+권장 영역: 한계 영역의 **95% 이내 영역** 산정 (5% 마진 영역 — AI 산정 영역 변동 영역 흡수).
+
+⚠ 투찰율 영역 = 사용자 영역 입력 영역 (프론트 영역 자동 적용). AI 영역 = 항목 산정만.
 ⚠ 컨텍스트 영역의 "예산:" 영역 X 또는 빈 값 영역 시 = 업계 시세 영역 기반 영역 자유 산정 (다만 합리 영역 범위 영역).
 
 ⚠⚠ 카테고리 순서 영역 — 1번 = 반드시 "인건비" ⚠⚠
@@ -4093,17 +4100,26 @@ def _budget_item_amount(it: dict) -> int:
     return round(up * qty * period_qty * util)
 
 
+# 기본 투찰율 영역 — 백엔드 자동 조정 영역에서 안전 영역 마진 영역 확보용.
+# 사용자 영역이 프론트 영역에서 영역 변경 영역 = 자체 재계산 (백엔드 영역 X 영향).
+DEFAULT_BID_RATE = 0.94
+
+
 def _validate_and_adjust_budget(data: dict, budget_limit: int) -> tuple[dict, bool]:
     """산출내역서 데이터 영역 정합 영역 검증 + 자동 조정.
 
     영역 흐름:
       1. AI 영역 응답 영역의 모든 amount 영역 재계산 (subtotal_sum)
-      2. VAT 포함 grand_total 영역 계산 (subtotal × 1.07 × 1.10 × 1.10)
-      3. grand_total > budget_limit 영역이면 = 비례 영역 ↓
-         factor = (budget_limit ÷ 1.10 ÷ 1.10 ÷ 1.07) × 0.95 / subtotal_sum
+      2. 투찰율 94% 영역 적용 후 영역 투찰가 영역 계산:
+         total = subtotal × 1.07 (일반관리비) × 1.10 (대행료)
+         grand_total = total × 1.10 (VAT)
+         bid_price = floor(grand_total × 0.94 / 10000) × 10000
+      3. bid_price > budget_limit 영역이면 = 비례 영역 ↓
+         target_subtotal = (budget_limit × 0.94 / 1.10 / 1.10 / 1.07) × 0.95
+         factor = target_subtotal / subtotal_sum
          모든 unit_price 영역에 factor 영역 적용 → amount 영역 재계산
 
-    일반관리비 = 7% (이전 8% → 사용자 결정 변경).
+    일반관리비 = 7%, 기본 투찰율 = 94%.
 
     return: (adjusted_data, was_adjusted)
     """
@@ -4124,22 +4140,22 @@ def _validate_and_adjust_budget(data: dict, budget_limit: int) -> tuple[dict, bo
     if subtotal_sum <= 0:
         return data, False
 
-    # 2. VAT 포함 grand_total 영역 (일반관리비 7%)
+    # 2. 투찰율 94% 영역 적용 후 투찰가 영역 (일반관리비 7% + 대행료 10% + VAT 10%)
     admin_fee = round(subtotal_sum * 0.07)
     agency_fee = round((subtotal_sum + admin_fee) * 0.10)
     total = subtotal_sum + admin_fee + agency_fee
-    proposed = (total // 10000) * 10000  # 만원 단위 절사
-    vat = round(proposed * 0.10)
-    grand_total = proposed + vat
+    vat = round(total * 0.10)
+    grand_total = total + vat
+    bid_price = (int(grand_total * DEFAULT_BID_RATE) // 10000) * 10000
 
-    if grand_total <= budget_limit:
+    if bid_price <= budget_limit:
         return data, False
 
-    # 3. 비례 영역 ↓ — 5% 마진 영역 적용
-    target_subtotal = (budget_limit / 1.10 / 1.10 / 1.07) * 0.95
+    # 3. 비례 영역 ↓ — 투찰율 94% 적용 영역 + 5% 마진 영역
+    target_subtotal = (budget_limit * DEFAULT_BID_RATE / 1.10 / 1.10 / 1.07) * 0.95
     factor = target_subtotal / subtotal_sum
-    log.info("산출내역서 자동 조정 · 예산 %s · grand_total %s → factor %.4f",
-             f"{budget_limit:,}", f"{grand_total:,}", factor)
+    log.info("산출내역서 자동 조정 · 예산 %s · 투찰가(94%%) %s → factor %.4f",
+             f"{budget_limit:,}", f"{bid_price:,}", factor)
 
     for cat in cats:
         for it in (cat.get("items") or []):
@@ -4231,8 +4247,9 @@ class BudgetXlsxRequest(BaseModel):
     organization: str = ""       # 발주처 (수신 영역)
     project_name: str = ""       # 사업명
     quote_date: str = ""         # 견적일자 (YYYY-MM-DD)
-    grand_total: int = 0         # VAT 포함 견적금액
-    grand_total_text: str = ""   # "일금 ○○○○만원정 (₩○○○○○) / VAT포함"
+    bid_rate: float = 0.94        # 투찰율 (0.90~1.00, 기본 0.94)
+    bid_price: int = 0            # 투찰가 (만원 절사) — 견적금액 영역
+    bid_price_text: str = ""      # "일금 ○○○○만원정 (₩○○○○○) / VAT포함"
     categories: list = []        # AI 응답 영역 그대로
 
 
@@ -4334,10 +4351,10 @@ def api_budget_xlsx(body: BudgetXlsxRequest, user: dict = Depends(get_current_us
     ws["K6"] = ""  # 공란
     ws.merge_cells("K6:L6")
 
-    # 7행 — 견적금액 / 업태 / 업종
+    # 7행 — 견적금액 (= 투찰가) / 업태 / 업종
     ws["A7"] = "견적금액"
-    grand_text = body.grand_total_text or _korean_amount_text(body.grand_total or 0)
-    ws["B7"] = grand_text
+    bid_text = body.bid_price_text or _korean_amount_text(body.bid_price or 0)
+    ws["B7"] = bid_text
     ws.merge_cells("B7:F7")
     ws["I7"] = "업태"
     ws["K7"] = ""  # 공란
@@ -4426,34 +4443,46 @@ def api_budget_xlsx(body: BudgetXlsxRequest, user: dict = Depends(get_current_us
         cur_row += 1
 
     # ─── 합계 영역 ───
+    # 새 흐름 (3단계 — 투찰율 영역 도입):
+    #   소계합 → 일반관리비(7%) → 대행료(10%) → 합계
+    #   → 부가세(10%) → 총합계(VAT 포함)
+    #   → 투찰율(X%) → 투찰가(만원 절사)  ⭐ 최종 영역 (= 견적금액)
     cur_row += 1  # 빈 줄 영역
     admin_fee = round(subtotal_sum * 0.07)
     agency_fee = round((subtotal_sum + admin_fee) * 0.10)
     total = subtotal_sum + admin_fee + agency_fee
-    proposed = (total // 10000) * 10000
-    vat = round(proposed * 0.10)
-    grand_total = proposed + vat
+    vat = round(total * 0.10)
+    grand_total = total + vat
+    # 투찰율 영역 = 사용자 입력 (없으면 기본 94%) — 0.90~1.00 영역 안전 영역 clamp
+    bid_rate = body.bid_rate if (body.bid_rate and 0.5 <= body.bid_rate <= 1.0) else DEFAULT_BID_RATE
+    bid_price = (int(grand_total * bid_rate) // 10000) * 10000
 
     summary_rows = [
-        ("소계합", subtotal_sum, False),
-        ("일반관리비 (7%)", admin_fee, False),
-        ("대행료 (10%)", agency_fee, False),
-        ("합계", total, False),
-        ("제안가 (만원 절사)", proposed, False),
-        ("부가세 (10%)", vat, False),
-        ("총합계 (VAT 포함)", grand_total, True),
+        ("소계합", subtotal_sum, "sub"),
+        ("일반관리비 (7%)", admin_fee, "sub"),
+        ("대행료 (10%)", agency_fee, "sub"),
+        ("합계", total, "sub"),
+        ("부가세 (10%)", vat, "sub"),
+        ("총합계 (VAT 포함)", grand_total, "sub"),
+        (f"투찰율 ({bid_rate * 100:.1f}%)", None, "rate"),
+        ("투찰가 (만원 절사)", bid_price, "bid"),
     ]
-    for label, val, is_grand in summary_rows:
+    for label, val, kind in summary_rows:
         lc = ws.cell(row=cur_row, column=10, value=label)
         lc.font = label_font
         lc.alignment = right
         lc.border = border
-        vc = ws.cell(row=cur_row, column=11, value=val)
-        vc.font = Font(name="맑은 고딕", size=11 if is_grand else 10, bold=True)
+        if val is None:
+            # 투찰율 영역 row — 값 영역 X (라벨 영역만)
+            vc = ws.cell(row=cur_row, column=11, value=f"{bid_rate * 100:.1f}%")
+            vc.font = Font(name="맑은 고딕", size=10, bold=True)
+        else:
+            vc = ws.cell(row=cur_row, column=11, value=val)
+            vc.font = Font(name="맑은 고딕", size=11 if kind == "bid" else 10, bold=True)
+            vc.number_format = "#,##0"
         vc.alignment = right
         vc.border = border
-        vc.number_format = "#,##0"
-        if is_grand:
+        if kind == "bid":
             lc.fill = grand_fill
             vc.fill = grand_fill
         else:

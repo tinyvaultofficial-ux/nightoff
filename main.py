@@ -517,9 +517,12 @@ def require_client() -> anthropic.Anthropic:
     key = get_api_key()
     if not key:
         raise HTTPException(status_code=400, detail="API 키가 설정되지 않았습니다. 좌하단 설정에서 등록해주세요.")
-    # timeout 600s + max_retries 2 — 큰 outline (50 슬라이드 분량) 안정성 확보.
-    # 사고 영역: 50 슬라이드 outline 응답이 5분 초과 → SDK 자체 timeout / retry 한계 도달.
-    return anthropic.Anthropic(api_key=key, timeout=600.0, max_retries=2)
+    # timeout 1200s + max_retries 2 — 80~100 슬라이드 outline 안정성 확보.
+    # 사고 영역 history:
+    #   49f3ccc: 50 슬라이드 = 5분 초과 → 300s → 600s 영역 ↑
+    #   현재:    80 슬라이드 = 7-10분 → 600s 한계 도달 → 1200s 영역 ↑
+    # max_tokens 64000 (proposal_multi_pass.py:1000) 와 함께 적용 — 응답 영역 / 시간 영역 동시 확보.
+    return anthropic.Anthropic(api_key=key, timeout=1200.0, max_retries=2)
 
 
 # ---------- Auth helpers (JWT + bcrypt) — 묶음 N Commit 2/4-1/4-4 ----------

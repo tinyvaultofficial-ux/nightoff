@@ -950,10 +950,21 @@ function recalcBudget(data) {
   return data;
 }
 
-// ===== 📋 입찰참가자격 모달 (RFP 분석 결과 영역) =====
-// data: {legal[], financial[], performance[], personnel[], other[]}
-// onClose: 모달 닫기 시 호출 영역 (선택)
-function openQualificationsModal(data, onClose) {
+// ===== 📋 입찰참가자격 카드 (인라인, 발주처 상세 페이지 영역) =====
+// 5 카테고리 영역 세로 스택. RFP 분석 카드 직후 별도 카드 영역.
+// 데이터 source: GET /api/clients/{cid}/rfp 의 analysis.qualifications 영역.
+// (별도 fetch X — RFP 분석 결과 영역 안에 포함)
+async function renderQualificationsSection(cid) {
+  const rfp = await api.get(`/api/clients/${cid}/rfp`).catch(() => ({ analysis: {} }));
+  const quals = (rfp && rfp.analysis && rfp.analysis.qualifications) || null;
+
+  // 자격 데이터 영역 X — RFP 미분석 / 모든 카테고리 빈 영역 = 카드 자체 숨김
+  const hasAnyQual = quals && Object.values(quals).some((v) => Array.isArray(v) && v.length > 0);
+  if (!hasAnyQual) {
+    // 빈 fragment 영역 반환 — renderClientDetail 영역에서 stack 영역에 append 해도 무영향
+    return document.createDocumentFragment();
+  }
+
   const SECTIONS = [
     { key: "legal",       label: "법적 자격", icon: "⚖️" },
     { key: "financial",   label: "재무 자격", icon: "💰" },
@@ -962,21 +973,21 @@ function openQualificationsModal(data, onClose) {
     { key: "other",       label: "기타", icon: "📝" },
   ];
 
-  const close = () => {
-    backdrop.classList.add("closing-modal-closing");
-    setTimeout(() => {
-      backdrop.remove();
-      if (typeof onClose === "function") {
-        try { onClose(); } catch {}
-      }
-    }, 180);
-    document.removeEventListener("keydown", onKey);
-  };
-  const onKey = (e) => { if (e.key === "Escape") close(); };
+  const card = h("div", { class: "card" });
+  card.appendChild(h("div", { class: "card-head" }, [
+    h("div", { class: "card-title-row" }, [
+      h("div", { class: "card-title-icon" }, "📋"),
+      h("div", {}, [
+        h("h3", { class: "card-title" }, "입찰참가자격"),
+        h("p", { class: "card-subtitle" },
+          "RFP 분석 결과 영역. 우리 회사가 참여 가능한지 빠르게 확인하세요."),
+      ]),
+    ]),
+  ]));
 
-  const list = h("div", { class: "qual-modal-list" });
+  const body = h("div", { class: "card-body qual-list" });
   SECTIONS.forEach((sec) => {
-    const items = (data && Array.isArray(data[sec.key])) ? data[sec.key] : [];
+    const items = (quals && Array.isArray(quals[sec.key])) ? quals[sec.key] : [];
     const section = h("div", { class: "qual-section" }, [
       h("div", { class: "qual-section-head" }, [
         h("span", { class: "qual-section-icon" }, sec.icon),
@@ -990,28 +1001,12 @@ function openQualificationsModal(data, onClose) {
       });
       section.appendChild(ul);
     } else {
-      section.appendChild(h("p", { class: "qual-section-empty" },
-        "RFP 에 명시 없음"));
+      section.appendChild(h("p", { class: "qual-section-empty" }, "RFP 에 명시 없음"));
     }
-    list.appendChild(section);
+    body.appendChild(section);
   });
-
-  const backdrop = h("div", {
-    class: "closing-modal-backdrop",
-    onclick: (e) => { if (e.target === backdrop) close(); },
-  }, [
-    h("div", { class: "closing-modal qual-modal" }, [
-      h("div", { class: "closing-modal-head" }, [
-        h("h3", { class: "closing-modal-title" }, "📋 입찰참가자격"),
-        h("button", { class: "closing-modal-close", "aria-label": "닫기", onclick: close }, "×"),
-      ]),
-      h("div", { class: "closing-modal-meta" },
-        "RFP 분석 결과 영역. 우리 회사가 참여 가능한지 빠르게 확인하세요."),
-      list,
-    ]),
-  ]);
-  document.body.appendChild(backdrop);
-  document.addEventListener("keydown", onKey);
+  card.appendChild(body);
+  return card;
 }
 
 
@@ -2306,22 +2301,25 @@ async function renderClientDetail(cid) {
   const stack = h("div", { class: "row-gap-18" });
   content.appendChild(stack);
 
-  // 화면 순서 (사용자 요청 / item 4):
+  // 화면 순서:
   //  1️⃣ RFP 분석 (필수 첫 단계)
-  //  2️⃣ 발주처 들여다보기 👀 (RFP 분석 후 자동 채워짐)
-  //  3️⃣ ✨ 대화 시작하기 (보라 큰 CTA 버튼)
-  //  4️⃣ 🎤 PT 연습하기 (제안서 완성 후 활성화 / 지금은 비활성)
+  //  2️⃣ 📋 입찰참가자격 (RFP 분석 결과 영역 — 자격 데이터 있을 때만 노출)
+  //  3️⃣ 발주처 들여다보기 👀 (RFP 분석 후 자동 채워짐)
+  //  4️⃣ ✨ 대화 시작하기 (보라 큰 CTA 버튼)
+  //  5️⃣ 🎤 PT 연습하기 (제안서 완성 후 활성화 / 지금은 비활성)
   //  📋 대화 기록 (하단)
   // ── 강점 기능은 의도적으로 제거됨 (추상적 신호라 제안서 품질에 역효과)
-  const [rfpSec, intelSec, historySec] = await Promise.all([
+  const [rfpSec, qualSec, intelSec, historySec] = await Promise.all([
     renderRfpSection(cid),
+    renderQualificationsSection(cid),
     renderClientIntelSection(cid, client),
     renderConvHistorySection(cid),
   ]);
   stack.appendChild(rfpSec);
+  stack.appendChild(qualSec);
   stack.appendChild(intelSec);
 
-  // 3️⃣ + 4️⃣ — 핵심 CTA 묶음 (대화 시작 + PT 연습)
+  // 4️⃣ + 5️⃣ — 핵심 CTA 묶음 (대화 시작 + PT 연습)
   stack.appendChild(await renderTaskActionsSection(cid));
 
   // 📋 대화 기록 (하단)
@@ -3004,21 +3002,12 @@ async function renderRfpSection(cid) {
       if (result?.analysis?.error) {
         loader.finish("⚠️", "업로드 완료 · 분석 실패", 900);
         toast(result.analysis.error, "error");
-        setTimeout(() => renderClientDetail(cid), 1100);
       } else {
         loader.finish("✅", "분석 완료!", 700);
-        // 자격 카드 모달 영역 — RFP 안에 입찰참가자격 영역 추출됐으면 노출.
-        // 모달 닫기 시 renderClientDetail 영역으로 이동 (기존 흐름 보존).
-        const quals = result?.analysis?.qualifications;
-        const hasAnyQual = quals && Object.values(quals).some((v) => Array.isArray(v) && v.length > 0);
-        if (hasAnyQual) {
-          setTimeout(() => {
-            openQualificationsModal(quals, () => renderClientDetail(cid));
-          }, 800);
-        } else {
-          setTimeout(() => renderClientDetail(cid), 1100);
-        }
       }
+      // 자격 영역은 발주처 상세 페이지 (renderClientDetail) 의 인라인 카드 영역에서 노출.
+      // 모달 영역 hook 제거됨 (3f0b051 영역 → 인라인 카드 변경).
+      setTimeout(() => renderClientDetail(cid), 1100);
     } catch (e) {
       loader.stop();
       toast(e.message || "업로드 실패", "error");

@@ -3043,7 +3043,9 @@ body.fs-loader-active {
 .dashboard-two-col {
   grid-template-columns: minmax(0, 1fr) 320px;
   gap: 24px;
-  align-items: start;
+  /* 좌측 (나라장터) 끝선 = 우측 (오늘의 팁 + 광고) 끝선 정합 영역.
+     stretch 영역 = 좌우 영역 동일 height → 우측 광고 영역이 영역 늘어남 (.fake-ad flex: 1 1 auto). */
+  align-items: stretch;
 }
 .dashboard-two-col > section,
 .dashboard-two-col > aside {
@@ -3059,8 +3061,11 @@ body.fs-loader-active {
   flex: 1;
   align-content: start;   /* 카드는 위에서부터 채우고 남는 공간은 아래 */
 }
-.dashboard-side-col { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.dashboard-side-col { min-width: 0; display: flex; flex-direction: column; gap: 16px; height: 100%; }
 .dashboard-side-col > .tip-card { flex: 0 0 auto; }
+/* 광고 영역 영역 늘어남 — 좌측 영역 height 정합 영역 (Q3 + Q4 + Q5 정합).
+   margin-top 영역 = .dashboard-side-col 영역 gap 영역으로 영역 일관 영역. */
+.dashboard-side-col > .fake-ad { flex: 1 1 auto; margin-top: 0; }
 /* "과업 목록" 라벨 — 박스 위로 살짝 띄움 */
 .dashboard-two-col > section > .dashboard-section-label {
   margin: 0 4px 12px 4px;
@@ -4053,14 +4058,19 @@ input.locked-by-env::placeholder {
    📢 가짜 스폰서 광고 — 드립용 세로형 배너 (닫기 버튼 안 닫힘 ㅋㅋ)
    ============================================================ */
 .fake-ad {
+  /* 흑백 6색 정합 — 단일 회색 영역 (이전 5 톤 영역 → 단일 영역) */
   margin-top: 16px;
   padding: 18px 18px 14px;
   border-radius: 14px;
   position: relative;
   overflow: hidden;
   border: 1px solid var(--border);
-  background: #fff;
+  background: #F8F8F8;
+  color: var(--fg);
   transition: transform .15s ease;
+  /* 정렬 — flex column + 콘텐츠 중앙 영역 (Q4 (b)) */
+  display: flex; flex-direction: column;
+  justify-content: center;
 }
 .fake-ad.ad-shake { animation: adShake 0.45s cubic-bezier(.36,.07,.19,.97); }
 @keyframes adShake {
@@ -4120,65 +4130,27 @@ input.locked-by-env::placeholder {
   letter-spacing: 0.02em;
 }
 
-/* tone별 컬러 변형 */
-.fake-ad-midnight {
-  background: linear-gradient(160deg, #0F172A 0%, #1E293B 100%);
-  border-color: #334155;
-  color: #F1F5F9;
-}
-.fake-ad-midnight .fake-ad-label { background: rgba(255,255,255,0.12); color: #CBD5E1; }
-.fake-ad-midnight .fake-ad-close { color: #94A3B8; }
-.fake-ad-midnight .fake-ad-close:hover { background: rgba(255,255,255,0.10); color: #fff; }
-.fake-ad-midnight .fake-ad-cta { color: #FDE68A; border-color: #FDE68A; }
-.fake-ad-midnight .fake-ad-cta:hover { background: rgba(253,230,138,0.12); }
-.fake-ad-midnight .fake-ad-footer { color: #94A3B8; }
-
-.fake-ad-indigo {
-  background: linear-gradient(160deg, #1E1B4B 0%, #4338CA 100%);
-  border-color: #4F46E5;
-  color: #EEF2FF;
-}
-.fake-ad-indigo .fake-ad-label { background: rgba(255,255,255,0.14); color: #C7D2FE; }
-.fake-ad-indigo .fake-ad-close { color: #A5B4FC; }
-.fake-ad-indigo .fake-ad-cta { color: #FDE68A; border-color: #FDE68A; }
-.fake-ad-indigo .fake-ad-cta:hover { background: rgba(253,230,138,0.16); }
-.fake-ad-indigo .fake-ad-footer { color: #A5B4FC; }
-
-.fake-ad-yellow {
-  background: linear-gradient(160deg, #FEF3C7 0%, #FDE68A 100%);
-  border-color: #F59E0B;
-  color: #78350F;
-}
-.fake-ad-yellow .fake-ad-label { background: rgba(120,53,15,0.12); color: #92400E; }
-.fake-ad-yellow .fake-ad-cta { color: #92400E; border-color: #B45309; }
-.fake-ad-yellow .fake-ad-footer { color: #B45309; }
-
-.fake-ad-violet {
-  background: linear-gradient(160deg, #F5F3FF 0%, #DDD6FE 100%);
-  border-color: #8B5CF6;
-  color: #4C1D95;
-}
-.fake-ad-violet .fake-ad-label { background: rgba(76,29,149,0.12); color: #6D28D9; }
-.fake-ad-violet .fake-ad-cta { color: #6D28D9; border-color: #6D28D9; }
-.fake-ad-violet .fake-ad-footer { color: #7C3AED; }
-
+/* tone variant 영역 모두 영역 단일 회색 영역으로 영역 통합 영역 (흑백 6색 정체성 정합).
+   tone 영역 = JS 영역에서 영역 그대로 영역 부착 영역 (`fake-ad-{tone}`) — 다만 영역 = 배경 / 색상 영역 X 차별 영역. */
+.fake-ad-midnight,
+.fake-ad-indigo,
+.fake-ad-yellow,
+.fake-ad-violet,
 .fake-ad-rose {
-  background: linear-gradient(160deg, #FFF1F2 0%, #FECDD3 100%);
-  border-color: #F43F5E;
-  color: #881337;
+  background: #F8F8F8;
+  border-color: var(--border);
+  color: var(--fg);
 }
-.fake-ad-rose .fake-ad-label { background: rgba(136,19,55,0.12); color: #9F1239; }
-.fake-ad-rose .fake-ad-cta { color: #9F1239; border-color: #9F1239; }
-.fake-ad-rose .fake-ad-footer { color: #BE123C; }
 
 /* ===== 대시보드 사이드 컬럼 (팁 + 활동) ===== */
 .dashboard-side-col {
   display: flex; flex-direction: column;
   gap: 0;
 }
+/* 오늘의 팁 영역 — 보라 톤 정합 (이전 노란 톤 영역에서 변경, 나라장터 위젯 0db38c3 정합) */
 .tip-card {
-  background: linear-gradient(135deg, #FFF8E1 0%, #FFFAF0 50%, #FAF5FF 100%);
-  border: 1px solid color-mix(in oklab, #F59E0B 25%, var(--border));
+  background: #FAF7FF;
+  border: 1px solid color-mix(in oklab, #6B46E5 18%, var(--border));
   border-radius: 16px;
   padding: 20px 22px;
   position: relative;
@@ -4188,7 +4160,7 @@ input.locked-by-env::placeholder {
   content: ""; position: absolute;
   top: -30px; right: -30px;
   width: 120px; height: 120px;
-  background: radial-gradient(circle, rgba(245,158,11,0.18) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(155, 127, 232, 0.18) 0%, transparent 70%);
   pointer-events: none;
 }
 .tip-card-head {
@@ -4197,17 +4169,17 @@ input.locked-by-env::placeholder {
 }
 .tip-emoji {
   font-size: 18px;
-  filter: drop-shadow(0 2px 4px rgba(245,158,11,0.3));
+  filter: drop-shadow(0 2px 4px rgba(107, 70, 229, 0.3));
 }
 .tip-label {
   font-size: 12px; font-weight: 700;
-  color: #92400E;
+  color: #6B46E5;
   letter-spacing: 0.04em;
 }
 .tip-quote {
   margin: 0;
   padding: 12px 0 6px 16px;
-  border-left: 3px solid color-mix(in oklab, #F59E0B 60%, transparent);
+  border-left: 3px solid color-mix(in oklab, #6B46E5 55%, transparent);
   font-size: 14px;
   line-height: 1.7;
   color: var(--fg);
@@ -4223,7 +4195,7 @@ input.locked-by-env::placeholder {
   content: '"';
   position: absolute; top: -2px; left: 4px;
   font-size: 28px; font-weight: 800;
-  color: color-mix(in oklab, #F59E0B 50%, transparent);
+  color: color-mix(in oklab, #6B46E5 45%, transparent);
   line-height: 1;
 }
 .tip-quote.tip-out {

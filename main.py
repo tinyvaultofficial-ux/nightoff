@@ -405,12 +405,18 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
 
 
 def _existing_columns(db, table: str) -> set[str]:
-    """SQLite 와 PostgreSQL 양쪽에서 동작하는 컬럼 목록 조회."""
+    """SQLite 와 PostgreSQL 양쪽에서 동작하는 컬럼 목록 조회.
+
+    ⚠ PG placeholder 영역 사고 fix (commit a01dd04 이후):
+      - 직접 '%s' placeholder X. _adapt_sql 의 'replace("%", "%%")' 영역에 의해
+        '%s' → '%%s' 변환되어 psycopg literal '%s' 문자열 비교 영역 사고.
+      - '?' placeholder 사용 → _adapt_sql 가 '%s' 로 정상 변환 → psycopg 정상 인식.
+    """
     if USE_PG:
         try:
             rows = db.execute(
                 "SELECT column_name FROM information_schema.columns "
-                "WHERE table_name=%s",
+                "WHERE table_name=?",
                 (table,),
             ).fetchall()
             return {r["column_name"] for r in rows}
@@ -3671,25 +3677,41 @@ def api_auth_me(user: dict = Depends(get_current_user)):
 # ---------- /api/me/* — 사용자 본인 영역 메타 (UI 상태 등) ----------
 @app.get("/api/me/chat-intro-status")
 def api_me_chat_intro_status(user: dict = Depends(get_current_user)):
-    """채팅 첫 진입 안내 팝업 노출 여부. INTEGER 0/1 → bool 변환."""
-    with get_db() as db:
-        row = db.execute(
-            "SELECT chat_intro_dismissed FROM users WHERE id=?",
-            (user["id"],),
-        ).fetchone()
-    dismissed = bool(row and (row["chat_intro_dismissed"] or 0))
-    return {"dismissed": dismissed}
+    """채팅 첫 진입 안내 팝업 노출 여부. INTEGER 0/1 → bool 변환.
+
+    Graceful fallback: 마이그레이션 영역 사고 (컬럼 미존재) 시 dismissed=False 반환.
+    → 사용자 영역 = 팝업 노출 (안전, 첫 진입 케이스 동일 영역).
+    """
+    try:
+        with get_db() as db:
+            row = db.execute(
+                "SELECT chat_intro_dismissed FROM users WHERE id=?",
+                (user["id"],),
+            ).fetchone()
+        dismissed = bool(row and (row["chat_intro_dismissed"] or 0))
+        return {"dismissed": dismissed}
+    except Exception as e:
+        log.warning("chat-intro-status SQL 사고 (마이그레이션 영역 의심): %s", e)
+        return {"dismissed": False}
 
 
 @app.post("/api/me/dismiss-chat-intro")
 def api_me_dismiss_chat_intro(user: dict = Depends(get_current_user)):
-    """채팅 첫 진입 안내 팝업 '다시 보지 않기' 저장 (계정 단위 영구)."""
-    with get_db() as db:
-        db.execute(
-            "UPDATE users SET chat_intro_dismissed=1 WHERE id=?",
-            (user["id"],),
-        )
-    return {"ok": True}
+    """채팅 첫 진입 안내 팝업 '다시 보지 않기' 저장 (계정 단위 영구).
+
+    Graceful fallback: 마이그레이션 영역 사고 시 ok=true 반환 (DB 저장 X 다만 UX 흐름 유지).
+    → 다음 진입 시 다시 노출 (영구 dismiss X), 다만 사용자 영역 사고 발생 X.
+    """
+    try:
+        with get_db() as db:
+            db.execute(
+                "UPDATE users SET chat_intro_dismissed=1 WHERE id=?",
+                (user["id"],),
+            )
+        return {"ok": True}
+    except Exception as e:
+        log.warning("dismiss-chat-intro SQL 사고 (마이그레이션 영역 의심): %s", e)
+        return {"ok": True, "persisted": False}
 
 
 # ---------- Admin endpoints (invite codes + users) — 묶음 N Commit 3 ----------
@@ -3718,6 +3740,25 @@ class InviteCreateIn(BaseModel):
     count: int = 1
     expires_at: Optional[str] = None
     note: str = ""
+
+
+@app.post("/api/admin/db-migrate")
+def api_admin_db_migrate(admin: dict = Depends(require_admin)):
+    """DB 컬럼 마이그레이션 강제 재실행 (admin 전용).
+
+    startup 영역에서 silent fail 한 마이그레이션 영역 회복 영역.
+    각 컬럼 시도 영역이 개별 try/except 영역이라 부분 성공 영역 OK.
+    응답: {added: [...], skipped: [...], failed: [...]}
+    """
+    log.info("admin DB 마이그레이션 수동 실행 요청 · admin=%s", admin.get("email", ""))
+    try:
+        result = _migrate_db()
+        log.info("admin DB 마이그레이션 결과: added=%s, skipped=%s, failed=%s",
+                 result["added"], result["skipped"], result["failed"])
+        return result
+    except Exception as e:
+        log.exception("admin DB 마이그레이션 실패")
+        raise HTTPException(500, f"마이그레이션 영역 사고: {str(e)[:200]}")
 
 
 @app.post("/api/admin/invites")

@@ -1818,17 +1818,30 @@ function renderTodayTipCard() {
 }
 
 // ---------- 📢 가짜 스폰서 광고 (드립용) ----------
+// 페이지 진입 시 = 3 카피 영역 중 랜덤 1 영역. 각 카피 영역 = 헤드라인 + 본문 + 서브 영역 분리.
+// 서브 영역 = 빈 영역 fix + 진짜 광고 마이크로카피 영역 정합 (회색 #888).
+// tone 영역 X — 직전 commit 9b14241 영역에서 영역 모두 영역 단일 회색 영역으로 영역 통합 영역.
 const FAKE_AD_LINES = [
-  { copy: "오늘도 야근?\n\nNightOff가 있잖아요 😊",          tone: "midnight" },
-  { copy: "밤새지 말자고\n만들었습니다 🌙",                   tone: "indigo" },
-  { copy: "RFP 복붙하다\n걸리셨나요? ㅋㅋ",                   tone: "yellow" },
-  { copy: "개찰결과 뜨면\n대표자 이름부터\n확인하시죠? 🏆",   tone: "violet" },
-  { copy: "애매하게 썼으면\n전화는 잘 받아주세요,\n공뭔님들 📞", tone: "rose" },
+  {
+    headline: "오늘도 야근?",
+    body: "NightOff가 있잖아요 😊",
+    sub: "RFP 업로드 → 평균 10분",
+  },
+  {
+    headline: "이번 주 마감 또?",
+    body: "NightOff = 평균 10분",
+    sub: "한국 B2G 학습 13,084 chunks",
+  },
+  {
+    headline: "RFP 분석 어디서 시작?",
+    body: "NightOff = 평가 기준 자동 추출",
+    sub: "30초 안 핵심 정리",
+  },
 ];
 
 function renderFakeAdBanner() {
   const pick = FAKE_AD_LINES[Math.floor(Math.random() * FAKE_AD_LINES.length)];
-  const card = h("div", { class: `fake-ad fake-ad-${pick.tone}` });
+  const card = h("div", { class: "fake-ad" });
 
   // 상단 라벨 + 가짜 닫기 버튼 (눌러도 안 닫힘 ㅋ)
   card.appendChild(h("div", { class: "fake-ad-head" }, [
@@ -1855,10 +1868,10 @@ function renderFakeAdBanner() {
     }),
   ]));
 
-  // 본문 — 줄바꿈 보존
-  const copy = h("div", { class: "fake-ad-copy" });
-  copy.textContent = pick.copy;
-  card.appendChild(copy);
+  // 본문 영역 — 헤드라인 + 본문 + 서브 영역 분리 (서브 영역 = 회색 미세 영역)
+  card.appendChild(h("div", { class: "fake-ad-headline" }, pick.headline));
+  card.appendChild(h("div", { class: "fake-ad-body" }, pick.body));
+  card.appendChild(h("div", { class: "fake-ad-sub" }, pick.sub));
 
   // 가짜 CTA — 눌러봐도 닫기와 같은 운명 ㅋ
   card.appendChild(h("button", {

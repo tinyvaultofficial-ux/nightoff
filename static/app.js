@@ -5384,6 +5384,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   bootBodyCharacter();
   // 반응형 햄버거 토글
   bootNavToggle();
+  // route() 영역 영역 영역 영역 호출 — window.__nightoff_user 영역 영역 영역 영역
+  // (사이드바 사용자 영역 div 영역 미렌더 race condition 회피).
+  // public 페이지(/, /landing 등)는 fetch 분기 skip 후 즉시 도달, 비공개 페이지는
+  // /api/auth/me await 후 도달. redirectToLogin 케이스는 위에서 return으로 차단됨.
+  route();
 });
-
-route();

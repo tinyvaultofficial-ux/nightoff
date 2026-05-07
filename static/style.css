@@ -3061,8 +3061,8 @@ body.fs-loader-active {
 .dashboard-two-col {
   grid-template-columns: minmax(0, 1fr) 320px;
   gap: 24px;
-  /* 좌측 (나라장터) 끝선 = 우측 (오늘의 팁 + 광고) 끝선 정합 영역.
-     stretch 영역 = 좌우 영역 동일 height → 우측 광고 영역이 영역 늘어남 (.fake-ad flex: 1 1 auto). */
+  /* 좌측 (나라장터) 끝선 = 우측 (오늘의 팁 + 무료 크레딧) 끝선 정합 영역.
+     stretch 영역 = 좌우 영역 동일 height → 우측 daily-credit 영역이 늘어남 (flex: 1 1 auto). */
   align-items: stretch;
 }
 .dashboard-two-col > section,
@@ -3081,9 +3081,9 @@ body.fs-loader-active {
 }
 .dashboard-side-col { min-width: 0; display: flex; flex-direction: column; gap: 16px; height: 100%; }
 .dashboard-side-col > .tip-card { flex: 0 0 auto; }
-/* 광고 영역 영역 늘어남 — 좌측 영역 height 정합 영역 (Q3 + Q4 + Q5 정합).
-   margin-top 영역 = .dashboard-side-col 영역 gap 영역으로 영역 일관 영역. */
-.dashboard-side-col > .fake-ad { flex: 1 1 auto; margin-top: 0; }
+/* 오늘의 무료 크레딧 영역 늘어남 — 좌측 closing-widget 영역 height 정합 영역.
+   margin-top = .dashboard-side-col gap 영역으로 영역 일관 영역. */
+.dashboard-side-col > .daily-credit { flex: 1 1 auto; margin-top: 0; }
 /* "과업 목록" 라벨 — 박스 위로 살짝 띄움 */
 .dashboard-two-col > section > .dashboard-section-label {
   margin: 0 4px 12px 4px;
@@ -3107,7 +3107,7 @@ body, .msg-bubble, .card, .strengths-intro,
 }
 
 /* 사이드 패널 카드 폭 안정 */
-.tip-card, .fake-ad { max-width: 100%; min-width: 0; }
+.tip-card, .daily-credit { max-width: 100%; min-width: 0; }
 
 /* 작은 뷰포트 (1100px 이하) — 사이드 컬럼 더 좁게 */
 @media (max-width: 1280px) {
@@ -4106,117 +4106,242 @@ input.locked-by-env::placeholder {
 /* ============================================================
    📢 가짜 스폰서 광고 — 드립용 세로형 배너 (닫기 버튼 안 닫힘 ㅋㅋ)
    ============================================================ */
-.fake-ad {
-  /* 흑백 6색 정합 — 단일 회색 영역 (이전 5 톤 영역 → 단일 영역) */
-  margin-top: 16px;
-  padding: 18px 18px 14px;
+/* ===== 💰 오늘의 무료 크레딧 (퀴즈 / 로또 / 운세 3개 슬라이드 롤링) =====
+   톤: 연보라 #FAF7FF — closing-widget / tip-card 와 정합.
+   정렬: flex 1 1 auto — 좌측 closing-widget 끝줄과 자동 정합 (.dashboard-side-col gap:16px).
+*/
+.daily-credit {
+  margin-top: 0;       /* gap 으로 일관 */
+  padding: 18px;
   border-radius: 14px;
   position: relative;
   overflow: hidden;
   border: 1px solid var(--border);
-  background: #F8F8F8;
+  background: #FAF7FF;
   color: var(--fg);
-  transition: transform .15s ease;
-  /* 정렬 — flex column + 콘텐츠 중앙 영역 (Q4 (b)) */
+  /* 좌측 끝줄 정합 자동 — flex 늘어남 */
+  flex: 1 1 auto;
   display: flex; flex-direction: column;
-  justify-content: center;
+  min-height: 0;
 }
-.fake-ad.ad-shake { animation: adShake 0.45s cubic-bezier(.36,.07,.19,.97); }
-@keyframes adShake {
-  10%, 90% { transform: translate3d(-1.5px, 0, 0); }
-  20%, 80% { transform: translate3d( 2.5px, 0, 0); }
-  30%, 50%, 70% { transform: translate3d(-3px, 0, 0); }
-  40%, 60% { transform: translate3d( 3px, 0, 0); }
-}
-.fake-ad-head {
+.daily-credit-head {
   display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 4px;
+  gap: 8px;
+}
+.daily-credit-title {
+  font-size: 14.5px; font-weight: 700;
+  color: var(--fg);
+  letter-spacing: -0.01em;
+  display: flex; align-items: center; gap: 6px;
+}
+.daily-credit-chip {
+  font-size: 11px; font-weight: 600;
+  color: var(--primary, #6B46E5);
+  background: rgba(107, 70, 229, 0.12);
+  padding: 3px 8px;
+  border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 3px;
+  white-space: nowrap;
+}
+.daily-credit-sub {
+  font-size: 11.5px;
+  color: var(--fg-2);
   margin-bottom: 12px;
 }
-.fake-ad-label {
-  font-size: 9.5px; font-weight: 700;
-  color: var(--fg-2);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  background: rgba(0,0,0,0.06);
-  padding: 3px 8px;
-  border-radius: 4px;
+
+/* 슬라이드 stack — absolute inset 으로 fade in/out */
+.daily-credit-slides {
+  flex: 1 1 auto;
+  position: relative;
+  min-height: 130px;     /* 슬라이드 콘텐츠 최소 높이 보장 (퀴즈 input + 버튼) */
 }
-.fake-ad-close {
+.credit-slide {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s ease;
+}
+.credit-slide.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+.credit-slide-label {
+  font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--primary);
+  margin-bottom: 6px;
+}
+.credit-slide-headline {
+  font-size: 13px; font-weight: 600;
+  color: var(--fg);
+  line-height: 1.45;
+  word-break: keep-all;
+  margin-bottom: 8px;
+}
+
+/* 퀴즈 입력 / 제출 / 결과 */
+.credit-slide-input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-family: inherit;
+  margin-bottom: 6px;
+  box-sizing: border-box;
+}
+.credit-slide-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+.credit-slide-input:disabled {
+  background: #F5F5F5;
+  cursor: not-allowed;
+  color: var(--fg-2);
+}
+.credit-slide-submit {
+  align-self: flex-start;
+  padding: 6px 14px;
+  font-size: 12px; font-weight: 600;
+  border: 1.5px solid var(--primary);
+  background: var(--primary);
+  color: #fff;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background .12s ease, border-color .12s ease;
+}
+.credit-slide-submit:hover:not(:disabled) {
+  background: var(--primary-hover, #5a3dc4);
+  border-color: var(--primary-hover, #5a3dc4);
+}
+.credit-slide-submit:disabled {
+  background: #ccc;
+  border-color: #ccc;
+  cursor: not-allowed;
+}
+.credit-slide-result {
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 6px;
+  word-break: keep-all;
+  line-height: 1.5;
+}
+.credit-slide-result.correct { color: #2E7D32; }
+.credit-slide-result.wrong   { color: var(--fg-2); }
+.credit-slide-result.info    { color: var(--fg-2); }
+
+/* 로또 — 6개 공 + 슬롯머신 애니메이션 */
+.credit-lotto-balls {
+  display: flex; gap: 5px;
+  margin: 6px 0;
+  justify-content: flex-start;
+}
+.credit-lotto-ball {
+  width: 24px; height: 24px;
+  display: grid; place-items: center;
+  font-size: 11px; font-weight: 700;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #FFC107, #FF9800);
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.10);
+  transition: transform .15s ease;
+}
+.credit-lotto-ball.spinning {
+  animation: lotto-spin 0.18s steps(4) infinite;
+}
+@keyframes lotto-spin {
+  0%   { background: linear-gradient(135deg, #FFC107, #FF9800); transform: scale(1); }
+  25%  { background: linear-gradient(135deg, #2196F3, #1976D2); transform: scale(0.92); }
+  50%  { background: linear-gradient(135deg, #4CAF50, #388E3C); transform: scale(1); }
+  75%  { background: linear-gradient(135deg, #E91E63, #C2185B); transform: scale(0.92); }
+}
+.credit-lotto-winning-row {
+  display: flex; gap: 3px; align-items: center;
+  flex-wrap: wrap;
+  font-size: 10.5px;
+  color: var(--fg-2);
+  margin: 4px 0 6px;
+}
+.credit-lotto-winning-row > span:first-child {
+  margin-right: 3px;
+}
+.credit-lotto-winning-ball {
+  width: 16px; height: 16px;
+  display: grid; place-items: center;
+  font-size: 9.5px; font-weight: 700;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.08);
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+.credit-lotto-winning-ball.matched {
+  background: rgba(76, 175, 80, 0.20);
+  color: #1B5E20;
+}
+.credit-lotto-winning-ball.bonus {
+  background: rgba(244, 67, 54, 0.15);
+  color: #C62828;
+}
+.credit-lotto-winning-ball.bonus.matched {
+  background: rgba(244, 67, 54, 0.30);
+}
+
+/* 운세 — 단순 메시지 노출 */
+.credit-fortune-message {
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--fg);
+  word-break: keep-all;
+  letter-spacing: -0.005em;
+}
+
+/* nav (화살표 + dots) */
+.daily-credit-nav {
+  display: flex; align-items: center; justify-content: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.daily-credit-arrow {
   width: 22px; height: 22px;
   display: grid; place-items: center;
-  background: transparent;
   border: none;
+  background: transparent;
   color: var(--fg-2);
   border-radius: 4px;
   cursor: pointer;
-  transition: background .12s;
+  transition: background .12s, color .12s;
 }
-.fake-ad-close:hover { background: rgba(0,0,0,0.05); color: var(--fg); }
-/* 헤드라인 영역 — 큰 영역, 제목 영역 톤 */
-.fake-ad-headline {
-  font-size: 17px; font-weight: 700;
-  line-height: 1.35;
-  letter-spacing: -0.015em;
-  margin-bottom: 6px;
-  word-break: keep-all;
-  color: var(--fg);
+.daily-credit-arrow:hover {
+  background: rgba(107, 70, 229, 0.10);
+  color: var(--primary);
 }
-/* 본문 영역 — 중간 영역, 메시지 영역 핵심 */
-.fake-ad-body {
-  font-size: 14px; font-weight: 600;
-  line-height: 1.5;
-  letter-spacing: -0.01em;
-  margin-bottom: 10px;
-  word-break: keep-all;
-  color: var(--fg);
+.daily-credit-dots {
+  display: inline-flex; gap: 5px;
+  align-items: center;
 }
-/* 서브 영역 — 작은 회색 영역, 빈 영역 fix + 진짜 광고 마이크로카피 정합 */
-.fake-ad-sub {
-  font-size: 11.5px; font-weight: 400;
-  line-height: 1.5;
-  letter-spacing: 0.01em;
-  margin-bottom: 14px;
-  color: #888;
-  word-break: keep-all;
-}
-/* (이전 .fake-ad-copy 영역 — 단일 텍스트 영역 → 분리 영역, dead 영역 다만 보존 영역) */
-.fake-ad-copy {
-  white-space: pre-line;
-  font-size: 17px; font-weight: 700;
-  line-height: 1.5;
-  letter-spacing: -0.015em;
-  margin-bottom: 14px;
-  word-break: keep-all;
-}
-.fake-ad-cta {
-  display: inline-block;
-  padding: 7px 14px;
-  font-size: 12px; font-weight: 600;
-  border-radius: 8px;
+.daily-credit-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.15);
   cursor: pointer;
-  margin-bottom: 10px;
-  border: 1.5px solid currentColor;
-  background: transparent;
-  transition: all .12s ease;
+  transition: background .15s ease;
 }
-.fake-ad-cta:hover { background: rgba(0,0,0,0.06); }
-.fake-ad-footer {
+.daily-credit-dot.active {
+  background: var(--primary);
+}
+
+.daily-credit-footer {
   font-size: 10px;
   color: var(--fg-2);
   opacity: 0.7;
   letter-spacing: 0.02em;
-}
-
-/* tone variant 영역 모두 영역 단일 회색 영역으로 영역 통합 영역 (흑백 6색 정체성 정합).
-   tone 영역 = JS 영역에서 영역 그대로 영역 부착 영역 (`fake-ad-{tone}`) — 다만 영역 = 배경 / 색상 영역 X 차별 영역. */
-.fake-ad-midnight,
-.fake-ad-indigo,
-.fake-ad-yellow,
-.fake-ad-violet,
-.fake-ad-rose {
-  background: #F8F8F8;
-  border-color: var(--border);
-  color: var(--fg);
+  margin-top: 8px;
+  text-align: center;
 }
 
 /* ===== 대시보드 사이드 컬럼 (팁 + 활동) ===== */

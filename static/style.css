@@ -3276,8 +3276,8 @@ body, .msg-bubble, .card, .strengths-intro,
   padding: 12px 14px;
   border-radius: 10px;
   border: 1px solid var(--border);
-  /* rgba 0.92 — 태극기 배경 위에서 텍스트 가독성 보호 + 살짝 비침 */
-  background: rgba(255, 255, 255, 0.92);
+  /* rgba 0.5 — 태극기가 카드까지 비쳐 보이게 (텍스트 가독성은 폰트 weight로 보호) */
+  background: rgba(255, 255, 255, 0.5);
   text-decoration: none;
   color: inherit;
   transition: border-color .15s ease, transform .12s ease, box-shadow .15s ease;

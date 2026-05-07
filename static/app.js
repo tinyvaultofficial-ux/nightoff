@@ -740,31 +740,61 @@ function showBetaNotice() {
   // ✨ 잘하는 것
   modal.appendChild(h("div", { class: "beta-notice-section bn-good" }, [
     h("h3", { class: "beta-notice-section-title" }, "✨ 잘하는 것"),
-    h("ul", { class: "beta-notice-list" }, [
-      h("li", {}, "RFP 한 장만 올려주시면 제안서 초안을 자동으로 만들어드려요"),
-      h("li", {}, "발주처도 들여다볼 수 있어요 (발표 준비할 때 좋아요!)"),
-      h("li", {}, "수백 건의 실제 수주 제안서를 학습한 차별화 패턴을 적용해요"),
+    h("p", { class: "beta-notice-paragraph" }, [
+      h("strong", {}, "RFP 한 장"),
+      "으로 제안서 초안이 자동으로 만들어져요. B2G와 B2B의 ",
+      h("strong", {}, "고품질 제안서 수백 건"),
+      "을 학습한 패턴이 적용됐어요.",
+    ]),
+    h("p", { class: "beta-notice-paragraph" }, [
+      h("strong", {}, "발주처 분석"),
+      " (정보/과거 사업/성향), ",
+      h("strong", {}, "입찰참가자격"),
+      " 추출, ",
+      h("strong", {}, "나라장터 공고"),
+      " 실시간 매칭, ",
+      h("strong", {}, "업계 뉴스"),
+      "까지 한 눈에 확인할 수 있어요.",
+    ]),
+    h("p", { class: "beta-notice-paragraph" }, [
+      "시장가를 분석·적용한 ",
+      h("strong", {}, "산출내역서"),
+      "도 함께 제공돼요. 투찰율이 표시되고 엑셀로 다운로드도 할 수 있어 바로 제출이 가능해요.",
     ]),
   ]));
 
-  // ⚠ 아직 부족한 것
+  // ① 아직 부족한 것
   modal.appendChild(h("div", { class: "beta-notice-section bn-warn" }, [
-    h("h3", { class: "beta-notice-section-title" }, "⚠ 아직 부족한 것"),
+    h("h3", { class: "beta-notice-section-title" }, "① 아직 부족한 것"),
+    h("p", { class: "beta-notice-paragraph" }, [
+      "슬라이드는 ",
+      h("strong", {}, "흑백 톤"),
+      "으로 나오게 설계되어 있어요. 과업의 성격과 발주처의 로고 색감 등을 고려해 직접 조정할 수 있어요.",
+    ]),
     h("p", { class: "beta-notice-paragraph" },
-      "RFP 분석과 제안서 생성에는 딥 리서치가 내장되어 있어 시간이 조금 걸려요. 좀 더 정확한 결과를 위한 시간이라 생각해주시면 좋을 것 같아요."),
-    h("p", { class: "beta-notice-paragraph" },
-      "생성되는 제안서는 약 70% 정도의 완성도예요. 가끔 텍스트 정렬이 어긋나거나 슬라이드를 살짝 넘어가는 경우가 있어서, 디자이너나 디자인 가능한 기획자가 마무리해주셔야 합니다."),
+      "텍스트가 슬라이드를 넘어가거나 정렬이 살짝 어긋나는 경우가 있어요."),
+    h("p", { class: "beta-notice-paragraph" }, [
+      "딥 리서치 기능이 내장되어 있어, RFP 분석과 제안서 생성에 ",
+      h("strong", {}, "시간이 좀 걸릴 수 있어요"),
+      ".",
+    ]),
   ]));
 
-  // 🚀 곧 업데이트
+  // 🎯 곧 업데이트
   modal.appendChild(h("div", { class: "beta-notice-section bn-soon" }, [
-    h("h3", { class: "beta-notice-section-title" }, "🚀 곧 업데이트"),
-    h("ul", { class: "beta-notice-list" }, [
-      h("li", {}, "디자인 패키지(2D 키비주얼 + 3D 공간연출)도 함께 구성할 거예요"),
-      h("li", {}, "발주처 성향을 자동으로 학습해요"),
-      h("li", {}, "AI 평가위원과 PT 연습할 수 있어요"),
-      h("li", {}, "나라장터 공고를 자동으로 매칭해드려요"),
-      h("li", {}, "자사 데이터를 학습해 우리 회사만의 제안서를 만들어드려요"),
+    h("h3", { class: "beta-notice-section-title" }, "🎯 곧 업데이트"),
+    h("p", { class: "beta-notice-paragraph" }, [
+      "원스톱 ",
+      h("strong", {}, "디자인 패키지"),
+      " (2D 키비주얼 + 3D 공간연출) 상품을 출시해요.",
+    ]),
+    h("p", { class: "beta-notice-paragraph" }, [
+      h("strong", {}, "우리 회사 데이터"),
+      "가 자동으로 녹아든 제안서를 받아볼 수 있어요.",
+    ]),
+    h("p", { class: "beta-notice-paragraph" }, [
+      h("strong", {}, "AI 평가위원"),
+      "과 발표(PT)를 연습할 수 있어요.",
     ]),
   ]));
 

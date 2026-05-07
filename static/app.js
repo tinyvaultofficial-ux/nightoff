@@ -4019,11 +4019,24 @@ async function renderChat(cid, convId) {
           toast("제안서를 먼저 생성해 주세요 (✨ 버튼)", "", 3500);
         });
         // multi-pass 완료 시 동적 enable — window 영역 hook 통해 외부에서 호출 가능.
-        // (runMultiPassProposal 영역에서 PPTX 변환 완료 후 호출)
+        // (runMultiPassProposal 영역에서 PPTX 변환 완료 후 호출, 멱등 — 두 번 호출 안전)
         window.__nightoff_enableBudgetBtn = () => {
+          const wasDisabled = btn.classList.contains("disabled");
           btn.classList.remove("disabled");
           btn.classList.add("active");
           btn.setAttribute("title", "산출내역서 생성");
+          // 첫 활성화에만 — 펄스 애니메이션 + toast 안내 1회 (사용자 주목도 강화)
+          if (wasDisabled) {
+            btn.classList.add("just-enabled");
+            setTimeout(() => btn.classList.remove("just-enabled"), 3100);  // 1.5s × 2 + 100ms buffer
+            try {
+              const SHOWN_KEY = "nightoff.budget_toast_shown_v1";
+              if (!localStorage.getItem(SHOWN_KEY)) {
+                toast("✨ 제안서 생성 완료. 💰 산출내역서도 함께 만들어 보세요", "ok", 4000);
+                localStorage.setItem(SHOWN_KEY, "1");
+              }
+            } catch {}
+          }
         };
         return btn;
       })(),
@@ -4297,6 +4310,11 @@ async function renderChat(cid, convId) {
               const pptxR = await api.post("/api/proposals/pptx", { conversation_id: cid }, { timeoutMs: 180000 });
               log("step 3 · POST /pptx 응답:", pptxR);
               const pptxUrl = (pptxR && pptxR.url) || null;
+              // PPTX 변환 성공 = 산출내역서 활성화 조건 도달. preview 결과와 무관 (preview 실패해도 산출내역서 가능).
+              // enable 함수는 멱등 — 아래 line ~4316 호출과 중복돼도 두 번째 호출은 wasDisabled=false → 펄스/toast 미발동.
+              if (pptxUrl) {
+                try { window.__nightoff_enableBudgetBtn && window.__nightoff_enableBudgetBtn(); } catch {}
+              }
               // 2단계: PNG 미리보기
               try { shell._setSidePanelPng && shell._setSidePanelPng("rendering"); } catch (e) { log("setSidePanelPng rendering 실패:", e); }
               log("step 4 · GET /preview 호출 시작");

@@ -178,8 +178,9 @@ function getToken() { return localStorage.getItem(AUTH_TOKEN_KEY) || ""; }
 function setToken(t) { localStorage.setItem(AUTH_TOKEN_KEY, t || ""); }
 function clearToken() { localStorage.removeItem(AUTH_TOKEN_KEY); }
 
-function redirectToLogin() {
-  if (AUTH_PUBLIC_PAGES.has(location.pathname)) return;  // 이미 공개 페이지
+function redirectToLogin(force = false) {
+  // force=true: 명시적 로그아웃 등 — 공개 페이지 가드 우회. 디폴트=false (기존 호출처 동작 보존).
+  if (!force && AUTH_PUBLIC_PAGES.has(location.pathname)) return;  // 이미 공개 페이지
   location.href = "/login.html";
 }
 
@@ -533,7 +534,11 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
       ]),
       h("button", {
         class: "sidebar-footer-btn sidebar-footer-btn-logout",
-        onclick: () => { clearToken(); redirectToLogin(); },
+        onclick: () => {
+          clearToken();
+          toast("로그아웃 되었습니다", "ok", 1500);
+          setTimeout(() => redirectToLogin(true), 400);
+        },
         title: "로그아웃",
       }, [
         h("span", { class: "sidebar-footer-btn-icon", html: iconHtml("logout", 16) }),

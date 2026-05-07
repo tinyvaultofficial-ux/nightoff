@@ -3486,6 +3486,16 @@ body, .msg-bubble, .card, .strengths-intro,
   box-shadow: none;
 }
 
+/* 활성화 직후 — 1.5초 × 2회 펄스 (사용자 주목도 강화).
+   .just-enabled 영역 = JS 영역 add 후 3.1초 후 자동 remove. */
+@keyframes budget-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(107, 70, 229, 0.55); transform: scale(1); }
+  50%      { box-shadow: 0 0 0 10px rgba(107, 70, 229, 0);   transform: scale(1.05); }
+}
+.budget-btn.active.just-enabled {
+  animation: budget-pulse 1.5s ease-in-out 2;
+}
+
 /* 모바일 (≤768px) — 위젯 + 모달 영역 정합 */
 @media (max-width: 768px) {
   .closing-card { padding: 10px 12px; gap: 10px; }

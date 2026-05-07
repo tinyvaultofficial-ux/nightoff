@@ -300,13 +300,31 @@ input, select, textarea { font-family: inherit; color: inherit; }
   text-decoration: line-through;
 }
 
-/* 사이드바 하단 — 설정 / 로그아웃 */
+/* 사이드바 하단 — 사용자 정보 / 설정 / 로그아웃 */
 .sidebar-footer {
   margin-top: auto;
   padding: 10px 8px 14px;
   border-top: 1px solid var(--border);
   display: flex; flex-direction: column; gap: 2px;
   background: #fff;
+}
+/* 사용자 정보 한 줄 — 정적 (클릭/hover X). 이메일 길면 truncate. */
+.sidebar-footer-user {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px 8px;
+  margin-bottom: 4px;
+  font-size: 11.5px;
+  color: #888;
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-footer-user-icon {
+  display: inline-flex; align-items: center;
+  color: #aaa;
+  flex-shrink: 0;
+}
+.sidebar-footer-user-email {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  flex: 1;
 }
 .sidebar-footer-btn {
   display: flex; align-items: center; gap: 10px;

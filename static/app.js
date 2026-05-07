@@ -49,6 +49,7 @@ const ICO = {
   eye: `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`,
   settings: `<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>`,
   logout: `<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>`,
+  user: `<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>`,
 };
 
 // "야근 OFF · 퇴근 동료" 시그니처 일러스트 — 빈 상태 / 성공 모먼트에 사용
@@ -522,8 +523,18 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
     ),
     // 본문 — 과업 목록 (스크롤)
     h("nav", { class: "sidebar-nav" }, [tasksListEl]),
-    // 하단 — 설정 / 로그아웃
+    // 하단 — 사용자 정보 / 설정 / 로그아웃
     h("div", { class: "sidebar-footer" }, [
+      // 사용자 정보 한 줄 — 정적 (클릭/hover X). __nightoff_user 미캐시 시 숨김 (방어적).
+      ...((window.__nightoff_user && window.__nightoff_user.email) ? [
+        h("div", {
+          class: "sidebar-footer-user",
+          title: window.__nightoff_user.email,
+        }, [
+          h("span", { class: "sidebar-footer-user-icon", html: iconHtml("user", 14) }),
+          h("span", { class: "sidebar-footer-user-email" }, window.__nightoff_user.email),
+        ]),
+      ] : []),
       h("button", {
         class: "sidebar-footer-btn",
         onclick: () => { if (typeof openSettings === "function") openSettings(); },

@@ -3202,6 +3202,26 @@ body, .msg-bubble, .card, .strengths-intro,
   border: 1px solid var(--border);
   display: flex; flex-direction: column; gap: 16px;
   min-height: 280px;
+  /* 박스 전체 태극기 배경 영역 (::before) — 모서리 14px 정합 */
+  position: relative;
+  overflow: hidden;
+}
+/* 박스 전체 태극기 배경 — opacity 0.10 (균형), pointer-events 통과, z-index 0 */
+.closing-widget::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url('/static/taegukgi.svg') center/cover no-repeat;
+  opacity: 0.10;
+  pointer-events: none;
+  z-index: 0;
+}
+/* 박스 안 영역 — 태극기 위로 (z-index 1) */
+.closing-widget-head,
+.closing-widget-body,
+.closing-widget-footer {
+  position: relative;
+  z-index: 1;
 }
 .closing-widget-head {
   display: flex; align-items: center; gap: 10px;
@@ -3256,7 +3276,8 @@ body, .msg-bubble, .card, .strengths-intro,
   padding: 12px 14px;
   border-radius: 10px;
   border: 1px solid var(--border);
-  background: #fff;
+  /* rgba 0.92 — 태극기 배경 위에서 텍스트 가독성 보호 + 살짝 비침 */
+  background: rgba(255, 255, 255, 0.92);
   text-decoration: none;
   color: inherit;
   transition: border-color .15s ease, transform .12s ease, box-shadow .15s ease;

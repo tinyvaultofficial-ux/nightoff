@@ -1780,8 +1780,8 @@ async function renderDashboard() {
   // 1) 오늘의 팁 (5초 롤링)
   rightCol.appendChild(renderTodayTipCard());
 
-  // 2) (드립) 가짜 스폰서 광고 — 닫기 버튼 눌러도 안 닫힘 ㅋㅋ
-  rightCol.appendChild(renderFakeAdBanner());
+  // 2) 💰 오늘의 무료 크레딧 (퀴즈/로또/운세 3 슬라이드 롤링) — fake-ad 영역 대체
+  rightCol.appendChild(renderDailyCreditCard());
 
   twoCol.appendChild(rightCol);
 
@@ -1863,74 +1863,310 @@ function renderTodayTipCard() {
   return card;
 }
 
-// ---------- 📢 가짜 스폰서 광고 (드립용) ----------
-// 페이지 진입 시 = 3 카피 영역 중 랜덤 1 영역. 각 카피 영역 = 헤드라인 + 본문 + 서브 영역 분리.
-// 서브 영역 = 빈 영역 fix + 진짜 광고 마이크로카피 영역 정합 (회색 #888).
-// tone 영역 X — 직전 commit 9b14241 영역에서 영역 모두 영역 단일 회색 영역으로 영역 통합 영역.
-const FAKE_AD_LINES = [
-  {
-    headline: "오늘도 야근?",
-    body: "NightOff가 있잖아요 😊",
-    sub: "RFP 업로드 → 평균 10분",
-  },
-  {
-    headline: "이번 주 마감 또?",
-    body: "NightOff = 평균 10분",
-    sub: "한국 B2G 학습 13,084 chunks",
-  },
-  {
-    headline: "RFP 분석 어디서 시작?",
-    body: "NightOff = 평가 기준 자동 추출",
-    sub: "30초 안 핵심 정리",
-  },
-];
+// ---------- 💰 오늘의 무료 크레딧 (퀴즈 / 로또 / 운세) ----------
+// 백엔드 endpoint 정합 (PR afb0453):
+//   GET  /api/credit/quiz/today       — 오늘의 퀴즈 1문제 (정답 X)
+//   POST /api/credit/quiz/check       — 정답 검증 (1일 1회, HMAC 매칭)
+//   GET  /api/credit/lotto/today      — 오늘 뽑았는지
+//   POST /api/credit/lotto/draw       — 6개 자동 + 등수 + rate limit 3s
+//   GET  /api/credit/fortune          — 오늘의 운세 (시드 고정)
+//   GET  /api/credit/balance          — 누적 + 오늘 상태
+//
+// 슬라이드 흐름: 퀴즈 → 로또 → 운세 (5초 자동 + 호버 정지 + 화살표/dots).
+// 베타 정합: 횟수만 누적 ("크레딧은 정식 런칭 후 지급").
+function renderDailyCreditCard() {
+  const card = h("div", { class: "daily-credit" });
 
-function renderFakeAdBanner() {
-  const pick = FAKE_AD_LINES[Math.floor(Math.random() * FAKE_AD_LINES.length)];
-  const card = h("div", { class: "fake-ad" });
-
-  // 상단 라벨 + 가짜 닫기 버튼 (눌러도 안 닫힘 ㅋ)
-  card.appendChild(h("div", { class: "fake-ad-head" }, [
-    h("span", { class: "fake-ad-label" }, "스폰서 광고"),
-    h("button", {
-      class: "fake-ad-close", title: "닫기",
-      "aria-label": "닫기",
-      onclick: (e) => {
-        e.stopPropagation();
-        // 흔들리면서 토스트 — 안 닫혀요 ㅋㅋ
-        card.classList.remove("ad-shake");
-        // 강제 reflow → 다시 추가 시 애니메이션 재시작
-        void card.offsetWidth;
-        card.classList.add("ad-shake");
-        const msgs = [
-          "어... 안 닫히네요? 😏",
-          "광고는 열심히 일하는 중이에요 😅",
-          "닫는 척만 했어요 ㅋ",
-          "스폰서가 너무 소중해서요 💸",
-        ];
-        toast(msgs[Math.floor(Math.random() * msgs.length)], "");
-      },
-      html: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
-    }),
+  // ── 헤더 (타이틀 + 누적 chip) ──
+  const chip = h("span", { class: "daily-credit-chip" }, "🔥 0회");
+  card.appendChild(h("div", { class: "daily-credit-head" }, [
+    h("div", { class: "daily-credit-title" }, [
+      h("span", {}, "💰"),
+      h("span", {}, "오늘의 무료 크레딧"),
+    ]),
+    chip,
   ]));
+  card.appendChild(h("div", { class: "daily-credit-sub" }, "심심할 땐 들러보세요"));
 
-  // 본문 영역 — 헤드라인 + 본문 + 서브 영역 분리 (서브 영역 = 회색 미세 영역)
-  card.appendChild(h("div", { class: "fake-ad-headline" }, pick.headline));
-  card.appendChild(h("div", { class: "fake-ad-body" }, pick.body));
-  card.appendChild(h("div", { class: "fake-ad-sub" }, pick.sub));
+  // 누적 chip 갱신 (Q11-4 — 응답 시마다)
+  const updateChip = (n) => {
+    if (typeof n === "number" && n >= 0) chip.textContent = `🔥 ${n}회`;
+  };
+  // 초기 fetch (Q8-c 결합)
+  api.get("/api/credit/balance").then(r => {
+    if (r) updateChip(r.total_credits);
+  }).catch(() => {});
 
-  // 가짜 CTA — 눌러봐도 닫기와 같은 운명 ㅋ
-  card.appendChild(h("button", {
-    class: "fake-ad-cta",
-    onclick: () => {
-      toast("이 광고는 제가 만든 거예요 ㅋㅋ", "");
-    },
-  }, "더 알아보기 →"));
+  // ── 슬라이드 영역 ──
+  const slidesWrap = h("div", { class: "daily-credit-slides" });
+  card.appendChild(slidesWrap);
+  const slides = [
+    renderCreditQuizSlide(updateChip),
+    renderCreditLottoSlide(updateChip),
+    renderCreditFortuneSlide(),
+  ];
+  slides.forEach(s => slidesWrap.appendChild(s));
+  let idx = 0;
+  slides[0].classList.add("active");
 
-  // 푸터 — 진짜 광고 같은 마이크로 텍스트
-  card.appendChild(h("div", { class: "fake-ad-footer" }, "Sponsored · NightOff"));
+  // ── nav (화살표 + dots) ──
+  const dotsWrap = h("div", { class: "daily-credit-dots" });
+  const dots = slides.map((_, i) => {
+    const d = h("div", {
+      class: "daily-credit-dot" + (i === 0 ? " active" : ""),
+      onclick: () => goTo(i),
+    });
+    dotsWrap.appendChild(d);
+    return d;
+  });
+  const navL = h("button", {
+    class: "daily-credit-arrow", "aria-label": "이전 슬라이드",
+    onclick: () => goTo((idx - 1 + slides.length) % slides.length),
+    html: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`,
+  });
+  const navR = h("button", {
+    class: "daily-credit-arrow", "aria-label": "다음 슬라이드",
+    onclick: () => goTo((idx + 1) % slides.length),
+    html: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`,
+  });
+  card.appendChild(h("div", { class: "daily-credit-nav" }, [navL, dotsWrap, navR]));
+
+  // ── 롤링 흐름 (5초 자동 + 호버 정지) ──
+  let rollingTimer = null;
+  function goTo(newIdx) {
+    if (newIdx === idx) return;
+    slides[idx].classList.remove("active");
+    dots[idx].classList.remove("active");
+    idx = newIdx;
+    slides[idx].classList.add("active");
+    dots[idx].classList.add("active");
+  }
+  function startRolling() {
+    if (rollingTimer) return;
+    rollingTimer = setInterval(() => {
+      if (!document.body.contains(card)) {
+        clearInterval(rollingTimer);
+        rollingTimer = null;
+        return;
+      }
+      goTo((idx + 1) % slides.length);
+    }, 5000);
+  }
+  function stopRolling() {
+    if (rollingTimer) {
+      clearInterval(rollingTimer);
+      rollingTimer = null;
+    }
+  }
+  // Q11-2: mouseenter pause / mouseleave resume
+  card.addEventListener("mouseenter", stopRolling);
+  card.addEventListener("mouseleave", startRolling);
+  startRolling();
+
+  // ── 푸터 ──
+  card.appendChild(h("div", { class: "daily-credit-footer" },
+    "베타 기간 (크레딧은 정식 런칭 후 지급)"));
 
   return card;
+}
+
+// ── 슬라이드 1: 오늘의 퀴즈 ──
+function renderCreditQuizSlide(updateChip) {
+  const wrap = h("div", { class: "credit-slide quiz" });
+  wrap.appendChild(h("div", { class: "credit-slide-label" }, "오늘의 퀴즈"));
+  const headline = h("div", { class: "credit-slide-headline" }, "불러오는 중…");
+  wrap.appendChild(headline);
+  const input = h("input", {
+    class: "credit-slide-input",
+    type: "text",
+    placeholder: "정답 입력",
+    maxlength: 100,
+  });
+  wrap.appendChild(input);
+  const submitBtn = h("button", { class: "credit-slide-submit" }, "제출");
+  wrap.appendChild(submitBtn);
+  const resultEl = h("div", { class: "credit-slide-result" });
+  wrap.appendChild(resultEl);
+
+  let busy = false;
+
+  // Q6 정합 — 결과 + 입력 영역 비활성 + "내일 다시 도전!"
+  function showResult(correct, message) {
+    resultEl.className = "credit-slide-result " + (correct ? "correct" : "wrong");
+    resultEl.textContent = message || (correct ? "🎯 정답!" : "💪 다시 도전해보세요");
+    input.disabled = true;
+    submitBtn.disabled = true;
+    submitBtn.textContent = "내일 다시 도전!";
+  }
+
+  // 초기 fetch (Q11-3 — 매번 fresh)
+  api.get("/api/credit/quiz/today").then(r => {
+    if (r && r.question) {
+      headline.textContent = r.question;
+      if (r.attempted && r.result) {
+        showResult(!!r.result.correct, r.result.message);
+      }
+    }
+  }).catch(() => {
+    headline.textContent = "잠시 후 다시 시도해주세요";
+  });
+
+  // Enter 키 정합
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      submitBtn.click();
+    }
+  });
+
+  submitBtn.addEventListener("click", async () => {
+    if (busy || submitBtn.disabled) return;
+    const ans = input.value.trim();
+    if (!ans) {
+      toast("답을 입력해주세요", "");
+      return;
+    }
+    busy = true;
+    submitBtn.disabled = true;
+    try {
+      const r = await api.post("/api/credit/quiz/check", { answer: ans });
+      if (r.already_attempted) {
+        const res = r.result || {};
+        showResult(!!res.correct, res.message || r.message);
+      } else {
+        showResult(!!r.correct, r.message);
+        updateChip(r.total_credits);
+      }
+    } catch (e) {
+      toast("잠시 후 다시 시도해주세요", "error");
+      submitBtn.disabled = false;
+    } finally {
+      busy = false;
+    }
+  });
+
+  return wrap;
+}
+
+// ── 슬라이드 2: 오늘의 로또 (슬롯머신 애니메이션) ──
+function renderCreditLottoSlide(updateChip) {
+  const wrap = h("div", { class: "credit-slide lotto" });
+  wrap.appendChild(h("div", { class: "credit-slide-label" }, "오늘의 로또"));
+  const headline = h("div", { class: "credit-slide-headline" }, "1-45 중 6개 + 보너스 1개");
+  wrap.appendChild(headline);
+  const ballsWrap = h("div", { class: "credit-lotto-balls" });
+  const balls = [];
+  for (let i = 0; i < 6; i++) {
+    const b = h("div", { class: "credit-lotto-ball" }, "?");
+    balls.push(b);
+    ballsWrap.appendChild(b);
+  }
+  wrap.appendChild(ballsWrap);
+  const winningRow = h("div", { class: "credit-lotto-winning-row" });
+  wrap.appendChild(winningRow);
+  const drawBtn = h("button", { class: "credit-slide-submit" }, "번호 뽑기");
+  wrap.appendChild(drawBtn);
+  const resultEl = h("div", { class: "credit-slide-result" });
+  wrap.appendChild(resultEl);
+
+  let busy = false;
+
+  function showResult(result) {
+    if (!result) return;
+    // 사용자 번호 정착
+    (result.user_numbers || []).forEach((n, i) => {
+      if (balls[i]) {
+        balls[i].textContent = String(n);
+        balls[i].classList.remove("spinning");
+      }
+    });
+    // 당첨 번호 + 보너스 (매칭은 색 강조)
+    winningRow.innerHTML = "";
+    winningRow.appendChild(h("span", {}, "당첨:"));
+    const userSet = new Set(result.user_numbers || []);
+    (result.winning || []).forEach(n => {
+      const cls = "credit-lotto-winning-ball" + (userSet.has(n) ? " matched" : "");
+      winningRow.appendChild(h("span", { class: cls }, String(n)));
+    });
+    if (typeof result.bonus === "number") {
+      winningRow.appendChild(h("span", {}, "+"));
+      const bcls = "credit-lotto-winning-ball bonus" +
+        (userSet.has(result.bonus) ? " matched" : "");
+      winningRow.appendChild(h("span", { class: bcls }, String(result.bonus)));
+    }
+    // 등수 메시지 (rank 1-5 = correct, 0 = info)
+    const win = result.rank > 0 && result.rank <= 5;
+    resultEl.className = "credit-slide-result " + (win ? "correct" : "info");
+    resultEl.textContent = result.message || "";
+    drawBtn.disabled = true;
+    drawBtn.textContent = "내일 다시 도전!";
+  }
+
+  // 초기 fetch
+  api.get("/api/credit/lotto/today").then(r => {
+    if (r && r.attempted && r.result) showResult(r.result);
+  }).catch(() => {});
+
+  // 슬롯머신 시뮬레이션 (Q11-1 — 클릭 즉시 시작)
+  function startSpinning() {
+    balls.forEach(b => {
+      b.classList.add("spinning");
+      let count = 0;
+      const id = setInterval(() => {
+        count++;
+        b.textContent = String(Math.floor(Math.random() * 45) + 1);
+        if (count > 24) clearInterval(id);  // ~2초 (80ms × 24)
+      }, 80);
+    });
+  }
+
+  drawBtn.addEventListener("click", async () => {
+    if (busy || drawBtn.disabled) return;
+    busy = true;
+    drawBtn.disabled = true;
+    drawBtn.textContent = "뽑는 중…";
+    startSpinning();
+    try {
+      const r = await api.post("/api/credit/lotto/draw", {});
+      // 응답 도착 후 ~1.2초 후 결과 정착 (슬롯머신 자연스럽게 마무리)
+      setTimeout(() => {
+        const result = (r && r.result) || null;
+        if (result) {
+          showResult(result);
+          if (!r.already_attempted) updateChip(r.total_credits);
+        }
+      }, 1200);
+    } catch (e) {
+      // rate limit (429) 또는 다른 에러
+      const msg = (e && e.message) || "잠시 후 다시 시도해주세요";
+      balls.forEach(b => {
+        b.classList.remove("spinning");
+        b.textContent = "?";
+      });
+      resultEl.className = "credit-slide-result wrong";
+      resultEl.textContent = msg;
+      drawBtn.disabled = false;
+      drawBtn.textContent = "번호 뽑기";
+    } finally {
+      busy = false;
+    }
+  });
+
+  return wrap;
+}
+
+// ── 슬라이드 3: 오늘의 운세 (보기만) ──
+function renderCreditFortuneSlide() {
+  const wrap = h("div", { class: "credit-slide fortune" });
+  wrap.appendChild(h("div", { class: "credit-slide-label" }, "오늘의 운세"));
+  const msg = h("div", { class: "credit-fortune-message" }, "불러오는 중…");
+  wrap.appendChild(msg);
+  api.get("/api/credit/fortune").then(r => {
+    if (r && r.message) msg.textContent = r.message;
+  }).catch(() => {
+    msg.textContent = "잠시 후 다시 시도해주세요";
+  });
+  return wrap;
 }
 
 // 마감일 문자열 → D-day 계산 (RFP 분석에서 가져온 deadline 처리)
@@ -2116,7 +2352,7 @@ function renderClosingNoticesWidget() {
   const wrap = h("div", { class: "card closing-widget" });
   // 헤더
   wrap.appendChild(h("div", { class: "closing-widget-head" }, [
-    h("span", { class: "closing-widget-icon" }, "📡"),
+    h("span", { class: "closing-widget-icon" }, "🚨"),
     h("h2", { class: "closing-widget-title" }, "D-7 마감임박 공고, NightOff로 도전하세요!"),
   ]));
   // 본문 (로딩 / 에러 / 빈 / 카드 list)

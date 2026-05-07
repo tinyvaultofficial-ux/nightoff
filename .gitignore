@@ -54,3 +54,8 @@ static/fonts/*.otf
 master_templates/*.pptx
 master_template_analysis.json
 master_template_analysis_report.txt
+
+# 크레딧 풀 정답 평문 — 절대 commit X (정답 노출 위험).
+# data/credit_pools_seed.py 는 hash 인라인이라 commit OK,
+# 다만 _credit_data_input/ 안의 raw md 는 정답 평문 포함 → ignore.
+_credit_data_input/

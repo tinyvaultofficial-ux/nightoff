@@ -29,13 +29,15 @@ class MockMessages:
                 "slide_height": 7.5,
                 "total_slides": 4,
                 "outline": [
-                    {"page": 1, "section": "표지", "governing": "테스트 표지",
+                    # 1차-2 영역 정합 — governing → governing_main / governing_sub 분리
+                    {"page": 1, "section": "표지", "governing_main": "테스트 표지", "governing_sub": [],
                      "key_msgs": ["메시지1", "메시지2"], "viz_hint": "표지"},
-                    {"page": 2, "section": "목차", "governing": "CONTENTS",
+                    {"page": 2, "section": "목차", "governing_main": "CONTENTS", "governing_sub": [],
                      "key_msgs": ["I", "II", "III"], "viz_hint": "목차"},
-                    {"page": 3, "section": "Ⅰ.1 추진배경", "governing": "추진 배경 거버닝",
+                    {"page": 3, "section": "Ⅰ.1 추진배경", "governing_main": "추진 배경 거버닝",
+                     "governing_sub": ["행사기간 2026.10.17", "참여 5만 명"],
                      "key_msgs": ["배경1", "배경2", "배경3"], "viz_hint": "AS-IS/TO-BE 비교"},
-                    {"page": 4, "section": "마무리", "governing": "감사합니다",
+                    {"page": 4, "section": "마무리", "governing_main": "감사합니다", "governing_sub": [],
                      "key_msgs": ["연락처"], "viz_hint": "마무리"},
                 ],
             }, ensure_ascii=False)

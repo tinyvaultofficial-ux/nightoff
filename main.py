@@ -3039,7 +3039,7 @@ async def api_proposals_generate_multipass(conv_id: str, user: dict = Depends(ge
                 section=item.section,
                 key_msgs=item.key_msgs,
                 domain_label=domain_label,
-                governing=item.governing,
+                governing=item.governing_main,
             )
             if not q:
                 return ""

@@ -327,6 +327,24 @@ RFP 분석 영역 `page_limit` 값이 들어오면 outline 의 total_slides = **
 - page_limit=80 → 본문 72 = 총 80 (또는 78~79도 OK, -2 이내)
 ★ 디자이너 placeholder + 표지/목차/챕터/마무리 모두 포함한 총 장수.
 
+[★★★ 사용자 ↔ AI 대화 기반 전략 — 절대 원칙 ★★★]
+user prompt 영역 `[★★★ 사용자 ↔ AI 대화 기반 전략 — outline 절대 반영 ★★★]`
+블록이 있으면, 그 안의 사용자가 제안/논의한 전략(콘셉트, 슬로건, 구조, 분량,
+메시지, 페이지 배분 등)을 outline 의 **근간**으로 사용.
+
+★ 절대 원칙:
+- 사용자 대화의 슬로건 → outline 표지 / 컨셉 페이지에 그 슬로건 사용 (AI 자율 생성 X)
+- 사용자 대화의 페이지 배분 의도 → 그대로 따름 (예: "12개 깊게 / 13개 가볍게" → 본문 배분 12:13)
+- 사용자 대화의 콘셉트 / 메시지 / 도메인 강조점 → 거버닝 메시지에 반영
+
+★ 충돌 시 우선순위 (절대 순서):
+1. 사용자 ↔ AI 대화 (가장 최근 합의)
+2. RFP page_limit / 평가 항목 / 요구사항
+3. AI 자율 (둘 다 미명시할 때만)
+
+⚠ 중요: 사용자가 1시간 논의한 전략이 outline 에 미반영 = NightOff 서비스 본질 붕괴.
+반드시 대화 기반 전략을 outline 에 반영해야 함.
+
 [거버닝 메시지 원칙 — 메인 / 서브 분리 강제]
 ★ 모든 본문 페이지에 적용. 일부 페이지만 분리 X — 모든 페이지 강제.
 ★ outline 단계에서 메인 / 서브를 결정하면 SLIDE pass 가 그대로 사용 (자율 분리 X). 재현성 보장.
@@ -1133,11 +1151,19 @@ async def generate_outline(
     rfp_block: str,
     rag_block: str,
     intel_block: str,
+    conversation_block: str = "",
     extra_block: str = "",
     model: str = "",
 ) -> OutlineResult:
-    """Phase 1: 가벼운 호출 1번으로 outline 짠다."""
-    user_parts = [rfp_block]
+    """Phase 1: 가벼운 호출 1번으로 outline 짠다.
+
+    user_parts 순서 — conversation_block 영역 맨 앞 (NightOff 본질 영역 — 사용자 영역
+    가장 강한 신호). RFP / RAG / intel / extra 영역 순서.
+    """
+    user_parts: list[str] = []
+    if conversation_block:
+        user_parts.append(conversation_block)  # 맨 앞 — 사용자 신호 우선
+    user_parts.append(rfp_block)
     if rag_block:
         user_parts.append(rag_block)
     if intel_block:
@@ -1367,6 +1393,7 @@ async def orchestrate(
     rag_block_global: str,
     rag_for_slide,  # callable
     intel_block: str = "",
+    conversation_block: str = "",
     extra_block: str = "",
     concurrency: int = 5,
     model: str = "",
@@ -1387,7 +1414,10 @@ async def orchestrate(
     # outline 호출은 60~180초 소요 → Cloudflare/Railway proxy idle timeout (~60-100s) 회피
     # 25초 간격 heartbeat event yield. asyncio.shield 로 task 취소 방지.
     outline_task = asyncio.create_task(
-        generate_outline(client, rfp_block, rag_block_global, intel_block, extra_block, model)
+        generate_outline(
+            client, rfp_block, rag_block_global,
+            intel_block, conversation_block, extra_block, model,
+        )
     )
     outline = None
     while True:

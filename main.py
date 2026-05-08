@@ -450,6 +450,11 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     # 오늘의 무료 크레딧 — 누적 횟수 (베타 = 환산 X, 런칭 시 정밀 환산).
     # 퀴즈 정답 / 로또 등수 / 운세는 합산해서 단순 카운터로 누적.
     ("users",         "credit_count",         "INTEGER DEFAULT 0"),
+    # 시스템 메시지 종류 — 일반 대화 메시지 외 자동 생성된 시스템 메시지 분류용.
+    # ''(빈 문자열) = 일반 user/assistant 메시지.
+    # 'rfp_opener' = RFP 분석 완료 시점에 자동 INSERT 되는 첫 AI 메시지 (1 conv 당 1건만).
+    # 향후 다른 시스템 메시지 종류 추가 가능 (e.g. 'system_announce' 등).
+    ("messages",      "system_kind",          "TEXT DEFAULT ''"),
 ]
 
 
@@ -2270,11 +2275,36 @@ def api_conv_get(conv_id: str, user: dict = Depends(get_current_user)):
             (conv_id,),
         ).fetchall()
         client = db.execute("SELECT * FROM clients WHERE id=?", (conv["client_id"],)).fetchone()
+
+    rfp = _get_rfp_aggregated(conv["client_id"]) or None
+
+    # Lazy backfill — 본 fix 이전에 RFP 분석된 기존 conversation 영역엔 rfp_opener 메시지가 없음.
+    # 첫 진입 시 1회 자동 INSERT (system_kind='rfp_opener', conv.created_at 시점 기록 영역
+    # 정렬 맨 앞). 이후 재진입엔 idempotent — _ensure 가드 영역에서 SKIP.
+    if rfp:
+        try:
+            has_opener = any(
+                (dict(m).get("role") == "assistant" and dict(m).get("system_kind") == "rfp_opener")
+                for m in msgs
+            )
+        except Exception:
+            has_opener = False
+        if not has_opener:
+            try:
+                _ensure_rfp_opener_messages(conv["client_id"], rfp)
+                with get_db() as db:
+                    msgs = db.execute(
+                        "SELECT * FROM messages WHERE conversation_id=? ORDER BY created_at ASC",
+                        (conv_id,),
+                    ).fetchall()
+            except Exception as e:
+                log.warning("RFP opener lazy backfill 실패 (무시): %s", e)
+
     return {
         "conversation": dict(conv),
         "messages": [dict(m) for m in msgs],
         "client": dict(client) if client else None,
-        "rfp_analysis": _get_rfp_aggregated(conv["client_id"]) or None,
+        "rfp_analysis": rfp,
     }
 
 
@@ -3131,6 +3161,96 @@ async def api_proposals_generate_multipass(conv_id: str, user: dict = Depends(ge
 VALID_ROLES = {"공고문", "과업지시서", "제안요청서", "기타"}
 
 
+def _build_rfp_opener_text(rfp: Optional[dict]) -> str:
+    """RFP 분석 dict → opener 본문 (한국어 인사 + 핵심 요약).
+
+    프론트 영역 (static/app.js:4332-4356) 와 정확히 동일 흐름의 백엔드 미러.
+    DB 에 영구 저장하기 위해 백엔드에서 동일 텍스트 생성.
+
+    실제 정보 1개도 없으면 '' 반환 → 호출자가 INSERT 자체를 skip.
+    """
+    if not rfp:
+        return ""
+    has_real = bool(
+        rfp.get("title") or rfp.get("key_requirements") or
+        rfp.get("summary") or rfp.get("budget") or rfp.get("deadline")
+    )
+    if not has_real:
+        return ""
+
+    lines = ["안녕하세요! 저는 제안서 수주 도우미예요 ✨", ""]
+    title = (rfp.get("title") or "").strip()
+    if title:
+        lines.append(f"이번 과업은 **「{title}」** 이네요.")
+    bits: list[str] = []
+    budget = (rfp.get("budget") or "").strip()
+    if budget:
+        bits.append(f"예산 {budget}")
+    deadline = (rfp.get("deadline") or "").strip()
+    if deadline:
+        bits.append(f"마감 {deadline}")
+    kr = rfp.get("key_requirements")
+    if isinstance(kr, list) and kr:
+        bits.append(f"핵심 요구사항 {len(kr)}개")
+    if bits:
+        lines.append(" · ".join(bits) + " — RFP 잘 받았어요 👀")
+    lines.append("")
+    lines.append(
+        "어떤 부분부터 함께 잡아볼까요? 전체 초안을 만들어달라고 하셔도 좋고, "
+        "특정 섹션만 먼저 의논해도 좋아요 😊"
+    )
+    return "\n".join(lines)
+
+
+def _ensure_rfp_opener_messages(cid: str, analysis: Optional[dict]) -> int:
+    """RFP 분석 결과 → 해당 client 영역 모든 conversations 영역 RFP opener 메시지 동기화.
+
+    동작:
+      - 해당 conversation 에 system_kind='rfp_opener' 메시지 X → INSERT (created_at = conv.created_at)
+      - 이미 존재 → UPDATE (RFP 재분석 영역에서 텍스트 갱신)
+      - INSERT 시 created_at 영역 = conversation 영역 created_at 으로 강제 → ORDER BY ASC 영역 맨 앞 정렬
+
+    return: 영역 처리된 conversation 영역 영역 (INSERT + UPDATE 합산)
+    """
+    text = _build_rfp_opener_text(analysis)
+    if not text:
+        return 0
+
+    touched = 0
+    with get_db() as db:
+        convs = db.execute(
+            "SELECT id, created_at FROM conversations WHERE client_id=?", (cid,)
+        ).fetchall()
+        for cv in convs:
+            existing = db.execute(
+                "SELECT id FROM messages "
+                "WHERE conversation_id=? AND system_kind='rfp_opener' LIMIT 1",
+                (cv["id"],),
+            ).fetchone()
+            if existing:
+                db.execute(
+                    "UPDATE messages SET content=? WHERE id=?",
+                    (text, existing["id"]),
+                )
+            else:
+                msg_id = uuid.uuid4().hex[:12]
+                cv_created = cv["created_at"] or None
+                if cv_created:
+                    db.execute(
+                        "INSERT INTO messages(id, conversation_id, role, content, system_kind, created_at) "
+                        "VALUES(?, ?, 'assistant', ?, 'rfp_opener', ?)",
+                        (msg_id, cv["id"], text, cv_created),
+                    )
+                else:
+                    db.execute(
+                        "INSERT INTO messages(id, conversation_id, role, content, system_kind) "
+                        "VALUES(?, ?, 'assistant', ?, 'rfp_opener')",
+                        (msg_id, cv["id"], text),
+                    )
+            touched += 1
+    return touched
+
+
 def _run_rfp_aggregate(cid: str) -> dict:
     """현재 client의 rfp_files 전체를 role과 함께 하나의 프롬프트로 묶어 분석."""
     with get_db() as db:
@@ -3226,6 +3346,16 @@ def _run_rfp_aggregate(cid: str) -> dict:
             else:
                 log.info("발주처 자동 추출 실패/공백 · client=%s · raw=%r",
                          cid[:12], analysis.get("organization"))
+
+        # RFP opener 메시지 동기화 — 해당 client 의 모든 conversations 에 영역
+        # system_kind='rfp_opener' 메시지를 1건만 보장 INSERT/UPDATE.
+        # 재진입 시에도 첫 AI 메시지 영구 보존 (DB 영역 source-of-truth).
+        try:
+            n = _ensure_rfp_opener_messages(cid, analysis)
+            if n:
+                log.info("RFP opener 동기화 OK · client=%s · conv=%d", cid[:12], n)
+        except Exception as e:
+            log.warning("RFP opener 동기화 실패 (무시): %s", e)
 
     # 프로파일 자동 업데이트 (best-effort, 실패해도 RFP 분석은 유지)
     try:

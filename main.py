@@ -3312,6 +3312,63 @@ def _get_conversation_block(conv_id: str, max_chars: int = 6000) -> str:
     return "\n".join(lines)
 
 
+def _outline_to_text(payload: dict) -> str:
+    """multi-pass payload 영역 outline 영역 → 산출내역서 영역 평문 텍스트.
+
+    payload 영역 'outline' 키 (proposal_multi_pass.py 영역 신규 추가됨):
+      [{page, section, governing_main, governing_sub, key_msgs}, ...]
+    quantitative_locks 영역 함께 inject.
+
+    Fallback — 'outline' 키 X (구 multi-pass 결과 / single-pass HTML 영역) → 빈 문자열 반환.
+    호출자 영역 'slides' 영역 section 만 추출 또는 HTML strip 영역으로 처리.
+    """
+    if not isinstance(payload, dict):
+        return ""
+    outline = payload.get("outline") or []
+    if not isinstance(outline, list) or not outline:
+        return ""
+    lines = [f"사업명: {payload.get('title', '')}"]
+
+    qlocks = payload.get("quantitative_locks") or {}
+    if isinstance(qlocks, dict) and qlocks:
+        lines.append("")
+        lines.append("[정량 lock — RFP 영역 추출]")
+        label_map = {
+            "event_date": "행사 일자", "event_period": "사업/행사 기간",
+            "event_venue": "행사 장소", "event_capacity": "예상 참가자 수",
+            "budget_amount": "예산 금액", "budget_period": "예산 적용 기간",
+        }
+        for k, v in qlocks.items():
+            if v is None or (isinstance(v, str) and not v.strip()):
+                continue
+            label = label_map.get(str(k), str(k))
+            lines.append(f"  {label}: {v}")
+
+    lines.append("")
+    lines.append("[제안서 outline — 페이지 / 섹션 / 메시지 영역]")
+    for o in outline:
+        if not isinstance(o, dict):
+            continue
+        page = o.get("page", "?")
+        section = (o.get("section") or "").strip()
+        gov_main = (o.get("governing_main") or "").strip()
+        line = f"p{page} | {section}"
+        if gov_main:
+            line += f" | {gov_main}"
+        sub = o.get("governing_sub") or []
+        if isinstance(sub, list) and sub:
+            sub_str = ", ".join(str(s) for s in sub if s)
+            if sub_str:
+                line += f" | sub: {sub_str}"
+        msgs = o.get("key_msgs") or []
+        if isinstance(msgs, list) and msgs:
+            msgs_str = " / ".join(str(m) for m in msgs[:3] if m)
+            if msgs_str:
+                line += f" | msgs: {msgs_str}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
 def _run_rfp_aggregate(cid: str) -> dict:
     """현재 client의 rfp_files 전체를 role과 함께 하나의 프롬프트로 묶어 분석."""
     with get_db() as db:
@@ -4917,9 +4974,25 @@ def api_budget_generate(body: BudgetRequest, user: dict = Depends(get_current_us
 
     rfp = _get_rfp_aggregated(client_id) or {}
     proposal_html = last_msg["content"] if last_msg else ""
-    # HTML 태그 제거한 텍스트 요약 (간단)
-    proposal_text = re.sub(r"<[^>]+>", " ", proposal_html)
-    proposal_text = re.sub(r"\s+", " ", proposal_text)[:8000]
+
+    # 신규 — multi-pass payload 영역 outline 평문 추출 (도형 JSON 사고 fix).
+    # last_msg.content = JSON dump 영역 multi-pass 결과 ('outline' 키 포함) → 평문 outline 사용.
+    # JSON parse 실패 / 'outline' 키 X 영역 = single-pass HTML 또는 구 multi-pass → fallback.
+    outline_text = ""
+    proposal_text = ""
+    try:
+        payload = json.loads(proposal_html) if proposal_html else None
+    except (json.JSONDecodeError, TypeError):
+        payload = None
+    if isinstance(payload, dict):
+        outline_text = _outline_to_text(payload)
+    if not outline_text:
+        # Fallback — single-pass HTML 영역 (구 흐름) → HTML 태그 제거
+        proposal_text = re.sub(r"<[^>]+>", " ", proposal_html)
+        proposal_text = re.sub(r"\s+", " ", proposal_text)[:8000]
+
+    # 신규 — 사용자 ↔ AI 대화 블록 (NightOff 본질 — 산출내역서 영역도 동일 패턴 inject)
+    conversation_block = _get_conversation_block(body.conversation_id)
 
     # RFP 예산 영역 parse — 검증 / 자동 조정 영역에서 사용
     budget_raw = rfp.get("budget", "") or ""
@@ -4935,12 +5008,30 @@ def api_budget_generate(body: BudgetRequest, user: dict = Depends(get_current_us
     else:
         budget_hint = f"예산: {budget_raw}"
 
-    ctx = f"""사업명: {rfp.get('title', '')}
-{budget_hint}
-요구사항: {json.dumps(rfp.get('key_requirements', []), ensure_ascii=False)}
-
-제안서 본문 요약:
-{proposal_text}"""
+    # 컨텍스트 영역 — 우선순위: 1) 사용자 대화 → 2) RFP → 3) 제안서 outline
+    ctx_parts: list[str] = []
+    if conversation_block:
+        ctx_parts.append(conversation_block)
+        ctx_parts.append("")
+    ctx_parts.append("[RFP / 사업 영역]")
+    ctx_parts.append(f"사업명: {rfp.get('title', '')}")
+    ctx_parts.append(budget_hint)
+    ctx_parts.append(f"요구사항: {json.dumps(rfp.get('key_requirements', []), ensure_ascii=False)}")
+    if outline_text:
+        ctx_parts.append("")
+        ctx_parts.append("[제안서 outline (multi-pass 결과)]")
+        ctx_parts.append(outline_text)
+    elif proposal_text:
+        ctx_parts.append("")
+        ctx_parts.append("[제안서 본문 요약]")
+        ctx_parts.append(proposal_text)
+    ctx_parts.append("")
+    ctx_parts.append("[★★★ 산출내역서 영역 우선순위 ★★★]")
+    ctx_parts.append("1순위 — 사용자 ↔ AI 대화 (예산/인력/기간 의도 명시 영역 그대로 반영)")
+    ctx_parts.append("2순위 — RFP 예산 한계 + 요구사항 (한계 안에서 산정)")
+    ctx_parts.append("3순위 — 제안서 outline 구조 (페이지 영역 영역 인력/규모 추정)")
+    ctx_parts.append("⚠ 사용자 대화에 인력/기간/규모 명시 시 그대로 반영. 자율 판단으로 새 인력 만들지 X.")
+    ctx = "\n".join(ctx_parts)
 
     try:
         client = require_client()

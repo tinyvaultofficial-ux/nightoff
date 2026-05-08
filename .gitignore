@@ -64,5 +64,9 @@ _credit_data_input/
 # 스크립트와 결과 모두 워크트리 보존, 운영 X — git 트래킹 X.
 _phase_2*
 _phase_1cha2_*
+_phase_1cha3_*
+_phase_2cha_*
 _test_quant_lock_phase_*
 _test_phase_1cha2_*
+_test_phase_1cha3_*
+_test_phase_2cha_*

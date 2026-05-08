@@ -1399,7 +1399,9 @@ async def orchestrate(
         "title": outline.title,
         "domain": outline.domain,
         "outline": [
-            {"page": it.page, "section": it.section, "governing": it.governing}
+            # 1차-2 hotfix: it.governing 영역 X — governing_main 으로 매핑.
+            # 프론트 영역 (static/app.js) 영역 outline[i].governing 참조 영역 호환 보존.
+            {"page": it.page, "section": it.section, "governing": it.governing_main}
             for it in outline.outline
         ],
         "elapsed_sec": round(time.time() - t0, 1),

@@ -3102,6 +3102,11 @@ async def api_proposals_generate_multipass(conv_id: str, user: dict = Depends(ge
     except Exception:
         intel_block = ""
 
+    # 대화 히스토리 블록 — outline pass 영역 inject (NightOff 서비스 본질 영역).
+    # ⚠ 영역 호출 시점 — "✨ 제안서 생성 시작" user 메시지 INSERT 영역 영역 호출 →
+    #    helper 영역 영역 영역 메시지 영역 영역 (content 매칭). 정합 확인됨.
+    conversation_block = _get_conversation_block(conv_id)
+
     # 사용자 메시지 저장 ("제안서 만들어줘" 명시 메시지로)
     user_msg_id = uuid.uuid4().hex[:12]
     with get_db() as db:
@@ -3130,6 +3135,7 @@ async def api_proposals_generate_multipass(conv_id: str, user: dict = Depends(ge
                 rag_block_global=rag_block_global,
                 rag_for_slide=_rag_for_slide,
                 intel_block=intel_block,
+                conversation_block=conversation_block,
                 extra_block="",
                 concurrency=5,
                 model=model,
@@ -3249,6 +3255,61 @@ def _ensure_rfp_opener_messages(cid: str, analysis: Optional[dict]) -> int:
                     )
             touched += 1
     return touched
+
+
+def _get_conversation_block(conv_id: str, max_chars: int = 6000) -> str:
+    """대화 히스토리 → outline pass user prompt inject 텍스트 블록.
+
+    제외:
+      - system_kind='rfp_opener' (RFP 분석 인사 — rfp_block 영역 중복 회피)
+      - "✨ 제안서 생성 시작" 트리거 메시지 (의미 X)
+
+    포함: 사용자 ↔ AI 영역 자연어 대화 (전략 / 콘셉트 / 슬로건 / 분량 의도 등).
+    최근 30개 + 6000자 cap (1메시지 영역 600자 cap, 토큰 관리).
+
+    NightOff 서비스 본질 — 사용자가 1시간 영역 논의한 전략 영역 outline 영역 영역 반영
+    위해 outline pass user prompt 맨 앞 영역 inject 됨.
+    """
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT role, content, COALESCE(system_kind, '') AS sk "
+            "FROM messages WHERE conversation_id=? "
+            "AND role IN ('user', 'assistant') "
+            "AND COALESCE(system_kind, '') != 'rfp_opener' "
+            "AND content != '✨ 제안서 생성 시작' "
+            "ORDER BY created_at DESC LIMIT 30",
+            (conv_id,),
+        ).fetchall()
+    if not rows:
+        return ""
+    rows = list(reversed(rows))  # 시간 순 복원
+
+    lines = ["[★★★ 사용자 ↔ AI 대화 기반 전략 — outline 절대 반영 ★★★]"]
+    total = 0
+    for r in rows:
+        prefix = "사용자" if r["role"] == "user" else "AI"
+        body = (r["content"] or "").strip()
+        if not body:
+            continue
+        if len(body) > 600:
+            body = body[:600] + "…"
+        line = f"[{prefix}] {body}"
+        if total + len(line) > max_chars:
+            lines.append("...(이전 내용 생략)")
+            break
+        lines.append(line)
+        total += len(line)
+
+    if len(lines) == 1:  # 본문 0
+        return ""
+
+    lines.append("")
+    lines.append(
+        "⚠ 위 대화에서 사용자가 제안/논의한 전략 (콘셉트, 슬로건, 구조, 분량, 메시지 등) "
+        "을 outline 의 **근간**으로 사용. 자율 판단으로 새 전략 만들지 X. "
+        "충돌 시: 1순위 사용자 대화 > 2순위 RFP 요구사항 > 3순위 AI 자율."
+    )
+    return "\n".join(lines)
 
 
 def _run_rfp_aggregate(cid: str) -> dict:

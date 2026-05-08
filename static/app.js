@@ -5157,6 +5157,11 @@ async function runMultiPassProposal({ convId, asstEl, bubble, progress, body, ms
       `</div>`;
     // 우측 미리보기 패널 갱신 — 기존 함수 활용
     try { window.shellSetSidePanelPng && window.shellSetSidePanelPng(pptxResp.url); } catch {}
+    // 산출내역서 버튼 활성화 — PPTX 변환 성공 = 활성화 조건 도달 (멱등 함수, 안전).
+    // hotfix: runMultiPassProposal 영역 enable 호출 누락 영역 영역 (이전 Fix 1A-1 영역 SSE 흐름 영역만 적용).
+    if (pptxResp && pptxResp.url) {
+      try { window.__nightoff_enableBudgetBtn && window.__nightoff_enableBudgetBtn(); } catch {}
+    }
   } catch (e) {
     bubble.innerHTML = `<span style="color:var(--danger);">❌ PPTX 변환 실패: ${escapeHtml(e.message || String(e))}</span>`;
   }

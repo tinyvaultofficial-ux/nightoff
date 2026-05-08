@@ -59,3 +59,8 @@ master_template_analysis_report.txt
 # data/credit_pools_seed.py 는 hash 인라인이라 commit OK,
 # 다만 _credit_data_input/ 안의 raw md 는 정답 평문 포함 → ignore.
 _credit_data_input/
+
+# 시스템 프롬프트 정밀화 mock test 산출물 (재실행 시 자동 생성).
+# 스크립트와 결과 모두 워크트리 보존, 운영 X — git 트래킹 X.
+_phase_2*
+_test_quant_lock_phase_*

@@ -1489,6 +1489,19 @@ async def orchestrate(
         "slide_width": outline.slide_width,
         "slide_height": outline.slide_height,
         "slides": final_slides,
+        # 산출내역서 영역 활용 — outline 평문 변환 helper (main.py:_outline_to_text) 가 사용.
+        # PPTX 생성 (pptx_generator.generate_from_shape_json) 영역 영역 영역 X (slides 영역 영역).
+        "outline": [
+            {
+                "page": it.page,
+                "section": it.section,
+                "governing_main": it.governing_main,
+                "governing_sub": it.governing_sub,
+                "key_msgs": it.key_msgs,
+            }
+            for it in outline.outline
+        ],
+        "quantitative_locks": outline.quantitative_locks,
     }
 
     yield {

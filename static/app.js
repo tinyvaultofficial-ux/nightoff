@@ -4262,6 +4262,22 @@ async function renderChat(cid, convId) {
           }
         },
       }),
+      // PPTX 다운로드 버튼 — 재진입 시 (multi-pass 완료된 conversation) 활성.
+      // 활성화 판별: data.conversation.pptx_path 존재 시. 미존재 = null (DOM X).
+      // ⚠ multi-pass 직후엔 bubble 영역 inline ⬇ PPTX 다운로드 영역 별도 — 본 헤더 버튼은
+      //   재진입 / 새로고침 시 영역 다운로드 흐름 보존용 (기존 사고 fix).
+      (function () {
+        const hasPptx = !!(data.conversation && data.conversation.pptx_path);
+        if (!hasPptx) return null;
+        return h("a", {
+          class: "btn pptx-dl-btn active",
+          href: data.conversation.pptx_path,
+          download: "",
+          title: "저장된 제안서 다운로드",
+          style: "text-decoration:none;",
+          html: `<span style="margin-right:4px;">⬇</span><span>제안서 다운로드</span>`,
+        });
+      })(),
       // 산출내역서 버튼 — 조건부 활성화 (제안서 생성 후만 클릭 가능).
       // 시각 영역 (사용자 명시):
       //   활성화 = 흰 배경 + 보라 outline + 보라 텍스트 + 💰 (✨ 버튼과 동등 사이즈)
@@ -5028,6 +5044,18 @@ async function runMultiPassProposal({ convId, asstEl, bubble, progress, body, ms
   const fillEl = progress.el.querySelector(".sp-bar-fill");
   progress.el.classList.remove("indeterminate");
 
+  // 자동 스크롤 — bubble.innerHTML 갱신 시 화면 위치 변동 사고 fix.
+  // 사용자가 위로 스크롤하면 자동 스크롤 일시 정지 (chat 영역 동일 패턴).
+  let userScrolledUp = false;
+  const onUserScroll = () => {
+    const distFromBottom = body.scrollHeight - body.scrollTop - body.clientHeight;
+    userScrolledUp = distFromBottom > 200;
+  };
+  body.addEventListener("scroll", onUserScroll);
+  const autoScroll = () => {
+    if (!userScrolledUp) body.scrollTop = body.scrollHeight;
+  };
+
   // ─ ETA 계산 ─ slide_done 마다 평균 갱신
   function calcEta(doneCount, total) {
     if (slidesStart === 0 || doneCount === 0) return "";
@@ -5062,6 +5090,7 @@ async function runMultiPassProposal({ convId, asstEl, bubble, progress, body, ms
     bubble.innerHTML =
       headerHtml +
       `<div class="mp-slide-list">${renderSlideList()}</div>`;
+    autoScroll();   // bubble height 변동 시 사용자가 최신 진행 영역 영역 영역 영역 영역 영역
   }
 
   while (true) {
@@ -5138,6 +5167,7 @@ async function runMultiPassProposal({ convId, asstEl, bubble, progress, body, ms
             (failCount > 0 ? `<div style="color:#c43;">⚠ ${failCount}장 실패 (placeholder 처리됨)</div>` : "") +
             `<div class="muted small" style="margin-top:6px;">PPTX 변환 중… 🔨</div>` +
           `</div>`;
+        autoScroll();
       }
     }
   }
@@ -5156,6 +5186,7 @@ async function runMultiPassProposal({ convId, asstEl, bubble, progress, body, ms
         `<div class="muted small" style="margin-top:6px;">우측 미리보기에서 확인하세요 😊</div>` +
         `<a href="${pptxResp.url}" download="${pptxResp.filename || ''}" style="display:inline-block; margin-top:8px; padding:8px 14px; background:#1A1A1A; color:#fff; border-radius:8px; text-decoration:none; font-weight:600;">⬇ PPTX 다운로드</a>` +
       `</div>`;
+    autoScroll();
     // 우측 미리보기 패널 갱신 — 기존 함수 활용
     try { window.shellSetSidePanelPng && window.shellSetSidePanelPng(pptxResp.url); } catch {}
     // 산출내역서 버튼 활성화 — PPTX 변환 성공 = 활성화 조건 도달 (멱등 함수, 안전).

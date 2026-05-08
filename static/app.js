@@ -1009,7 +1009,8 @@ function recalcBudget(data) {
   data.vat         = Math.round(data.total * 0.10);
   data.grand_total = data.total + data.vat;                     // 총합계 (VAT 포함)
   // 투찰율 영역 적용 영역 — 사용자 입력 (없으면 기본 94%)
-  if (typeof data.bid_rate !== "number" || data.bid_rate < 0.5 || data.bid_rate > 1) {
+  // cap 영역 0.85~0.95 영역 — slider 영역 정합 영역 (UI 영역 영역 영역 영역 영역 fallback).
+  if (typeof data.bid_rate !== "number" || data.bid_rate < 0.85 || data.bid_rate > 0.95) {
     data.bid_rate = DEFAULT_BID_RATE;
   }
   // 투찰가 = 총합계 × 투찰율 → 만원 절사 (= 견적금액)
@@ -1424,19 +1425,19 @@ function renderBudget(body, footer, data, backdrop) {
     const ratePct = (rate * 100).toFixed(1);  // "94.0"
 
     const slider = h("input", {
-      type: "range", min: "90", max: "100", step: "0.1",
+      type: "range", min: "85", max: "95", step: "0.1",
       value: ratePct,
       class: "bid-rate-slider",
     });
     const numberInput = h("input", {
-      type: "number", min: "90", max: "100", step: "0.1",
+      type: "number", min: "85", max: "95", step: "0.1",
       value: ratePct,
       class: "bid-rate-number",
     });
 
     const onChange = (newPct) => {
-      // 90~100 영역 clamp
-      const v = Math.max(90, Math.min(100, Number(newPct) || 94));
+      // 85~95 영역 clamp (B2G 실무 92~95% 영역 정합 + 영업 전략 영역 85% 영역 여유)
+      const v = Math.max(85, Math.min(95, Number(newPct) || 94));
       data.bid_rate = v / 100;
       slider.value = v.toFixed(1);
       numberInput.value = v.toFixed(1);

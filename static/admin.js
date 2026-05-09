@@ -140,6 +140,7 @@ function setupTabs() {
       // 탭 전환 시 데이터 로드 (cache 영역 없으면)
       if (tab === "users" && !usersState.loaded) loadUsers();
       if (tab === "errors" && !errorsState.loaded) loadErrors();
+      if (tab === "stats" && !statsState.loaded) loadStats();
     });
   });
 }
@@ -513,6 +514,153 @@ async function saveErrorModal(reportId) {
   } catch (e) {
     toast(e.message || "저장 실패", "error");
   }
+}
+
+
+// ─── 탭 3: 통계 ────────────────────────────────────────────────────────────
+const statsState = {
+  loaded: false,
+  data: null,
+  chartInstance: null,
+};
+
+async function loadStats() {
+  const content = document.getElementById("stats-content");
+  const meta = document.getElementById("stats-meta");
+  const errorEl = document.getElementById("stats-error");
+  errorEl.innerHTML = "";
+  content.innerHTML = `<div class="loading">통계 로딩 중...</div>`;
+
+  try {
+    const data = await apiGet("/api/admin/stats/credits");
+    statsState.data = data;
+    statsState.loaded = true;
+    meta.textContent = `최종 갱신: ${new Date().toLocaleString("ko-KR")}`;
+    renderStats();
+  } catch (e) {
+    content.innerHTML = "";
+    errorEl.innerHTML = `<div class="error-banner">${escapeHtml(e.message || "로딩 실패")}</div>`;
+  }
+}
+
+function renderStats() {
+  const content = document.getElementById("stats-content");
+  const d = statsState.data || {};
+  const u = d.users || {};
+  const c = d.compensation || {};
+  const erStatus = d.error_report_status || {};
+
+  // 카드 4개 (사용자 통계) + 카드 2개 (보상) + 도넛 차트 (오류 보고 상태)
+  content.innerHTML = `
+    <div class="stats-section-title">사용자 통계</div>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">전체 사용자 수</div>
+        <div class="stat-value">${fmtNumber(u.user_count || 0)}<span class="stat-suffix">명</span></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">정지된 사용자</div>
+        <div class="stat-value" style="color:${(u.suspended_count || 0) > 0 ? 'var(--danger)' : 'inherit'};">
+          ${fmtNumber(u.suspended_count || 0)}<span class="stat-suffix">명</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">전체 유료 크레딧 합계</div>
+        <div class="stat-value">${fmtNumber(u.total_credits || 0)}<span class="stat-suffix">크레딧</span></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">이달 사용액 합계</div>
+        <div class="stat-value">${fmtNumber(u.total_used_this_month || 0)}<span class="stat-suffix">크레딧</span></div>
+      </div>
+    </div>
+
+    <div class="stats-section-title">보상 (오류 보고 → 사용자 credits 자동 INCREMENT)</div>
+    <div class="stats-grid compensation">
+      <div class="stat-card">
+        <div class="stat-label">총 보상 크레딧</div>
+        <div class="stat-value">${fmtNumber(c.total || 0)}<span class="stat-suffix">크레딧</span></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">오류 보고 건수</div>
+        <div class="stat-value">${fmtNumber(c.report_count || 0)}<span class="stat-suffix">건</span></div>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <h3>오류 보고 상태 분포</h3>
+      <div class="chart-wrap">
+        <canvas id="error-status-chart"></canvas>
+      </div>
+    </div>`;
+
+  renderErrorStatusChart(erStatus);
+}
+
+function renderErrorStatusChart(erStatus) {
+  const canvas = document.getElementById("error-status-chart");
+  if (!canvas || typeof Chart === "undefined") {
+    if (typeof Chart === "undefined") {
+      console.warn("Chart.js 로드 안 됨");
+    }
+    return;
+  }
+
+  // 이전 차트 instance 영역 → destroy (탭 전환 / 재로드 시 메모리 누수 회피)
+  if (statsState.chartInstance) {
+    try { statsState.chartInstance.destroy(); } catch {}
+    statsState.chartInstance = null;
+  }
+
+  const labels = ["접수", "처리중", "완료"];
+  const counts = labels.map((l) => erStatus[l] || 0);
+  const total = counts.reduce((a, b) => a + b, 0);
+
+  if (total === 0) {
+    canvas.parentElement.innerHTML = `<div class="empty">오류 보고가 없습니다.</div>`;
+    return;
+  }
+
+  const ctx = canvas.getContext("2d");
+  statsState.chartInstance = new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels: labels,
+      datasets: [{
+        data: counts,
+        backgroundColor: [
+          "#fee2c5",  // 접수 — 주황 톤
+          "#d1e7ff",  // 처리중 — 파랑 톤
+          "#dfd",      // 완료 — 녹색 톤
+        ],
+        borderColor: [
+          "#b65a00",
+          "#0050b3",
+          "#2a8",
+        ],
+        borderWidth: 2,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: "bottom",
+          labels: { padding: 14, font: { size: 13 } },
+        },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const label = ctx.label || "";
+              const val = ctx.parsed || 0;
+              const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
+              return `${label}: ${val}건 (${pct}%)`;
+            },
+          },
+        },
+      },
+    },
+  });
 }
 
 

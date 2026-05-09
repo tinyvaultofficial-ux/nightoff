@@ -92,6 +92,44 @@
     .err-msg-cell { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .err-msg-cell:hover { white-space: normal; word-break: break-word; }
 
+    /* 통계 카드 */
+    .stats-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 14px; margin-bottom: 24px;
+    }
+    .stats-grid.compensation { grid-template-columns: repeat(2, 1fr); }
+    @media (max-width: 900px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .stats-grid.compensation { grid-template-columns: 1fr; }
+    }
+    .stat-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 18px 20px; box-shadow: var(--shadow-sm);
+    }
+    .stat-card .stat-label {
+      font-size: 12px; color: var(--fg-2); margin-bottom: 8px;
+      letter-spacing: 0.02em;
+    }
+    .stat-card .stat-value {
+      font-size: 26px; font-weight: 700; color: var(--fg);
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-card .stat-suffix { font-size: 13px; color: var(--fg-2); margin-left: 4px; font-weight: 500; }
+
+    .stats-section-title {
+      font-size: 14px; font-weight: 600; color: var(--fg-2);
+      margin: 8px 0 12px; letter-spacing: 0.02em;
+    }
+
+    /* 도넛 차트 컨테이너 */
+    .chart-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 22px; box-shadow: var(--shadow-sm);
+      margin-bottom: 24px;
+    }
+    .chart-card h3 { margin: 0 0 16px; font-size: 15px; }
+    .chart-wrap { position: relative; height: 280px; max-width: 480px; margin: 0 auto; }
+
     .btn {
       padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px;
       background: var(--bg-card); cursor: pointer; font-size: 12px;
@@ -208,8 +246,14 @@
       </section>
 
       <section id="tab-stats" class="tab-panel">
-        <div class="panel-header"><h2>통계</h2></div>
-        <div class="empty">단계 3-C 진입 시 구현 예정.</div>
+        <div class="panel-header">
+          <h2>통계</h2>
+          <span class="meta" id="stats-meta">로딩 중...</span>
+        </div>
+        <div id="stats-error"></div>
+        <div id="stats-content">
+          <div class="loading">통계 로딩 중...</div>
+        </div>
       </section>
 
       <section id="tab-settings" class="tab-panel">
@@ -225,6 +269,8 @@
   <!-- 토스트 컨테이너 -->
   <div id="toast" class="toast"></div>
 
+  <!-- Chart.js CDN — 단계 3-C (탭 3 통계) 도넛 차트용. 가벼움 + CDN 단일 파일. -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="/static/admin.js"></script>
 </body>
 </html>

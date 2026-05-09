@@ -139,6 +139,7 @@ function setupTabs() {
       document.getElementById(`tab-${tab}`).classList.add("active");
       // 탭 전환 시 데이터 로드 (cache 영역 없으면)
       if (tab === "users" && !usersState.loaded) loadUsers();
+      if (tab === "errors" && !errorsState.loaded) loadErrors();
     });
   });
 }
@@ -315,6 +316,205 @@ async function saveUserModal(userId) {
     toast(e.message || "저장 실패", "error");
   }
 }
+
+// ─── 탭 2: 오류 보고 ───────────────────────────────────────────────────────
+const errorsState = {
+  limit: 50,
+  offset: 0,
+  total: 0,
+  reports: [],
+  loaded: false,
+  filter: "",  // '' / '접수' / '처리중' / '완료'
+};
+
+async function loadErrors() {
+  const content = document.getElementById("errors-content");
+  const meta = document.getElementById("errors-meta");
+  const errorEl = document.getElementById("errors-error");
+  errorEl.innerHTML = "";
+  content.innerHTML = `<div class="loading">오류 보고 로딩 중...</div>`;
+
+  const params = new URLSearchParams({
+    limit: String(errorsState.limit),
+    offset: String(errorsState.offset),
+  });
+  if (errorsState.filter) params.set("status", errorsState.filter);
+
+  try {
+    const data = await apiGet(`/api/admin/error-reports?${params.toString()}`);
+    errorsState.reports = data.reports || [];
+    errorsState.total = data.total || 0;
+    errorsState.loaded = true;
+    const start = errorsState.reports.length > 0 ? errorsState.offset + 1 : 0;
+    meta.textContent = `총 ${fmtNumber(errorsState.total)}건 (${start}~${errorsState.offset + errorsState.reports.length})`;
+    renderErrorsTable();
+    renderErrorsPagination();
+  } catch (e) {
+    content.innerHTML = "";
+    errorEl.innerHTML = `<div class="error-banner">${escapeHtml(e.message || "로딩 실패")}</div>`;
+  }
+}
+
+function statusBadge(status) {
+  const cls = status === "접수" ? "report-new"
+            : status === "처리중" ? "report-progress"
+            : status === "완료" ? "report-done"
+            : "";
+  return `<span class="status-badge ${cls}">${escapeHtml(status || "-")}</span>`;
+}
+
+function renderErrorsTable() {
+  const content = document.getElementById("errors-content");
+  if (errorsState.reports.length === 0) {
+    content.innerHTML = `<div class="empty">오류 보고가 없습니다.</div>`;
+    return;
+  }
+  const rows = errorsState.reports.map((r) => {
+    const screenshot = r.screenshot_url
+      ? `<a href="${escapeHtml(r.screenshot_url)}" target="_blank" rel="noopener">보기</a>`
+      : "-";
+    return `
+      <tr>
+        <td>${fmtDate(r.report_date)}</td>
+        <td>${escapeHtml(r.user_email || (r.user_id || "").slice(0, 12) || "-")}</td>
+        <td class="err-msg-cell" title="${escapeHtml(r.error_message || "")}">${escapeHtml(r.error_message || "-")}</td>
+        <td>${screenshot}</td>
+        <td>${statusBadge(r.status)}</td>
+        <td class="num">${fmtNumber(r.compensation_credits || 0)}</td>
+        <td>${fmtDate(r.updated_at)}</td>
+        <td>
+          <button class="btn" onclick="openErrorModal('${escapeHtml(r.id)}')">처리</button>
+        </td>
+      </tr>`;
+  }).join("");
+
+  content.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>접수일</th>
+          <th>사용자</th>
+          <th>오류 메시지</th>
+          <th>스크린샷</th>
+          <th>상태</th>
+          <th class="num">보상 크레딧</th>
+          <th>최근 갱신</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderErrorsPagination() {
+  const pag = document.getElementById("errors-pagination");
+  const total = errorsState.total;
+  if (total <= errorsState.limit) {
+    pag.style.display = "none";
+    return;
+  }
+  pag.style.display = "flex";
+  const page = Math.floor(errorsState.offset / errorsState.limit) + 1;
+  const totalPages = Math.ceil(total / errorsState.limit);
+  pag.innerHTML = `
+    <button onclick="errorsGoPage(${page - 1})" ${page <= 1 ? "disabled" : ""}>← 이전</button>
+    <span class="page-info">${page} / ${totalPages} 페이지</span>
+    <button onclick="errorsGoPage(${page + 1})" ${page >= totalPages ? "disabled" : ""}>다음 →</button>`;
+}
+
+function errorsGoPage(page) {
+  if (page < 1) return;
+  errorsState.offset = (page - 1) * errorsState.limit;
+  loadErrors();
+}
+
+function errorsApplyFilter() {
+  errorsState.filter = document.getElementById("errors-filter").value;
+  errorsState.offset = 0;  // 필터 변경 시 첫 페이지로 영역 영역
+  loadErrors();
+}
+
+// ─── 오류 보고 처리 모달 ───────────────────────────────────────────────────
+function openErrorModal(reportId) {
+  const r = errorsState.reports.find((x) => x.id === reportId);
+  if (!r) { toast("오류 보고를 찾을 수 없습니다", "error"); return; }
+
+  const root = document.getElementById("modal-root");
+  root.innerHTML = `
+    <div class="modal-backdrop" onclick="if(event.target===this) closeModal()">
+      <div class="modal" style="max-width:680px;">
+        <h3>오류 보고 처리</h3>
+        <div class="form-row">
+          <label>사용자</label>
+          <div style="padding:8px 10px; background:#f4f4f7; border-radius:6px; font-size:13px;">
+            ${escapeHtml(r.user_email || r.user_id || "-")}
+          </div>
+        </div>
+        <div class="form-row">
+          <label>접수일</label>
+          <div style="padding:8px 10px; background:#f4f4f7; border-radius:6px; font-size:13px;">
+            ${fmtDate(r.report_date)}
+          </div>
+        </div>
+        <div class="form-row">
+          <label>오류 메시지 (read-only)</label>
+          <textarea readonly style="background:#f4f4f7;">${escapeHtml(r.error_message || "")}</textarea>
+        </div>
+        ${r.screenshot_url ? `
+        <div class="form-row">
+          <label>스크린샷</label>
+          <a href="${escapeHtml(r.screenshot_url)}" target="_blank" rel="noopener" style="font-size:13px;">${escapeHtml(r.screenshot_url)}</a>
+        </div>` : ""}
+        <div class="form-row">
+          <label>상태</label>
+          <select id="m-status">
+            <option value="접수" ${r.status === "접수" ? "selected" : ""}>접수</option>
+            <option value="처리중" ${r.status === "처리중" ? "selected" : ""}>처리중</option>
+            <option value="완료" ${r.status === "완료" ? "selected" : ""}>완료</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>보상 크레딧 (현재 ${fmtNumber(r.compensation_credits || 0)}) ⚠ 변경 시 사용자 credits 자동 INCREMENT</label>
+          <input type="number" id="m-comp" value="${r.compensation_credits || 0}" min="0" />
+        </div>
+        <div class="form-row">
+          <label>메모 (admin 영역 — 사용자 노출 X)</label>
+          <textarea id="m-notes">${escapeHtml(r.notes || "")}</textarea>
+        </div>
+        <div class="modal-footer">
+          <button class="btn" onclick="closeModal()">취소</button>
+          <button class="btn btn-primary" onclick="saveErrorModal('${escapeHtml(reportId)}')">저장</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function saveErrorModal(reportId) {
+  const status = document.getElementById("m-status").value;
+  const comp = Math.max(0, Number(document.getElementById("m-comp").value) || 0);
+  const notes = document.getElementById("m-notes").value;
+
+  const body = {
+    status,
+    compensation_credits: comp,
+    notes,
+  };
+
+  try {
+    const data = await apiPatch(`/api/admin/error-reports/${encodeURIComponent(reportId)}`, body);
+    if (data.ok) {
+      const delta = data.changes && data.changes.user_credits_delta;
+      toast(delta ? `저장 완료 (사용자 credits ${delta > 0 ? "+" : ""}${delta})` : "저장 완료", "ok");
+      closeModal();
+      loadErrors();
+    } else {
+      toast(data.message || "변경 사항 없음", "");
+    }
+  } catch (e) {
+    toast(e.message || "저장 실패", "error");
+  }
+}
+
 
 // ─── 초기화 ────────────────────────────────────────────────────────────────
 async function init() {

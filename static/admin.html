@@ -85,6 +85,12 @@
     .status-badge.active { background: #dfd; color: var(--ok); }
     .status-badge.suspended { background: #fdd; color: var(--danger); }
     .status-badge.admin { background: #def; color: var(--primary); }
+    /* 오류 보고 상태 배지 */
+    .status-badge.report-new { background: #fee2c5; color: #b65a00; }       /* 접수 — 주황 */
+    .status-badge.report-progress { background: #d1e7ff; color: #0050b3; }  /* 처리중 — 파랑 */
+    .status-badge.report-done { background: #dfd; color: var(--ok); }        /* 완료 — 녹색 */
+    .err-msg-cell { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .err-msg-cell:hover { white-space: normal; word-break: break-word; }
 
     .btn {
       padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px;
@@ -180,10 +186,25 @@
         <div class="pagination" id="users-pagination" style="display:none;"></div>
       </section>
 
-      <!-- 탭 2-4: skeleton (별도 단계 진입) -->
+      <!-- 탭 2: 오류 보고 -->
       <section id="tab-errors" class="tab-panel">
-        <div class="panel-header"><h2>오류 보고</h2></div>
-        <div class="empty">단계 3-B 진입 시 구현 예정.</div>
+        <div class="panel-header">
+          <h2>오류 보고</h2>
+          <div style="display:flex; gap:10px; align-items:center;">
+            <select id="errors-filter" onchange="errorsApplyFilter()" style="padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px;">
+              <option value="">전체 상태</option>
+              <option value="접수">접수</option>
+              <option value="처리중">처리중</option>
+              <option value="완료">완료</option>
+            </select>
+            <span class="meta" id="errors-meta">로딩 중...</span>
+          </div>
+        </div>
+        <div id="errors-error"></div>
+        <div id="errors-content">
+          <div class="loading">오류 보고 로딩 중...</div>
+        </div>
+        <div class="pagination" id="errors-pagination" style="display:none;"></div>
       </section>
 
       <section id="tab-stats" class="tab-panel">

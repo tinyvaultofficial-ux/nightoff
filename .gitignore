@@ -76,3 +76,4 @@ _test_budget_link_phase_*
 _test_v_section_phase_*
 _test_emdash_phase_*
 _test_font_phase_*
+_check_admin_compat.py

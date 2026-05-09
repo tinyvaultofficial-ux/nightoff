@@ -3053,11 +3053,35 @@ def api_chat(conv_id: str, body: ChatIn, user: dict = Depends(get_current_user))
         conv = db.execute("SELECT * FROM conversations WHERE id=?", (conv_id,)).fetchone()
         client_id = conv["client_id"]
 
+        # Phase 3 단계 4 — 대화 quota 검증 (메시지 저장 전).
+        # quota <= 0 이면 403 + QUOTA_EXCEEDED. 차감 영역 INSERT 성공 후 (성공 시만).
+        quota_row = db.execute(
+            "SELECT monthly_conversation_quota FROM users WHERE id=?", (user["id"],)
+        ).fetchone()
+        conv_q = int(quota_row["monthly_conversation_quota"] or 0) if quota_row else 0
+        if conv_q <= 0:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "이달 대화 할당량 소진",
+                    "code": "QUOTA_EXCEEDED",
+                    "quota_remaining": 0,
+                },
+            )
+
         # 사용자 메시지 저장
         user_msg_id = uuid.uuid4().hex[:12]
         db.execute(
             "INSERT INTO messages(id,conversation_id,role,content) VALUES(?,?,?,?)",
             (user_msg_id, conv_id, "user", body.message),
+        )
+        # Phase 3 단계 4 — 대화 quota 차감 (사용자 메시지 INSERT 성공 직후).
+        # 사용자 시각 영역 자연 — 본인 메시지 1건 = 1 차감 (AI 응답 영역 차감 X).
+        # max(0, quota - 1) 영역 underflow 방어.
+        db.execute(
+            "UPDATE users SET monthly_conversation_quota = MAX(0, monthly_conversation_quota - 1) "
+            "WHERE id=?",
+            (user["id"],),
         )
         # 대화 제목이 기본값이면 첫 메시지에서 파생
         if conv["title"] == "새 대화":
@@ -3147,6 +3171,21 @@ async def api_proposals_generate_multipass(conv_id: str, user: dict = Depends(ge
         _verify_conv_owned_by_user(db, conv_id, user["id"])
         conv = db.execute("SELECT * FROM conversations WHERE id=?", (conv_id,)).fetchone()
         client_id = conv["client_id"]
+        # Phase 3 단계 3 — quota 검증 (제안서 생성 전).
+        # quota <= 0 이면 403 + QUOTA_EXCEEDED. 차감 영역 final_payload 영역 후 (성공 시만).
+        quota_row = db.execute(
+            "SELECT monthly_proposal_quota FROM users WHERE id=?", (user["id"],)
+        ).fetchone()
+        prop_q = int(quota_row["monthly_proposal_quota"] or 0) if quota_row else 0
+        if prop_q <= 0:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "이달 제안서 할당량 소진",
+                    "code": "QUOTA_EXCEEDED",
+                    "quota_remaining": 0,
+                },
+            )
     # company_name inject 제거 (한국 공공입찰 청렴제 — 본문 회사명 등장 비정상)
 
     # RFP 분석 결과만 추출 — multi-pass orchestrator 가 자체 OUTLINE/SLIDE 프롬프트 사용
@@ -3267,6 +3306,18 @@ async def api_proposals_generate_multipass(conv_id: str, user: dict = Depends(ge
                         )
                 except Exception as e:
                     log.warning("multi-pass: assistant 메시지 저장 실패: %s", e)
+                # Phase 3 단계 3 — quota 차감 (생성 성공 시만, final_payload 존재 영역).
+                # 실패 / 취소 시 차감 X (환불 흐름 X — 단순 영역).
+                # quota = max(0, quota - 1) 영역 underflow 방어 (영역 영역 영역 검증 통과 영역 영역).
+                try:
+                    with get_db() as db:
+                        db.execute(
+                            "UPDATE users SET monthly_proposal_quota = MAX(0, monthly_proposal_quota - 1) "
+                            "WHERE id=?",
+                            (user["id"],),
+                        )
+                except Exception as e:
+                    log.warning("quota 차감 실패 (무시, 사용자 영역 영역 영역 X): %s", e)
 
     return StreamingResponse(stream(), media_type="text/event-stream")
 
@@ -4215,8 +4266,45 @@ def api_auth_logout():
 
 @app.get("/api/auth/me")
 def api_auth_me(user: dict = Depends(get_current_user)):
-    """현재 인증된 사용자 정보."""
-    return {"user": {"id": user["id"], "email": user["email"], "role": user["role"]}}
+    """현재 인증된 사용자 정보 + Phase 3 quota 영역 통합.
+
+    quota 영역:
+      - proposal_remaining: 제안서 잔여 (monthly_proposal_quota)
+      - proposal_total: 정책 영역 영역 (monthly_proposals + bonus)
+      - conversation_remaining: 대화 잔여
+      - conversation_total: 정책 영역 영역 + bonus
+    """
+    # 사용자 quota + bonus 영역
+    with get_db() as db:
+        row = db.execute(
+            "SELECT monthly_proposal_quota, monthly_conversation_quota, "
+            "       monthly_proposal_quota_bonus, monthly_conversation_quota_bonus "
+            "FROM users WHERE id=?",
+            (user["id"],),
+        ).fetchone()
+    prop_remaining = int(row["monthly_proposal_quota"] or 0) if row else 0
+    conv_remaining = int(row["monthly_conversation_quota"] or 0) if row else 0
+    prop_bonus = int(row["monthly_proposal_quota_bonus"] or 0) if row else 0
+    conv_bonus = int(row["monthly_conversation_quota_bonus"] or 0) if row else 0
+
+    # 정책 영역 base + bonus = total. policy_settings 영역 영역 영역.
+    base_prop, base_conv = _get_initial_quota()
+    prop_total = base_prop + prop_bonus
+    conv_total = base_conv + conv_bonus
+
+    return {
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "role": user["role"],
+            "quota": {
+                "proposal_remaining": prop_remaining,
+                "proposal_total": prop_total,
+                "conversation_remaining": conv_remaining,
+                "conversation_total": conv_total,
+            },
+        },
+    }
 
 
 # ---------- /api/me/* — 사용자 본인 영역 메타 (UI 상태 등) ----------
@@ -6611,6 +6699,13 @@ class AdminUserPatch(BaseModel):
     credits_used_this_month: Optional[int] = None
     is_suspended: Optional[int] = None
     last_reset_date: Optional[str] = None
+    # Phase 3 단계 2 — quota 직접 설정 (set) + 추가 충전 (add) 양쪽 지원.
+    # set: monthly_*_quota = N (직접 덮어쓰기)
+    # add: monthly_*_quota_add = N (현재 quota + N — 프라이빗 프로모션, _bonus 영역도 누적 추적)
+    monthly_proposal_quota: Optional[int] = None
+    monthly_conversation_quota: Optional[int] = None
+    monthly_proposal_quota_add: Optional[int] = None
+    monthly_conversation_quota_add: Optional[int] = None
 
 
 @app.patch("/api/admin/users/{user_id}")
@@ -6618,10 +6713,18 @@ def api_admin_users_patch(
     user_id: str, body: AdminUserPatch,
     admin: dict = Depends(require_admin),
 ):
-    """사용자 영역 크레딧 / 정지 / 리셋 날짜 변경. admin_audit_log 자동 기록."""
+    """사용자 크레딧 / 정지 / 리셋 날짜 / quota 변경. admin_audit_log 자동 기록.
+
+    Phase 3 단계 2 — quota 처리:
+    - set 흐름 (monthly_*_quota): 직접 덮어쓰기
+    - add 흐름 (monthly_*_quota_add): 현재값 + 추가량 (bonus 누적 추적)
+    - set + add 동시 명시 시: set 우선 → add 추가
+    """
     with get_db() as db:
         before = db.execute(
-            "SELECT credits, credits_used_this_month, is_suspended, last_reset_date "
+            "SELECT credits, credits_used_this_month, is_suspended, last_reset_date, "
+            "       monthly_proposal_quota, monthly_conversation_quota, "
+            "       monthly_proposal_quota_bonus, monthly_conversation_quota_bonus "
             "FROM users WHERE id=?",
             (user_id,),
         ).fetchone()
@@ -6659,16 +6762,77 @@ def api_admin_users_patch(
                 "after": str(body.last_reset_date)[:10],
             }
 
+        # ─── Phase 3 — proposal quota 처리 (set + add 동시 가능) ──────────────
+        # set + add 동시 명시: set 우선 적용 → add 추가 (양쪽 모두 적용된 최종값 기록)
+        prop_q_before = int(before_dict.get("monthly_proposal_quota") or 0)
+        prop_q_after = prop_q_before
+        if body.monthly_proposal_quota is not None:
+            prop_q_after = int(body.monthly_proposal_quota)
+        if body.monthly_proposal_quota_add is not None:
+            prop_q_after = prop_q_after + int(body.monthly_proposal_quota_add)
+        if prop_q_after != prop_q_before:
+            updates.append("monthly_proposal_quota=?")
+            params.append(prop_q_after)
+            changes["monthly_proposal_quota"] = {
+                "before": prop_q_before,
+                "after": prop_q_after,
+                "set": int(body.monthly_proposal_quota) if body.monthly_proposal_quota is not None else None,
+                "add": int(body.monthly_proposal_quota_add) if body.monthly_proposal_quota_add is not None else None,
+            }
+            # add 영역 → bonus 누적 (프라이빗 프로모션 추적). set 영역 bonus 영역 X.
+            if body.monthly_proposal_quota_add is not None:
+                bonus_before = int(before_dict.get("monthly_proposal_quota_bonus") or 0)
+                bonus_after = bonus_before + int(body.monthly_proposal_quota_add)
+                updates.append("monthly_proposal_quota_bonus=?")
+                params.append(bonus_after)
+                changes["monthly_proposal_quota_bonus"] = {
+                    "before": bonus_before, "after": bonus_after,
+                }
+
+        # ─── Phase 3 — conversation quota 처리 (동일 패턴) ────────────────────
+        conv_q_before = int(before_dict.get("monthly_conversation_quota") or 0)
+        conv_q_after = conv_q_before
+        if body.monthly_conversation_quota is not None:
+            conv_q_after = int(body.monthly_conversation_quota)
+        if body.monthly_conversation_quota_add is not None:
+            conv_q_after = conv_q_after + int(body.monthly_conversation_quota_add)
+        if conv_q_after != conv_q_before:
+            updates.append("monthly_conversation_quota=?")
+            params.append(conv_q_after)
+            changes["monthly_conversation_quota"] = {
+                "before": conv_q_before,
+                "after": conv_q_after,
+                "set": int(body.monthly_conversation_quota) if body.monthly_conversation_quota is not None else None,
+                "add": int(body.monthly_conversation_quota_add) if body.monthly_conversation_quota_add is not None else None,
+            }
+            if body.monthly_conversation_quota_add is not None:
+                bonus_before = int(before_dict.get("monthly_conversation_quota_bonus") or 0)
+                bonus_after = bonus_before + int(body.monthly_conversation_quota_add)
+                updates.append("monthly_conversation_quota_bonus=?")
+                params.append(bonus_after)
+                changes["monthly_conversation_quota_bonus"] = {
+                    "before": bonus_before, "after": bonus_after,
+                }
+
         if not updates:
             return {"ok": False, "message": "변경 사항이 없어요."}
 
         params.append(user_id)
         db.execute(f"UPDATE users SET {', '.join(updates)} WHERE id=?", params)
 
-    # 감시 로그 — 변경 후
-    action = "user_credits_modify" if "credits" in changes else "user_modify"
+    # 감시 로그 — action 영역 분기 (우선순위: suspend > quota_add > quota_set > credits > 일반)
+    action = "user_modify"
     if "is_suspended" in changes:
         action = "user_suspend" if changes["is_suspended"]["after"] else "user_unsuspend"
+    elif (
+        (changes.get("monthly_proposal_quota") and changes["monthly_proposal_quota"].get("add") is not None)
+        or (changes.get("monthly_conversation_quota") and changes["monthly_conversation_quota"].get("add") is not None)
+    ):
+        action = "quota_add"
+    elif "monthly_proposal_quota" in changes or "monthly_conversation_quota" in changes:
+        action = "quota_set"
+    elif "credits" in changes:
+        action = "user_credits_modify"
     _admin_audit(admin["id"], action, "user", user_id, changes)
 
     return {"ok": True, "changes": changes}
@@ -6940,6 +7104,144 @@ def api_admin_audit_log(
         "total": total,
         "limit": limit,
         "offset": offset,
+    }
+
+
+# ─── 월간 quota 리셋 (Phase 3 단계 6 — 가입일 기준) ───────────────────────────
+# 사용자별 created_at + 1개월 도달 시 리셋 (anniversary 방식).
+#   예) 5/15 가입 → 6/15·7/15·8/15... 마다 리셋 가능
+#   예) 1/31 가입 → 2/28(or 2/29) 리셋 (월말 클램프)
+# 어드민이 수동 호출 시: 리셋 대상 사용자만 자동 감지 후 일괄 처리.
+# bonus(프로모션 충전분)는 함께 0으로 소멸 (월 단위 사용 원칙).
+# 향후 Phase 4 에서 APScheduler 자동화 예정 — 현재는 어드민 대시보드 버튼.
+#
+# 설계 메모:
+#   _adapt_sql 은 datetime(col,'+1 month') 같은 SQLite 함수를 PG로 번역하지 않음.
+#   따라서 SQL 측 1개월 산술 사용 X — 모든 자격 검사를 Python 에서 처리한다.
+#   비용: SELECT id,created_at,last_reset_date FROM users (소규모 사용자 기준 cheap)
+#   장점: end-of-month 클램프 완전 제어 (예: 1/31 → 2/28 forward 클램프 정확).
+
+def _plus_one_month_str(date_str: str) -> str:
+    """'YYYY-MM-DD' 입력 → 정확히 1개월 후 'YYYY-MM-DD' (월말 클램프).
+
+    예) 1/31 → 2/28 (평년) / 2/29 (윤년) / 5/31 → 6/30.
+    잘못된 입력 시 입력 문자열 그대로 반환 (방어).
+    """
+    try:
+        y = int(date_str[0:4])
+        m = int(date_str[5:7])
+        d = int(date_str[8:10])
+    except Exception:
+        return date_str
+    if m == 12:
+        y += 1
+        m = 1
+    else:
+        m += 1
+    from calendar import monthrange
+    d = min(d, monthrange(y, m)[1])
+    return f"{y:04d}-{m:02d}-{d:02d}"
+
+
+def _quota_reset_eligible_user_ids(db, today_str: str) -> list[str]:
+    """리셋 자격 사용자 id 목록 — 가입일 기준 anniversary 방식.
+
+    조건 (둘 다 충족):
+      1) today >= created_at_date + 1개월   (가입 후 한 달 이상 경과)
+      2) last_reset_date 비어 있거나 today >= last_reset_date + 1개월
+         (한 번도 리셋 안 됐거나 직전 리셋 후 한 달 이상 경과)
+
+    DB-portable: SELECT 만 SQL, 자격 판정은 모두 Python.
+    """
+    rows = db.execute(
+        "SELECT id, created_at, last_reset_date FROM users"
+    ).fetchall()
+    eligible: list[str] = []
+    for r in rows:
+        uid = r["id"]
+        created_at = (r["created_at"] or "")[:10]   # 'YYYY-MM-DD HH:MM:SS' → 날짜만
+        last_reset = (r["last_reset_date"] or "")
+        if not created_at:
+            continue  # 비정상 데이터 — skip
+        # 1) 첫 자격일: created_at + 1개월
+        first_due = _plus_one_month_str(created_at)
+        if today_str < first_due:
+            continue  # 가입 후 한 달 미경과
+        # 2) 직전 리셋이 있으면 그로부터 1개월 경과 여부
+        if last_reset:
+            next_due = _plus_one_month_str(last_reset)
+            if today_str < next_due:
+                continue
+        eligible.append(uid)
+    return eligible
+
+
+@app.post("/api/admin/quota/reset-monthly")
+def api_admin_quota_reset_monthly(admin: dict = Depends(require_admin)):
+    """가입일 기준 월간 quota 리셋 — 자격 사용자만 일괄 초기화.
+
+    동작:
+      - 자격 검사: created_at + 1개월 ≤ today AND (last_reset_date 비어있거나 + 1개월 ≤ today)
+      - 자격 사용자에 대해서만 다음 컬럼 갱신:
+        · monthly_proposal_quota = policy_settings.monthly_proposals (default 7)
+        · monthly_conversation_quota = policy_settings.monthly_conversations (default 350)
+        · *_bonus = 0 (어드민 충전분 소멸)
+        · credits_used_this_month = 0 (월간 누적 사용량 초기화)
+        · last_reset_date = 오늘 (KST)
+
+    감사: admin_audit_log 에 'quota_reset_monthly' 기록.
+    멱등: 같은 날 두 번 호출해도 두 번째는 자격 사용자 없음 (리셋 직후 last_reset_date=today 라 1개월 미경과).
+    """
+    proposal_base, conversation_base = _get_initial_quota()
+    today = _today_kst_str()
+
+    with get_db() as db:
+        eligible_ids = _quota_reset_eligible_user_ids(db, today)
+        users_affected = len(eligible_ids)
+
+        if users_affected == 0:
+            payload = {
+                "users_affected": 0,
+                "proposal_base": proposal_base,
+                "conversation_base": conversation_base,
+                "reset_date": today,
+            }
+            # 감사 기록은 남김 — 어드민이 호출했다는 사실 자체는 추적
+            _admin_audit(admin["id"], "quota_reset_monthly", "users", "*", payload)
+            return {
+                "ok": True,
+                "message": "리셋 대상 사용자 없음 (가입/직전 리셋 후 1개월 미경과)",
+                **payload,
+            }
+
+        # IN (?,?,?,...) — id 개수만큼 placeholder 동적 생성. _adapt_sql 이 ?→%s 변환 처리.
+        placeholders = ",".join(["?"] * users_affected)
+        db.execute(
+            "UPDATE users SET "
+            "  monthly_proposal_quota = ?, "
+            "  monthly_conversation_quota = ?, "
+            "  monthly_proposal_quota_bonus = 0, "
+            "  monthly_conversation_quota_bonus = 0, "
+            "  credits_used_this_month = 0, "
+            "  last_reset_date = ? "
+            f"WHERE id IN ({placeholders})",
+            (proposal_base, conversation_base, today, *eligible_ids),
+        )
+
+    payload = {
+        "users_affected": users_affected,
+        "proposal_base": proposal_base,
+        "conversation_base": conversation_base,
+        "reset_date": today,
+        # 영향 사용자 id 일부만 페이로드에 — 너무 길면 잘림 (감사 페이로드 2000자 제한)
+        "user_ids_sample": eligible_ids[:20],
+    }
+    _admin_audit(admin["id"], "quota_reset_monthly", "users", "*", payload)
+
+    return {
+        "ok": True,
+        "message": f"월간 quota 리셋 완료 — {users_affected}명",
+        **payload,
     }
 
 

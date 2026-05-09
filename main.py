@@ -4888,26 +4888,36 @@ def _budget_item_amount(it: dict) -> int:
     return round(up * qty * period_qty * util)
 
 
-# 기본 투찰율 영역 — 백엔드 자동 조정 영역에서 안전 영역 마진 영역 확보용.
-# 사용자 영역이 프론트 영역에서 영역 변경 영역 = 자체 재계산 (백엔드 영역 X 영향).
-DEFAULT_BID_RATE = 0.94
+# 기본 투찰율 — RFP 예산 대비 청구 비율 (B2G 표준 정합).
+# 의미: bid_price = budget_limit × bid_rate (RFP 예산 영역 90%만 청구).
+# 한국 B2G 영역 권장 92-95% / 안전 영역 90% / 영역 영역 영역 82-85%.
+# 사용자가 프론트 영역에서 변경 = 자체 재계산 (백엔드 영역 X 영향).
+DEFAULT_BID_RATE = 0.90
 
 
 def _validate_and_adjust_budget(data: dict, budget_limit: int) -> tuple[dict, bool]:
-    """산출내역서 데이터 영역 정합 영역 검증 + 자동 조정.
+    """산출내역서 데이터 정합 검증 + 자동 조정 (B2G 표준 정합).
 
-    영역 흐름:
-      1. AI 영역 응답 영역의 모든 amount 영역 재계산 (subtotal_sum)
-      2. 투찰율 94% 영역 적용 후 영역 투찰가 영역 계산:
+    투찰율 정의 (B2G 표준):
+      bid_price = budget_limit × bid_rate (RFP 예산 영역 청구 비율)
+      bid_price ≤ budget_limit 자동 보장 (bid_rate ≤ 1.0).
+
+    자동 조정 본질 — grand_total ≤ budget_limit 강제:
+      산출 비용 (grand_total) > RFP 예산 = 비현실 (가격 평가 무리).
+      grand_total > budget_limit 시 항목 단가 비례 ↓ → grand_total ≤ budget_limit × 0.95.
+
+    흐름:
+      1. AI 응답의 모든 amount 재계산 (subtotal_sum).
+      2. grand_total 계산:
          total = subtotal × 1.07 (일반관리비) × 1.10 (대행료)
          grand_total = total × 1.10 (VAT)
-         bid_price = floor(grand_total × 0.94 / 10000) × 10000
-      3. bid_price > budget_limit 영역이면 = 비례 영역 ↓
-         target_subtotal = (budget_limit × 0.94 / 1.10 / 1.10 / 1.07) × 0.95
+      3. grand_total > budget_limit 시 비례 ↓:
+         target_subtotal = (budget_limit / 1.10 / 1.10 / 1.07) × 0.95   ← 0.94 cancel (B2G 정정)
          factor = target_subtotal / subtotal_sum
-         모든 unit_price 영역에 factor 영역 적용 → amount 영역 재계산
+         모든 unit_price에 factor 적용 → amount 재계산
+         → grand_total ≤ budget_limit × 0.95 (5% 마진 보장)
 
-    일반관리비 = 7%, 기본 투찰율 = 94%.
+    일반관리비 = 7%, 대행료 = 10%, VAT = 10%, 기본 투찰율 = 90% (RFP 예산 대비).
 
     return: (adjusted_data, was_adjusted)
     """
@@ -4917,7 +4927,7 @@ def _validate_and_adjust_budget(data: dict, budget_limit: int) -> tuple[dict, bo
     if not cats:
         return data, False
 
-    # 1. amount 영역 재계산 (period_qty + utilization 분수 영역 정합)
+    # 1. amount 재계산 (period_qty + utilization 분수 정합)
     subtotal_sum = 0
     for cat in cats:
         for it in (cat.get("items") or []):
@@ -4928,22 +4938,23 @@ def _validate_and_adjust_budget(data: dict, budget_limit: int) -> tuple[dict, bo
     if subtotal_sum <= 0:
         return data, False
 
-    # 2. 투찰율 94% 영역 적용 후 투찰가 영역 (일반관리비 7% + 대행료 10% + VAT 10%)
+    # 2. grand_total 계산 (산출 비용 — VAT 포함)
     admin_fee = round(subtotal_sum * 0.07)
     agency_fee = round((subtotal_sum + admin_fee) * 0.10)
     total = subtotal_sum + admin_fee + agency_fee
     vat = round(total * 0.10)
     grand_total = total + vat
-    bid_price = (int(grand_total * DEFAULT_BID_RATE) // 10000) * 10000
 
-    if bid_price <= budget_limit:
+    # 3. grand_total ≤ budget_limit 강제 (bid_price 영역 budget_limit × bid_rate 영역 직접 계산되지만,
+    #    grand_total > budget_limit이면 산출 비용 > RFP 예산 = 가격 평가 무리 → 비례 ↓)
+    if grand_total <= budget_limit:
         return data, False
 
-    # 3. 비례 영역 ↓ — 투찰율 94% 적용 영역 + 5% 마진 영역
-    target_subtotal = (budget_limit * DEFAULT_BID_RATE / 1.10 / 1.10 / 1.07) * 0.95
+    # 4. 비례 ↓ — 5% 마진 (B2G 표준 정합 영역 0.94 cancel)
+    target_subtotal = (budget_limit / 1.10 / 1.10 / 1.07) * 0.95
     factor = target_subtotal / subtotal_sum
-    log.info("산출내역서 자동 조정 · 예산 %s · 투찰가(94%%) %s → factor %.4f",
-             f"{budget_limit:,}", f"{bid_price:,}", factor)
+    log.info("산출내역서 자동 조정 · 예산 %s · grand_total %s → factor %.4f",
+             f"{budget_limit:,}", f"{grand_total:,}", factor)
 
     for cat in cats:
         for it in (cat.get("items") or []):

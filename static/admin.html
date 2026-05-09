@@ -130,6 +130,41 @@
     .chart-card h3 { margin: 0 0 16px; font-size: 15px; }
     .chart-wrap { position: relative; height: 280px; max-width: 480px; margin: 0 auto; }
 
+    /* 설정 폼 */
+    .settings-form {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 24px; box-shadow: var(--shadow-sm);
+      max-width: 720px;
+    }
+    .settings-row {
+      display: grid; grid-template-columns: 220px 1fr 90px;
+      gap: 14px; align-items: center; padding: 14px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .settings-row:last-of-type { border-bottom: none; }
+    .settings-row .settings-label {
+      font-weight: 600; color: var(--fg);
+    }
+    .settings-row .settings-label .key-id {
+      display: block; font-size: 11px; color: var(--fg-2); font-weight: 400;
+      margin-top: 2px; font-family: 'Consolas', monospace;
+    }
+    .settings-row input {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+      border-radius: 6px; font-size: 14px; font-variant-numeric: tabular-nums;
+    }
+    .settings-row .settings-suffix { color: var(--fg-2); font-size: 13px; }
+    .settings-meta-row {
+      font-size: 11px; color: var(--fg-2); padding: 8px 0 0;
+      grid-column: 1 / -1;
+    }
+    .settings-actions {
+      margin-top: 18px; display: flex; gap: 10px; justify-content: flex-end;
+    }
+    @media (max-width: 700px) {
+      .settings-row { grid-template-columns: 1fr; }
+    }
+
     .btn {
       padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px;
       background: var(--bg-card); cursor: pointer; font-size: 12px;
@@ -257,8 +292,14 @@
       </section>
 
       <section id="tab-settings" class="tab-panel">
-        <div class="panel-header"><h2>설정</h2></div>
-        <div class="empty">단계 3-D 진입 시 구현 예정 (백엔드 라우트 영역 영역 영역 추가 필요).</div>
+        <div class="panel-header">
+          <h2>정책 설정</h2>
+          <span class="meta" id="settings-meta">로딩 중...</span>
+        </div>
+        <div id="settings-error"></div>
+        <div id="settings-content">
+          <div class="loading">정책 설정 로딩 중...</div>
+        </div>
       </section>
     </main>
   </div>

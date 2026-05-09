@@ -141,6 +141,7 @@ function setupTabs() {
       if (tab === "users" && !usersState.loaded) loadUsers();
       if (tab === "errors" && !errorsState.loaded) loadErrors();
       if (tab === "stats" && !statsState.loaded) loadStats();
+      if (tab === "settings" && !settingsState.loaded) loadSettings();
     });
   });
 }
@@ -661,6 +662,153 @@ function renderErrorStatusChart(erStatus) {
       },
     },
   });
+}
+
+
+// ─── 탭 4: 정책 설정 ───────────────────────────────────────────────────────
+const settingsState = {
+  loaded: false,
+  settings: [],         // [{key, value, updated_at, updated_by}, ...]
+  byKey: {},            // {key: {value, updated_at, updated_by}}
+  saving: false,        // 중복 클릭 방지
+};
+
+// 정책값 영역 라벨 / 단위 매핑 (사용자 영역 영역 영역 영역).
+// 신규 정책값 추가 시 영역 영역 영역 영역 영역 fallback (key 그대로 표시).
+const POLICY_META = {
+  package_price: {
+    label: "월 패키지 가격",
+    suffix: "원",
+    type: "number",
+    min: 0,
+    desc: "월 정기 결제 영역 사용자 영역 청구 영역 (예: 380000 = 38만원)",
+  },
+  monthly_proposals: {
+    label: "월 제안서 영역",
+    suffix: "회",
+    type: "number",
+    min: 0,
+    desc: "월 1회 결제 영역 사용자 영역 영역 ✨ 제안서 생성 영역 (cap)",
+  },
+  monthly_conversations: {
+    label: "월 대화 영역",
+    suffix: "회",
+    type: "number",
+    min: 0,
+    desc: "월 1회 결제 영역 사용자 영역 영역 채팅 메시지 영역 (cap)",
+  },
+};
+
+async function loadSettings() {
+  const content = document.getElementById("settings-content");
+  const meta = document.getElementById("settings-meta");
+  const errorEl = document.getElementById("settings-error");
+  errorEl.innerHTML = "";
+  content.innerHTML = `<div class="loading">정책 설정 로딩 중...</div>`;
+
+  try {
+    const data = await apiGet("/api/admin/settings");
+    settingsState.settings = data.settings || [];
+    settingsState.byKey = {};
+    for (const s of settingsState.settings) {
+      settingsState.byKey[s.key] = s;
+    }
+    settingsState.loaded = true;
+    meta.textContent = `${settingsState.settings.length}개 정책`;
+    renderSettingsForm();
+  } catch (e) {
+    content.innerHTML = "";
+    errorEl.innerHTML = `<div class="error-banner">${escapeHtml(e.message || "로딩 실패")}</div>`;
+  }
+}
+
+function renderSettingsForm() {
+  const content = document.getElementById("settings-content");
+  if (settingsState.settings.length === 0) {
+    content.innerHTML = `<div class="empty">정책값이 없습니다.</div>`;
+    return;
+  }
+
+  // POLICY_META 영역 정의 영역 정책값 우선 + 그 외 영역 fallback 영역
+  const ordered = [];
+  for (const key of Object.keys(POLICY_META)) {
+    if (settingsState.byKey[key]) ordered.push(settingsState.byKey[key]);
+  }
+  for (const s of settingsState.settings) {
+    if (!POLICY_META[s.key]) ordered.push(s);  // 신규 정책 영역 fallback
+  }
+
+  const rows = ordered.map((s) => {
+    const m = POLICY_META[s.key] || { label: s.key, suffix: "", type: "text", desc: "" };
+    const inputAttrs = m.type === "number"
+      ? `type="number" min="${m.min ?? 0}"`
+      : `type="text"`;
+    const updatedInfo = s.updated_at
+      ? `최종 갱신 ${escapeHtml(s.updated_at)} ${s.updated_by ? `· ${escapeHtml(s.updated_by)}` : ""}`
+      : "초기값";
+    return `
+      <div class="settings-row">
+        <div class="settings-label">
+          ${escapeHtml(m.label)}
+          <span class="key-id">${escapeHtml(s.key)}</span>
+        </div>
+        <input ${inputAttrs} id="set-${escapeHtml(s.key)}" value="${escapeHtml(s.value || "")}" />
+        <div class="settings-suffix">${escapeHtml(m.suffix)}</div>
+        <div class="settings-meta-row">
+          ${m.desc ? escapeHtml(m.desc) + " · " : ""}${updatedInfo}
+        </div>
+      </div>`;
+  }).join("");
+
+  content.innerHTML = `
+    <div class="settings-form">
+      ${rows}
+      <div class="settings-actions">
+        <button class="btn" onclick="loadSettings()">새로고침</button>
+        <button id="settings-save-btn" class="btn btn-primary" onclick="saveSettings()">저장</button>
+      </div>
+    </div>`;
+}
+
+async function saveSettings() {
+  if (settingsState.saving) return;  // 중복 클릭 방지
+  const btn = document.getElementById("settings-save-btn");
+
+  // 변경된 값만 영역 영역
+  const updates = {};
+  let changed = 0;
+  for (const s of settingsState.settings) {
+    const input = document.getElementById(`set-${s.key}`);
+    if (!input) continue;
+    const newVal = String(input.value);
+    if (newVal !== String(s.value || "")) {
+      updates[s.key] = newVal;
+      changed++;
+    }
+  }
+
+  if (changed === 0) {
+    toast("변경 사항이 없습니다", "");
+    return;
+  }
+
+  settingsState.saving = true;
+  if (btn) { btn.disabled = true; btn.textContent = "저장 중..."; }
+
+  try {
+    const data = await apiPatch("/api/admin/settings", { updates });
+    if (data.ok) {
+      toast(`${data.changes}개 정책 저장 완료`, "ok");
+      await loadSettings();
+    } else {
+      toast(data.message || "변경 사항 없음", "");
+    }
+  } catch (e) {
+    toast(e.message || "저장 실패", "error");
+  } finally {
+    settingsState.saving = false;
+    if (btn) { btn.disabled = false; btn.textContent = "저장"; }
+  }
 }
 
 

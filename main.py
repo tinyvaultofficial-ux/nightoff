@@ -357,10 +357,46 @@ def init_db() -> None:
                 UNIQUE (user_id, kind, date_kst)
             );
 
+            -- ───────── 어드민 페이지 (Phase 2) — 오류 보고 ─────────
+            -- 사용자가 운영 영역 사고 보고 → admin 영역 처리 + 보상 크레딧 지급.
+            -- status: '접수' (신규) / '처리중' / '완료'
+            -- compensation_credits: admin 영역 지급한 보상 크레딧 (default 0)
+            CREATE TABLE IF NOT EXISTS error_reports (
+                id                    TEXT PRIMARY KEY,
+                user_id               TEXT NOT NULL,
+                report_date           TEXT DEFAULT (datetime('now','localtime')),
+                error_message         TEXT NOT NULL,
+                screenshot_url        TEXT DEFAULT '',
+                status                TEXT DEFAULT '접수',
+                compensation_credits  INTEGER DEFAULT 0,
+                notes                 TEXT DEFAULT '',
+                created_at            TEXT DEFAULT (datetime('now','localtime')),
+                updated_at            TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+
+            -- ───────── 어드민 감시 로그 (Phase 2) ─────────
+            -- admin 계정 영역 PATCH/POST 영역 자동 INSERT — 책임 추적 영역.
+            -- action: 'user_credits_modify' / 'user_suspend' / 'error_report_status' / etc.
+            CREATE TABLE IF NOT EXISTS admin_audit_log (
+                id            TEXT PRIMARY KEY,
+                admin_user_id TEXT NOT NULL,
+                action        TEXT NOT NULL,
+                target_type   TEXT DEFAULT '',     -- 'user' / 'error_report' / 'settings'
+                target_id     TEXT DEFAULT '',
+                payload       TEXT DEFAULT '',     -- JSON (변경 전후 값)
+                created_at    TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (admin_user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+
             CREATE INDEX IF NOT EXISTS idx_conv_client ON conversations(client_id);
             CREATE INDEX IF NOT EXISTS idx_msg_conv ON messages(conversation_id);
             CREATE INDEX IF NOT EXISTS idx_nuance_client ON nuance_memories(client_id);
             CREATE INDEX IF NOT EXISTS idx_ref_client ON references_lib(client_id);
+            CREATE INDEX IF NOT EXISTS idx_error_user ON error_reports(user_id);
+            CREATE INDEX IF NOT EXISTS idx_error_status ON error_reports(status);
+            CREATE INDEX IF NOT EXISTS idx_audit_admin ON admin_audit_log(admin_user_id);
+            CREATE INDEX IF NOT EXISTS idx_audit_created ON admin_audit_log(created_at DESC);
 
             -- 성능 인덱스 (item 10) — 자주 쓰는 정렬/필터 가속
             CREATE INDEX IF NOT EXISTS idx_msg_conv_created ON messages(conversation_id, created_at DESC);
@@ -455,6 +491,16 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     # 'rfp_opener' = RFP 분석 완료 시점에 자동 INSERT 되는 첫 AI 메시지 (1 conv 당 1건만).
     # 향후 다른 시스템 메시지 종류 추가 가능 (e.g. 'system_announce' 등).
     ("messages",      "system_kind",          "TEXT DEFAULT ''"),
+    # 어드민 페이지 (Phase 2) — 유료 크레딧 + 정지 관리.
+    # users.credit_count (line 452) = 무료 크레딧 (퀴즈/로또/운세). 본 컬럼 = 유료 크레딧 별도.
+    # · credits = 현재 보유 유료 크레딧 (월 38만원 결제 시 +700 등)
+    # · credits_used_this_month = 이달 사용액 (제안서 7회 / 메시지 350회 cap)
+    # · last_reset_date = 월 리셋 기준 날짜 (YYYY-MM-DD)
+    # · is_suspended = 정지 여부 (0/1) — admin 영역 정지 시 1
+    ("users",         "credits",                "INTEGER DEFAULT 0"),
+    ("users",         "credits_used_this_month","INTEGER DEFAULT 0"),
+    ("users",         "last_reset_date",        "TEXT DEFAULT ''"),
+    ("users",         "is_suspended",           "INTEGER DEFAULT 0"),
 ]
 
 

@@ -4269,11 +4269,28 @@ async function renderChat(cid, convId) {
           },
         }),
       ]),
-      // ✨ 제안서 생성 (multi-pass) — 명시적 버튼
-      h("button", {
-        class: "btn btn-primary",
-        html: `<span style="margin-right:4px;">✨</span><span>제안서 생성</span>`,
-        onclick: async () => {
+      // ✨ 제안서 생성 (multi-pass) — 명시적 버튼 + Phase 3 quota 표시
+      (function () {
+        const q = (window.__nightoff_user && window.__nightoff_user.quota) || null;
+        const propRemain = q ? q.proposal_remaining : null;
+        const propTotal = q ? q.proposal_total : null;
+        const exhausted = q && propRemain <= 0;
+        const labelHtml = q
+          ? `<span style="margin-right:4px;">✨</span><span>제안서 생성</span><span class="btn-quota-badge${exhausted ? " quota-exhausted" : ""}">${propRemain}/${propTotal}</span>`
+          : `<span style="margin-right:4px;">✨</span><span>제안서 생성</span>`;
+        return h("button", {
+          class: "btn btn-primary sparkle-generate-btn" + (exhausted ? " btn-quota-disabled" : ""),
+          html: labelHtml,
+          title: exhausted
+            ? "이달 제안서 할당량 소진 — 다음 달 1일 리셋"
+            : (q ? `이달 ${propRemain}회 남음 (총 ${propTotal})` : "제안서 생성"),
+          disabled: exhausted ? "" : null,
+          onclick: async () => {
+          // quota 영역 검증 (방어 — 백엔드 영역 영역 영역 영역 다만 영역 차단)
+          if (exhausted) {
+            toast("이달 제안서 할당량 소진 — 다음 달 1일 리셋", "error", 5000);
+            return;
+          }
           // 채팅 input 영역에 진행률 표시 — 가짜 user 메시지로 시각화
           const msgs = document.getElementById("chat-messages") || document.querySelector(".chat-messages");
           if (!msgs) { toast("채팅 영역을 못 찾았어요", "error"); return; }
@@ -4311,7 +4328,8 @@ async function renderChat(cid, convId) {
             progress.finish(false);
           }
         },
-      }),
+      });
+      })(),
       // PPTX 다운로드 버튼 — 재진입 시 (multi-pass 완료된 conversation) 활성.
       // 활성화 판별: data.conversation.pptx_path 존재 시. 미존재 = null (DOM X).
       // ⚠ multi-pass 직후엔 bubble 영역 inline ⬇ PPTX 다운로드 영역 별도 — 본 헤더 버튼은
@@ -4422,8 +4440,18 @@ async function renderChat(cid, convId) {
     msgs.appendChild(msgElement("assistant", openerText, new Date().toISOString()));
   }
 
-  // Input
-  const ta = h("textarea", { placeholder: "메시지를 입력하세요… (Shift+Enter 줄바꿈, Enter 전송)", rows: 1 });
+  // Input — Phase 3 quota 영역 placeholder + disabled
+  const _quota = (window.__nightoff_user && window.__nightoff_user.quota) || null;
+  const _convRemain = _quota ? _quota.conversation_remaining : null;
+  const _convExhausted = _quota && _convRemain <= 0;
+  const _placeholderBase = _quota
+    ? (_convExhausted
+        ? "이달 대화 할당량 소진 — 다음 달 1일 리셋"
+        : `메시지를 입력하세요… (남은: ${_convRemain}/${_quota.conversation_total})`)
+    : "메시지를 입력하세요… (Shift+Enter 줄바꿈, Enter 전송)";
+  const taAttrs = { placeholder: _placeholderBase, rows: 1 };
+  if (_convExhausted) taAttrs.disabled = "";
+  const ta = h("textarea", taAttrs);
   const sendBtn = h("button", { class: "send-btn", html: iconHtml("send", 20), disabled: true, title: "전송" });
   const stopBtn = h("button", { class: "stop-btn hidden", html: `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`, title: "생성 중단" });
 

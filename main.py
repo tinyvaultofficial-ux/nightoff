@@ -357,6 +357,17 @@ def init_db() -> None:
                 UNIQUE (user_id, kind, date_kst)
             );
 
+            -- ───────── 어드민 페이지 (Phase 2) — 정책 설정 ─────────
+            -- 어드민 영역 정책값 영역 (가격 / 크레딧 한계 등). 기존 settings (API 키 / 모델)
+            -- 영역 분리 — 권한 / 영역 / 보안 영역 분리. 사용자 영역 정책값 GET 가능 (예: 가격 표시).
+            -- 신규 정책값 추가 시 INSERT OR IGNORE 영역 운영 영역 동적 추가 가능.
+            CREATE TABLE IF NOT EXISTS policy_settings (
+                key         TEXT PRIMARY KEY,
+                value       TEXT NOT NULL DEFAULT '',
+                updated_at  TEXT DEFAULT (datetime('now','localtime')),
+                updated_by  TEXT DEFAULT ''
+            );
+
             -- ───────── 어드민 페이지 (Phase 2) — 오류 보고 ─────────
             -- 사용자가 운영 영역 사고 보고 → admin 영역 처리 + 보상 크레딧 지급.
             -- status: '접수' (신규) / '처리중' / '완료'
@@ -414,6 +425,14 @@ def init_db() -> None:
             -- 크레딧 인덱스 — 사용자 누적 조회 + 1일 1회 가드 lookup 가속
             CREATE INDEX IF NOT EXISTS idx_credit_attempts_user_date ON credit_attempts(user_id, date_kst);
             CREATE INDEX IF NOT EXISTS idx_credit_attempts_user      ON credit_attempts(user_id);
+
+            -- ───────── 정책 설정 초기값 (Phase 2 단계 3-D) ─────────
+            -- INSERT OR IGNORE — 기존 값 영역 보존 (멱등). 신규 정책 추가 시
+            -- 영역 INSERT 추가만 영역 영역 (영역 영역 영역 동적 추가).
+            INSERT OR IGNORE INTO policy_settings(key, value) VALUES
+                ('package_price', '380000'),
+                ('monthly_proposals', '7'),
+                ('monthly_conversations', '350');
         """)
 
         # 구버전 competitors 테이블 흔적 제거 (있으면)
@@ -6789,6 +6808,74 @@ def api_admin_stats_credits(admin: dict = Depends(require_admin)):
         },
         "error_report_status": {r["status"]: r["n"] for r in status_counts},
     }
+
+
+# ─── 정책 설정 (Phase 2 단계 3-D) ───────────────────────────────────────────
+# 기존 /api/settings (line 1699, anthropic_api_key + model 영역) 영역 분리.
+# policy_settings 테이블 영역 — 가격 / 크레딧 한계 등 정책값 영역만 영역.
+# 영역 분리 영역 API 키 보호 + 영역 분리 + 향후 사용자 영역 GET 가능.
+
+@app.get("/api/admin/settings")
+def api_admin_settings_list(admin: dict = Depends(require_admin)):
+    """정책 설정 목록 조회. policy_settings 테이블 영역 영역."""
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT key, value, updated_at, updated_by "
+            "FROM policy_settings ORDER BY key"
+        ).fetchall()
+    return {"settings": [dict(r) for r in rows]}
+
+
+class AdminSettingsPatch(BaseModel):
+    updates: dict  # {key1: value1, key2: value2, ...}
+
+
+@app.patch("/api/admin/settings")
+def api_admin_settings_patch(
+    body: AdminSettingsPatch,
+    admin: dict = Depends(require_admin),
+):
+    """정책 설정 업데이트. UPSERT + admin_audit_log 자동 기록."""
+    if not isinstance(body.updates, dict) or not body.updates:
+        raise HTTPException(400, "변경할 정책값이 없어요. updates 객체를 명시해 주세요.")
+
+    # 영역 영역 영역 검증 + before/after 영역 영역
+    changes: dict = {}
+    admin_email = admin.get("email", "")
+
+    with get_db() as db:
+        for key, new_value in body.updates.items():
+            key_str = str(key).strip()[:100]
+            new_value_str = str(new_value)[:1000] if new_value is not None else ""
+            if not key_str:
+                continue
+
+            # before 영역 조회
+            before = db.execute(
+                "SELECT value FROM policy_settings WHERE key=?", (key_str,)
+            ).fetchone()
+            before_value = before["value"] if before else ""
+
+            # 영역 영역 영역 동일 영역 → skip (영역 노이즈 회피)
+            if before_value == new_value_str:
+                continue
+
+            # UPSERT (INSERT 영역 신규 키, UPDATE 영역 기존 키)
+            db.execute(
+                "INSERT INTO policy_settings(key, value, updated_at, updated_by) "
+                "VALUES(?, ?, datetime('now','localtime'), ?) "
+                "ON CONFLICT(key) DO UPDATE SET "
+                "value=excluded.value, updated_at=excluded.updated_at, "
+                "updated_by=excluded.updated_by",
+                (key_str, new_value_str, admin_email),
+            )
+            changes[key_str] = {"before": before_value, "after": new_value_str}
+
+    if not changes:
+        return {"ok": False, "message": "변경 사항이 없어요.", "changes": 0}
+
+    _admin_audit(admin["id"], "policy_settings_modify", "policy_settings", "", changes)
+    return {"ok": True, "changes": len(changes), "details": changes}
 
 
 # ─── 감시 로그 조회 ─────────────────────────────────────────────────────────

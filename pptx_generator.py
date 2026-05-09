@@ -54,20 +54,36 @@ DEFAULT_FONT_FAMILY = WEIGHT_FONT_MAP[400]  # "Paperlogy 4 Regular"
 
 
 def _normalize_weight(weight) -> int:
-    """임의 weight 값 → 가장 가까운 100 단위 (100~900) 로 정규화."""
+    """임의 weight 값 → 가장 가까운 100 단위 (100~900) 로 정규화.
+
+    안전성 ↑:
+    - float 입력 안전 (예: 400.5 → 400)
+    - 영역 외 값 clamp (예: 1000 → 900, 50 → 100)
+    - None / 잘못된 형식 → 400 (Regular fallback)
+    """
+    if weight is None or weight == "":
+        return 400
     try:
-        w = int(weight) if weight else 400
+        w = int(float(weight))
     except (TypeError, ValueError):
-        w = 400
-    w = round(w / 100) * 100
-    return max(100, min(900, w))
+        return 400
+    # 100~900 범위 clamp 영역 round
+    w = max(100, min(900, w))
+    return round(w / 100) * 100
 
 
 def _resolve_font(font_family, weight) -> str:
-    """font_family 명시 시 우선, 미지정 시 weight 기반 자동 매핑."""
+    """font_family 명시 시 우선, 미지정 시 weight 기반 자동 매핑.
+
+    fallback 강화:
+    - font_family 명시 → 그대로 사용
+    - weight 정상 (100/200/.../900) → WEIGHT_FONT_MAP 매핑
+    - weight 매핑 X → DEFAULT (Paperlogy 4 Regular)
+    """
     if font_family:
         return str(font_family)
-    return WEIGHT_FONT_MAP.get(_normalize_weight(weight), DEFAULT_FONT_FAMILY)
+    norm_weight = _normalize_weight(weight)
+    return WEIGHT_FONT_MAP.get(norm_weight, DEFAULT_FONT_FAMILY)
 
 
 # ─── AUTO 모드 텍스트 영역 식별 ───────────────────────────────
@@ -1501,6 +1517,9 @@ def _add_text(slide, x, y, w, h, text, *,
     lines = (text or "").split("\n")
     # weight 기반 자동 폰트 매핑 (font_family 명시 시 그것이 우선)
     target_font = _resolve_font(font_family, weight)
+    # 안전망: target_font 가 빈 문자열 / None 으로 새어 나올 경우 DEFAULT 강제
+    if not target_font or not str(target_font).strip():
+        target_font = DEFAULT_FONT_FAMILY
     weight_norm = _normalize_weight(weight)
 
     for i, line in enumerate(lines):

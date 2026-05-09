@@ -838,28 +838,33 @@ function renderSettingsForm() {
     </div>
 
     <div class="settings-danger" style="margin-top:24px; background:var(--bg-card); border:1px solid #fcc; border-radius:10px; padding:20px 24px; box-shadow:var(--shadow-sm); max-width:720px;">
-      <h3 style="margin:0 0 6px; font-size:15px; color:var(--danger);">⚠ 월간 Quota 리셋</h3>
+      <h3 style="margin:0 0 6px; font-size:15px; color:var(--danger);">⚠ 월간 Quota 리셋 (가입일 기준)</h3>
       <p style="margin:0 0 14px; font-size:13px; color:var(--fg-2);">
-        모든 사용자의 월간 제안서·대화 quota 를 정책 기준값으로 초기화합니다.
-        프로모션 충전분(bonus)은 함께 소멸합니다. <b>매월 1일에 1회</b> 호출하세요.
+        가입일 기준 1개월 경과 사용자만 자동 감지 후 quota 를 초기화합니다.
+        예) 5/15 가입자는 6/15·7/15·8/15… 마다 리셋. 프로모션 충전분(bonus)은 함께 소멸.
+        매일 1회 호출해도 안전 — 자격 미달 사용자는 자동 스킵.
       </p>
       <button id="reset-quota-btn" class="btn btn-danger" onclick="resetMonthlyQuota()">
-        월간 Quota 리셋 실행
+        리셋 대상 자동 감지 + 실행
       </button>
       <span id="reset-quota-status" style="margin-left:12px; font-size:12px; color:var(--fg-2);"></span>
     </div>`;
 }
 
-// ─── 월간 quota 리셋 (Phase 3 단계 6) ──────────────────────────────────────
-// 모든 사용자의 monthly_*_quota / *_bonus / credits_used_this_month / last_reset_date 일괄 리셋.
+// ─── 월간 quota 리셋 (Phase 3 단계 6 — 가입일 기준) ────────────────────────
+// 백엔드가 created_at + 1개월 경과 + last_reset_date + 1개월 경과 사용자만 자동 감지.
 // 백엔드: POST /api/admin/quota/reset-monthly
 async function resetMonthlyQuota() {
   const btn = document.getElementById("reset-quota-btn");
   const statusEl = document.getElementById("reset-quota-status");
 
-  // 2단계 확인 — 실수 방지 (모든 사용자 영향)
+  // 2단계 확인 — 실수 방지 (자격 사용자 영향)
   const ok1 = window.confirm(
-    "정말 모든 사용자의 월간 quota 를 리셋할까요?\n\n" +
+    "리셋 대상을 자동 감지해 quota 를 초기화할까요?\n\n" +
+    "감지 조건:\n" +
+    "· 가입 후 1개월 이상 경과\n" +
+    "· 직전 리셋 후 1개월 이상 경과 (또는 한 번도 리셋 안 됨)\n\n" +
+    "초기화 내용:\n" +
     "· 제안서·대화 잔여 → 정책 기준값\n" +
     "· 프로모션 충전분(bonus) → 0 으로 소멸\n" +
     "· 이달 사용 누적 → 0 으로 초기화\n\n" +
@@ -876,8 +881,11 @@ async function resetMonthlyQuota() {
   try {
     const data = await apiPost("/api/admin/quota/reset-monthly");
     if (data.ok) {
-      const msg = `리셋 완료 — ${data.users_affected}명 ` +
-        `(제안서 ${data.proposal_base}회 / 대화 ${data.conversation_base}회 · ${data.reset_date})`;
+      const n = data.users_affected || 0;
+      const msg = n === 0
+        ? `리셋 대상 없음 — 가입/직전 리셋 후 1개월 미경과 (${data.reset_date} 기준)`
+        : `리셋 완료 — ${n}명 ` +
+          `(제안서 ${data.proposal_base}회 / 대화 ${data.conversation_base}회 · ${data.reset_date})`;
       toast(msg, "ok");
       if (statusEl) statusEl.textContent = msg;
     } else {
@@ -887,7 +895,7 @@ async function resetMonthlyQuota() {
     toast(e.message || "리셋 실패", "error");
     if (statusEl) statusEl.textContent = `오류: ${e.message || ""}`;
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = "월간 Quota 리셋 실행"; }
+    if (btn) { btn.disabled = false; btn.textContent = "리셋 대상 자동 감지 + 실행"; }
   }
 }
 

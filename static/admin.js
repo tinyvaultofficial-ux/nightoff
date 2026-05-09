@@ -160,11 +160,13 @@ function setupTabs() {
       btn.classList.add("active");
       document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
       document.getElementById(`tab-${tab}`).classList.add("active");
-      // 탭 전환 시 데이터 로드 (cache 영역 없으면)
+      // 탭 전환 시 데이터 로드 (cache 미존재 시)
       if (tab === "users" && !usersState.loaded) loadUsers();
       if (tab === "errors" && !errorsState.loaded) loadErrors();
       if (tab === "stats" && !statsState.loaded) loadStats();
       if (tab === "settings" && !settingsState.loaded) loadSettings();
+      if (tab === "quota" && !quotaState.loaded) loadQuota();
+      if (tab === "resetlog" && !resetlogState.loaded) loadResetlog();
     });
   });
 }
@@ -888,6 +890,8 @@ async function resetMonthlyQuota() {
           `(제안서 ${data.proposal_base}회 / 대화 ${data.conversation_base}회 · ${data.reset_date})`;
       toast(msg, "ok");
       if (statusEl) statusEl.textContent = msg;
+      // 캐시 무효화 — Quota 현황 / 리셋 로그 탭 다음 진입 시 재로드
+      try { _invalidateQuotaCaches(); } catch {}
     } else {
       toast(data.message || "리셋 실패", "error");
     }
@@ -938,6 +942,234 @@ async function saveSettings() {
     settingsState.saving = false;
     if (btn) { btn.disabled = false; btn.textContent = "저장"; }
   }
+}
+
+
+// ─── 탭 5: Quota 현황 ─────────────────────────────────────────────────────
+const quotaState = {
+  loaded: false,
+  limit: 50,
+  offset: 0,
+  total: 0,
+  users: [],
+  policy: { proposal_base: 0, conversation_base: 0 },
+};
+
+async function loadQuota() {
+  const content = document.getElementById("quota-content");
+  const meta = document.getElementById("quota-meta");
+  const errorEl = document.getElementById("quota-error");
+  errorEl.innerHTML = "";
+  content.innerHTML = `<div class="loading">Quota 현황 로딩 중...</div>`;
+
+  try {
+    const data = await apiGet(
+      `/api/admin/quota/status?limit=${quotaState.limit}&offset=${quotaState.offset}`
+    );
+    quotaState.users = data.users || [];
+    quotaState.total = data.total || 0;
+    quotaState.policy = data.policy || quotaState.policy;
+    quotaState.loaded = true;
+    const start = quotaState.offset + 1;
+    const end = quotaState.offset + quotaState.users.length;
+    meta.textContent = `총 ${fmtNumber(quotaState.total)}명 (${start}~${end}) · 정책 기본값 제안서 ${quotaState.policy.proposal_base} / 대화 ${quotaState.policy.conversation_base}`;
+    renderQuotaTable();
+    renderQuotaPagination();
+  } catch (e) {
+    content.innerHTML = "";
+    errorEl.innerHTML = `<div class="error-banner">${escapeHtml(e.message || "로딩 실패")}</div>`;
+  }
+}
+
+// 진행률 → 색상 클래스 (사용량 % 기준).
+//   used 0~50% 녹색 / 50~80% 주황 / 80%+ 빨강
+function _quotaBarClass(usedPct) {
+  if (usedPct >= 80) return "danger";
+  if (usedPct >= 50) return "warn";
+  return "";
+}
+
+function _quotaCell(remaining, total, used) {
+  const pct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
+  const cls = _quotaBarClass(pct);
+  return `
+    <div class="quota-cell">
+      <span class="quota-text">${fmtNumber(remaining)}/${fmtNumber(total)}</span>
+      <div class="quota-bar" title="사용 ${used}/${total} (${pct}%)">
+        <div class="quota-bar-fill ${cls}" style="width:${pct}%"></div>
+      </div>
+      <span class="quota-pct">${pct}%</span>
+    </div>`;
+}
+
+function renderQuotaTable() {
+  const content = document.getElementById("quota-content");
+  if (quotaState.users.length === 0) {
+    content.innerHTML = `<div class="empty">사용자가 없습니다.</div>`;
+    return;
+  }
+  const rows = quotaState.users.map((u) => {
+    const propCell = _quotaCell(u.proposal_remaining, u.proposal_total, u.proposal_used);
+    const convCell = _quotaCell(u.conversation_remaining, u.conversation_total, u.conversation_used);
+    const propBonus = u.proposal_bonus > 0
+      ? `<span class="status-badge admin" title="프로모션 충전">+${u.proposal_bonus}</span>` : "";
+    const convBonus = u.conversation_bonus > 0
+      ? `<span class="status-badge admin" title="프로모션 충전">+${u.conversation_bonus}</span>` : "";
+    return `
+      <tr>
+        <td>${escapeHtml(u.email || "-")}</td>
+        <td>${propCell} ${propBonus}</td>
+        <td>${convCell} ${convBonus}</td>
+        <td>${fmtDate(u.last_reset_date) || "-"}</td>
+        <td>${fmtDate(u.created_at) || "-"}</td>
+      </tr>`;
+  }).join("");
+
+  content.innerHTML = `
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>이메일</th>
+            <th>제안서 (남음/전체)</th>
+            <th>대화 (남음/전체)</th>
+            <th>마지막 리셋</th>
+            <th>가입일</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function renderQuotaPagination() {
+  const pag = document.getElementById("quota-pagination");
+  const totalPages = Math.ceil(quotaState.total / quotaState.limit);
+  if (totalPages <= 1) { pag.style.display = "none"; return; }
+  const curPage = Math.floor(quotaState.offset / quotaState.limit) + 1;
+  pag.style.display = "flex";
+  pag.innerHTML = `
+    <button onclick="quotaGoToPage(${curPage - 1})" ${curPage <= 1 ? "disabled" : ""}>이전</button>
+    <span class="page-info">${curPage} / ${totalPages}</span>
+    <button onclick="quotaGoToPage(${curPage + 1})" ${curPage >= totalPages ? "disabled" : ""}>다음</button>
+  `;
+}
+
+function quotaGoToPage(page) {
+  const totalPages = Math.ceil(quotaState.total / quotaState.limit);
+  if (page < 1 || page > totalPages) return;
+  quotaState.offset = (page - 1) * quotaState.limit;
+  loadQuota();
+}
+
+
+// ─── 탭 6: 리셋 로그 ──────────────────────────────────────────────────────
+// admin_audit_log 의 quota_reset_monthly action 만 필터링.
+const resetlogState = {
+  loaded: false,
+  limit: 50,
+  offset: 0,
+  total: 0,
+  logs: [],
+};
+
+async function loadResetlog() {
+  const content = document.getElementById("resetlog-content");
+  const meta = document.getElementById("resetlog-meta");
+  const errorEl = document.getElementById("resetlog-error");
+  errorEl.innerHTML = "";
+  content.innerHTML = `<div class="loading">리셋 로그 로딩 중...</div>`;
+
+  try {
+    const url = `/api/admin/audit-log?action=quota_reset_monthly&limit=${resetlogState.limit}&offset=${resetlogState.offset}`;
+    const data = await apiGet(url);
+    resetlogState.logs = data.logs || [];
+    resetlogState.total = data.total || 0;
+    resetlogState.loaded = true;
+    const start = resetlogState.offset + 1;
+    const end = resetlogState.offset + resetlogState.logs.length;
+    meta.textContent = resetlogState.total > 0
+      ? `총 ${fmtNumber(resetlogState.total)}건 (${start}~${end})`
+      : "기록 없음";
+    renderResetlogTable();
+    renderResetlogPagination();
+  } catch (e) {
+    content.innerHTML = "";
+    errorEl.innerHTML = `<div class="error-banner">${escapeHtml(e.message || "로딩 실패")}</div>`;
+  }
+}
+
+function renderResetlogTable() {
+  const content = document.getElementById("resetlog-content");
+  if (resetlogState.logs.length === 0) {
+    content.innerHTML = `<div class="empty">리셋 기록이 없습니다.</div>`;
+    return;
+  }
+  const rows = resetlogState.logs.map((log) => {
+    // payload 는 백엔드에서 JSON 문자열. 파싱 실패 시 raw 표시.
+    let payload = {};
+    try {
+      payload = typeof log.payload === "string" ? JSON.parse(log.payload) : (log.payload || {});
+    } catch { payload = {}; }
+    const usersAffected = payload.users_affected != null ? payload.users_affected : "-";
+    const propBase = payload.proposal_base != null ? payload.proposal_base : "-";
+    const convBase = payload.conversation_base != null ? payload.conversation_base : "-";
+    const sample = Array.isArray(payload.user_ids_sample) && payload.user_ids_sample.length
+      ? `<span class="log-payload" title="${escapeHtml(payload.user_ids_sample.join(', '))}">${payload.user_ids_sample.length}개 sample</span>`
+      : "-";
+    return `
+      <tr>
+        <td>${escapeHtml(log.created_at || "-")}</td>
+        <td class="num">${escapeHtml(String(usersAffected))}명</td>
+        <td class="num">${escapeHtml(String(propBase))}</td>
+        <td class="num">${escapeHtml(String(convBase))}</td>
+        <td>${escapeHtml(log.admin_email || "-")}</td>
+        <td>${sample}</td>
+      </tr>`;
+  }).join("");
+
+  content.innerHTML = `
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>실행 시간</th>
+            <th>리셋 대상</th>
+            <th>제안서 기본값</th>
+            <th>대화 기본값</th>
+            <th>실행자</th>
+            <th>대상 사용자 sample</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function renderResetlogPagination() {
+  const pag = document.getElementById("resetlog-pagination");
+  const totalPages = Math.ceil(resetlogState.total / resetlogState.limit);
+  if (totalPages <= 1) { pag.style.display = "none"; return; }
+  const curPage = Math.floor(resetlogState.offset / resetlogState.limit) + 1;
+  pag.style.display = "flex";
+  pag.innerHTML = `
+    <button onclick="resetlogGoToPage(${curPage - 1})" ${curPage <= 1 ? "disabled" : ""}>이전</button>
+    <span class="page-info">${curPage} / ${totalPages}</span>
+    <button onclick="resetlogGoToPage(${curPage + 1})" ${curPage >= totalPages ? "disabled" : ""}>다음</button>
+  `;
+}
+
+function resetlogGoToPage(page) {
+  const totalPages = Math.ceil(resetlogState.total / resetlogState.limit);
+  if (page < 1 || page > totalPages) return;
+  resetlogState.offset = (page - 1) * resetlogState.limit;
+  loadResetlog();
+}
+
+// 리셋 직후 캐시 무효화 — resetMonthlyQuota() 가 성공하면 quota / resetlog 갱신
+function _invalidateQuotaCaches() {
+  quotaState.loaded = false;
+  resetlogState.loaded = false;
 }
 
 

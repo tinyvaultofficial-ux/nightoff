@@ -273,6 +273,70 @@ const api = {
   },
 };
 
+// ─── Phase 3 — quota UI 실시간 갱신 helper ────────────────────────────────
+// 차감 후 페이지 새로고침 X — window.__nightoff_user.quota 직접 영역 + DOM 갱신.
+// 갱신 영역: 사이드바 quota (사용자 시각) + ✨ 제안서 버튼 + 대화 textarea.
+//
+// kind:
+//   "proposal" — 제안서 차감 (multi-pass done 영역)
+//   "conversation" — 대화 차감 (사용자 메시지 send 영역)
+//   "all" — 영역 갱신 (예: 영역 페이지 영역 영역 영역)
+function refreshQuotaUI(kind) {
+  const u = window.__nightoff_user;
+  if (!u || !u.quota) return;
+  const q = u.quota;
+
+  // 차감 (kind 영역)
+  if (kind === "proposal") {
+    q.proposal_remaining = Math.max(0, q.proposal_remaining - 1);
+  } else if (kind === "conversation") {
+    q.conversation_remaining = Math.max(0, q.conversation_remaining - 1);
+  }
+
+  // 사이드바 quota 텍스트 갱신
+  const propVal = document.getElementById("sidebar-proposal-quota");
+  if (propVal) propVal.textContent = `${q.proposal_remaining}/${q.proposal_total}`;
+  const convVal = document.getElementById("sidebar-conversation-quota");
+  if (convVal) convVal.textContent = `${q.conversation_remaining}/${q.conversation_total}`;
+
+  // 사이드바 row 영역 quota-empty 클래스 toggle (빨강 강조)
+  const propRow = document.getElementById("sidebar-proposal-row");
+  if (propRow) propRow.classList.toggle("quota-empty", q.proposal_remaining <= 0);
+  const convRow = document.getElementById("sidebar-conversation-row");
+  if (convRow) convRow.classList.toggle("quota-empty", q.conversation_remaining <= 0);
+
+  // ✨ 제안서 버튼 — badge + disabled
+  const propBtn = document.getElementById("sparkle-generate-btn");
+  const propBadge = document.getElementById("proposal-quota-badge");
+  if (propBadge) {
+    propBadge.textContent = `${q.proposal_remaining}/${q.proposal_total}`;
+    propBadge.classList.toggle("quota-exhausted", q.proposal_remaining <= 0);
+  }
+  if (propBtn) {
+    const exhausted = q.proposal_remaining <= 0;
+    propBtn.classList.toggle("btn-quota-disabled", exhausted);
+    if (exhausted) {
+      propBtn.setAttribute("disabled", "");
+      propBtn.setAttribute("title", "이달 제안서 할당량 소진 — 다음 달 1일 리셋");
+    } else {
+      propBtn.removeAttribute("disabled");
+      propBtn.setAttribute("title", `이달 ${q.proposal_remaining}회 남음 (총 ${q.proposal_total})`);
+    }
+  }
+
+  // 대화 textarea — placeholder + disabled
+  const ta = document.getElementById("message-input");
+  if (ta) {
+    if (q.conversation_remaining <= 0) {
+      ta.disabled = true;
+      ta.placeholder = "이달 대화 할당량 소진 — 다음 달 1일 리셋";
+    } else {
+      ta.disabled = false;
+      ta.placeholder = `메시지를 입력하세요… (남은: ${q.conversation_remaining}/${q.conversation_total})`;
+    }
+  }
+}
+
 // 프론트 언핸들드 에러 — 콘솔에 남기고 사용자에겐 토스트
 window.addEventListener("error", (e) => {
   console.error("[error]", e.message, e.filename, e.lineno);
@@ -557,23 +621,31 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
         ]),
       ] : []),
       // Phase 3 — quota 영역 표시 (이달 잔여 / 총량). __nightoff_user.quota 영역.
+      // id 영역 영역 영역 갱신 가능 (refreshQuotaUI helper 영역 영역).
       ...((window.__nightoff_user && window.__nightoff_user.quota) ? [
         (function () {
           const q = window.__nightoff_user.quota;
           const propLow = q.proposal_remaining <= 0;
           const convLow = q.conversation_remaining <= 0;
           const wrap = h("div", {
+            id: "sidebar-quota-wrap",
             class: "sidebar-footer-quota",
             title: "이달 사용 현황 (다음 달 1일 리셋)",
           }, [
-            h("div", { class: "quota-row" + (propLow ? " quota-empty" : "") }, [
+            h("div", {
+              id: "sidebar-proposal-row",
+              class: "quota-row" + (propLow ? " quota-empty" : ""),
+            }, [
               h("span", { class: "quota-label" }, "📋 제안서"),
-              h("span", { class: "quota-value" },
+              h("span", { id: "sidebar-proposal-quota", class: "quota-value" },
                 `${q.proposal_remaining}/${q.proposal_total}`),
             ]),
-            h("div", { class: "quota-row" + (convLow ? " quota-empty" : "") }, [
+            h("div", {
+              id: "sidebar-conversation-row",
+              class: "quota-row" + (convLow ? " quota-empty" : ""),
+            }, [
               h("span", { class: "quota-label" }, "💬 대화"),
-              h("span", { class: "quota-value" },
+              h("span", { id: "sidebar-conversation-quota", class: "quota-value" },
                 `${q.conversation_remaining}/${q.conversation_total}`),
             ]),
           ]);
@@ -4275,10 +4347,12 @@ async function renderChat(cid, convId) {
         const propRemain = q ? q.proposal_remaining : null;
         const propTotal = q ? q.proposal_total : null;
         const exhausted = q && propRemain <= 0;
-        const labelHtml = q
-          ? `<span style="margin-right:4px;">✨</span><span>제안서 생성</span><span class="btn-quota-badge${exhausted ? " quota-exhausted" : ""}">${propRemain}/${propTotal}</span>`
-          : `<span style="margin-right:4px;">✨</span><span>제안서 생성</span>`;
+        const badgeHtml = q
+          ? `<span id="proposal-quota-badge" class="btn-quota-badge${exhausted ? " quota-exhausted" : ""}">${propRemain}/${propTotal}</span>`
+          : "";
+        const labelHtml = `<span style="margin-right:4px;">✨</span><span>제안서 생성</span>${badgeHtml}`;
         return h("button", {
+          id: "sparkle-generate-btn",
           class: "btn btn-primary sparkle-generate-btn" + (exhausted ? " btn-quota-disabled" : ""),
           html: labelHtml,
           title: exhausted
@@ -4286,8 +4360,9 @@ async function renderChat(cid, convId) {
             : (q ? `이달 ${propRemain}회 남음 (총 ${propTotal})` : "제안서 생성"),
           disabled: exhausted ? "" : null,
           onclick: async () => {
-          // quota 영역 검증 (방어 — 백엔드 영역 영역 영역 영역 다만 영역 차단)
-          if (exhausted) {
+          // quota 동적 검증 — window.__nightoff_user.quota 직접 참조 (클로저 영역 stale 회피)
+          const liveQ = (window.__nightoff_user && window.__nightoff_user.quota) || null;
+          if (liveQ && liveQ.proposal_remaining <= 0) {
             toast("이달 제안서 할당량 소진 — 다음 달 1일 리셋", "error", 5000);
             return;
           }
@@ -4449,7 +4524,7 @@ async function renderChat(cid, convId) {
         ? "이달 대화 할당량 소진 — 다음 달 1일 리셋"
         : `메시지를 입력하세요… (남은: ${_convRemain}/${_quota.conversation_total})`)
     : "메시지를 입력하세요… (Shift+Enter 줄바꿈, Enter 전송)";
-  const taAttrs = { placeholder: _placeholderBase, rows: 1 };
+  const taAttrs = { id: "message-input", placeholder: _placeholderBase, rows: 1 };
   if (_convExhausted) taAttrs.disabled = "";
   const ta = h("textarea", taAttrs);
   const sendBtn = h("button", { class: "send-btn", html: iconHtml("send", 20), disabled: true, title: "전송" });
@@ -4554,7 +4629,25 @@ async function renderChat(cid, convId) {
         signal: aborter.signal,
       });
       if (resp.status === 401) { clearToken(); redirectToLogin(); throw new Error("인증이 만료됐어요."); }
+      if (resp.status === 403) {
+        // Phase 3 — quota 소진 (사용자 메시지 INSERT 전 백엔드 영역 차단)
+        const errBody = await resp.json().catch(() => ({}));
+        const detail = errBody.detail || {};
+        if (detail.code === "QUOTA_EXCEEDED") {
+          // 사용자 quota 영역 0 영역 영역 영역 (백엔드 영역 영역 영역 영역) → UI 영역
+          if (window.__nightoff_user && window.__nightoff_user.quota) {
+            window.__nightoff_user.quota.conversation_remaining = 0;
+            try { refreshQuotaUI("all"); } catch {}
+          }
+          toast("이달 대화 할당량 소진 — 다음 달 1일 리셋", "error", 5000);
+          throw new Error("이달 대화 할당량 소진");
+        }
+      }
       if (!resp.ok) throw new Error(await resp.text());
+
+      // Phase 3 단계 5-D — 대화 quota 차감 + UI 갱신 (백엔드 영역 자동 차감 영역 sync).
+      // 200 OK 응답 영역 (사용자 메시지 INSERT 성공 영역 영역) — 영역 시점 영역 차감.
+      try { refreshQuotaUI("conversation"); } catch (e) { console.warn("quota UI refresh 실패:", e); }
 
       const reader = resp.body.getReader();
       const dec = new TextDecoder();
@@ -5246,6 +5339,8 @@ async function runMultiPassProposal({ convId, asstEl, bubble, progress, body, ms
             `<div class="muted small" style="margin-top:6px;">PPTX 변환 중… 🔨</div>` +
           `</div>`;
         autoScroll();
+        // Phase 3 단계 5-D — 제안서 quota 차감 + UI 갱신 (백엔드 영역 자동 차감 영역 sync).
+        try { refreshQuotaUI("proposal"); } catch (e) { console.warn("quota UI refresh 실패:", e); }
       }
     }
   }

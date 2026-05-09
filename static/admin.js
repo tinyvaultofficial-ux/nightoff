@@ -3,7 +3,9 @@
 // 401 → /login redirect / 403 → 권한 X 안내 / 200 → 데이터 렌더
 
 // ─── Auth helpers ──────────────────────────────────────────────────────────
-const TOKEN_KEY = "nightoff_token";
+// ⚠ app.js:174 (AUTH_TOKEN_KEY = "nightoff_jwt") 영역 정확 일치 필수.
+// 다른 키 영역 사용 영역 → token 영역 X → redirectToLogin 즉시 → admin 영역 X.
+const TOKEN_KEY = "nightoff_jwt";
 
 function getToken() {
   return localStorage.getItem(TOKEN_KEY) || "";
@@ -95,21 +97,25 @@ function fmtDate(s) {
 }
 
 // ─── 인증 헤더 영역 admin email 표시 + 권한 검증 ────────────────────────────
+// ⚠ /api/auth/me 응답 구조 (main.py:4159-4162):
+//   { "user": { "id": ..., "email": ..., "role": ... } }
+// data.user.role / data.user.email 영역 접근 필수 (data.role / data.email 영역 X).
 async function loadCurrentUser() {
   try {
     const data = await apiGet("/api/auth/me");
-    if (data.role !== "admin") {
+    const user = data.user || {};
+    if (user.role !== "admin") {
       document.body.innerHTML = `
         <div style="padding:60px; text-align:center;">
           <h2 style="color:#c43;">관리자 권한이 필요합니다</h2>
-          <p>현재 계정 (${escapeHtml(data.email)})은 일반 사용자입니다.</p>
+          <p>현재 계정 (${escapeHtml(user.email || "")})은 일반 사용자입니다.</p>
           <p style="margin-top:20px;">
             <a href="/" style="color:#6b46e5;">메인 페이지로 돌아가기</a>
           </p>
         </div>`;
       return false;
     }
-    document.getElementById("admin-email").textContent = data.email;
+    document.getElementById("admin-email").textContent = user.email || "";
     return true;
   } catch (e) {
     console.error("auth 검증 실패:", e);

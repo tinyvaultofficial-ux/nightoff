@@ -981,7 +981,9 @@ function _n(v) { const n = Number(String(v).replace(/[^\d.-]/g, "")); return isF
 function _fmt(n) { return (Number(n) || 0).toLocaleString("ko-KR"); }
 
 // 기본 투찰율 영역 — 사용자 영역 변경 가능 (90~100%, 0.1 step)
-const DEFAULT_BID_RATE = 0.94;
+// 기본 투찰율 — B2G 표준 (RFP 예산 대비 청구 비율).
+// main.py:DEFAULT_BID_RATE 와 sync. 92-95% 권장 / 안전 영역 82-88% / 적극 영역 96-98%.
+const DEFAULT_BID_RATE = 0.90;
 
 function recalcBudget(data) {
   let subtotalSum = 0;
@@ -1008,13 +1010,21 @@ function recalcBudget(data) {
   data.total       = subtotalSum + data.admin_fee + data.agency_fee;
   data.vat         = Math.round(data.total * 0.10);
   data.grand_total = data.total + data.vat;                     // 총합계 (VAT 포함)
-  // 투찰율 영역 적용 영역 — 사용자 입력 (없으면 기본 94%)
-  // cap 영역 0.85~0.95 영역 — slider 영역 정합 영역 (UI 영역 영역 영역 영역 영역 fallback).
-  if (typeof data.bid_rate !== "number" || data.bid_rate < 0.85 || data.bid_rate > 0.95) {
+  // 투찰율 적용 — B2G 표준 정합 (RFP 예산 대비 청구 비율).
+  // bid_price = budget_limit × bid_rate (RFP 예산 명시 시 직접 계산).
+  // RFP 예산 미명시 시 fallback — grand_total × bid_rate (구 흐름 호환).
+  // cap 0.82~0.98 — slider 정합 (UI 영역 외 변경 시 fallback).
+  if (typeof data.bid_rate !== "number" || data.bid_rate < 0.82 || data.bid_rate > 0.98) {
     data.bid_rate = DEFAULT_BID_RATE;
   }
-  // 투찰가 = 총합계 × 투찰율 → 만원 절사 (= 견적금액)
-  data.bid_price = Math.floor(data.grand_total * data.bid_rate / 10000) * 10000;
+  // 투찰가 = budget_limit × 투찰율 → 만원 절사 (= 견적금액 / 청구액)
+  const budgetLimit = Number(data.budget_limit) || 0;
+  if (budgetLimit > 0) {
+    data.bid_price = Math.floor(budgetLimit * data.bid_rate / 10000) * 10000;
+  } else {
+    // fallback — RFP 예산 미명시 시 (예: AI 분석 영역 budget X) 구 흐름 영역 호환
+    data.bid_price = Math.floor(data.grand_total * data.bid_rate / 10000) * 10000;
+  }
   return data;
 }
 
@@ -1420,32 +1430,27 @@ function renderBudget(body, footer, data, backdrop) {
       ]));
     });
 
-    // ─── 투찰율 영역 (총합계 직후) — 슬라이더 + 숫자 결합 ───
+    // ─── 투찰율 (B2G 표준 — RFP 예산 대비 청구 비율) — 슬라이더 + 숫자 결합 ───
     const rate = (data.bid_rate || DEFAULT_BID_RATE);
-    const ratePct = (rate * 100).toFixed(1);  // "94.0"
+    const ratePct = (rate * 100).toFixed(1);  // "90.0"
 
     const slider = h("input", {
-      type: "range", min: "85", max: "95", step: "0.1",
+      type: "range", min: "82", max: "98", step: "0.1",
       value: ratePct,
       class: "bid-rate-slider",
     });
     const numberInput = h("input", {
-      type: "number", min: "85", max: "95", step: "0.1",
+      type: "number", min: "82", max: "98", step: "0.1",
       value: ratePct,
       class: "bid-rate-number",
     });
 
     const onChange = (newPct) => {
-      // 85~95 영역 clamp (B2G 실무 92~95% 영역 정합 + 영업 전략 영역 85% 영역 여유)
-      const v = Math.max(85, Math.min(95, Number(newPct) || 94));
+      // 82~98 clamp (B2G 표준 92-95% 영역 + 영업 전략 영역 82-88% 여유 + 적극 영역 96-98%)
+      const v = Math.max(82, Math.min(98, Number(newPct) || 90));
       data.bid_rate = v / 100;
       slider.value = v.toFixed(1);
       numberInput.value = v.toFixed(1);
-      // 96% 이상 영역 = warning toast (가격 평가 영역 불리)
-      if (v >= 96 && !rerenderSummary._warned) {
-        rerenderSummary._warned = true;
-        toast(`투찰율 ${v.toFixed(1)}% — 가격 평가 영역 불리할 수 있어요 (일반 영역 92~95%)`, "", 5000);
-      }
       recalcBudget(data);
       rerenderSummary();
     };
@@ -1453,7 +1458,7 @@ function renderBudget(body, footer, data, backdrop) {
     numberInput.addEventListener("change", (e) => onChange(e.target.value));
 
     const rateRow = h("div", { class: "budget-sum-row bid-rate-row" }, [
-      h("div", { class: "sum-label" }, "투찰율"),
+      h("div", { class: "sum-label" }, "투찰율 (RFP 예산 대비)"),
       h("div", { class: "bid-rate-controls" }, [
         slider,
         numberInput,

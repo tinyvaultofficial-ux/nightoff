@@ -3053,11 +3053,35 @@ def api_chat(conv_id: str, body: ChatIn, user: dict = Depends(get_current_user))
         conv = db.execute("SELECT * FROM conversations WHERE id=?", (conv_id,)).fetchone()
         client_id = conv["client_id"]
 
+        # Phase 3 단계 4 — 대화 quota 검증 (메시지 저장 전).
+        # quota <= 0 이면 403 + QUOTA_EXCEEDED. 차감 영역 INSERT 성공 후 (성공 시만).
+        quota_row = db.execute(
+            "SELECT monthly_conversation_quota FROM users WHERE id=?", (user["id"],)
+        ).fetchone()
+        conv_q = int(quota_row["monthly_conversation_quota"] or 0) if quota_row else 0
+        if conv_q <= 0:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "이달 대화 할당량 소진",
+                    "code": "QUOTA_EXCEEDED",
+                    "quota_remaining": 0,
+                },
+            )
+
         # 사용자 메시지 저장
         user_msg_id = uuid.uuid4().hex[:12]
         db.execute(
             "INSERT INTO messages(id,conversation_id,role,content) VALUES(?,?,?,?)",
             (user_msg_id, conv_id, "user", body.message),
+        )
+        # Phase 3 단계 4 — 대화 quota 차감 (사용자 메시지 INSERT 성공 직후).
+        # 사용자 시각 영역 자연 — 본인 메시지 1건 = 1 차감 (AI 응답 영역 차감 X).
+        # max(0, quota - 1) 영역 underflow 방어.
+        db.execute(
+            "UPDATE users SET monthly_conversation_quota = MAX(0, monthly_conversation_quota - 1) "
+            "WHERE id=?",
+            (user["id"],),
         )
         # 대화 제목이 기본값이면 첫 메시지에서 파생
         if conv["title"] == "새 대화":
@@ -3147,6 +3171,21 @@ async def api_proposals_generate_multipass(conv_id: str, user: dict = Depends(ge
         _verify_conv_owned_by_user(db, conv_id, user["id"])
         conv = db.execute("SELECT * FROM conversations WHERE id=?", (conv_id,)).fetchone()
         client_id = conv["client_id"]
+        # Phase 3 단계 3 — quota 검증 (제안서 생성 전).
+        # quota <= 0 이면 403 + QUOTA_EXCEEDED. 차감 영역 final_payload 영역 후 (성공 시만).
+        quota_row = db.execute(
+            "SELECT monthly_proposal_quota FROM users WHERE id=?", (user["id"],)
+        ).fetchone()
+        prop_q = int(quota_row["monthly_proposal_quota"] or 0) if quota_row else 0
+        if prop_q <= 0:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "이달 제안서 할당량 소진",
+                    "code": "QUOTA_EXCEEDED",
+                    "quota_remaining": 0,
+                },
+            )
     # company_name inject 제거 (한국 공공입찰 청렴제 — 본문 회사명 등장 비정상)
 
     # RFP 분석 결과만 추출 — multi-pass orchestrator 가 자체 OUTLINE/SLIDE 프롬프트 사용
@@ -3267,6 +3306,18 @@ async def api_proposals_generate_multipass(conv_id: str, user: dict = Depends(ge
                         )
                 except Exception as e:
                     log.warning("multi-pass: assistant 메시지 저장 실패: %s", e)
+                # Phase 3 단계 3 — quota 차감 (생성 성공 시만, final_payload 존재 영역).
+                # 실패 / 취소 시 차감 X (환불 흐름 X — 단순 영역).
+                # quota = max(0, quota - 1) 영역 underflow 방어 (영역 영역 영역 검증 통과 영역 영역).
+                try:
+                    with get_db() as db:
+                        db.execute(
+                            "UPDATE users SET monthly_proposal_quota = MAX(0, monthly_proposal_quota - 1) "
+                            "WHERE id=?",
+                            (user["id"],),
+                        )
+                except Exception as e:
+                    log.warning("quota 차감 실패 (무시, 사용자 영역 영역 영역 X): %s", e)
 
     return StreamingResponse(stream(), media_type="text/event-stream")
 

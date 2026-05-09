@@ -1539,6 +1539,17 @@ def privacy_page():
     return FileResponse(str(p), media_type="text/html")
 
 
+# ---- 어드민 대시보드 (Phase 2 단계 3) ----
+# /admin 영역 admin.html 정적 서빙. 인증 영역 클라이언트 (admin.js) 영역
+# JWT 영역 fetch /api/admin/* 호출 → 401 영역 /login redirect / 403 영역 권한 X 안내.
+@app.get("/admin")
+def admin_page():
+    p = STATIC_DIR / "admin.html"
+    if not p.exists():
+        raise HTTPException(404, "admin page not found")
+    return FileResponse(str(p), media_type="text/html")
+
+
 # ---- 헬스체크 전용 ---- DB / 정적 / 외부 의존 모두 회피 (Railway healthcheckPath)
 @app.get("/healthz")
 def healthz():

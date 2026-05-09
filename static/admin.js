@@ -209,24 +209,26 @@ function renderUsersTable() {
   `).join("");
 
   content.innerHTML = `
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>이메일</th>
-          <th>회사</th>
-          <th>역할</th>
-          <th>상태</th>
-          <th class="num">유료 크레딧</th>
-          <th class="num">이달 사용</th>
-          <th class="num">무료 크레딧</th>
-          <th>리셋일</th>
-          <th>가입일</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>`;
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>이메일</th>
+            <th>회사</th>
+            <th>역할</th>
+            <th>상태</th>
+            <th class="num">유료 크레딧</th>
+            <th class="num">이달 사용</th>
+            <th class="num">무료 크레딧</th>
+            <th>리셋일</th>
+            <th>가입일</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
 }
 
 function renderUsersPagination() {
@@ -271,7 +273,7 @@ function openUserModal(userId) {
         </div>
         <div class="form-row">
           <label>마지막 리셋 날짜 (YYYY-MM-DD)</label>
-          <input type="text" id="m-reset" value="${escapeHtml(u.last_reset_date || "")}" placeholder="2026-05-01" />
+          <input type="date" id="m-reset" value="${escapeHtml((u.last_reset_date || "").slice(0, 10))}" />
         </div>
         <div class="form-row">
           <label>정지 여부</label>
@@ -282,21 +284,52 @@ function openUserModal(userId) {
         </div>
         <div class="modal-footer">
           <button class="btn" onclick="closeModal()">취소</button>
-          <button class="btn btn-primary" onclick="saveUserModal('${escapeHtml(userId)}')">저장</button>
+          <button class="btn btn-primary" id="user-save-btn" onclick="saveUserModal('${escapeHtml(userId)}')">저장</button>
         </div>
       </div>
     </div>`;
+  attachEscHandler();
 }
 
 function closeModal() {
   document.getElementById("modal-root").innerHTML = "";
+  // ESC 키 핸들러 영역 cleanup (메모리 누수 회피)
+  if (window.__adminEscHandler) {
+    document.removeEventListener("keydown", window.__adminEscHandler);
+    window.__adminEscHandler = null;
+  }
+}
+
+// 모달 영역 영역 시 ESC 핸들러 영역 — 영역 모달 (탭 1 / 탭 2) 영역 영역 흐름.
+// closeModal 영역 자동 cleanup.
+function attachEscHandler() {
+  if (window.__adminEscHandler) {
+    document.removeEventListener("keydown", window.__adminEscHandler);
+  }
+  const handler = (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeModal();
+    }
+  };
+  window.__adminEscHandler = handler;
+  document.addEventListener("keydown", handler);
 }
 
 async function saveUserModal(userId) {
+  const btn = document.getElementById("user-save-btn");
+  if (btn && btn.disabled) return;  // 중복 클릭 방지
+
   const credits = Number(document.getElementById("m-credits").value);
   const used = Number(document.getElementById("m-used").value);
   const reset = document.getElementById("m-reset").value.trim();
   const suspend = Number(document.getElementById("m-suspend").value);
+
+  // 날짜 형식 검증 — type="date" 영역 자동 형식 (YYYY-MM-DD) 다만 영역 영역 영역
+  if (reset && !/^\d{4}-\d{2}-\d{2}$/.test(reset)) {
+    toast("날짜 형식 영역 X — YYYY-MM-DD 형식 영역", "error");
+    return;
+  }
 
   const body = {
     credits,
@@ -305,6 +338,7 @@ async function saveUserModal(userId) {
   };
   if (reset) body.last_reset_date = reset;
 
+  if (btn) { btn.disabled = true; btn.textContent = "저장 중..."; }
   try {
     const data = await apiPatch(`/api/admin/users/${encodeURIComponent(userId)}`, body);
     if (data.ok) {
@@ -316,6 +350,8 @@ async function saveUserModal(userId) {
     }
   } catch (e) {
     toast(e.message || "저장 실패", "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "저장"; }
   }
 }
 
@@ -391,21 +427,23 @@ function renderErrorsTable() {
   }).join("");
 
   content.innerHTML = `
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>접수일</th>
-          <th>사용자</th>
-          <th>오류 메시지</th>
-          <th>스크린샷</th>
-          <th>상태</th>
-          <th class="num">보상 크레딧</th>
-          <th>최근 갱신</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>`;
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>접수일</th>
+            <th>사용자</th>
+            <th>오류 메시지</th>
+            <th>스크린샷</th>
+            <th>상태</th>
+            <th class="num">보상 크레딧</th>
+            <th>최근 갱신</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
 }
 
 function renderErrorsPagination() {
@@ -485,13 +523,17 @@ function openErrorModal(reportId) {
         </div>
         <div class="modal-footer">
           <button class="btn" onclick="closeModal()">취소</button>
-          <button class="btn btn-primary" onclick="saveErrorModal('${escapeHtml(reportId)}')">저장</button>
+          <button class="btn btn-primary" id="error-save-btn" onclick="saveErrorModal('${escapeHtml(reportId)}')">저장</button>
         </div>
       </div>
     </div>`;
+  attachEscHandler();
 }
 
 async function saveErrorModal(reportId) {
+  const btn = document.getElementById("error-save-btn");
+  if (btn && btn.disabled) return;  // 중복 클릭 방지
+
   const status = document.getElementById("m-status").value;
   const comp = Math.max(0, Number(document.getElementById("m-comp").value) || 0);
   const notes = document.getElementById("m-notes").value;
@@ -502,6 +544,7 @@ async function saveErrorModal(reportId) {
     notes,
   };
 
+  if (btn) { btn.disabled = true; btn.textContent = "저장 중..."; }
   try {
     const data = await apiPatch(`/api/admin/error-reports/${encodeURIComponent(reportId)}`, body);
     if (data.ok) {
@@ -514,6 +557,8 @@ async function saveErrorModal(reportId) {
     }
   } catch (e) {
     toast(e.message || "저장 실패", "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "저장"; }
   }
 }
 

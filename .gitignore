@@ -77,3 +77,8 @@ _test_v_section_phase_*
 _test_emdash_phase_*
 _test_font_phase_*
 _check_admin_compat.py
+
+# 베타 데이터 완전 삭제 SQL (Phase 3 영역 영역 영역) — 사용자 이메일 영역 보호.
+# 영역 사용자 영역 직접 production 영역 실행 → repo 영역 영역 X.
+_purge_beta_data_*.sql
+_purge_beta_data_console.txt

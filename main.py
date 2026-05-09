@@ -513,13 +513,23 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     # 어드민 페이지 (Phase 2) — 유료 크레딧 + 정지 관리.
     # users.credit_count (line 452) = 무료 크레딧 (퀴즈/로또/운세). 본 컬럼 = 유료 크레딧 별도.
     # · credits = 현재 보유 유료 크레딧 (월 38만원 결제 시 +700 등)
-    # · credits_used_this_month = 이달 사용액 (제안서 7회 / 메시지 350회 cap)
-    # · last_reset_date = 월 리셋 기준 날짜 (YYYY-MM-DD)
+    # · credits_used_this_month = 이달 사용액 (분석 영역 누적)
+    # · last_reset_date = 월 리셋 기준 날짜 (YYYY-MM-DD) — Phase 3 quota 리셋 영역 공유
     # · is_suspended = 정지 여부 (0/1) — admin 영역 정지 시 1
     ("users",         "credits",                "INTEGER DEFAULT 0"),
     ("users",         "credits_used_this_month","INTEGER DEFAULT 0"),
     ("users",         "last_reset_date",        "TEXT DEFAULT ''"),
     ("users",         "is_suspended",           "INTEGER DEFAULT 0"),
+    # Phase 3 — 사용량 quota (제안서 + 대화 월간 cap, 어드민 충전 추적)
+    # · monthly_proposal_quota = 제안서 월간 잔여 (기본 7, policy_settings 영역 초기값)
+    # · monthly_conversation_quota = 대화 월간 잔여 (기본 350)
+    # · *_bonus = 어드민 충전분 (프라이빗 프로모션) — 영역 추적 영역
+    # 차감 흐름: 제안서 생성 성공 시 -1 / 사용자 메시지 INSERT 시 -1
+    # 리셋 흐름: 월 1일 영역 quota 영역 policy_settings 영역 초기값 / bonus 영역 0 (Phase 3 단계 6)
+    ("users",         "monthly_proposal_quota",         "INTEGER DEFAULT 7"),
+    ("users",         "monthly_conversation_quota",     "INTEGER DEFAULT 350"),
+    ("users",         "monthly_proposal_quota_bonus",   "INTEGER DEFAULT 0"),
+    ("users",         "monthly_conversation_quota_bonus","INTEGER DEFAULT 0"),
 ]
 
 
@@ -687,6 +697,28 @@ def set_setting(key: str, value: str) -> None:
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (key, value),
         )
+
+
+# ─── Phase 3 — quota 초기값 helper ──────────────────────────────────────────
+def _get_initial_quota() -> tuple[int, int]:
+    """policy_settings 영역 quota 초기값 반환. (proposal, conversation).
+
+    fallback: (7, 350) — policy_settings 영역 영역 X 시 또는 SQL 영역 영역 영역.
+    어드민 영역 정책값 변경 → 영역 사용자 가입 / 월 리셋 영역 영역 영역.
+    """
+    try:
+        with get_db() as db:
+            rows = db.execute(
+                "SELECT key, value FROM policy_settings "
+                "WHERE key IN ('monthly_proposals', 'monthly_conversations')"
+            ).fetchall()
+            kv = {r["key"]: r["value"] for r in rows}
+            p = int(kv.get("monthly_proposals") or 7)
+            c = int(kv.get("monthly_conversations") or 350)
+            return max(0, p), max(0, c)
+    except Exception as e:
+        log.warning("_get_initial_quota fallback (정책 조회 실패): %s", e)
+        return 7, 350
 
 
 def get_api_key() -> str:
@@ -4109,21 +4141,27 @@ def api_auth_register(body: RegisterIn):
         # bcrypt hash
         pw_hash = _bcrypt.hashpw(pw.encode("utf-8"), _bcrypt.gensalt(rounds=BCRYPT_ROUNDS)).decode("utf-8")
 
+        # Phase 3 — quota 초기값 영역 policy_settings 영역 (어드민 영역 변경 영역 영역 영역).
+        prop_q, conv_q = _get_initial_quota()
+
         if existing:
-            # wait-list 기존 row 활성화 (id 보존)
+            # wait-list 기존 row 활성화 (id 보존) — quota 영역 신규 가입자 영역 영역 영역 영역
             uid = existing["id"]
             db.execute(
                 "UPDATE users SET password_hash=?, role='user', is_active=1, "
-                "company=COALESCE(NULLIF(?,''), company), last_login=datetime('now','localtime') "
+                "company=COALESCE(NULLIF(?,''), company), last_login=datetime('now','localtime'), "
+                "monthly_proposal_quota=?, monthly_conversation_quota=?, "
+                "monthly_proposal_quota_bonus=0, monthly_conversation_quota_bonus=0 "
                 "WHERE id=?",
-                (pw_hash, company, uid),
+                (pw_hash, company, prop_q, conv_q, uid),
             )
         else:
             uid = uuid.uuid4().hex[:12]
             db.execute(
-                "INSERT INTO users(id,email,company,password_hash,role,is_active,last_login) "
-                "VALUES(?,?,?,?,?,1,datetime('now','localtime'))",
-                (uid, email, company, pw_hash, "user"),
+                "INSERT INTO users(id, email, company, password_hash, role, is_active, last_login, "
+                "                  monthly_proposal_quota, monthly_conversation_quota) "
+                "VALUES(?, ?, ?, ?, ?, 1, datetime('now','localtime'), ?, ?)",
+                (uid, email, company, pw_hash, "user", prop_q, conv_q),
             )
 
         # 초대 코드 사용 처리

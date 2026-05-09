@@ -342,6 +342,28 @@ input, select, textarea { font-family: inherit; color: inherit; }
 .sidebar-footer-btn-icon { display: inline-flex; align-items: center; }
 .sidebar-footer-btn-logout:hover { color: var(--danger, #C0392B); }
 
+/* Phase 3 — quota 영역 (사이드바 footer, 사용자 이메일 직후) */
+.sidebar-footer-quota {
+  margin: 6px 0;
+  padding: 8px 10px;
+  background: var(--bg-2, #f4f4f7);
+  border-radius: 6px;
+  font-size: 11px;
+}
+.sidebar-footer-quota .quota-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 2px 0;
+  color: var(--fg-2, #666);
+}
+.sidebar-footer-quota .quota-label { font-size: 11px; }
+.sidebar-footer-quota .quota-value {
+  font-weight: 600; font-variant-numeric: tabular-nums;
+  color: var(--fg, #1a1a1a);
+}
+.sidebar-footer-quota .quota-row.quota-empty .quota-value {
+  color: var(--danger, #c43);
+}
+
 /* (이전 sidebar-recent-* 영역은 사이드바 하단 푸터로 대체됨 — 삭제됨) */
 
 /* ===== Main area ===== */

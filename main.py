@@ -4266,8 +4266,45 @@ def api_auth_logout():
 
 @app.get("/api/auth/me")
 def api_auth_me(user: dict = Depends(get_current_user)):
-    """현재 인증된 사용자 정보."""
-    return {"user": {"id": user["id"], "email": user["email"], "role": user["role"]}}
+    """현재 인증된 사용자 정보 + Phase 3 quota 영역 통합.
+
+    quota 영역:
+      - proposal_remaining: 제안서 잔여 (monthly_proposal_quota)
+      - proposal_total: 정책 영역 영역 (monthly_proposals + bonus)
+      - conversation_remaining: 대화 잔여
+      - conversation_total: 정책 영역 영역 + bonus
+    """
+    # 사용자 quota + bonus 영역
+    with get_db() as db:
+        row = db.execute(
+            "SELECT monthly_proposal_quota, monthly_conversation_quota, "
+            "       monthly_proposal_quota_bonus, monthly_conversation_quota_bonus "
+            "FROM users WHERE id=?",
+            (user["id"],),
+        ).fetchone()
+    prop_remaining = int(row["monthly_proposal_quota"] or 0) if row else 0
+    conv_remaining = int(row["monthly_conversation_quota"] or 0) if row else 0
+    prop_bonus = int(row["monthly_proposal_quota_bonus"] or 0) if row else 0
+    conv_bonus = int(row["monthly_conversation_quota_bonus"] or 0) if row else 0
+
+    # 정책 영역 base + bonus = total. policy_settings 영역 영역 영역.
+    base_prop, base_conv = _get_initial_quota()
+    prop_total = base_prop + prop_bonus
+    conv_total = base_conv + conv_bonus
+
+    return {
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "role": user["role"],
+            "quota": {
+                "proposal_remaining": prop_remaining,
+                "proposal_total": prop_total,
+                "conversation_remaining": conv_remaining,
+                "conversation_total": conv_total,
+            },
+        },
+    }
 
 
 # ---------- /api/me/* — 사용자 본인 영역 메타 (UI 상태 등) ----------

@@ -162,7 +162,17 @@ async function _parseErrorResponse(r) {
     const text = await r.text();
     try { body = JSON.parse(text); } catch { body = { error: text }; }
   } catch { body = {}; }
-  const msg = body.error || body.detail || r.statusText || "알 수 없는 오류";
+  let msg = body.error || body.detail || r.statusText || "알 수 없는 오류";
+  // FastAPI HTTPException detail 영역 dict 영역 영역 (예: Phase 3 quota 영역 detail).
+  // detail = {error, code, quota_remaining, ...} 영역 영역 → 친절 메시지 영역 변환.
+  if (msg && typeof msg === "object") {
+    const code = msg.code || "";
+    if (code === "QUOTA_EXCEEDED") {
+      msg = (msg.error || "이달 할당량 소진") + " — 다음 달 1일 리셋";
+    } else {
+      msg = msg.error || msg.message || JSON.stringify(msg);
+    }
+  }
   // 이미 친절 메시지면 그대로, 스택트레이스 같으면 일반화
   if (typeof msg === "string" && /Traceback|Exception|at [A-Z]|<!DOCTYPE/i.test(msg)) {
     return `잠시 문제가 생겼어요 (${r.status}). 다시 시도해 주세요.`;
@@ -212,6 +222,11 @@ async function _call(method, path, { body, form, signal, timeoutMs = 60000 } = {
         redirectToLogin();
         // redirect 직전이라도 caller 가 throw 받도록 error 진행
       }
+      // 영역 응답 영역 영역 영역 — _parseErrorResponse 영역 텍스트 영역 영역 + raw body 영역 추출
+      // (Phase 3 quota 영역 err.code 영역 영역 영역 영역 영역).
+      const rawText = await r.clone().text();
+      let rawBody = null;
+      try { rawBody = JSON.parse(rawText); } catch {}
       const msg = await _parseErrorResponse(r);
       console.warn(
         `[API ERROR] ${method} ${path}\n` +
@@ -223,6 +238,12 @@ async function _call(method, path, { body, form, signal, timeoutMs = 60000 } = {
       err.status = r.status;
       err.path = path;
       err.method = method;
+      // detail dict 영역 code 영역 → err.code (caller 영역 분기 가능, 예: "QUOTA_EXCEEDED")
+      const detail = rawBody && rawBody.detail;
+      if (detail && typeof detail === "object" && detail.code) {
+        err.code = detail.code;
+        err.quotaRemaining = detail.quota_remaining;
+      }
       throw err;
     }
     const ct = r.headers.get("content-type") || "";
@@ -534,6 +555,30 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
           h("span", { class: "sidebar-footer-user-icon", html: iconHtml("user", 14) }),
           h("span", { class: "sidebar-footer-user-email" }, window.__nightoff_user.email),
         ]),
+      ] : []),
+      // Phase 3 — quota 영역 표시 (이달 잔여 / 총량). __nightoff_user.quota 영역.
+      ...((window.__nightoff_user && window.__nightoff_user.quota) ? [
+        (function () {
+          const q = window.__nightoff_user.quota;
+          const propLow = q.proposal_remaining <= 0;
+          const convLow = q.conversation_remaining <= 0;
+          const wrap = h("div", {
+            class: "sidebar-footer-quota",
+            title: "이달 사용 현황 (다음 달 1일 리셋)",
+          }, [
+            h("div", { class: "quota-row" + (propLow ? " quota-empty" : "") }, [
+              h("span", { class: "quota-label" }, "📋 제안서"),
+              h("span", { class: "quota-value" },
+                `${q.proposal_remaining}/${q.proposal_total}`),
+            ]),
+            h("div", { class: "quota-row" + (convLow ? " quota-empty" : "") }, [
+              h("span", { class: "quota-label" }, "💬 대화"),
+              h("span", { class: "quota-value" },
+                `${q.conversation_remaining}/${q.conversation_total}`),
+            ]),
+          ]);
+          return wrap;
+        })(),
       ] : []),
       h("button", {
         class: "sidebar-footer-btn",

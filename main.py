@@ -4706,15 +4706,8 @@ def api_admin_invites_revoke(code: str, admin: dict = Depends(require_admin)):
     return {"ok": True, "code": code}
 
 
-@app.get("/api/admin/users")
-def api_admin_users_list(admin: dict = Depends(require_admin)):
-    """사용자 목록 — 최소 정보 (admin 전용)."""
-    with get_db() as db:
-        rows = db.execute(
-            "SELECT id, email, role, is_active, created_at, last_login "
-            "FROM users ORDER BY created_at DESC"
-        ).fetchall()
-    return {"users": [dict(r) for r in rows]}
+# 신규 라우트 (Phase 2 단계 2 line 6485+) 영역 흡수됨 — 페이지네이션 + 크레딧 컬럼 포함.
+# 기존 단순 목록 라우트 영역 삭제. 영역 함수명 / path 충돌 회피.
 
 
 @app.post("/api/admin/users/{user_id}/reset-password")
@@ -6447,6 +6440,371 @@ def api_pt_qa(body: PtQaIn, user: dict = Depends(get_current_user)):
     except json.JSONDecodeError:
         raise HTTPException(502, "Q&A 생성 응답을 이해하지 못했어요. 다시 시도해 주세요.")
     return data
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Admin routes (Phase 2 단계 2)
+# ─────────────────────────────────────────────────────────────────────────────
+# 인증: require_admin dependency (line 772) — users.role='admin' 검증.
+# 감시: 모든 PATCH/POST 영역 admin_audit_log 자동 INSERT.
+
+def _admin_audit(admin_user_id: str, action: str,
+                 target_type: str = "", target_id: str = "",
+                 payload: Optional[dict] = None) -> None:
+    """admin 활동 영역 admin_audit_log 영역 INSERT (best-effort, 실패 무시).
+
+    action: 'user_credits_modify' / 'user_suspend' / 'error_report_status' 등.
+    payload: 변경 전후 값 (JSON dict).
+    """
+    try:
+        with get_db() as db:
+            db.execute(
+                "INSERT INTO admin_audit_log(id, admin_user_id, action, target_type, target_id, payload) "
+                "VALUES(?, ?, ?, ?, ?, ?)",
+                (
+                    uuid.uuid4().hex[:12],
+                    admin_user_id,
+                    action[:50],
+                    str(target_type)[:30],
+                    str(target_id)[:50],
+                    json.dumps(payload or {}, ensure_ascii=False)[:2000],
+                ),
+            )
+    except Exception as e:
+        log.warning("admin_audit_log INSERT 실패 (무시): %s", e)
+
+
+# ─── 사용자 관리 ─────────────────────────────────────────────────────────────
+@app.get("/api/admin/users")
+def api_admin_users_list(
+    limit: int = 50, offset: int = 0,
+    admin: dict = Depends(require_admin),
+):
+    """사용자 목록 (페이지네이션). 최근 가입 순."""
+    limit = max(1, min(200, int(limit)))
+    offset = max(0, int(offset))
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT id, email, company, role, is_active, "
+            "       credits, credits_used_this_month, last_reset_date, is_suspended, "
+            "       credit_count, last_login, created_at "
+            "FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ).fetchall()
+        total = db.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
+    return {
+        "users": [dict(r) for r in rows],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@app.get("/api/admin/users/{user_id}")
+def api_admin_users_detail(user_id: str, admin: dict = Depends(require_admin)):
+    """사용자 상세 + 사용 내역 영역 영역 통계."""
+    with get_db() as db:
+        row = db.execute(
+            "SELECT id, email, company, role, is_active, "
+            "       credits, credits_used_this_month, last_reset_date, is_suspended, "
+            "       credit_count, last_login, created_at "
+            "FROM users WHERE id=?",
+            (user_id,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "사용자를 찾을 수 없어요.")
+        # 사용 내역 통계 — clients / conversations / proposals 영역
+        n_clients = db.execute(
+            "SELECT COUNT(*) AS n FROM clients WHERE user_id=?", (user_id,)
+        ).fetchone()["n"]
+        n_convs = db.execute(
+            "SELECT COUNT(*) AS n FROM conversations cv "
+            "JOIN clients c ON c.id=cv.client_id WHERE c.user_id=?",
+            (user_id,),
+        ).fetchone()["n"]
+        n_proposals = db.execute(
+            "SELECT COUNT(*) AS n FROM conversations cv "
+            "JOIN clients c ON c.id=cv.client_id "
+            "WHERE c.user_id=? AND cv.pptx_path != ''",
+            (user_id,),
+        ).fetchone()["n"]
+    return {
+        "user": dict(row),
+        "stats": {
+            "clients": n_clients,
+            "conversations": n_convs,
+            "proposals": n_proposals,
+        },
+    }
+
+
+class AdminUserPatch(BaseModel):
+    credits: Optional[int] = None
+    credits_used_this_month: Optional[int] = None
+    is_suspended: Optional[int] = None
+    last_reset_date: Optional[str] = None
+
+
+@app.patch("/api/admin/users/{user_id}")
+def api_admin_users_patch(
+    user_id: str, body: AdminUserPatch,
+    admin: dict = Depends(require_admin),
+):
+    """사용자 영역 크레딧 / 정지 / 리셋 날짜 변경. admin_audit_log 자동 기록."""
+    with get_db() as db:
+        before = db.execute(
+            "SELECT credits, credits_used_this_month, is_suspended, last_reset_date "
+            "FROM users WHERE id=?",
+            (user_id,),
+        ).fetchone()
+        if not before:
+            raise HTTPException(404, "사용자를 찾을 수 없어요.")
+        before_dict = dict(before)
+
+        # 변경 영역만 UPDATE
+        updates = []
+        params = []
+        changes: dict = {}
+        if body.credits is not None:
+            updates.append("credits=?")
+            params.append(int(body.credits))
+            changes["credits"] = {"before": before_dict["credits"], "after": int(body.credits)}
+        if body.credits_used_this_month is not None:
+            updates.append("credits_used_this_month=?")
+            params.append(int(body.credits_used_this_month))
+            changes["credits_used_this_month"] = {
+                "before": before_dict["credits_used_this_month"],
+                "after": int(body.credits_used_this_month),
+            }
+        if body.is_suspended is not None:
+            updates.append("is_suspended=?")
+            params.append(1 if body.is_suspended else 0)
+            changes["is_suspended"] = {
+                "before": before_dict["is_suspended"],
+                "after": 1 if body.is_suspended else 0,
+            }
+        if body.last_reset_date is not None:
+            updates.append("last_reset_date=?")
+            params.append(str(body.last_reset_date)[:10])
+            changes["last_reset_date"] = {
+                "before": before_dict["last_reset_date"],
+                "after": str(body.last_reset_date)[:10],
+            }
+
+        if not updates:
+            return {"ok": False, "message": "변경 사항이 없어요."}
+
+        params.append(user_id)
+        db.execute(f"UPDATE users SET {', '.join(updates)} WHERE id=?", params)
+
+    # 감시 로그 — 변경 후
+    action = "user_credits_modify" if "credits" in changes else "user_modify"
+    if "is_suspended" in changes:
+        action = "user_suspend" if changes["is_suspended"]["after"] else "user_unsuspend"
+    _admin_audit(admin["id"], action, "user", user_id, changes)
+
+    return {"ok": True, "changes": changes}
+
+
+# ─── 오류 보고 ───────────────────────────────────────────────────────────────
+@app.get("/api/admin/error-reports")
+def api_admin_error_reports_list(
+    status: Optional[str] = None,
+    limit: int = 50, offset: int = 0,
+    admin: dict = Depends(require_admin),
+):
+    """오류 보고 목록. status 영역 필터 가능 ('접수' / '처리중' / '완료')."""
+    limit = max(1, min(200, int(limit)))
+    offset = max(0, int(offset))
+    where = ""
+    params: list = []
+    if status:
+        where = "WHERE status=?"
+        params.append(status)
+    params.extend([limit, offset])
+    with get_db() as db:
+        rows = db.execute(
+            f"SELECT er.id, er.user_id, u.email AS user_email, er.report_date, "
+            f"       er.error_message, er.screenshot_url, er.status, "
+            f"       er.compensation_credits, er.notes, er.created_at, er.updated_at "
+            f"FROM error_reports er "
+            f"LEFT JOIN users u ON u.id = er.user_id "
+            f"{where} ORDER BY er.created_at DESC LIMIT ? OFFSET ?",
+            params,
+        ).fetchall()
+        cnt_q = "SELECT COUNT(*) AS n FROM error_reports"
+        cnt_params: list = []
+        if status:
+            cnt_q += " WHERE status=?"
+            cnt_params.append(status)
+        total = db.execute(cnt_q, cnt_params).fetchone()["n"]
+    return {
+        "reports": [dict(r) for r in rows],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+class ErrorReportCreate(BaseModel):
+    error_message: str
+    screenshot_url: Optional[str] = ""
+
+
+@app.post("/api/admin/error-reports")
+def api_error_report_create(
+    body: ErrorReportCreate,
+    user: dict = Depends(get_current_user),  # 일반 사용자 영역 신고 가능
+):
+    """사용자 영역 오류 보고 생성. admin 권한 X — 일반 사용자도 신고 가능."""
+    msg = (body.error_message or "").strip()
+    if not msg:
+        raise HTTPException(400, "오류 메시지를 입력해 주세요.")
+    if len(msg) > 5000:
+        raise HTTPException(400, "오류 메시지가 너무 길어요 (5000자 이하).")
+    rid = uuid.uuid4().hex[:12]
+    with get_db() as db:
+        db.execute(
+            "INSERT INTO error_reports(id, user_id, error_message, screenshot_url) "
+            "VALUES(?, ?, ?, ?)",
+            (rid, user["id"], msg, str(body.screenshot_url or "")[:500]),
+        )
+    return {"ok": True, "id": rid}
+
+
+class AdminErrorReportPatch(BaseModel):
+    status: Optional[str] = None
+    compensation_credits: Optional[int] = None
+    notes: Optional[str] = None
+
+
+@app.patch("/api/admin/error-reports/{report_id}")
+def api_admin_error_report_patch(
+    report_id: str, body: AdminErrorReportPatch,
+    admin: dict = Depends(require_admin),
+):
+    """오류 보고 영역 상태 / 보상 / 메모 변경. 보상 크레딧 ↑ 시 사용자 credits 자동 증액."""
+    valid_statuses = {"접수", "처리중", "완료"}
+    if body.status is not None and body.status not in valid_statuses:
+        raise HTTPException(400, f"status 영역 {valid_statuses} 중 하나여야 해요.")
+
+    with get_db() as db:
+        before = db.execute(
+            "SELECT user_id, status, compensation_credits, notes FROM error_reports WHERE id=?",
+            (report_id,),
+        ).fetchone()
+        if not before:
+            raise HTTPException(404, "오류 보고를 찾을 수 없어요.")
+        before_dict = dict(before)
+
+        updates = []
+        params: list = []
+        changes: dict = {}
+        if body.status is not None:
+            updates.append("status=?")
+            params.append(body.status)
+            changes["status"] = {"before": before_dict["status"], "after": body.status}
+        if body.compensation_credits is not None:
+            new_comp = max(0, int(body.compensation_credits))
+            updates.append("compensation_credits=?")
+            params.append(new_comp)
+            changes["compensation_credits"] = {
+                "before": before_dict["compensation_credits"],
+                "after": new_comp,
+            }
+            # 보상 크레딧 영역 ↑ 영역 → 사용자 credits 영역 차이 영역 INCREMENT
+            delta = new_comp - int(before_dict["compensation_credits"])
+            if delta != 0:
+                db.execute(
+                    "UPDATE users SET credits = credits + ? WHERE id=?",
+                    (delta, before_dict["user_id"]),
+                )
+                changes["user_credits_delta"] = delta
+        if body.notes is not None:
+            updates.append("notes=?")
+            params.append(str(body.notes)[:2000])
+            changes["notes"] = {
+                "before": before_dict["notes"],
+                "after": str(body.notes)[:2000],
+            }
+
+        if not updates:
+            return {"ok": False, "message": "변경 사항이 없어요."}
+
+        updates.append("updated_at=datetime('now','localtime')")
+        params.append(report_id)
+        db.execute(f"UPDATE error_reports SET {', '.join(updates)} WHERE id=?", params)
+
+    _admin_audit(admin["id"], "error_report_status", "error_report", report_id, changes)
+    return {"ok": True, "changes": changes}
+
+
+# ─── 통계 ────────────────────────────────────────────────────────────────────
+@app.get("/api/admin/stats/credits")
+def api_admin_stats_credits(admin: dict = Depends(require_admin)):
+    """크레딧 통계 — 일일 / 월간 / 환급 (보상) 합계."""
+    with get_db() as db:
+        # 전체 사용자 영역 credits / used 영역 합계
+        totals = db.execute(
+            "SELECT COALESCE(SUM(credits),0) AS total_credits, "
+            "       COALESCE(SUM(credits_used_this_month),0) AS total_used_this_month, "
+            "       COUNT(*) AS user_count, "
+            "       COALESCE(SUM(CASE WHEN is_suspended=1 THEN 1 ELSE 0 END),0) AS suspended_count "
+            "FROM users"
+        ).fetchone()
+
+        # 보상 크레딧 (환급) 합계 — error_reports.compensation_credits
+        comp = db.execute(
+            "SELECT COALESCE(SUM(compensation_credits),0) AS total_compensation, "
+            "       COUNT(*) AS report_count "
+            "FROM error_reports"
+        ).fetchone()
+
+        # 오류 보고 상태별 영역
+        status_counts = db.execute(
+            "SELECT status, COUNT(*) AS n FROM error_reports GROUP BY status"
+        ).fetchall()
+
+    return {
+        "users": {
+            "total_credits": totals["total_credits"],
+            "total_used_this_month": totals["total_used_this_month"],
+            "user_count": totals["user_count"],
+            "suspended_count": totals["suspended_count"],
+        },
+        "compensation": {
+            "total": comp["total_compensation"],
+            "report_count": comp["report_count"],
+        },
+        "error_report_status": {r["status"]: r["n"] for r in status_counts},
+    }
+
+
+# ─── 감시 로그 조회 ─────────────────────────────────────────────────────────
+@app.get("/api/admin/audit-log")
+def api_admin_audit_log(
+    limit: int = 100, offset: int = 0,
+    admin: dict = Depends(require_admin),
+):
+    """admin_audit_log 조회 — 최근 활동 순."""
+    limit = max(1, min(500, int(limit)))
+    offset = max(0, int(offset))
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT al.id, al.admin_user_id, u.email AS admin_email, "
+            "       al.action, al.target_type, al.target_id, al.payload, al.created_at "
+            "FROM admin_audit_log al "
+            "LEFT JOIN users u ON u.id = al.admin_user_id "
+            "ORDER BY al.created_at DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ).fetchall()
+        total = db.execute("SELECT COUNT(*) AS n FROM admin_audit_log").fetchone()["n"]
+    return {
+        "logs": [dict(r) for r in rows],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 if __name__ == "__main__":

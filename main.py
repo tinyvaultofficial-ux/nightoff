@@ -7107,6 +7107,58 @@ def api_admin_audit_log(
     }
 
 
+# ─── 월간 quota 리셋 (Phase 3 단계 6) ────────────────────────────────────────
+# 매월 1일 어드민이 수동 호출 — 모든 사용자의 월간 quota를 policy_settings 기준으로 초기화.
+# bonus(프로모션 충전분)는 함께 0으로 소멸 (월 단위 사용 원칙).
+# 향후 Phase 4 에서 APScheduler 자동화 예정 — 현재는 어드민 대시보드 버튼.
+@app.post("/api/admin/quota/reset-monthly")
+def api_admin_quota_reset_monthly(admin: dict = Depends(require_admin)):
+    """모든 사용자의 월간 quota를 policy_settings 기준값으로 리셋.
+
+    동작:
+      - monthly_proposal_quota = policy_settings.monthly_proposals (default 7)
+      - monthly_conversation_quota = policy_settings.monthly_conversations (default 350)
+      - *_bonus = 0 (어드민 충전분 소멸)
+      - credits_used_this_month = 0 (월간 누적 사용량 초기화)
+      - last_reset_date = 오늘 (KST)
+
+    감사: admin_audit_log 에 'quota_reset_monthly' 기록.
+    """
+    proposal_base, conversation_base = _get_initial_quota()
+    today = _today_kst_str()
+
+    with get_db() as db:
+        # 영향 사용자 수 사전 집계 (감사 기록용)
+        before = db.execute("SELECT COUNT(*) AS n FROM users").fetchone()
+        users_total = int(before["n"]) if before else 0
+
+        # 단일 UPDATE — 모든 사용자 일괄 리셋 (어드민 본인 포함)
+        db.execute(
+            "UPDATE users SET "
+            "  monthly_proposal_quota = ?, "
+            "  monthly_conversation_quota = ?, "
+            "  monthly_proposal_quota_bonus = 0, "
+            "  monthly_conversation_quota_bonus = 0, "
+            "  credits_used_this_month = 0, "
+            "  last_reset_date = ?",
+            (proposal_base, conversation_base, today),
+        )
+
+    payload = {
+        "users_affected": users_total,
+        "proposal_base": proposal_base,
+        "conversation_base": conversation_base,
+        "reset_date": today,
+    }
+    _admin_audit(admin["id"], "quota_reset_monthly", "users", "*", payload)
+
+    return {
+        "ok": True,
+        "message": f"월간 quota 리셋 완료 — {users_total}명",
+        **payload,
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     init_db()

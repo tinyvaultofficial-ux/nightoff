@@ -6611,6 +6611,13 @@ class AdminUserPatch(BaseModel):
     credits_used_this_month: Optional[int] = None
     is_suspended: Optional[int] = None
     last_reset_date: Optional[str] = None
+    # Phase 3 단계 2 — quota 직접 설정 (set) + 추가 충전 (add) 양쪽 지원.
+    # set: monthly_*_quota = N (직접 덮어쓰기)
+    # add: monthly_*_quota_add = N (현재 quota + N — 프라이빗 프로모션, _bonus 영역도 누적 추적)
+    monthly_proposal_quota: Optional[int] = None
+    monthly_conversation_quota: Optional[int] = None
+    monthly_proposal_quota_add: Optional[int] = None
+    monthly_conversation_quota_add: Optional[int] = None
 
 
 @app.patch("/api/admin/users/{user_id}")
@@ -6618,10 +6625,18 @@ def api_admin_users_patch(
     user_id: str, body: AdminUserPatch,
     admin: dict = Depends(require_admin),
 ):
-    """사용자 영역 크레딧 / 정지 / 리셋 날짜 변경. admin_audit_log 자동 기록."""
+    """사용자 크레딧 / 정지 / 리셋 날짜 / quota 변경. admin_audit_log 자동 기록.
+
+    Phase 3 단계 2 — quota 처리:
+    - set 흐름 (monthly_*_quota): 직접 덮어쓰기
+    - add 흐름 (monthly_*_quota_add): 현재값 + 추가량 (bonus 누적 추적)
+    - set + add 동시 명시 시: set 우선 → add 추가
+    """
     with get_db() as db:
         before = db.execute(
-            "SELECT credits, credits_used_this_month, is_suspended, last_reset_date "
+            "SELECT credits, credits_used_this_month, is_suspended, last_reset_date, "
+            "       monthly_proposal_quota, monthly_conversation_quota, "
+            "       monthly_proposal_quota_bonus, monthly_conversation_quota_bonus "
             "FROM users WHERE id=?",
             (user_id,),
         ).fetchone()
@@ -6659,16 +6674,77 @@ def api_admin_users_patch(
                 "after": str(body.last_reset_date)[:10],
             }
 
+        # ─── Phase 3 — proposal quota 처리 (set + add 동시 가능) ──────────────
+        # set + add 동시 명시: set 우선 적용 → add 추가 (양쪽 모두 적용된 최종값 기록)
+        prop_q_before = int(before_dict.get("monthly_proposal_quota") or 0)
+        prop_q_after = prop_q_before
+        if body.monthly_proposal_quota is not None:
+            prop_q_after = int(body.monthly_proposal_quota)
+        if body.monthly_proposal_quota_add is not None:
+            prop_q_after = prop_q_after + int(body.monthly_proposal_quota_add)
+        if prop_q_after != prop_q_before:
+            updates.append("monthly_proposal_quota=?")
+            params.append(prop_q_after)
+            changes["monthly_proposal_quota"] = {
+                "before": prop_q_before,
+                "after": prop_q_after,
+                "set": int(body.monthly_proposal_quota) if body.monthly_proposal_quota is not None else None,
+                "add": int(body.monthly_proposal_quota_add) if body.monthly_proposal_quota_add is not None else None,
+            }
+            # add 영역 → bonus 누적 (프라이빗 프로모션 추적). set 영역 bonus 영역 X.
+            if body.monthly_proposal_quota_add is not None:
+                bonus_before = int(before_dict.get("monthly_proposal_quota_bonus") or 0)
+                bonus_after = bonus_before + int(body.monthly_proposal_quota_add)
+                updates.append("monthly_proposal_quota_bonus=?")
+                params.append(bonus_after)
+                changes["monthly_proposal_quota_bonus"] = {
+                    "before": bonus_before, "after": bonus_after,
+                }
+
+        # ─── Phase 3 — conversation quota 처리 (동일 패턴) ────────────────────
+        conv_q_before = int(before_dict.get("monthly_conversation_quota") or 0)
+        conv_q_after = conv_q_before
+        if body.monthly_conversation_quota is not None:
+            conv_q_after = int(body.monthly_conversation_quota)
+        if body.monthly_conversation_quota_add is not None:
+            conv_q_after = conv_q_after + int(body.monthly_conversation_quota_add)
+        if conv_q_after != conv_q_before:
+            updates.append("monthly_conversation_quota=?")
+            params.append(conv_q_after)
+            changes["monthly_conversation_quota"] = {
+                "before": conv_q_before,
+                "after": conv_q_after,
+                "set": int(body.monthly_conversation_quota) if body.monthly_conversation_quota is not None else None,
+                "add": int(body.monthly_conversation_quota_add) if body.monthly_conversation_quota_add is not None else None,
+            }
+            if body.monthly_conversation_quota_add is not None:
+                bonus_before = int(before_dict.get("monthly_conversation_quota_bonus") or 0)
+                bonus_after = bonus_before + int(body.monthly_conversation_quota_add)
+                updates.append("monthly_conversation_quota_bonus=?")
+                params.append(bonus_after)
+                changes["monthly_conversation_quota_bonus"] = {
+                    "before": bonus_before, "after": bonus_after,
+                }
+
         if not updates:
             return {"ok": False, "message": "변경 사항이 없어요."}
 
         params.append(user_id)
         db.execute(f"UPDATE users SET {', '.join(updates)} WHERE id=?", params)
 
-    # 감시 로그 — 변경 후
-    action = "user_credits_modify" if "credits" in changes else "user_modify"
+    # 감시 로그 — action 영역 분기 (우선순위: suspend > quota_add > quota_set > credits > 일반)
+    action = "user_modify"
     if "is_suspended" in changes:
         action = "user_suspend" if changes["is_suspended"]["after"] else "user_unsuspend"
+    elif (
+        (changes.get("monthly_proposal_quota") and changes["monthly_proposal_quota"].get("add") is not None)
+        or (changes.get("monthly_conversation_quota") and changes["monthly_conversation_quota"].get("add") is not None)
+    ):
+        action = "quota_add"
+    elif "monthly_proposal_quota" in changes or "monthly_conversation_quota" in changes:
+        action = "quota_set"
+    elif "credits" in changes:
+        action = "user_credits_modify"
     _admin_audit(admin["id"], action, "user", user_id, changes)
 
     return {"ok": True, "changes": changes}

@@ -431,8 +431,8 @@ def init_db() -> None:
             -- 영역 INSERT 추가만 영역 영역 (영역 영역 영역 동적 추가).
             INSERT OR IGNORE INTO policy_settings(key, value) VALUES
                 ('package_price', '380000'),
-                ('monthly_proposals', '7'),
-                ('monthly_conversations', '350');
+                ('monthly_proposals', '5'),
+                ('monthly_conversations', '150');
         """)
 
         # 구버전 competitors 테이블 흔적 제거 (있으면)
@@ -713,8 +713,8 @@ def _get_initial_quota() -> tuple[int, int]:
                 "WHERE key IN ('monthly_proposals', 'monthly_conversations')"
             ).fetchall()
             kv = {r["key"]: r["value"] for r in rows}
-            p = int(kv.get("monthly_proposals") or 7)
-            c = int(kv.get("monthly_conversations") or 350)
+            p = int(kv.get("monthly_proposals") or 5)
+            c = int(kv.get("monthly_conversations") or 150)
             return max(0, p), max(0, c)
     except Exception as e:
         log.warning("_get_initial_quota fallback (정책 조회 실패): %s", e)

@@ -207,7 +207,20 @@ function renderUsersTable() {
     content.innerHTML = `<div class="empty">사용자가 없습니다.</div>`;
     return;
   }
-  const rows = usersState.users.map((u) => `
+  const rows = usersState.users.map((u) => {
+    // Phase 3 quota 표시 — 백엔드 /api/admin/users 가 quota 컬럼 4종 반환.
+    const propQ = u.monthly_proposal_quota != null ? u.monthly_proposal_quota : "-";
+    const convQ = u.monthly_conversation_quota != null ? u.monthly_conversation_quota : "-";
+    const propBonus = u.monthly_proposal_quota_bonus || 0;
+    const convBonus = u.monthly_conversation_quota_bonus || 0;
+    // 보너스 셀 — 둘 다 0 이면 '-', 아니면 'P+N · C+M' 형태
+    const bonusCell = (propBonus === 0 && convBonus === 0)
+      ? `<span style="color:var(--fg-2);">-</span>`
+      : `<span title="프로모션 충전" style="font-size:12px;">`
+        + (propBonus > 0 ? `<span class="status-badge admin">P +${propBonus}</span> ` : "")
+        + (convBonus > 0 ? `<span class="status-badge admin">C +${convBonus}</span>` : "")
+        + `</span>`;
+    return `
     <tr>
       <td>${escapeHtml((u.id || "").slice(0, 12))}</td>
       <td>${escapeHtml(u.email || "-")}</td>
@@ -222,16 +235,17 @@ function renderUsersTable() {
               : '<span class="status-badge active">활성</span>')
           : '<span class="status-badge suspended">비활성</span>'}
       </td>
-      <td class="num">${fmtNumber(u.credits || 0)}</td>
-      <td class="num">${fmtNumber(u.credits_used_this_month || 0)}</td>
-      <td class="num" title="무료 크레딧 (퀴즈/로또/운세)">${fmtNumber(u.credit_count || 0)}</td>
+      <td class="num" title="제안서 월간 잔여">${fmtNumber(propQ)}</td>
+      <td class="num" title="대화 월간 잔여">${fmtNumber(convQ)}</td>
+      <td>${bonusCell}</td>
       <td>${fmtDate(u.last_reset_date)}</td>
       <td>${fmtDate(u.created_at)}</td>
       <td>
         <button class="btn" onclick="openUserModal('${escapeHtml(u.id)}')">수정</button>
       </td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
 
   content.innerHTML = `
     <div class="table-scroll">
@@ -243,10 +257,10 @@ function renderUsersTable() {
             <th>회사</th>
             <th>역할</th>
             <th>상태</th>
-            <th class="num">유료 크레딧</th>
-            <th class="num">이달 사용</th>
-            <th class="num">무료 크레딧</th>
-            <th>리셋일</th>
+            <th class="num" title="monthly_proposal_quota">제안서</th>
+            <th class="num" title="monthly_conversation_quota">대화</th>
+            <th title="프로모션 충전 (proposal_bonus / conversation_bonus)">보너스</th>
+            <th>마지막 리셋일</th>
             <th>가입일</th>
             <th></th>
           </tr>

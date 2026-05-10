@@ -36,13 +36,8 @@
     <div class="auth-card">
       <div class="auth-brand">NightOff</div>
       <div class="auth-tagline">야근 없이 끝내는 제안서, NightOff</div>
-      <div class="auth-h1">회원가입 · 베타 초대</div>
+      <div class="auth-h1">회원가입</div>
       <form id="register-form">
-        <div class="auth-field">
-          <label for="invite_code">초대 코드</label>
-          <input type="text" id="invite_code" name="invite_code" placeholder="NIGHTOFF-XXXX" required />
-          <div class="auth-hint">관리자에게 받은 초대 코드를 입력하세요.</div>
-        </div>
         <div class="auth-field">
           <label for="email">이메일</label>
           <input type="email" id="email" name="email" autocomplete="email" required />
@@ -89,7 +84,6 @@
       clearError();
       btn.disabled = true;
       btn.textContent = "가입 중...";
-      const invite_code = document.getElementById("invite_code").value.trim().toUpperCase();
       const email = document.getElementById("email").value.trim();
       const password = document.getElementById("password").value;
       const company = document.getElementById("company").value.trim();
@@ -97,13 +91,12 @@
         const r = await fetch("/api/auth/register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password, invite_code, company }),
+          body: JSON.stringify({ email, password, company }),
         });
         const data = await r.json().catch(() => ({}));
         if (!r.ok) {
           if (r.status === 400) showError(data.detail || "입력 형식을 확인해 주세요.");
-          else if (r.status === 409) showError("이미 활성화된 계정이에요. 로그인해 주세요.");
-          else if (r.status === 410) showError(data.detail || "초대 코드가 유효하지 않아요.");
+          else if (r.status === 409) showError(data.detail || "이미 가입된 이메일이에요. 로그인해 주세요.");
           else showError(data.detail || "가입에 실패했어요. 다시 시도해 주세요.");
           return;
         }

@@ -7282,6 +7282,7 @@ def api_admin_quota_reset_monthly(admin: dict = Depends(require_admin)):
                 "proposal_base": proposal_base,
                 "conversation_base": conversation_base,
                 "reset_date": today,
+                "trigger": "manual",
             }
             # 감사 기록은 남김 — 어드민이 호출했다는 사실 자체는 추적
             _admin_audit(admin["id"], "quota_reset_monthly", "users", "*", payload)
@@ -7310,6 +7311,7 @@ def api_admin_quota_reset_monthly(admin: dict = Depends(require_admin)):
         "proposal_base": proposal_base,
         "conversation_base": conversation_base,
         "reset_date": today,
+        "trigger": "manual",
         # 영향 사용자 id 일부만 페이로드에 — 너무 길면 잘림 (감사 페이로드 2000자 제한)
         "user_ids_sample": eligible_ids[:20],
     }
@@ -7320,6 +7322,120 @@ def api_admin_quota_reset_monthly(admin: dict = Depends(require_admin)):
         "message": f"월간 quota 리셋 완료 — {users_affected}명",
         **payload,
     }
+
+
+# ─── Phase 4 — APScheduler 자동 리셋 (00:00 KST 매일) ────────────────────────
+# 패키지 미설치(또는 import 실패) 시 graceful skip — 어드민 수동 트리거가 백업.
+# Railway 단일 인스턴스 + uvicorn 단일 워커(Procfile 기본) 환경에서 BackgroundScheduler
+# 데몬 스레드로 동작. 멱등성: _quota_reset_eligible_user_ids 가 가입/직전리셋 + 1개월
+# 미경과 사용자를 자동 제외 → 같은 날 두 번 실행돼도 두 번째는 0명.
+_SCHEDULER = None  # type: ignore[var-annotated]
+
+
+def auto_reset_quota_job() -> None:
+    """매일 00:00 KST 자동 실행 — 자격 사용자 감지 후 리셋.
+
+    수동 트리거(api_admin_quota_reset_monthly)와 동일 로직 + 동일 감사 기록.
+    payload.trigger='auto' 로 구분해 어드민 대시보드 리셋 로그 탭에서 추적 가능.
+    예외 발생 시 로그만 남기고 raise 안 함 (다음 날 다시 시도 — APScheduler 안정성 보장).
+    """
+    try:
+        proposal_base, conversation_base = _get_initial_quota()
+        today = _today_kst_str()
+
+        with get_db() as db:
+            eligible_ids = _quota_reset_eligible_user_ids(db, today)
+            users_affected = len(eligible_ids)
+
+            if users_affected == 0:
+                # 자격 사용자 없음 — 감사 로그 노이즈 회피로 기록 안 함 (수동 트리거와의 차이점).
+                log.info("[scheduler] auto_reset_quota: 자격 사용자 0명 (skip)")
+                return
+
+            placeholders = ",".join(["?"] * users_affected)
+            db.execute(
+                "UPDATE users SET "
+                "  monthly_proposal_quota = ?, "
+                "  monthly_conversation_quota = ?, "
+                "  monthly_proposal_quota_bonus = 0, "
+                "  monthly_conversation_quota_bonus = 0, "
+                "  credits_used_this_month = 0, "
+                "  last_reset_date = ? "
+                f"WHERE id IN ({placeholders})",
+                (proposal_base, conversation_base, today, *eligible_ids),
+            )
+
+        payload = {
+            "users_affected": users_affected,
+            "proposal_base": proposal_base,
+            "conversation_base": conversation_base,
+            "reset_date": today,
+            "trigger": "auto",
+            "user_ids_sample": eligible_ids[:20],
+        }
+        # admin_user_id="" — 자동 트리거 (실행자 없음). admin_email LEFT JOIN 결과는 NULL.
+        _admin_audit("", "quota_reset_monthly", "users", "*", payload)
+        log.info("[scheduler] auto_reset_quota: 완료 — %d명 리셋", users_affected)
+    except Exception as e:
+        # 스케줄러 안정성 — 한 번의 실패가 다음 실행을 막지 않도록 raise 안 함.
+        log.exception("[scheduler] auto_reset_quota 실패 (다음 실행 시 재시도): %s", e)
+
+
+def _init_quota_scheduler() -> None:
+    """startup 단계에서 호출 — APScheduler BackgroundScheduler 초기화.
+
+    실패해도 raise 하지 않음 (전체 startup 보호 — _startup() 의 정책과 일관).
+    apscheduler 패키지 미설치 시 import 단계에서 ImportError → 로그만 남기고 skip.
+    """
+    global _SCHEDULER
+    if _SCHEDULER is not None:
+        log.info("[scheduler] 이미 초기화됨 — skip")
+        return
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from apscheduler.triggers.cron import CronTrigger
+    except Exception as e:
+        log.warning("[scheduler] apscheduler import 실패 — 자동 리셋 비활성, 수동 트리거만 사용: %s", e)
+        return
+    try:
+        sched = BackgroundScheduler(timezone="Asia/Seoul", daemon=True)
+        sched.add_job(
+            auto_reset_quota_job,
+            CronTrigger(hour=0, minute=0, timezone="Asia/Seoul"),
+            id="quota_reset_daily",
+            name="Daily quota reset at 00:00 KST",
+            replace_existing=True,
+            max_instances=1,         # 동일 job 동시 실행 방지
+            coalesce=True,           # 누락된 firing 합치기 (다운타임 후 1회만 실행)
+            misfire_grace_time=3600, # 1시간 이내 누락은 만회 실행
+        )
+        sched.start()
+        _SCHEDULER = sched
+        # atexit + shutdown event 둘 다 등록 — uvicorn 종료 신호 어떤 것으로든 정리
+        import atexit
+        atexit.register(lambda: _SCHEDULER and _SCHEDULER.shutdown(wait=False))
+        log.info("[scheduler] 시작 — 매일 00:00 KST quota 자동 리셋 등록")
+    except Exception as e:
+        log.exception("[scheduler] 초기화 실패 (자동 리셋 비활성, 수동 트리거만 사용): %s", e)
+
+
+@app.on_event("startup")
+def _startup_scheduler() -> None:
+    """기존 _startup() 와 별개의 startup hook — 모듈화 (한 hook 실패가 다른 것 영향 X)."""
+    _init_quota_scheduler()
+
+
+@app.on_event("shutdown")
+def _shutdown_scheduler() -> None:
+    """uvicorn graceful shutdown 시 스케줄러도 정리."""
+    global _SCHEDULER
+    if _SCHEDULER is not None:
+        try:
+            _SCHEDULER.shutdown(wait=False)
+            log.info("[scheduler] shutdown 완료")
+        except Exception as e:
+            log.warning("[scheduler] shutdown 중 오류 (무시): %s", e)
+        _SCHEDULER = None
 
 
 if __name__ == "__main__":

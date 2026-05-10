@@ -1114,16 +1114,24 @@ function renderResetlogTable() {
     const usersAffected = payload.users_affected != null ? payload.users_affected : "-";
     const propBase = payload.proposal_base != null ? payload.proposal_base : "-";
     const convBase = payload.conversation_base != null ? payload.conversation_base : "-";
+    const trig = payload.trigger || "manual";  // 구버전 로그는 trigger 필드 없음 — manual 추정
+    const trigBadge = trig === "auto"
+      ? `<span class="status-badge admin" title="APScheduler 매일 00:00 KST 자동 실행">🤖 자동</span>`
+      : `<span class="status-badge active" title="어드민 수동 트리거">👤 수동</span>`;
+    const executor = trig === "auto"
+      ? `<span style="color:var(--fg-2); font-style:italic;">scheduler</span>`
+      : escapeHtml(log.admin_email || "-");
     const sample = Array.isArray(payload.user_ids_sample) && payload.user_ids_sample.length
       ? `<span class="log-payload" title="${escapeHtml(payload.user_ids_sample.join(', '))}">${payload.user_ids_sample.length}개 sample</span>`
       : "-";
     return `
       <tr>
         <td>${escapeHtml(log.created_at || "-")}</td>
+        <td>${trigBadge}</td>
         <td class="num">${escapeHtml(String(usersAffected))}명</td>
         <td class="num">${escapeHtml(String(propBase))}</td>
         <td class="num">${escapeHtml(String(convBase))}</td>
-        <td>${escapeHtml(log.admin_email || "-")}</td>
+        <td>${executor}</td>
         <td>${sample}</td>
       </tr>`;
   }).join("");
@@ -1134,6 +1142,7 @@ function renderResetlogTable() {
         <thead>
           <tr>
             <th>실행 시간</th>
+            <th>트리거</th>
             <th>리셋 대상</th>
             <th>제안서 기본값</th>
             <th>대화 기본값</th>

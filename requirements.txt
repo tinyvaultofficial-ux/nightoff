@@ -15,6 +15,9 @@ boto3==1.35.92
 # 베타 인증 — 묶음 N
 bcrypt==4.1.2
 PyJWT==2.8.0
+# Phase 4 — 매일 00:00 KST quota 자동 리셋 (BackgroundScheduler 데몬 스레드).
+# 미설치 시 graceful skip → 어드민 수동 트리거(설정 탭 버튼)로 대체 가능.
+apscheduler==3.10.4
 # RAG (옵셔널) — 두 패키지 설치 실패해도 NightOff 자체는 정상 동작 (rag_retriever 가 graceful skip).
 # Railway nixpacks 의 phases.install 에서 best-effort 로 설치하도록 분리.
 # 로컬 개발 시: pip install -r requirements-rag.txt

@@ -7084,26 +7084,103 @@ def api_admin_settings_patch(
 @app.get("/api/admin/audit-log")
 def api_admin_audit_log(
     limit: int = 100, offset: int = 0,
+    action: Optional[str] = None,
     admin: dict = Depends(require_admin),
 ):
-    """admin_audit_log 조회 — 최근 활동 순."""
+    """admin_audit_log 조회 — 최근 활동 순.
+
+    필터: action — 특정 action 만 (예: 'quota_reset_monthly').
+    """
     limit = max(1, min(500, int(limit)))
     offset = max(0, int(offset))
+
+    where_clause = ""
+    where_params: tuple = ()
+    if action:
+        where_clause = "WHERE al.action = ? "
+        where_params = (str(action)[:50],)
+
     with get_db() as db:
         rows = db.execute(
             "SELECT al.id, al.admin_user_id, u.email AS admin_email, "
             "       al.action, al.target_type, al.target_id, al.payload, al.created_at "
             "FROM admin_audit_log al "
             "LEFT JOIN users u ON u.id = al.admin_user_id "
+            f"{where_clause}"
             "ORDER BY al.created_at DESC LIMIT ? OFFSET ?",
-            (limit, offset),
+            (*where_params, limit, offset),
         ).fetchall()
-        total = db.execute("SELECT COUNT(*) AS n FROM admin_audit_log").fetchone()["n"]
+        total_row = db.execute(
+            f"SELECT COUNT(*) AS n FROM admin_audit_log al {where_clause}",
+            where_params,
+        ).fetchone()
+        total = total_row["n"] if total_row else 0
     return {
         "logs": [dict(r) for r in rows],
         "total": total,
         "limit": limit,
         "offset": offset,
+        "action_filter": action or "",
+    }
+
+
+# ─── 전체 사용자 quota 현황 (Phase 3 어드민 탭 5) ────────────────────────────
+# 모든 사용자의 quota 상태를 한 번에 — 어드민 모니터링용.
+# remaining / total / used / last_reset_date / created_at 노출.
+@app.get("/api/admin/quota/status")
+def api_admin_quota_status(
+    limit: int = 100, offset: int = 0,
+    admin: dict = Depends(require_admin),
+):
+    """모든 사용자의 quota 현황 — 페이지네이션 + 정렬 (최근 가입 순)."""
+    limit = max(1, min(500, int(limit)))
+    offset = max(0, int(offset))
+
+    base_prop, base_conv = _get_initial_quota()
+
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT id, email, "
+            "       monthly_proposal_quota, monthly_proposal_quota_bonus, "
+            "       monthly_conversation_quota, monthly_conversation_quota_bonus, "
+            "       credits_used_this_month, last_reset_date, created_at "
+            "FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ).fetchall()
+        total = db.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
+
+    users = []
+    for r in rows:
+        prop_remaining = int(r["monthly_proposal_quota"] or 0)
+        conv_remaining = int(r["monthly_conversation_quota"] or 0)
+        prop_bonus = int(r["monthly_proposal_quota_bonus"] or 0)
+        conv_bonus = int(r["monthly_conversation_quota_bonus"] or 0)
+        prop_total = base_prop + prop_bonus
+        conv_total = base_conv + conv_bonus
+        users.append({
+            "id": r["id"],
+            "email": r["email"] or "",
+            "proposal_remaining": prop_remaining,
+            "proposal_total": prop_total,
+            "proposal_used": max(0, prop_total - prop_remaining),
+            "proposal_bonus": prop_bonus,
+            "conversation_remaining": conv_remaining,
+            "conversation_total": conv_total,
+            "conversation_used": max(0, conv_total - conv_remaining),
+            "conversation_bonus": conv_bonus,
+            "last_reset_date": r["last_reset_date"] or "",
+            "created_at": r["created_at"] or "",
+        })
+
+    return {
+        "users": users,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "policy": {
+            "proposal_base": base_prop,
+            "conversation_base": base_conv,
+        },
     }
 
 

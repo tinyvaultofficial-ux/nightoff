@@ -94,6 +94,15 @@ def _adapt_sql(sql: str) -> str:
         sql,
         flags=re.IGNORECASE | re.DOTALL,
     )
+    # MAX(a, b) (SQLite scalar) → GREATEST(a, b) (PostgreSQL).
+    # PG 의 MAX 는 집계함수 전용 — 2-arg scalar 호출 시 'function max(int,int) does not exist'.
+    # 단일 인자 MAX(col) 은 매치 안 됨 (콤마 강제) — 집계 호출 영향 0.
+    sql = re.sub(
+        r"MAX\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)",
+        r"GREATEST(\1, \2)",
+        sql,
+        flags=re.IGNORECASE,
+    )
     # CHECK 제약 (id = 1) 같은 것도 PG에서 동작하므로 그대로 둠
     return sql
 

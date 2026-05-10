@@ -87,6 +87,13 @@ def _adapt_sql(sql: str) -> str:
     # 그 후 '?' → '%s' placeholder 변환.
     sql = sql.replace("%", "%%")
     sql = sql.replace("?", "%s")
+    # INSERT OR IGNORE (SQLite) → INSERT ... ON CONFLICT DO NOTHING (PostgreSQL)
+    sql = re.sub(
+        r"INSERT\s+OR\s+IGNORE\s+INTO\s+(.*?);",
+        r"INSERT INTO \1 ON CONFLICT DO NOTHING;",
+        sql,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
     # CHECK 제약 (id = 1) 같은 것도 PG에서 동작하므로 그대로 둠
     return sql
 

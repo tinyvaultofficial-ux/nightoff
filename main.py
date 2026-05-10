@@ -6643,14 +6643,19 @@ def api_admin_users_list(
     limit: int = 50, offset: int = 0,
     admin: dict = Depends(require_admin),
 ):
-    """사용자 목록 (페이지네이션). 최근 가입 순."""
+    """사용자 목록 (페이지네이션). 최근 가입 순.
+
+    quota 4개 컬럼 포함 — 사용자 관리 탭이 quota 시스템 기반으로 렌더링.
+    """
     limit = max(1, min(200, int(limit)))
     offset = max(0, int(offset))
     with get_db() as db:
         rows = db.execute(
             "SELECT id, email, company, role, is_active, "
             "       credits, credits_used_this_month, last_reset_date, is_suspended, "
-            "       credit_count, last_login, created_at "
+            "       credit_count, last_login, created_at, "
+            "       monthly_proposal_quota, monthly_conversation_quota, "
+            "       monthly_proposal_quota_bonus, monthly_conversation_quota_bonus "
             "FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?",
             (limit, offset),
         ).fetchall()

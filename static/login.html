@@ -49,7 +49,7 @@
         <div class="auth-error" id="error-msg"></div>
       </form>
       <div class="auth-footer">
-        초대 코드가 있으세요? <a href="/register.html">회원가입</a>
+        계정이 없으세요? <a href="/register.html">회원가입</a>
       </div>
     </div>
   </div>
@@ -91,7 +91,7 @@
         const data = await r.json().catch(() => ({}));
         if (!r.ok) {
           if (r.status === 401) showError("이메일 또는 비밀번호가 일치하지 않아요.");
-          else if (r.status === 403) showError("활성화 대기 중인 계정이에요. 초대 코드로 가입해 주세요.");
+          else if (r.status === 403) showError(data.detail || "계정이 비활성 상태예요. 관리자에게 문의해 주세요.");
           else showError(data.detail || "로그인에 실패했어요. 다시 시도해 주세요.");
           return;
         }

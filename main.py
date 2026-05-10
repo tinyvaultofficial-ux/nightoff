@@ -4163,7 +4163,6 @@ def api_conv_outcome(conv_id: str, body: OutcomeIn, user: dict = Depends(get_cur
 class RegisterIn(BaseModel):
     email: str
     password: str
-    invite_code: str
     company: str = ""
 
 
@@ -4174,10 +4173,14 @@ class LoginIn(BaseModel):
 
 @app.post("/api/auth/register")
 def api_auth_register(body: RegisterIn):
-    """초대 코드 검증 + 이메일/비밀번호 등록 + JWT 발급."""
+    """이메일/비밀번호 등록 + JWT 발급 (SaaS 표준 — 초대코드 미사용).
+
+    보안: 이메일 중복 시 is_active 상태 무관하게 409 반환.
+    (구 wait-list 활성화 흐름 제거 — 초대코드 없이는 wait-list row 탈취 위험).
+    구 wait-list/admin row 는 어드민 측에서 별도 마이그레이션 필요 시 처리.
+    """
     email = body.email.strip().lower()
     pw = body.password
-    invite_code = body.invite_code.strip()
     company = body.company.strip()
 
     if not _EMAIL_RE.match(email):
@@ -4186,55 +4189,24 @@ def api_auth_register(body: RegisterIn):
         raise HTTPException(400, "비밀번호는 8자 이상 + 영문 + 숫자를 포함해야 해요.")
 
     with get_db() as db:
-        # 초대 코드 검증
-        ic = db.execute("SELECT * FROM invite_codes WHERE code=?", (invite_code,)).fetchone()
-        if not ic:
-            raise HTTPException(410, "초대 코드가 유효하지 않아요.")
-        if ic["used_by"]:
-            raise HTTPException(410, "이미 사용된 초대 코드예요.")
-        if ic["expires_at"]:
-            try:
-                exp = datetime.fromisoformat(ic["expires_at"])
-                if datetime.now() > exp:
-                    raise HTTPException(410, "만료된 초대 코드예요.")
-            except ValueError:
-                pass
-
-        # 활성 계정 중복 체크
-        existing = db.execute("SELECT id, is_active FROM users WHERE email=?", (email,)).fetchone()
-        if existing and existing["is_active"]:
-            raise HTTPException(409, "이미 활성화된 계정이에요. 로그인해 주세요.")
+        # 이메일 중복 체크 — is_active 무관 (wait-list row 탈취 방지).
+        existing = db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
+        if existing:
+            raise HTTPException(409, "이미 가입된 이메일이에요. 로그인해 주세요.")
 
         # bcrypt hash
         pw_hash = _bcrypt.hashpw(pw.encode("utf-8"), _bcrypt.gensalt(rounds=BCRYPT_ROUNDS)).decode("utf-8")
 
-        # Phase 3 — quota 초기값 영역 policy_settings 영역 (어드민 영역 변경 영역 영역 영역).
+        # Phase 3 — quota 초기값 (policy_settings 어드민이 변경 가능)
         prop_q, conv_q = _get_initial_quota()
 
-        if existing:
-            # wait-list 기존 row 활성화 (id 보존) — quota 영역 신규 가입자 영역 영역 영역 영역
-            uid = existing["id"]
-            db.execute(
-                "UPDATE users SET password_hash=?, role='user', is_active=1, "
-                "company=COALESCE(NULLIF(?,''), company), last_login=datetime('now','localtime'), "
-                "monthly_proposal_quota=?, monthly_conversation_quota=?, "
-                "monthly_proposal_quota_bonus=0, monthly_conversation_quota_bonus=0 "
-                "WHERE id=?",
-                (pw_hash, company, prop_q, conv_q, uid),
-            )
-        else:
-            uid = uuid.uuid4().hex[:12]
-            db.execute(
-                "INSERT INTO users(id, email, company, password_hash, role, is_active, last_login, "
-                "                  monthly_proposal_quota, monthly_conversation_quota) "
-                "VALUES(?, ?, ?, ?, ?, 1, datetime('now','localtime'), ?, ?)",
-                (uid, email, company, pw_hash, "user", prop_q, conv_q),
-            )
-
-        # 초대 코드 사용 처리
+        # 신규 사용자 INSERT (wait-list 활성화 분기 제거 — 보안)
+        uid = uuid.uuid4().hex[:12]
         db.execute(
-            "UPDATE invite_codes SET used_by=?, used_at=datetime('now','localtime') WHERE code=?",
-            (uid, invite_code),
+            "INSERT INTO users(id, email, company, password_hash, role, is_active, last_login, "
+            "                  monthly_proposal_quota, monthly_conversation_quota) "
+            "VALUES(?, ?, ?, ?, ?, 1, datetime('now','localtime'), ?, ?)",
+            (uid, email, company, pw_hash, "user", prop_q, conv_q),
         )
 
     token = encode_jwt(uid)

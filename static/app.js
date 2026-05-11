@@ -617,19 +617,38 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
         ]),
       ] : []),
       // Phase 4 (Step 3) — 페이지 기반 크레딧 표시. 1 페이지 = 400 크레딧.
+      // Phase 4 (Step 7) — 일일 보상 배지 추가 (연속 N일 + 다음 마일스톤 D-day).
       // 대화 quota 항목은 사용자에게 노출 X (메시지 무제한 — 내부 정책, 마케팅 금지).
       // id 그대로 유지 → refreshQuotaUI() 가 동적 갱신.
       ...((window.__nightoff_user && window.__nightoff_user.quota) ? [
         (function () {
           const q = window.__nightoff_user.quota;
+          const db = window.__nightoff_user.daily_bonus || null;
           const CR_PER_PAGE = 400;
           const propPagesNow = Math.floor((q.proposal_remaining || 0) / CR_PER_PAGE);
-          const propLow = q.proposal_remaining < CR_PER_PAGE;  // 1 페이지 분 미만이면 강조
-          const wrap = h("div", {
-            id: "sidebar-quota-wrap",
-            class: "sidebar-footer-quota",
-            title: "이달 사용 현황 (다음 달 1일 리셋)",
-          }, [
+          const propLow = q.proposal_remaining < CR_PER_PAGE;
+          // 일일 보상 배지 (오늘 받음 + 연속 일수 표시)
+          const bonusRow = (db && db.today_granted) ? (function () {
+            const days = db.consecutive_days || 1;
+            const isMs = !!db.today_milestone;
+            const todayPages = Math.floor((db.today_credits || 0) / CR_PER_PAGE);
+            const dToMs = db.days_to_next_milestone;
+            const nextMsLabel = (dToMs > 0)
+              ? ` · D-${dToMs} (${db.next_milestone_day}일)`
+              : "";
+            return h("div", {
+              id: "sidebar-bonus-row",
+              class: "quota-row",
+              title: isMs
+                ? `🎉 ${days}일 연속 마일스톤! 오늘 +${(db.today_credits || 0).toLocaleString("ko-KR")} 크레딧`
+                : `🔥 ${days}일 연속 · 오늘 +${(db.today_credits || 0).toLocaleString("ko-KR")} 크레딧${nextMsLabel}`,
+            }, [
+              h("span", { class: "quota-label" }, `🔥 ${days}일 연속${isMs ? " 🎉" : ""}`),
+              h("span", { class: "quota-value" }, `+${todayPages}p${nextMsLabel}`),
+            ]);
+          })() : null;
+
+          const children = [
             h("div", {
               id: "sidebar-proposal-row",
               class: "quota-row" + (propLow ? " quota-empty" : ""),
@@ -639,8 +658,14 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
                 title: `${(q.proposal_remaining).toLocaleString("ko-KR")} ÷ 400 = ${propPagesNow}페이지` },
                 `${(q.proposal_remaining).toLocaleString("ko-KR")} / ${(q.proposal_total).toLocaleString("ko-KR")} (≈${propPagesNow}p)`),
             ]),
-          ]);
-          return wrap;
+          ];
+          if (bonusRow) children.push(bonusRow);
+
+          return h("div", {
+            id: "sidebar-quota-wrap",
+            class: "sidebar-footer-quota",
+            title: "이달 사용 현황 (다음 달 1일 리셋)",
+          }, children);
         })(),
       ] : []),
       h("button", {
@@ -5758,6 +5783,23 @@ window.addEventListener("DOMContentLoaded", async () => {
     try {
       const me = await api.get("/api/auth/me");
       window.__nightoff_user = me.user;  // 다른 곳에서 활용 가능
+      // Phase 4 (Step 7) — 오늘 첫 진입이면 일일 보상 토스트 (freshly_granted=true 일 때만).
+      // route() 보다 먼저 — 사용자가 화면 보기 전에 알림이 떠야 자연스러움.
+      try {
+        const db = me.user && me.user.daily_bonus;
+        if (db && db.freshly_granted) {
+          const credits = (db.today_credits || 0);
+          const days = db.consecutive_days || 1;
+          const pages = Math.floor(credits / 400);
+          const msg = db.today_milestone
+            ? `🎉 ${days}일 연속 마일스톤! +${credits.toLocaleString("ko-KR")} 크레딧 받으셨어요 (${pages}페이지)`
+            : `🎁 출석 보상 +${credits.toLocaleString("ko-KR")} 크레딧! (연속 ${days}일${db.days_to_next_milestone > 0 ? ` · D-${db.days_to_next_milestone}` : ""})`;
+          // toast() 가 정의 안 됐을 시점일 수도 있으니 defensive
+          if (typeof toast === "function") {
+            toast(msg, "ok", 5000);
+          }
+        }
+      } catch (e) { console.warn("daily bonus 토스트 실패:", e); }
     } catch (e) {
       // /api/auth/me 의 401 은 _call() 안 redirect 분기에서 path.startsWith("/api/auth/")
       // 가드로 skip 됨 — 여기서 명시적으로 token clear + redirect.

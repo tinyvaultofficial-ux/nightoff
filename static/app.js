@@ -4246,42 +4246,47 @@ async function renderChat(cid, convId) {
             toast("이달 제안서 할당량 소진 — 다음 달 1일 리셋", "error", 5000);
             return;
           }
-          // 채팅 input 영역에 진행률 표시 — 가짜 user 메시지로 시각화
-          const msgs = document.getElementById("chat-messages") || document.querySelector(".chat-messages");
-          if (!msgs) { toast("채팅 영역을 못 찾았어요", "error"); return; }
-          const userBubble = h("div", { class: "msg-row user" }, [
-            h("div", { class: "msg-body" }, [
-              h("div", { class: "msg-bubble" }, "✨ 제안서 생성"),
-            ]),
-          ]);
-          msgs.appendChild(userBubble);
-          // 5초 toast — 작업 시간 + 페이지 이동 경고
-          toast("5~10분 소요. 작업 진행 중 페이지 이동·새로고침 X", "", 5000);
-          const asstEl = msgElement("assistant", "", new Date().toISOString());
-          msgs.appendChild(asstEl);
-          const bubble = asstEl.querySelector(".msg-bubble");
-          bubble.innerHTML = '<span class="loading-dots"><span></span><span></span><span></span></span>';
-          const progress = createStreamProgress();
-          asstEl.querySelector(".msg-body").insertBefore(progress.el, bubble);
-          const body = msgs.parentElement || document.body;
-          try {
-            await runMultiPassProposal({ convId, asstEl, bubble, progress, body, msgs });
-          } catch (e) {
-            console.error("multi-pass 실패:", e);
-            // 실패 시 inline 재시도 버튼 — history 보존 (사용자 결정 Q4 옵션 a)
-            bubble.innerHTML =
-              `<div style="color:var(--danger); margin-bottom:8px;">❌ ${escapeHtml(e.message || String(e))}</div>` +
-              `<button class="mp-retry-btn" type="button">🔄 다시 시도</button>`;
-            const retryBtn = bubble.querySelector(".mp-retry-btn");
-            if (retryBtn) retryBtn.addEventListener("click", (ev) => {
-              ev.preventDefault();
-              const sparkle = Array.from(document.querySelectorAll("button.btn-primary"))
-                .find((b) => b.textContent.includes("제안서 생성"));
-              if (sparkle) sparkle.click();
-              else toast("✨ 버튼을 다시 눌러주세요", "error");
-            });
-            progress.finish(false);
-          }
+          // Step 2 — 페이지 선택 모달 표시 → 사용자 선택 후 콜백에서 실제 생성 진행
+          showProposalPageSelectionModal((selectedPages) => {
+            // 채팅 input 영역에 진행률 표시 — 가짜 user 메시지로 시각화
+            const msgs = document.getElementById("chat-messages") || document.querySelector(".chat-messages");
+            if (!msgs) { toast("채팅 영역을 못 찾았어요", "error"); return; }
+            const userBubble = h("div", { class: "msg-row user" }, [
+              h("div", { class: "msg-body" }, [
+                h("div", { class: "msg-bubble" }, `✨ 제안서 생성 (${selectedPages}페이지)`),
+              ]),
+            ]);
+            msgs.appendChild(userBubble);
+            // 5초 toast — 작업 시간 + 페이지 이동 경고
+            toast(`${selectedPages}페이지 생성 시작 — 5~10분 소요. 페이지 이동·새로고침 X`, "", 5000);
+            const asstEl = msgElement("assistant", "", new Date().toISOString());
+            msgs.appendChild(asstEl);
+            const bubble = asstEl.querySelector(".msg-bubble");
+            bubble.innerHTML = '<span class="loading-dots"><span></span><span></span><span></span></span>';
+            const progress = createStreamProgress();
+            asstEl.querySelector(".msg-body").insertBefore(progress.el, bubble);
+            const body = msgs.parentElement || document.body;
+            (async () => {
+              try {
+                await runMultiPassProposal({ convId, pages: selectedPages, asstEl, bubble, progress, body, msgs });
+              } catch (e) {
+                console.error("multi-pass 실패:", e);
+                // 실패 시 inline 재시도 버튼 — history 보존 (사용자 결정 Q4 옵션 a)
+                bubble.innerHTML =
+                  `<div style="color:var(--danger); margin-bottom:8px;">❌ ${escapeHtml(e.message || String(e))}</div>` +
+                  `<button class="mp-retry-btn" type="button">🔄 다시 시도</button>`;
+                const retryBtn = bubble.querySelector(".mp-retry-btn");
+                if (retryBtn) retryBtn.addEventListener("click", (ev) => {
+                  ev.preventDefault();
+                  const sparkle = Array.from(document.querySelectorAll("button.btn-primary"))
+                    .find((b) => b.textContent.includes("제안서 생성"));
+                  if (sparkle) sparkle.click();
+                  else toast("✨ 버튼을 다시 눌러주세요", "error");
+                });
+                progress.finish(false);
+              }
+            })();
+          });
         },
       });
       })(),
@@ -5030,8 +5035,96 @@ function createStreamProgress() {
   return { el, update, finish };
 }
 
+// ─── 제안서 페이지 선택 모달 (Step 2 — Phase 4 페이지 기반 크레딧) ─────────
+// ✨ 버튼 클릭 시 표시. 사용자가 30/50/100 페이지 중 선택 → onConfirm(pages) 콜백.
+// 취소 / ESC / backdrop 클릭 = 닫고 아무 액션 X.
+// 크레딧 표시는 Step 2 — 실제 차감은 Step 3 에서 추가 예정.
+// CSS: .beta-notice-* 클래스 재사용 (overlay/card 기본 스타일) + 옵션 버튼 인라인 스타일.
+function showProposalPageSelectionModal(onConfirm) {
+  if (document.querySelector(".pages-modal-overlay")) return;
+
+  // 옵션 (페이지, 크레딧, 추천 여부, 설명)
+  const OPTIONS = [
+    { pages: 100, credits: 40000, label: "100페이지", recommended: true,  desc: "풀 분량 제안서" },
+    { pages: 50,  credits: 20000, label: "50페이지",  recommended: false, desc: "표준 분량" },
+    { pages: 30,  credits: 12000, label: "30페이지",  recommended: false, desc: "간단 분량" },
+  ];
+
+  const close = () => {
+    overlay.classList.add("fade-out");
+    setTimeout(() => overlay.remove(), 240);
+    document.removeEventListener("keydown", onEsc);
+  };
+  const onEsc = (e) => { if (e.key === "Escape") close(); };
+
+  // .beta-notice-overlay 재사용 (style.css 6149) + 커스텀 마커 .pages-modal-overlay
+  const overlay = h("div", {
+    class: "beta-notice-overlay pages-modal-overlay",
+    onclick: (ev) => { if (ev.target === overlay) close(); },
+  });
+  const card = h("div", { class: "beta-notice-modal", style: "max-width:440px;" });
+  overlay.appendChild(card);
+
+  // ✕ 닫기 (beta-notice-close 재사용)
+  card.appendChild(h("button", {
+    class: "beta-notice-close", "aria-label": "닫기",
+    onclick: () => close(),
+  }, "✕"));
+
+  // 헤더
+  card.appendChild(h("h2", { class: "beta-notice-title" }, "📋 제안서 페이지를 선택하세요"));
+  card.appendChild(h("p", { class: "beta-notice-subtitle" },
+    "선택한 페이지 수만큼 제안서가 생성됩니다."));
+
+  // 옵션 리스트 — 인라인 스타일로 깔끔하게
+  const listWrap = h("div", { style: "display:flex; flex-direction:column; gap:10px; margin:18px 0 8px;" });
+  OPTIONS.forEach((opt) => {
+    const isRec = opt.recommended;
+    const btn = h("button", {
+      style:
+        "display:flex; flex-direction:column; align-items:flex-start; gap:4px;" +
+        "width:100%; padding:14px 16px; cursor:pointer; text-align:left;" +
+        "border-radius:8px; font-family:inherit;" +
+        (isRec
+          ? "border:2px solid #6366F1; background:#F5F5FF;"
+          : "border:1px solid #DDD; background:#fff;"),
+      onclick: () => {
+        close();
+        try { onConfirm(opt.pages); } catch (e) { console.error("onConfirm 실패:", e); }
+      },
+    }, [
+      h("div", { style: "display:flex; align-items:center; gap:8px; width:100%;" }, [
+        h("span", { style: "font-size:16px; font-weight:700; color:#1A1A1A;" }, opt.label),
+        isRec
+          ? h("span", {
+              style:
+                "font-size:11px; padding:2px 8px; border-radius:999px;" +
+                "background:#6366F1; color:#fff; font-weight:600;",
+            }, "권장")
+          : null,
+      ]),
+      h("div", { style: "font-size:12px; color:#666;" },
+        `${opt.credits.toLocaleString("ko-KR")} 크레딧 · ${opt.desc}`),
+    ]);
+    listWrap.appendChild(btn);
+  });
+  card.appendChild(listWrap);
+
+  // 취소 버튼 (beta-notice-btn-secondary 재사용)
+  card.appendChild(h("div", { class: "beta-notice-actions", style: "justify-content:center;" }, [
+    h("button", {
+      class: "beta-notice-btn-secondary",
+      onclick: () => close(),
+    }, "취소"),
+  ]));
+
+  document.body.appendChild(overlay);
+  document.addEventListener("keydown", onEsc);
+}
+
+
 // ─── Multi-pass 제안서 생성 — SSE 받으면서 진행률 표시 + 끝나면 PPTX 변환 ───
-async function runMultiPassProposal({ convId, asstEl, bubble, progress, body, msgs }) {
+async function runMultiPassProposal({ convId, pages, asstEl, bubble, progress, body, msgs }) {
   // 영구 안내 + 목차 작성 placeholder
   bubble.innerHTML =
     '<div class="mp-warning">⚠ 5~10분 소요. 작업 진행 중 페이지 이동·새로고침 시 진행 사라짐</div>' +
@@ -5063,7 +5156,9 @@ async function runMultiPassProposal({ convId, asstEl, bubble, progress, body, ms
     if (outlineTimer) { clearInterval(outlineTimer); outlineTimer = null; }
   }
 
-  const resp = await fetch(`/api/conversations/${convId}/proposals/generate`, {
+  // Step 2 — pages query param 추가 (사용자 선택 페이지 수, 1~100)
+  const pagesQS = (typeof pages === "number" && pages > 0) ? `?pages=${pages}` : "";
+  const resp = await fetch(`/api/conversations/${convId}/proposals/generate${pagesQS}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

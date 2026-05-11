@@ -3163,7 +3163,11 @@ def api_chat(conv_id: str, body: ChatIn, user: dict = Depends(get_current_user))
 # Multi-pass 제안서 생성 — Outline → 슬라이드별 도형 JSON → 병합
 # ---------------------------------------------------------------------------
 @app.post("/api/conversations/{conv_id}/proposals/generate")
-async def api_proposals_generate_multipass(conv_id: str, user: dict = Depends(get_current_user)):
+async def api_proposals_generate_multipass(
+    conv_id: str,
+    pages: Optional[int] = None,
+    user: dict = Depends(get_current_user),
+):
     """
     Multi-pass 제안서 생성. SSE 로 진행률 실시간 push.
 
@@ -3176,11 +3180,25 @@ async def api_proposals_generate_multipass(conv_id: str, user: dict = Depends(ge
 
     UI 측: SSE 받으면서 "목차 작성 중 → 슬라이드 1/28 ... → 병합 → 완료" 표시.
 
+    query params:
+      - pages: 사용자가 선택한 페이지 수 (1~100). None 이면 RFP page_limit / AI 자율.
+               proposal_multi_pass 가 1~100 범위 강제 clamp (Step 1 MAX_SLIDES_HARD).
+
     ⚠ 핵심 — 다른 user 의 conversation 에서 multi-pass 트리거 시 그 user 의
        RFP/RAG/intel inject 가 호출자에게 노출됨. 청렴제·데이터 분리 핵심 layer.
     """
     import asyncio as _asyncio
     import proposal_multi_pass as mp
+
+    # Step 2 — pages query 검증 (1~100). 범위 밖이면 None 으로 처리해 AI 자율에 맡김.
+    pages_override: Optional[int] = None
+    if pages is not None:
+        try:
+            n = int(pages)
+            if 1 <= n <= 100:
+                pages_override = n
+        except (TypeError, ValueError):
+            pages_override = None
 
     with get_db() as db:
         # ⚠ 핵심 ownership 검증 — 다른 user 의 conv 에서 ✨ 트리거 절대 금지
@@ -3302,6 +3320,7 @@ async def api_proposals_generate_multipass(conv_id: str, user: dict = Depends(ge
                 extra_block="",
                 concurrency=5,
                 model=model,
+                pages_override=pages_override,   # Step 2 — 사용자가 모달에서 선택한 페이지 수
             ):
                 if ev.get("type") == "done":
                     final_payload = ev.get("payload")

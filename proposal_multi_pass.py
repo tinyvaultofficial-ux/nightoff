@@ -1235,11 +1235,16 @@ async def generate_outline(
     conversation_block: str = "",
     extra_block: str = "",
     model: str = "",
+    pages_override: Optional[int] = None,
 ) -> OutlineResult:
     """Phase 1: 가벼운 호출 1번으로 outline 짠다.
 
     user_parts 순서 — conversation_block 영역 맨 앞 (NightOff 본질 영역 — 사용자 영역
     가장 강한 신호). RFP / RAG / intel / extra 영역 순서.
+
+    pages_override: 사용자가 명시적으로 선택한 페이지 수 (1~100).
+      - None: RFP page_limit / AI 자율 판단 (기존 동작)
+      - 1~100: prompt 끝에 절대 우선 지시 inject. MAX_SLIDES_HARD=100 안전망 그대로.
     """
     user_parts: list[str] = []
     if conversation_block:
@@ -1251,6 +1256,16 @@ async def generate_outline(
         user_parts.append(intel_block)
     if extra_block:
         user_parts.append(extra_block)
+    # Step 2 — 사용자가 모달에서 선택한 페이지 수가 있으면 RFP page_limit 보다 절대 우선.
+    # prompt 맨 끝에 inject — LLM 이 가장 최근 지시를 우선시하는 특성 활용.
+    if pages_override is not None and 1 <= pages_override <= 100:
+        user_parts.append(
+            f"\n[★★★ 사용자 명시 페이지 수 — 절대 우선 ★★★]\n"
+            f"사용자가 모달에서 정확히 **{pages_override}페이지** 분량을 선택했다.\n"
+            f"outline.total_slides = {pages_override} 로 고정. "
+            f"RFP page_limit, 도메인 권장 분량, 기타 모든 가이드보다 이 값이 절대 우선이다.\n"
+            f"표지 + 목차 + 챕터 divider + 마무리 포함 총 {pages_override}장."
+        )
     user_parts.append("\n위 정보를 바탕으로 outline JSON 을 출력해라.")
     user = "\n\n".join(user_parts)
 
@@ -1510,6 +1525,7 @@ async def orchestrate(
     extra_block: str = "",
     concurrency: int = 5,
     model: str = "",
+    pages_override: Optional[int] = None,
 ) -> AsyncIterator[dict]:
     """전체 파이프라인 실행. dict 이벤트 stream 으로 yield.
 
@@ -1520,6 +1536,9 @@ async def orchestrate(
       {"type":"merge","message":"병합 중..."}
       {"type":"done","payload":{title,domain,slide_width,slide_height,slides:[...]}}
       {"type":"error","error":"..."}
+
+    pages_override: 사용자가 페이지 선택 모달에서 선택한 페이지 수 (1~100).
+      None 이면 RFP page_limit / AI 자율 (기존 동작 동일).
     """
     t0 = time.time()
     yield {"type": "phase", "phase": "outline", "message": "목차 / 슬라이드 구성 작성 중..."}
@@ -1530,6 +1549,7 @@ async def orchestrate(
         generate_outline(
             client, rfp_block, rag_block_global,
             intel_block, conversation_block, extra_block, model,
+            pages_override=pages_override,
         )
     )
     outline = None

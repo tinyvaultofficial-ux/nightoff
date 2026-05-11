@@ -4464,9 +4464,8 @@ async function renderChat(cid, convId) {
     bubble.innerHTML = '<span class="loading-dots"><span></span><span></span><span></span></span>';
     body.scrollTop = body.scrollHeight;
 
-    // 진행 표시 바 — 스트리밍 중 현재 섹션/페이지 표시
-    const progress = createStreamProgress();
-    asstEl.querySelector(".msg-body").insertBefore(progress.el, bubble);
+    // Phase 4 — createStreamProgress 제거 (제안서 전용 컴포넌트, 채팅에서 false positive).
+    // 채팅은 로딩 점 + 텍스트만으로 충분. 제안서 흐름은 runMultiPassProposal 이 별도 사용.
 
     // 채팅 입력 = CHAT_SYSTEM_PROMPT 로 응답만 받음.
     // 제안서 생성은 ✨ 버튼만 진입. 채팅 키워드 매칭 트리거 (이전 isProposalRequest)
@@ -4502,7 +4501,6 @@ async function renderChat(cid, convId) {
       const step = Math.min(24, Math.max(2, Math.ceil(lag / 10)));
       displayedText = targetText.slice(0, displayedText.length + step);
       renderAssistant(bubble, displayedText);
-      progress.update(targetText);   // ← 전체 target 기준으로 진행률 업데이트
       // 사용자가 직접 위로 스크롤한 동안엔 자동 스크롤 안 함
       if (!userScrolledUp) body.scrollTop = body.scrollHeight;
       requestAnimationFrame(tick);
@@ -4542,20 +4540,16 @@ async function renderChat(cid, convId) {
           if (ev.type === "delta") {
             if (firstDelta) { overlayLoader.stop(); bubble.innerHTML = ""; firstDelta = false; }
             targetText += ev.text;
-            progress.update(targetText);
-            // Phase 4 — JSON 모드 감지 코드 제거 (legacy). 채팅은 항상 자연어 응답.
             kickTyper();
           } else if (ev.type === "error") {
             overlayLoader.stop();
             bubble.innerHTML = `<span style="color:var(--danger);">❌ ${escapeHtml(ev.error)}</span>`;
             streamDone = true;
-            progress.finish(false);
           } else if (ev.type === "done") {
             overlayLoader.stop();
             streamDone = true;
             displayedText = targetText;
             renderAssistant(bubble, targetText, true);
-            progress.finish(true);
           }
         }
       }
@@ -4566,10 +4560,8 @@ async function renderChat(cid, convId) {
       }
       // rafActive가 진행 중이면 streamDone을 보고 알아서 마감
       streamDone = true;
-      progress.finish(true);
     } catch (e) {
       overlayLoader.stop();
-      progress.finish(false);
       if (e.name === "AbortError") {
         if (targetText) renderAssistant(bubble, targetText + "\n\n⏸ (중단됨)", true);
         else bubble.innerHTML = `<span class="muted small">⏸ 생성이 중단되었습니다.</span>`;

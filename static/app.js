@@ -273,67 +273,71 @@ const api = {
   },
 };
 
-// ─── Phase 3 — quota UI 실시간 갱신 helper ────────────────────────────────
-// 차감 후 페이지 새로고침 X — window.__nightoff_user.quota 직접 영역 + DOM 갱신.
-// 갱신 영역: 사이드바 quota (사용자 시각) + ✨ 제안서 버튼 + 대화 textarea.
+// ─── Phase 4 (Step 3) — quota UI 실시간 갱신 helper ─────────────────────────
+// 차감 후 페이지 새로고침 X — window.__nightoff_user.quota 직접 mutate + DOM 갱신.
+// 페이지 기반 크레딧 시스템 (1페이지 = 400 크레딧, 월 100,000 크레딧 = 약 250페이지).
+// 대화는 무제한 — UI 에 "무제한 ∞" 라벨만, 차감 없음.
 //
-// kind:
-//   "proposal" — 제안서 차감 (multi-pass done 영역)
-//   "conversation" — 대화 차감 (사용자 메시지 send 영역)
-//   "all" — 영역 갱신 (예: 영역 페이지 영역 영역 영역)
-function refreshQuotaUI(kind) {
+// args:
+//   kind: "proposal" (제안서 차감) | "all" (전체 다시 그리기)
+//   pages: kind="proposal" 일 때 차감할 페이지 수 (1 페이지 = 400 크레딧 차감)
+const CREDITS_PER_PAGE = 400;
+function refreshQuotaUI(kind, pages) {
   const u = window.__nightoff_user;
   if (!u || !u.quota) return;
   const q = u.quota;
 
-  // 차감 (kind 영역)
-  if (kind === "proposal") {
-    q.proposal_remaining = Math.max(0, q.proposal_remaining - 1);
-  } else if (kind === "conversation") {
-    q.conversation_remaining = Math.max(0, q.conversation_remaining - 1);
+  // 제안서 차감 (페이지 × 400 크레딧). underflow 시 0 클램프.
+  if (kind === "proposal" && typeof pages === "number" && pages > 0) {
+    q.proposal_remaining = Math.max(0, q.proposal_remaining - (pages * CREDITS_PER_PAGE));
   }
 
-  // 사이드바 quota 텍스트 갱신
+  // 사이드바 표시 갱신
+  const propPagesNow = Math.floor((q.proposal_remaining || 0) / CREDITS_PER_PAGE);
+  const propPagesTotal = Math.floor((q.proposal_total || 0) / CREDITS_PER_PAGE);
   const propVal = document.getElementById("sidebar-proposal-quota");
-  if (propVal) propVal.textContent = `${q.proposal_remaining}/${q.proposal_total}`;
+  if (propVal) {
+    propVal.textContent =
+      `${(q.proposal_remaining).toLocaleString("ko-KR")} / ${(q.proposal_total).toLocaleString("ko-KR")} (≈${propPagesNow}p)`;
+  }
+  // 대화 셀 — "무제한 ∞" 고정 표시
   const convVal = document.getElementById("sidebar-conversation-quota");
-  if (convVal) convVal.textContent = `${q.conversation_remaining}/${q.conversation_total}`;
+  if (convVal) convVal.textContent = "무제한 ∞";
 
-  // 사이드바 row 영역 quota-empty 클래스 toggle (빨강 강조)
+  // 사이드바 row 의 quota-empty 클래스 (제안서 크레딧 < 1페이지 분 = 400 미만이면 강조)
   const propRow = document.getElementById("sidebar-proposal-row");
-  if (propRow) propRow.classList.toggle("quota-empty", q.proposal_remaining <= 0);
+  if (propRow) propRow.classList.toggle("quota-empty", q.proposal_remaining < CREDITS_PER_PAGE);
+  // 대화 row 는 quota-empty 클래스 제거 (무제한이라 항상 OK)
   const convRow = document.getElementById("sidebar-conversation-row");
-  if (convRow) convRow.classList.toggle("quota-empty", q.conversation_remaining <= 0);
+  if (convRow) convRow.classList.remove("quota-empty");
 
   // ✨ 제안서 버튼 — badge + disabled
   const propBtn = document.getElementById("sparkle-generate-btn");
   const propBadge = document.getElementById("proposal-quota-badge");
   if (propBadge) {
-    propBadge.textContent = `${q.proposal_remaining}/${q.proposal_total}`;
-    propBadge.classList.toggle("quota-exhausted", q.proposal_remaining <= 0);
+    propBadge.textContent = `${propPagesNow}p`;
+    propBadge.classList.toggle("quota-exhausted", q.proposal_remaining < CREDITS_PER_PAGE);
   }
   if (propBtn) {
-    const exhausted = q.proposal_remaining <= 0;
+    const exhausted = q.proposal_remaining < CREDITS_PER_PAGE;
     propBtn.classList.toggle("btn-quota-disabled", exhausted);
     if (exhausted) {
       propBtn.setAttribute("disabled", "");
-      propBtn.setAttribute("title", "이달 제안서 할당량 소진 — 다음 달 1일 리셋");
+      propBtn.setAttribute("title", "제안서 크레딧이 1페이지(400) 미만이에요 — 다음 달 1일 리셋");
     } else {
       propBtn.removeAttribute("disabled");
-      propBtn.setAttribute("title", `이달 ${q.proposal_remaining}회 남음 (총 ${q.proposal_total})`);
+      propBtn.setAttribute(
+        "title",
+        `남은 크레딧: ${(q.proposal_remaining).toLocaleString("ko-KR")} (≈${propPagesNow}페이지)`
+      );
     }
   }
 
-  // 대화 textarea — placeholder + disabled
+  // 대화 textarea — 무제한이라 항상 enable + 기본 안내
   const ta = document.getElementById("message-input");
   if (ta) {
-    if (q.conversation_remaining <= 0) {
-      ta.disabled = true;
-      ta.placeholder = "이달 대화 할당량 소진 — 다음 달 1일 리셋";
-    } else {
-      ta.disabled = false;
-      ta.placeholder = `메시지를 입력하세요… (남은: ${q.conversation_remaining}/${q.conversation_total})`;
-    }
+    ta.disabled = false;
+    ta.placeholder = "메시지를 입력하세요… (Shift+Enter 줄바꿈, Enter 전송)";
   }
 }
 
@@ -620,13 +624,15 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
           h("span", { class: "sidebar-footer-user-email" }, window.__nightoff_user.email),
         ]),
       ] : []),
-      // Phase 3 — quota 영역 표시 (이달 잔여 / 총량). __nightoff_user.quota 영역.
-      // id 영역 영역 영역 갱신 가능 (refreshQuotaUI helper 영역 영역).
+      // Phase 4 (Step 3) — 페이지 기반 크레딧 표시. 1 페이지 = 400 크레딧.
+      // 대화는 무제한 ∞ 라벨 (차감 없음).
+      // id 그대로 유지 → refreshQuotaUI() 가 동적 갱신.
       ...((window.__nightoff_user && window.__nightoff_user.quota) ? [
         (function () {
           const q = window.__nightoff_user.quota;
-          const propLow = q.proposal_remaining <= 0;
-          const convLow = q.conversation_remaining <= 0;
+          const CR_PER_PAGE = 400;
+          const propPagesNow = Math.floor((q.proposal_remaining || 0) / CR_PER_PAGE);
+          const propLow = q.proposal_remaining < CR_PER_PAGE;  // 1 페이지 분 미만이면 강조
           const wrap = h("div", {
             id: "sidebar-quota-wrap",
             class: "sidebar-footer-quota",
@@ -637,16 +643,16 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
               class: "quota-row" + (propLow ? " quota-empty" : ""),
             }, [
               h("span", { class: "quota-label" }, "📋 제안서"),
-              h("span", { id: "sidebar-proposal-quota", class: "quota-value" },
-                `${q.proposal_remaining}/${q.proposal_total}`),
+              h("span", { id: "sidebar-proposal-quota", class: "quota-value",
+                title: `${(q.proposal_remaining).toLocaleString("ko-KR")} ÷ 400 = ${propPagesNow}페이지` },
+                `${(q.proposal_remaining).toLocaleString("ko-KR")} / ${(q.proposal_total).toLocaleString("ko-KR")} (≈${propPagesNow}p)`),
             ]),
             h("div", {
               id: "sidebar-conversation-row",
-              class: "quota-row" + (convLow ? " quota-empty" : ""),
+              class: "quota-row",
             }, [
               h("span", { class: "quota-label" }, "💬 대화"),
-              h("span", { id: "sidebar-conversation-quota", class: "quota-value" },
-                `${q.conversation_remaining}/${q.conversation_total}`),
+              h("span", { id: "sidebar-conversation-quota", class: "quota-value" }, "무제한 ∞"),
             ]),
           ]);
           return wrap;
@@ -4221,14 +4227,15 @@ async function renderChat(cid, convId) {
           },
         }),
       ]),
-      // ✨ 제안서 생성 (multi-pass) — 명시적 버튼 + Phase 3 quota 표시
+      // ✨ 제안서 생성 (multi-pass) — Phase 4 (Step 3) 페이지 기반 크레딧 표시
       (function () {
         const q = (window.__nightoff_user && window.__nightoff_user.quota) || null;
+        const CR_PER_PAGE = 400;
         const propRemain = q ? q.proposal_remaining : null;
-        const propTotal = q ? q.proposal_total : null;
-        const exhausted = q && propRemain <= 0;
+        const propPagesNow = q ? Math.floor((propRemain || 0) / CR_PER_PAGE) : 0;
+        const exhausted = q && propRemain < CR_PER_PAGE;  // 1 페이지 분 미만이면 disabled
         const badgeHtml = q
-          ? `<span id="proposal-quota-badge" class="btn-quota-badge${exhausted ? " quota-exhausted" : ""}">${propRemain}/${propTotal}</span>`
+          ? `<span id="proposal-quota-badge" class="btn-quota-badge${exhausted ? " quota-exhausted" : ""}">${propPagesNow}p</span>`
           : "";
         const labelHtml = `<span style="margin-right:4px;">✨</span><span>제안서 생성</span>${badgeHtml}`;
         return h("button", {
@@ -4236,14 +4243,14 @@ async function renderChat(cid, convId) {
           class: "btn btn-primary sparkle-generate-btn" + (exhausted ? " btn-quota-disabled" : ""),
           html: labelHtml,
           title: exhausted
-            ? "이달 제안서 할당량 소진 — 다음 달 1일 리셋"
-            : (q ? `이달 ${propRemain}회 남음 (총 ${propTotal})` : "제안서 생성"),
+            ? "제안서 크레딧이 1페이지(400) 미만 — 다음 달 1일 리셋"
+            : (q ? `남은 크레딧: ${(propRemain).toLocaleString("ko-KR")} (≈${propPagesNow}페이지)` : "제안서 생성"),
           disabled: exhausted ? "" : null,
           onclick: async () => {
-          // quota 동적 검증 — window.__nightoff_user.quota 직접 참조 (클로저 영역 stale 회피)
+          // Phase 4 (Step 3) — 1 페이지 분(400 크레딧) 미만이면 거부. window.__nightoff_user.quota 직접 참조.
           const liveQ = (window.__nightoff_user && window.__nightoff_user.quota) || null;
-          if (liveQ && liveQ.proposal_remaining <= 0) {
-            toast("이달 제안서 할당량 소진 — 다음 달 1일 리셋", "error", 5000);
+          if (liveQ && liveQ.proposal_remaining < 400) {
+            toast("제안서 크레딧이 부족해요 (1페이지 = 400 크레딧) — 다음 달 1일 리셋", "error", 5000);
             return;
           }
           // Step 2 — 페이지 선택 모달 표시 → 사용자 선택 후 콜백에서 실제 생성 진행
@@ -4400,17 +4407,12 @@ async function renderChat(cid, convId) {
     msgs.appendChild(msgElement("assistant", openerText, new Date().toISOString()));
   }
 
-  // Input — Phase 3 quota 영역 placeholder + disabled
-  const _quota = (window.__nightoff_user && window.__nightoff_user.quota) || null;
-  const _convRemain = _quota ? _quota.conversation_remaining : null;
-  const _convExhausted = _quota && _convRemain <= 0;
-  const _placeholderBase = _quota
-    ? (_convExhausted
-        ? "이달 대화 할당량 소진 — 다음 달 1일 리셋"
-        : `메시지를 입력하세요… (남은: ${_convRemain}/${_quota.conversation_total})`)
-    : "메시지를 입력하세요… (Shift+Enter 줄바꿈, Enter 전송)";
-  const taAttrs = { id: "message-input", placeholder: _placeholderBase, rows: 1 };
-  if (_convExhausted) taAttrs.disabled = "";
+  // Phase 4 (Step 3) — 대화는 무제한. 항상 enable + 기본 안내 placeholder.
+  const taAttrs = {
+    id: "message-input",
+    placeholder: "메시지를 입력하세요… (Shift+Enter 줄바꿈, Enter 전송)",
+    rows: 1,
+  };
   const ta = h("textarea", taAttrs);
   const sendBtn = h("button", { class: "send-btn", html: iconHtml("send", 20), disabled: true, title: "전송" });
   const stopBtn = h("button", { class: "stop-btn hidden", html: `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`, title: "생성 중단" });
@@ -4514,25 +4516,8 @@ async function renderChat(cid, convId) {
         signal: aborter.signal,
       });
       if (resp.status === 401) { clearToken(); redirectToLogin(); throw new Error("인증이 만료됐어요."); }
-      if (resp.status === 403) {
-        // Phase 3 — quota 소진 (사용자 메시지 INSERT 전 백엔드 영역 차단)
-        const errBody = await resp.json().catch(() => ({}));
-        const detail = errBody.detail || {};
-        if (detail.code === "QUOTA_EXCEEDED") {
-          // 사용자 quota 영역 0 영역 영역 영역 (백엔드 영역 영역 영역 영역) → UI 영역
-          if (window.__nightoff_user && window.__nightoff_user.quota) {
-            window.__nightoff_user.quota.conversation_remaining = 0;
-            try { refreshQuotaUI("all"); } catch {}
-          }
-          toast("이달 대화 할당량 소진 — 다음 달 1일 리셋", "error", 5000);
-          throw new Error("이달 대화 할당량 소진");
-        }
-      }
+      // Phase 4 (Step 3) — 대화는 무제한 → quota 403 / 차감 코드 모두 제거.
       if (!resp.ok) throw new Error(await resp.text());
-
-      // Phase 3 단계 5-D — 대화 quota 차감 + UI 갱신 (백엔드 영역 자동 차감 영역 sync).
-      // 200 OK 응답 영역 (사용자 메시지 INSERT 성공 영역 영역) — 영역 시점 영역 차감.
-      try { refreshQuotaUI("conversation"); } catch (e) { console.warn("quota UI refresh 실패:", e); }
 
       const reader = resp.body.getReader();
       const dec = new TextDecoder();
@@ -5314,8 +5299,9 @@ async function runMultiPassProposal({ convId, pages, asstEl, bubble, progress, b
             `<div class="muted small" style="margin-top:6px;">PPTX 변환 중… 🔨</div>` +
           `</div>`;
         autoScroll();
-        // Phase 3 단계 5-D — 제안서 quota 차감 + UI 갱신 (백엔드 영역 자동 차감 영역 sync).
-        try { refreshQuotaUI("proposal"); } catch (e) { console.warn("quota UI refresh 실패:", e); }
+        // Phase 4 (Step 3) — 페이지 기반 차감. ev.total = 생성된 슬라이드 수.
+        // 백엔드의 GREATEST(0, q - pages*400) 와 동일 식으로 클라 UI sync.
+        try { refreshQuotaUI("proposal", ev.total || 0); } catch (e) { console.warn("quota UI refresh 실패:", e); }
       }
     }
   }

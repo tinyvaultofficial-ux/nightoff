@@ -447,8 +447,8 @@ def init_db() -> None:
             -- 영역 INSERT 추가만 영역 영역 (영역 영역 영역 동적 추가).
             INSERT OR IGNORE INTO policy_settings(key, value) VALUES
                 ('package_price', '380000'),
-                ('monthly_proposals', '5'),
-                ('monthly_conversations', '150');
+                ('monthly_proposals', '100000'),
+                ('monthly_conversations', '999999');
         """)
 
         # 구버전 competitors 테이블 흔적 제거 (있으면)
@@ -542,10 +542,15 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     # · *_bonus = 어드민 충전분 (프라이빗 프로모션) — 영역 추적 영역
     # 차감 흐름: 제안서 생성 성공 시 -1 / 사용자 메시지 INSERT 시 -1
     # 리셋 흐름: 월 1일 영역 quota 영역 policy_settings 영역 초기값 / bonus 영역 0 (Phase 3 단계 6)
-    ("users",         "monthly_proposal_quota",         "INTEGER DEFAULT 7"),
-    ("users",         "monthly_conversation_quota",     "INTEGER DEFAULT 350"),
+    # Phase 4 (Step 3) — 페이지 기반 크레딧 시스템:
+    #   1 페이지 = 400 크레딧, 월 100,000 크레딧 = 약 250페이지
+    #   기존 사용자는 DEFAULT 그대로 (어드민 대시보드에서 직접 100,000 으로 갱신)
+    ("users",         "monthly_proposal_quota",         "INTEGER DEFAULT 100000"),
+    ("users",         "monthly_conversation_quota",     "INTEGER DEFAULT 999999"),  # 무제한 sentinel — 코드 path 미사용
     ("users",         "monthly_proposal_quota_bonus",   "INTEGER DEFAULT 0"),
     ("users",         "monthly_conversation_quota_bonus","INTEGER DEFAULT 0"),
+    # 마지막 생성 제안서의 페이지 수 — 어드민 통계 + 사용자 quota 추적
+    ("conversations", "last_proposal_pages",            "INTEGER DEFAULT 0"),
 ]
 
 
@@ -719,8 +724,12 @@ def set_setting(key: str, value: str) -> None:
 def _get_initial_quota() -> tuple[int, int]:
     """policy_settings 영역 quota 초기값 반환. (proposal, conversation).
 
-    fallback: (7, 350) — policy_settings 영역 영역 X 시 또는 SQL 영역 영역 영역.
-    어드민 영역 정책값 변경 → 영역 사용자 가입 / 월 리셋 영역 영역 영역.
+    Phase 4 (Step 3) — 페이지 기반 크레딧 시스템:
+      proposal: 100,000 크레딧 (= 250페이지, 1페이지 = 400 크레딧)
+      conversation: 999,999 sentinel (무제한, 코드 path 미사용 — UI 에선 '무제한 ∞')
+
+    fallback (DB 조회 실패 / 키 누락): (100000, 999999) — inline + exception 모두 동일.
+    어드민이 정책값 변경 시 → 신규 사용자 가입 / 월 리셋에 자동 반영.
     """
     try:
         with get_db() as db:
@@ -729,12 +738,12 @@ def _get_initial_quota() -> tuple[int, int]:
                 "WHERE key IN ('monthly_proposals', 'monthly_conversations')"
             ).fetchall()
             kv = {r["key"]: r["value"] for r in rows}
-            p = int(kv.get("monthly_proposals") or 5)
-            c = int(kv.get("monthly_conversations") or 150)
+            p = int(kv.get("monthly_proposals") or 100000)
+            c = int(kv.get("monthly_conversations") or 999999)
             return max(0, p), max(0, c)
     except Exception as e:
         log.warning("_get_initial_quota fallback (정책 조회 실패): %s", e)
-        return 7, 350
+        return 100000, 999999
 
 
 def get_api_key() -> str:
@@ -3069,35 +3078,14 @@ def api_chat(conv_id: str, body: ChatIn, user: dict = Depends(get_current_user))
         conv = db.execute("SELECT * FROM conversations WHERE id=?", (conv_id,)).fetchone()
         client_id = conv["client_id"]
 
-        # Phase 3 단계 4 — 대화 quota 검증 (메시지 저장 전).
-        # quota <= 0 이면 403 + QUOTA_EXCEEDED. 차감 영역 INSERT 성공 후 (성공 시만).
-        quota_row = db.execute(
-            "SELECT monthly_conversation_quota FROM users WHERE id=?", (user["id"],)
-        ).fetchone()
-        conv_q = int(quota_row["monthly_conversation_quota"] or 0) if quota_row else 0
-        if conv_q <= 0:
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "error": "이달 대화 할당량 소진",
-                    "code": "QUOTA_EXCEEDED",
-                    "quota_remaining": 0,
-                },
-            )
+        # Phase 4 (Step 3) — 대화는 무제한 정책. quota 검증 / 차감 코드 제거.
+        # monthly_conversation_quota 컬럼은 두되 코드 path 미사용 (어드민 UI 가 '무제한 ∞' 표시).
 
         # 사용자 메시지 저장
         user_msg_id = uuid.uuid4().hex[:12]
         db.execute(
             "INSERT INTO messages(id,conversation_id,role,content) VALUES(?,?,?,?)",
             (user_msg_id, conv_id, "user", body.message),
-        )
-        # Phase 3 단계 4 — 대화 quota 차감 (사용자 메시지 INSERT 성공 직후).
-        # 사용자 시각 영역 자연 — 본인 메시지 1건 = 1 차감 (AI 응답 영역 차감 X).
-        # max(0, quota - 1) 영역 underflow 방어.
-        db.execute(
-            "UPDATE users SET monthly_conversation_quota = MAX(0, monthly_conversation_quota - 1) "
-            "WHERE id=?",
-            (user["id"],),
         )
         # 대화 제목이 기본값이면 첫 메시지에서 파생
         if conv["title"] == "새 대화":
@@ -3341,18 +3329,26 @@ async def api_proposals_generate_multipass(
                         )
                 except Exception as e:
                     log.warning("multi-pass: assistant 메시지 저장 실패: %s", e)
-                # Phase 3 단계 3 — quota 차감 (생성 성공 시만, final_payload 존재 영역).
-                # 실패 / 취소 시 차감 X (환불 흐름 X — 단순 영역).
-                # quota = max(0, quota - 1) 영역 underflow 방어 (영역 영역 영역 검증 통과 영역 영역).
-                try:
-                    with get_db() as db:
-                        db.execute(
-                            "UPDATE users SET monthly_proposal_quota = MAX(0, monthly_proposal_quota - 1) "
-                            "WHERE id=?",
-                            (user["id"],),
-                        )
-                except Exception as e:
-                    log.warning("quota 차감 실패 (무시, 사용자 영역 영역 영역 X): %s", e)
+                # Phase 4 (Step 3) — 페이지 기반 크레딧 차감 + conversations.last_proposal_pages 기록.
+                # 1 페이지 = 400 크레딧. final_payload["slides"] 길이 × 400 차감.
+                # underflow 시 GREATEST/MAX(0, ...) 가 0 으로 클램프 (안전망 — fail-open).
+                # 실패 / 취소 시 차감 X (final_payload 미존재 → 본 블록 미진입).
+                n_pages = len(final_payload.get("slides") or [])
+                credits_to_deduct = n_pages * 400
+                if n_pages > 0:
+                    try:
+                        with get_db() as db:
+                            db.execute(
+                                "UPDATE users SET monthly_proposal_quota = "
+                                "  MAX(0, monthly_proposal_quota - ?) WHERE id=?",
+                                (credits_to_deduct, user["id"]),
+                            )
+                            db.execute(
+                                "UPDATE conversations SET last_proposal_pages=? WHERE id=?",
+                                (n_pages, conv_id),
+                            )
+                    except Exception as e:
+                        log.warning("quota 차감 / 페이지 기록 실패 (무시): %s", e)
 
     return StreamingResponse(stream(), media_type="text/event-stream")
 

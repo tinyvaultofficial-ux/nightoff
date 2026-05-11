@@ -208,18 +208,13 @@ function renderUsersTable() {
     return;
   }
   const rows = usersState.users.map((u) => {
-    // Phase 3 quota 표시 — 백엔드 /api/admin/users 가 quota 컬럼 4종 반환.
-    const propQ = u.monthly_proposal_quota != null ? u.monthly_proposal_quota : "-";
-    const convQ = u.monthly_conversation_quota != null ? u.monthly_conversation_quota : "-";
+    // Phase 4 (Step 3) — 제안서는 크레딧 단위 + 페이지 환산, 대화는 '무제한 ∞'
+    const propQ = u.monthly_proposal_quota != null ? u.monthly_proposal_quota : 0;
+    const propPages = Math.floor(propQ / 400);
     const propBonus = u.monthly_proposal_quota_bonus || 0;
-    const convBonus = u.monthly_conversation_quota_bonus || 0;
-    // 보너스 셀 — 둘 다 0 이면 '-', 아니면 'P+N · C+M' 형태
-    const bonusCell = (propBonus === 0 && convBonus === 0)
+    const bonusCell = (propBonus === 0)
       ? `<span style="color:var(--fg-2);">-</span>`
-      : `<span title="프로모션 충전" style="font-size:12px;">`
-        + (propBonus > 0 ? `<span class="status-badge admin">P +${propBonus}</span> ` : "")
-        + (convBonus > 0 ? `<span class="status-badge admin">C +${convBonus}</span>` : "")
-        + `</span>`;
+      : `<span class="status-badge admin" title="프로모션 충전">+${(propBonus).toLocaleString("ko-KR")} 크레딧</span>`;
     return `
     <tr>
       <td>${escapeHtml((u.id || "").slice(0, 12))}</td>
@@ -235,8 +230,10 @@ function renderUsersTable() {
               : '<span class="status-badge active">활성</span>')
           : '<span class="status-badge suspended">비활성</span>'}
       </td>
-      <td class="num" title="제안서 월간 잔여">${fmtNumber(propQ)}</td>
-      <td class="num" title="대화 월간 잔여">${fmtNumber(convQ)}</td>
+      <td class="num" title="제안서 크레딧 잔여 (${propQ.toLocaleString('ko-KR')} ÷ 400 = ${propPages}페이지)">
+        ${(propQ).toLocaleString("ko-KR")} <span style="color:var(--fg-2); font-size:11px;">(≈${propPages}p)</span>
+      </td>
+      <td title="대화는 무제한"><span style="color:var(--fg-2); font-size:13px;">무제한 ∞</span></td>
       <td>${bonusCell}</td>
       <td>${fmtDate(u.last_reset_date)}</td>
       <td>${fmtDate(u.created_at)}</td>
@@ -257,9 +254,9 @@ function renderUsersTable() {
             <th>회사</th>
             <th>역할</th>
             <th>상태</th>
-            <th class="num" title="monthly_proposal_quota">제안서</th>
-            <th class="num" title="monthly_conversation_quota">대화</th>
-            <th title="프로모션 충전 (proposal_bonus / conversation_bonus)">보너스</th>
+            <th class="num" title="제안서 크레딧 (1페이지 = 400 크레딧)">제안서 크레딧</th>
+            <th>대화</th>
+            <th title="프로모션 충전">보너스</th>
             <th>마지막 리셋일</th>
             <th>가입일</th>
             <th></th>
@@ -297,11 +294,20 @@ function openUserModal(userId) {
   const u = usersState.users.find((x) => x.id === userId);
   if (!u) { toast("사용자를 찾을 수 없습니다", "error"); return; }
 
+  // Phase 4 (Step 3) — 제안서 크레딧 직접 수정 필드 추가.
+  const propQ = u.monthly_proposal_quota != null ? u.monthly_proposal_quota : 0;
+  const propPages = Math.floor(propQ / 400);
+
   const root = document.getElementById("modal-root");
   root.innerHTML = `
     <div class="modal-backdrop" onclick="if(event.target===this) closeModal()">
       <div class="modal">
         <h3>사용자 수정 — ${escapeHtml(u.email || u.id)}</h3>
+        <div class="form-row">
+          <label>제안서 크레딧 (현재 ${fmtNumber(propQ)} = 약 ${propPages}페이지)</label>
+          <input type="number" id="m-prop-quota" value="${propQ}" min="0" step="400" />
+          <div style="font-size:11px; color:var(--fg-2); margin-top:2px;">1페이지 = 400 크레딧 · 월 정책 기본값 100,000</div>
+        </div>
         <div class="form-row">
           <label>유료 크레딧 (현재 ${fmtNumber(u.credits || 0)})</label>
           <input type="number" id="m-credits" value="${u.credits || 0}" min="0" />
@@ -363,10 +369,13 @@ async function saveUserModal(userId) {
   const used = Number(document.getElementById("m-used").value);
   const reset = document.getElementById("m-reset").value.trim();
   const suspend = Number(document.getElementById("m-suspend").value);
+  // Phase 4 (Step 3) — 제안서 크레딧 직접 수정 필드
+  const propQuotaInput = document.getElementById("m-prop-quota");
+  const propQuota = propQuotaInput ? Number(propQuotaInput.value) : null;
 
-  // 날짜 형식 검증 — type="date" 영역 자동 형식 (YYYY-MM-DD) 다만 영역 영역 영역
+  // 날짜 형식 검증 — type="date" 자동 형식 (YYYY-MM-DD) 추가 안전망
   if (reset && !/^\d{4}-\d{2}-\d{2}$/.test(reset)) {
-    toast("날짜 형식 영역 X — YYYY-MM-DD 형식 영역", "error");
+    toast("날짜 형식이 잘못됐어요 — YYYY-MM-DD 형식으로 입력해 주세요", "error");
     return;
   }
 
@@ -376,6 +385,10 @@ async function saveUserModal(userId) {
     is_suspended: suspend,
   };
   if (reset) body.last_reset_date = reset;
+  // 제안서 크레딧 — 직접 set 모드. AdminUserPatch.monthly_proposal_quota 가 set, _add 는 누적.
+  if (propQuota !== null && !Number.isNaN(propQuota) && propQuota >= 0) {
+    body.monthly_proposal_quota = propQuota;
+  }
 
   if (btn) { btn.disabled = true; btn.textContent = "저장 중..."; }
   try {
@@ -768,18 +781,18 @@ const POLICY_META = {
     desc: "월 정기 결제 영역 사용자 영역 청구 영역 (예: 380000 = 38만원)",
   },
   monthly_proposals: {
-    label: "월 제안서 영역",
-    suffix: "회",
+    label: "월 제안서 크레딧",
+    suffix: "크레딧",
     type: "number",
     min: 0,
-    desc: "월 1회 결제 영역 사용자 영역 영역 ✨ 제안서 생성 영역 (cap)",
+    desc: "월 1회 결제 시 사용자에게 지급되는 제안서 크레딧 (1페이지 = 400 크레딧, 예: 100000 = 250페이지)",
   },
   monthly_conversations: {
-    label: "월 대화 영역",
-    suffix: "회",
+    label: "월 대화 (미사용 — 무제한)",
+    suffix: "sentinel",
     type: "number",
     min: 0,
-    desc: "월 1회 결제 영역 사용자 영역 영역 채팅 메시지 영역 (cap)",
+    desc: "대화는 무제한 정책이라 코드에서 사용 안 함 (999999 sentinel 유지). 변경 시 UI 만 영향, 백엔드 차감 X.",
   },
 };
 
@@ -986,7 +999,12 @@ async function loadQuota() {
     quotaState.loaded = true;
     const start = quotaState.offset + 1;
     const end = quotaState.offset + quotaState.users.length;
-    meta.textContent = `총 ${fmtNumber(quotaState.total)}명 (${start}~${end}) · 정책 기본값 제안서 ${quotaState.policy.proposal_base} / 대화 ${quotaState.policy.conversation_base}`;
+    // Phase 4 (Step 3) — 크레딧 단위 표시. proposal_base 는 크레딧 (예: 100,000), 1 페이지 = 400 크레딧.
+    const propBase = quotaState.policy.proposal_base || 0;
+    const propBasePages = Math.floor(propBase / 400);
+    meta.textContent =
+      `총 ${fmtNumber(quotaState.total)}명 (${start}~${end}) · ` +
+      `정책 기본값: 제안서 ${fmtNumber(propBase)} 크레딧 (≈${propBasePages}페이지) / 대화 무제한 ∞`;
     renderQuotaTable();
     renderQuotaPagination();
   } catch (e) {
@@ -1016,6 +1034,29 @@ function _quotaCell(remaining, total, used) {
     </div>`;
 }
 
+// 크레딧 → 페이지 환산 (1 페이지 = 400 크레딧)
+function _creditsToPages(credits) {
+  return Math.floor((credits || 0) / 400);
+}
+
+// Phase 4 (Step 3) — 제안서 셀 (크레딧 단위 + 페이지 환산 표시).
+function _proposalCreditCell(remaining, total, used) {
+  const pct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
+  const cls = _quotaBarClass(pct);
+  const pages = _creditsToPages(remaining);
+  return `
+    <div class="quota-cell">
+      <span class="quota-text" title="${fmtNumber(remaining)} 크레딧 ÷ 400 = ${pages}페이지">
+        ${fmtNumber(remaining)} <span style="color:var(--fg-2); font-size:11px;">(≈${pages}p)</span>
+        / ${fmtNumber(total)}
+      </span>
+      <div class="quota-bar" title="사용 ${fmtNumber(used)}/${fmtNumber(total)} 크레딧 (${pct}%)">
+        <div class="quota-bar-fill ${cls}" style="width:${pct}%"></div>
+      </div>
+      <span class="quota-pct">${pct}%</span>
+    </div>`;
+}
+
 function renderQuotaTable() {
   const content = document.getElementById("quota-content");
   if (quotaState.users.length === 0) {
@@ -1023,30 +1064,30 @@ function renderQuotaTable() {
     return;
   }
   const rows = quotaState.users.map((u) => {
-    const propCell = _quotaCell(u.proposal_remaining, u.proposal_total, u.proposal_used);
-    const convCell = _quotaCell(u.conversation_remaining, u.conversation_total, u.conversation_used);
+    // Phase 4 (Step 3) — 제안서는 크레딧 + 페이지 환산, 대화는 '무제한 ∞' 라벨
+    const propCell = _proposalCreditCell(u.proposal_remaining, u.proposal_total, u.proposal_used);
+    const convCell = `<span style="color:var(--fg-2); font-size:13px;">무제한 ∞</span>`;
     const propBonus = u.proposal_bonus > 0
-      ? `<span class="status-badge admin" title="프로모션 충전">+${u.proposal_bonus}</span>` : "";
-    const convBonus = u.conversation_bonus > 0
-      ? `<span class="status-badge admin" title="프로모션 충전">+${u.conversation_bonus}</span>` : "";
+      ? `<span class="status-badge admin" title="프로모션 충전">+${fmtNumber(u.proposal_bonus)} 크레딧</span>` : "";
     return `
       <tr>
         <td>${escapeHtml(u.email || "-")}</td>
         <td>${propCell} ${propBonus}</td>
-        <td>${convCell} ${convBonus}</td>
+        <td>${convCell}</td>
         <td>${fmtDate(u.last_reset_date) || "-"}</td>
         <td>${fmtDate(u.created_at) || "-"}</td>
       </tr>`;
   }).join("");
 
+  // 평균 페이지/제안서 통계 (last_proposal_pages 가 백엔드에 있으면 표시 — 향후 추가)
   content.innerHTML = `
     <div class="table-scroll">
       <table class="data-table">
         <thead>
           <tr>
             <th>이메일</th>
-            <th>제안서 (남음/전체)</th>
-            <th>대화 (남음/전체)</th>
+            <th>제안서 크레딧 (남음 / 전체)</th>
+            <th>대화</th>
             <th>마지막 리셋</th>
             <th>가입일</th>
           </tr>

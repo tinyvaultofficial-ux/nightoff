@@ -5650,14 +5650,18 @@ function bootNavToggle() {
 // ---------- Boot ----------
 // 최초 방문 체크
 window.addEventListener("DOMContentLoaded", async () => {
-  // ── 묶음 N Commit 5 — 인증 게이트 ──
-  // login/register 페이지는 토큰 검증 X (공개 페이지)
-  if (!AUTH_PUBLIC_PAGES.has(location.pathname)) {
-    if (!getToken()) {
-      redirectToLogin();
-      return;
-    }
-    // 토큰 검증 — /api/auth/me 호출
+  // ── 묶음 N Commit 5 — 인증 게이트 (Phase 4 수정: token 있으면 공개 페이지도 검증) ──
+  //
+  // 변경 이유: 기존 가드는 "비공개 페이지에 토큰 없으면 redirect" 만 처리.
+  // 그러나 로그인 후 / (공개) 로 redirect 되면 /api/auth/me 호출 skip →
+  // __nightoff_user 미설정 → 사이드바 quota / 일일 보상 / 어드민 권한 모두 깨짐.
+  //
+  // 신규 흐름:
+  //   1) token 있음 → 페이지 종류 무관하게 /api/auth/me 호출 → __nightoff_user 항상 설정
+  //   2) token 없음 + 비공개 페이지 → redirectToLogin
+  //   3) token 없음 + 공개 페이지 → 그대로 (랜딩 노출)
+  if (getToken()) {
+    // 토큰 검증 — /api/auth/me 호출 (공개/비공개 무관)
     try {
       const me = await api.get("/api/auth/me");
       window.__nightoff_user = me.user;  // 다른 곳에서 활용 가능
@@ -5679,17 +5683,23 @@ window.addEventListener("DOMContentLoaded", async () => {
         }
       } catch (e) { console.warn("daily bonus 토스트 실패:", e); }
     } catch (e) {
-      // /api/auth/me 의 401 은 _call() 안 redirect 분기에서 path.startsWith("/api/auth/")
-      // 가드로 skip 됨 — 여기서 명시적으로 token clear + redirect.
-      // (이전엔 silent return 이었어서 stale token 유지 -> dashboard 깜빡 -> 다른 endpoint
-      //  401 -> redirect 의 마찰 흐름이 발생)
+      // 401 (만료/무효) — 토큰 정리. 비공개 페이지면 redirect, 공개 페이지면 그대로 랜딩.
       if (e && e.status === 401) {
         clearToken();
-        redirectToLogin();
-        return;
+        if (!AUTH_PUBLIC_PAGES.has(location.pathname)) {
+          redirectToLogin();
+          return;
+        }
+        // 공개 페이지에서 401 = stale token + 랜딩 노출. __nightoff_user 미설정으로 fall through.
       }
+      // 다른 에러 (네트워크 / 500 등) 도 silent fall through — 공개 페이지는 토큰 없이도 진행
     }
+  } else if (!AUTH_PUBLIC_PAGES.has(location.pathname)) {
+    // token 없음 + 비공개 페이지 → 로그인 강제
+    redirectToLogin();
+    return;
   }
+  // token 없음 + 공개 페이지 → 그대로 진행 (랜딩 노출, __nightoff_user 미설정)
   // (legacy ensureSignup 모달 — 묶음 N 인증 시스템 전환 후 폐기됨.
   //  가입 흐름은 랜딩 CTA "지금 시작하기 ✨" -> /register.html 으로 이동.)
   // 체류시간 인체 캐릭터 시작

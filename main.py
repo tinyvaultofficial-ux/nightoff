@@ -1751,6 +1751,20 @@ def spa_fallback_client(rest: str):
     return HTMLResponse(_render_index())
 
 
+# ─── SPA 직접 진입 라우트 (app.js client router 가 처리) ────────────────────
+# 새 SPA 경로 추가 시 여기에 명시적으로 한 줄씩 추가 (catch-all 회피 — API shadow 방지).
+@app.get("/dashboard")
+def spa_dashboard():
+    """SPA — 대시보드 직접 URL 접근 허용. 클라이언트 라우터가 처리."""
+    return HTMLResponse(_render_index())
+
+
+@app.get("/landing")
+def spa_landing():
+    """SPA — 랜딩 직접 URL 접근 허용. 클라이언트 라우터가 처리."""
+    return HTMLResponse(_render_index())
+
+
 # ---------- Models ----------
 class SettingsIn(BaseModel):
     api_key: Optional[str] = None

@@ -4264,6 +4264,7 @@ async function renderChat(cid, convId) {
             return;
           }
           // Step 2 — 페이지 선택 모달 표시 → 사용자 선택 후 콜백에서 실제 생성 진행
+          // pageLimit (line 4196) 전달 — 모달이 권장 배지 동적 매핑 + 초과 경고
           showProposalPageSelectionModal((selectedPages) => {
             // 채팅 input 영역에 진행률 표시 — 가짜 user 메시지로 시각화
             const msgs = document.getElementById("chat-messages") || document.querySelector(".chat-messages");
@@ -4303,7 +4304,7 @@ async function renderChat(cid, convId) {
                 progress.finish(false);
               }
             })();
-          });
+          }, pageLimit);
         },
       });
       })(),
@@ -4911,17 +4912,39 @@ function createStreamProgress() {
 // ─── 제안서 페이지 선택 모달 (Step 2 — Phase 4 페이지 기반 크레딧) ─────────
 // ✨ 버튼 클릭 시 표시. 사용자가 30/50/100 페이지 중 선택 → onConfirm(pages) 콜백.
 // 취소 / ESC / backdrop 클릭 = 닫고 아무 액션 X.
-// 크레딧 표시는 Step 2 — 실제 차감은 Step 3 에서 추가 예정.
 // CSS: .beta-notice-* 클래스 재사용 (overlay/card 기본 스타일) + 옵션 버튼 인라인 스타일.
-function showProposalPageSelectionModal(onConfirm) {
+//
+// pageLimit (선택 인자): RFP 분석의 page_limit 값. 권장 배지 동적 매핑 + 초과 경고.
+//   - 유효한 양의 정수: opt.pages ≤ pageLimit 중 최대값에 권장 (모두 초과 시 최소값에 권장)
+//   - null / undefined / 0 / 비숫자: 기존 동작 (100페이지에 권장)
+function showProposalPageSelectionModal(onConfirm, pageLimit = null) {
   if (document.querySelector(".pages-modal-overlay")) return;
 
-  // 옵션 (페이지, 크레딧, 추천 여부, 설명)
+  // 옵션 (페이지, 크레딧, 설명) — recommended 는 effectiveLimit 기준으로 동적 계산
   const OPTIONS = [
-    { pages: 100, credits: 40000, label: "100페이지", recommended: true,  desc: "풀 분량 제안서" },
-    { pages: 50,  credits: 20000, label: "50페이지",  recommended: false, desc: "표준 분량" },
-    { pages: 30,  credits: 12000, label: "30페이지",  recommended: false, desc: "간단 분량" },
+    { pages: 100, credits: 40000, label: "100페이지", desc: "풀 분량 제안서" },
+    { pages: 50,  credits: 20000, label: "50페이지",  desc: "표준 분량" },
+    { pages: 30,  credits: 12000, label: "30페이지",  desc: "간단 분량" },
   ];
+
+  // pageLimit 타입 가드 — LLM 이 가끔 문자열 반환 가능. 숫자 양수만 신뢰.
+  const effectiveLimit = (typeof pageLimit === "number" && pageLimit > 0) ? pageLimit : null;
+
+  // 권장 페이지 결정:
+  //   - effectiveLimit 없음 → 100 (기존 동작)
+  //   - opt.pages ≤ effectiveLimit 인 옵션 있음 → 그 중 최대값
+  //   - 모든 옵션이 effectiveLimit 초과 → 가장 작은 옵션 (limit 에 가장 근접한 선택 유도)
+  let recommendedPages;
+  if (effectiveLimit === null) {
+    recommendedPages = 100;
+  } else {
+    const eligible = OPTIONS.filter((o) => o.pages <= effectiveLimit);
+    if (eligible.length > 0) {
+      recommendedPages = Math.max.apply(null, eligible.map((o) => o.pages));
+    } else {
+      recommendedPages = Math.min.apply(null, OPTIONS.map((o) => o.pages));
+    }
+  }
 
   const close = () => {
     overlay.classList.add("fade-out");
@@ -4952,7 +4975,8 @@ function showProposalPageSelectionModal(onConfirm) {
   // 옵션 리스트 — 인라인 스타일로 깔끔하게
   const listWrap = h("div", { style: "display:flex; flex-direction:column; gap:10px; margin:18px 0 8px;" });
   OPTIONS.forEach((opt) => {
-    const isRec = opt.recommended;
+    const isRec = (opt.pages === recommendedPages);
+    const exceedsLimit = (effectiveLimit !== null && opt.pages > effectiveLimit);
     const btn = h("button", {
       style:
         "display:flex; flex-direction:column; align-items:flex-start; gap:4px;" +
@@ -4978,6 +5002,11 @@ function showProposalPageSelectionModal(onConfirm) {
       ]),
       h("div", { style: "font-size:12px; color:#666;" },
         `${opt.credits.toLocaleString("ko-KR")} 크레딧 · ${opt.desc}`),
+      // RFP page_limit 초과 옵션 — 경고 표시 (선택은 가능)
+      exceedsLimit
+        ? h("div", { style: "font-size:11px; color:var(--danger, #c43); margin-top:2px; font-weight:600;" },
+            `⚠️ RFP 제한(${effectiveLimit}p) 초과`)
+        : null,
     ]);
     listWrap.appendChild(btn);
   });

@@ -292,24 +292,16 @@ function refreshQuotaUI(kind, pages) {
     q.proposal_remaining = Math.max(0, q.proposal_remaining - (pages * CREDITS_PER_PAGE));
   }
 
-  // 사이드바 표시 갱신
+  // 사이드바 표시 갱신 — 제안서 row 만 (대화 항목 사용자 노출 X).
   const propPagesNow = Math.floor((q.proposal_remaining || 0) / CREDITS_PER_PAGE);
-  const propPagesTotal = Math.floor((q.proposal_total || 0) / CREDITS_PER_PAGE);
   const propVal = document.getElementById("sidebar-proposal-quota");
   if (propVal) {
     propVal.textContent =
       `${(q.proposal_remaining).toLocaleString("ko-KR")} / ${(q.proposal_total).toLocaleString("ko-KR")} (≈${propPagesNow}p)`;
   }
-  // 대화 셀 — "무제한 ∞" 고정 표시
-  const convVal = document.getElementById("sidebar-conversation-quota");
-  if (convVal) convVal.textContent = "무제한 ∞";
-
   // 사이드바 row 의 quota-empty 클래스 (제안서 크레딧 < 1페이지 분 = 400 미만이면 강조)
   const propRow = document.getElementById("sidebar-proposal-row");
   if (propRow) propRow.classList.toggle("quota-empty", q.proposal_remaining < CREDITS_PER_PAGE);
-  // 대화 row 는 quota-empty 클래스 제거 (무제한이라 항상 OK)
-  const convRow = document.getElementById("sidebar-conversation-row");
-  if (convRow) convRow.classList.remove("quota-empty");
 
   // ✨ 제안서 버튼 — badge + disabled
   const propBtn = document.getElementById("sparkle-generate-btn");
@@ -625,7 +617,7 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
         ]),
       ] : []),
       // Phase 4 (Step 3) — 페이지 기반 크레딧 표시. 1 페이지 = 400 크레딧.
-      // 대화는 무제한 ∞ 라벨 (차감 없음).
+      // 대화 quota 항목은 사용자에게 노출 X (메시지 무제한 — 내부 정책, 마케팅 금지).
       // id 그대로 유지 → refreshQuotaUI() 가 동적 갱신.
       ...((window.__nightoff_user && window.__nightoff_user.quota) ? [
         (function () {
@@ -646,13 +638,6 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
               h("span", { id: "sidebar-proposal-quota", class: "quota-value",
                 title: `${(q.proposal_remaining).toLocaleString("ko-KR")} ÷ 400 = ${propPagesNow}페이지` },
                 `${(q.proposal_remaining).toLocaleString("ko-KR")} / ${(q.proposal_total).toLocaleString("ko-KR")} (≈${propPagesNow}p)`),
-            ]),
-            h("div", {
-              id: "sidebar-conversation-row",
-              class: "quota-row",
-            }, [
-              h("span", { class: "quota-label" }, "💬 대화"),
-              h("span", { id: "sidebar-conversation-quota", class: "quota-value" }, "무제한 ∞"),
             ]),
           ]);
           return wrap;

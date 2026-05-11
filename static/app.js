@@ -4479,9 +4479,7 @@ async function renderChat(cid, convId) {
     let firstDelta = true;
     let rafActive = false;
     let streamDone = false;
-    // [Phase 3-D fix] JSON 응답은 raw 텍스트로 노출하면 UX 망가짐 — placeholder 로 가림
-    let isJsonMode = false;
-    let jsonModeDecided = false;
+    // Phase 4 — JSON 감지 코드 제거 (legacy). 채팅은 항상 자연어 응답 — 제안서는 ✨ 버튼만.
 
     // 사용자가 위로 스크롤하면 자동 스크롤 일시 정지 (생성 완료 시 자동 해제)
     let userScrolledUp = false;
@@ -4496,16 +4494,14 @@ async function renderChat(cid, convId) {
     const tick = () => {
       if (displayedText.length >= targetText.length) {
         rafActive = false;
-        // JSON 모드는 done 시점에 placeholder 제거로 처리 — raw 렌더 X
-        if (streamDone && !isJsonMode) renderAssistant(bubble, targetText, true);
+        if (streamDone) renderAssistant(bubble, targetText, true);
         return;
       }
       const lag = targetText.length - displayedText.length;
       // 뒤처진 정도에 비례해서 더 많이 진행 — 최소 2자, 최대 24자/frame
       const step = Math.min(24, Math.max(2, Math.ceil(lag / 10)));
       displayedText = targetText.slice(0, displayedText.length + step);
-      // JSON 모드면 bubble 에 raw 안 그림 (placeholder 유지) — progress 바만 갱신
-      if (!isJsonMode) renderAssistant(bubble, displayedText);
+      renderAssistant(bubble, displayedText);
       progress.update(targetText);   // ← 전체 target 기준으로 진행률 업데이트
       // 사용자가 직접 위로 스크롤한 동안엔 자동 스크롤 안 함
       if (!userScrolledUp) body.scrollTop = body.scrollHeight;
@@ -4547,30 +4543,7 @@ async function renderChat(cid, convId) {
             if (firstDelta) { overlayLoader.stop(); bubble.innerHTML = ""; firstDelta = false; }
             targetText += ev.text;
             progress.update(targetText);
-            // [Phase 3-D fix · 강화] JSON 모드 감지 — 누적 80자 이상이면 한 번 판정
-            // 더 관대하게: 평문 prefix 가 있어도 JSON 키워드만 보이면 JSON 모드로 간주
-            if (!jsonModeDecided && targetText.length >= 80) {
-              jsonModeDecided = true;
-              const head = targetText.slice(0, 400);
-              // 4가지 케이스 모두 JSON 으로 인식:
-              //   ① ```json 코드펜스 시작
-              //   ② { 로 바로 시작 + title/domain/slides 키 등장
-              //   ③ 평문 prefix 후 어딘가에 ```json 등장
-              //   ④ 평문 prefix 후 "slides": [ 패턴 등장
-              isJsonMode =
-                /```json/.test(head) ||
-                /^\s*\{[\s\S]*?"(?:title|domain|accent|summary|slides)"/.test(head) ||
-                /"slides"\s*:\s*\[/.test(head);
-              if (isJsonMode) {
-                bubble.innerHTML =
-                  '<div class="json-stream-placeholder">' +
-                    '<span class="loading-dots"><span></span><span></span><span></span></span>' +
-                    '<span class="muted">제안서 구조를 설계하고 있어요…</span>' +
-                  '</div>';
-                // [B7] JSON 감지와 동시에 우측 패널 'preparing' 상태로 띄움
-                try { shell._setSidePanelPng && shell._setSidePanelPng("preparing"); } catch {}
-              }
-            }
+            // Phase 4 — JSON 모드 감지 코드 제거 (legacy). 채팅은 항상 자연어 응답.
             kickTyper();
           } else if (ev.type === "error") {
             overlayLoader.stop();
@@ -4581,8 +4554,7 @@ async function renderChat(cid, convId) {
             overlayLoader.stop();
             streamDone = true;
             displayedText = targetText;
-            // JSON 모드면 raw 텍스트 안 그리고 placeholder 유지 → done 후 doneBubble 이 안내
-            if (!isJsonMode) renderAssistant(bubble, targetText, true);
+            renderAssistant(bubble, targetText, true);
             progress.finish(true);
           }
         }
@@ -4590,7 +4562,7 @@ async function renderChat(cid, convId) {
       // 스트림 끝났는데 displayed가 아직 따라잡지 못한 경우 보강
       if (displayedText.length < targetText.length) {
         displayedText = targetText;
-        if (!isJsonMode) renderAssistant(bubble, targetText, true);
+        renderAssistant(bubble, targetText, true);
       }
       // rafActive가 진행 중이면 streamDone을 보고 알아서 마감
       streamDone = true;
@@ -4611,95 +4583,9 @@ async function renderChat(cid, convId) {
       // 자동 스크롤 잠금 해제 + 스크롤 리스너 정리
       userScrolledUp = false;
       body.removeEventListener("scroll", onUserScroll);
-      // 제안서 완성 감지 — JSON (새 모드) 또는 HTML (legacy)
-      // [관대하게] 어떤 형태든 "slides": [ 패턴이 나타나면 JSON 으로 인식
-      // (코드펜스/평문 prefix/공백 모두 허용)
-      const isJson = /"slides"\s*:\s*\[/.test(targetText);
-      const isHtml = /<div class="proposal"/.test(targetText);
-      if (isJson || isHtml) {
-        // [Phase 3-D fix] JSON raw 텍스트가 bubble 에 남아있으면 정리
-        if (isJson) {
-          bubble.innerHTML =
-            '<span class="muted small">✓ 제안서 구조 설계 완료 — PPTX 로 변환할게요</span>';
-        }
-        const doneBubble = h("div", { class: "msg-bubble" },
-          isJson ? "✅ 제안서 완성! PPTX 변환 중… 🔨"
-                 : "✅ 제안서 초안이 완성됐어요! 수정이 필요한 부분은 말씀해 주세요 😊");
-        const done = h("div", { class: "msg-row assistant proposal-done-row" }, [
-          h("div", { class: "msg-avatar", html: iconHtml("brain", 18) }),
-          h("div", { class: "msg-body" }, [doneBubble]),
-        ]);
-        msgs.appendChild(done);
-        try { celebrateConfetti(); } catch {}
-        if (!userScrolledUp) body.scrollTop = body.scrollHeight;
-
-        // [B7] JSON 모드: 자동 PPTX 생성 + PNG 미리보기 → 우측 사이드패널 (모달 X)
-        if (isJson) {
-          (async () => {
-            const log = (...args) => console.log("[PPTX-FLOW]", ...args);
-            log("step 0 · JSON 흐름 진입");
-            try {
-              // [근본 해결] renderChat(cid, convId) closure 의 convId 직접 사용
-              // — location.hash 파싱은 라우팅 방식 변경에 취약 (이전: hash 매칭 실패로 null)
-              const cid = convId;
-              log("step 1 · convId(closure) =", cid);
-              if (!cid) {
-                log("❌ STOP — convId 자체가 비어있음 (renderChat 호출 잘못)");
-                doneBubble.textContent =
-                  "⚠ 대화 ID 를 찾지 못해 PPTX 변환을 시작할 수 없어요. 페이지 새로고침 후 다시 시도해주세요.";
-                return;
-              }
-              // 1단계: PPTX 생성
-              try { shell._setSidePanelPng && shell._setSidePanelPng("building"); } catch (e) { log("setSidePanelPng building 실패:", e); }
-              log("step 2 · POST /api/proposals/pptx 호출 시작");
-              const pptxR = await api.post("/api/proposals/pptx", { conversation_id: cid }, { timeoutMs: 180000 });
-              log("step 3 · POST /pptx 응답:", pptxR);
-              const pptxUrl = (pptxR && pptxR.url) || null;
-              // PPTX 변환 성공 = 산출내역서 활성화 조건 도달. preview 결과와 무관 (preview 실패해도 산출내역서 가능).
-              // enable 함수는 멱등 — 아래 line ~4316 호출과 중복돼도 두 번째 호출은 wasDisabled=false → 펄스/toast 미발동.
-              if (pptxUrl) {
-                try { window.__nightoff_enableBudgetBtn && window.__nightoff_enableBudgetBtn(); } catch {}
-              }
-              // 2단계: PNG 미리보기
-              try { shell._setSidePanelPng && shell._setSidePanelPng("rendering"); } catch (e) { log("setSidePanelPng rendering 실패:", e); }
-              log("step 4 · GET /preview 호출 시작");
-              const r = await api.get(`/api/proposals/${cid}/preview`, { timeoutMs: 240000 });
-              log("step 5 · GET /preview 응답:", r);
-              if (r.slides && r.slides.length) {
-                doneBubble.textContent =
-                  `✅ 제안서 ${r.slides.length}장 완성됐어요! 우측에서 확인해보세요 😊`;
-                try {
-                  shell._setSidePanelPng && shell._setSidePanelPng("ready", {
-                    slides: r.slides,
-                    pptxUrl,
-                  });
-                  log("step 6 · 미리보기 패널 ready 표시 완료");
-                } catch (e2) { log("setSidePanelPng ready 실패:", e2); }
-                // 산출내역서 버튼 영역 활성화 (PPTX 변환 완료 → 활성화 조건 도달).
-                try { window.__nightoff_enableBudgetBtn && window.__nightoff_enableBudgetBtn(); } catch {}
-              } else {
-                log("⚠ slides 비어있음 ·", r);
-                doneBubble.textContent =
-                  "✅ 제안서 완성. PPTX 다운로드 / 🖼 미리보기 버튼을 눌러주세요.";
-                try {
-                  shell._setSidePanelPng && shell._setSidePanelPng("error", {
-                    error: r.message || "미리보기 생성에 실패했어요",
-                  });
-                } catch {}
-              }
-            } catch (e) {
-              log("❌ 예외 발생:", e);
-              doneBubble.textContent =
-                `⚠ PPTX 변환 중 오류: ${(e && e.message) || String(e)}`;
-              try {
-                shell._setSidePanelPng && shell._setSidePanelPng("error", {
-                  error: (e && e.message) || "PPTX 변환 중 오류가 발생했어요",
-                });
-              } catch {}
-            }
-          })();
-        }
-      }
+      // Phase 4 — legacy 제안서 완성 감지 / PPTX flow 코드 제거.
+      // 채팅은 항상 자연어 응답이라 JSON/HTML 감지가 false positive 만 만들었음.
+      // 제안서 완성 흐름은 ✨ 버튼 → runMultiPassProposal 안에서 처리.
       ta.focus();
     }
   });

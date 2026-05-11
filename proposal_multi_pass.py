@@ -1300,12 +1300,21 @@ async def generate_outline(
             continue
         qlocks[str(k)] = v
 
+    # ── total_slides 하드 cap (max_tokens=64000 검증 천장) ──────────────────
+    # RFP page_limit 또는 LLM 자율 응답이 100 초과 시 강제 클램프.
+    # 이유: 64000 max_tokens 한계 + 100 슬라이드 영역까지 검증됨 (실 사용 케이스).
+    MAX_SLIDES_HARD = 100
+    total_slides_raw = int(parsed.get("total_slides") or len(items))
+    total_slides = min(MAX_SLIDES_HARD, total_slides_raw)
+    if total_slides_raw > MAX_SLIDES_HARD:
+        log.warning("total_slides %d → %d 로 클램프 (MAX_SLIDES_HARD)", total_slides_raw, MAX_SLIDES_HARD)
+
     return OutlineResult(
         title=str(parsed.get("title", "")).strip(),
         domain=str(parsed.get("domain", "other")).strip(),
         slide_width=float(parsed.get("slide_width") or 11.69),
         slide_height=float(parsed.get("slide_height") or 8.27),
-        total_slides=int(parsed.get("total_slides") or len(items)),
+        total_slides=total_slides,
         outline=items,
         quantitative_locks=qlocks,
     )

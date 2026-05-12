@@ -5815,24 +5815,14 @@ async def api_proposals_download(conv_id: str, user: dict = Depends(get_current_
             detail={"error": "제안서가 아직 생성되지 않았습니다", "code": "PPTX_NOT_GENERATED"},
         )
 
-    # 파일명 추출 (마지막 segment) — 자동으로 traversal 1차 차단
-    # 추가 방어: 파일명에 위험 문자 검사 + resolved path 가 exports 디렉토리 안인지 확인.
-    pptx_url = row["pptx_path"]
-    fname = Path(pptx_url).name  # 마지막 segment, '..' / 'a/b' 같은 traversal 자동 제거
-    if (not fname
-            or ".." in fname
-            or "/" in fname
-            or "\\" in fname
-            or "\x00" in fname
-            or not fname.lower().endswith(".pptx")):
-        log.warning(
-            "PPTX download — 잘못된 파일명 (path traversal 시도?): user=%s conv=%s pptx_path=%r fname=%r",
-            user["id"], conv_id, pptx_url, fname,
-        )
-        raise HTTPException(
-            status_code=400,
-            detail={"error": "잘못된 요청입니다", "code": "INVALID_PATH"},
-        )
+    # 파일명 재계산 — DB pptx_path 값 형식에 의존하지 않음.
+    # (Phase 5 Step 3 이후 pptx_path 의미가 "정적 URL" → "동적 endpoint URL" 로 변경 →
+    #  Path(url).name 으로 파일명 추출하던 옛 로직이 .endswith('.pptx') 검증에서 깨졌음 — 400 hotfix)
+    # 생성측 (api_proposals_pptx line 6383) 과 동일 패턴 → 양측 일관성 보장.
+    # _safe_filename() 이 OS 금지 문자 + 제어 문자 모두 제거 → traversal 위험 없음.
+    # 다층 방어: 아래 resolve().is_relative_to() 검증 + disk_path.is_file() 으로 추가 차단.
+    safe_client = _safe_filename(row["client_name"] or "제안서")
+    fname = f"{safe_client}_{conv_id[:8]}.pptx"
 
     # 디스크 경로 구성 + resolved 경로가 exports 디렉토리 안인지 검증
     # ⚠ 본 단계는 기존 저장 위치 (STATIC_DIR / "exports") 그대로 사용.

@@ -54,6 +54,18 @@ STATIC_DIR = BASE_DIR / "static"
 UPLOADS_DIR.mkdir(exist_ok=True)
 STATIC_DIR.mkdir(exist_ok=True)
 
+# ---------------------------------------------------------------------------
+# Phase 5 (Step 1) — 비공개 exports 디렉토리
+# ---------------------------------------------------------------------------
+# PPTX/PNG 파일을 StaticFiles 마운트 밖에 보관 → 인증 endpoint 경유 서빙용.
+# ⚠ STATIC_DIR 하위로 두면 안 됨 (StaticFiles 자동 노출 — 비공개화 무의미).
+# 본 단계: 상수 + 디렉토리만 생성. 실제 사용은 2단계 이후.
+# env EXPORTS_DIR 우선, 없으면 BASE_DIR / "_private_exports" (STATIC_DIR 형제).
+_exports_env = os.environ.get("EXPORTS_DIR", "").strip()
+EXPORTS_DIR = Path(_exports_env) if _exports_env else (BASE_DIR / "_private_exports")
+EXPORTS_PPTX_DIR = EXPORTS_DIR / "pptx"
+EXPORTS_PREVIEW_DIR = EXPORTS_DIR / "preview"
+
 MODEL_DEFAULT = "claude-sonnet-4-5-20250929"
 MODEL_FAST = "claude-haiku-4-5-20251001"
 
@@ -1485,6 +1497,15 @@ def _startup() -> None:
     """
     log.info("=== NightOff startup 시작 ===")
     log.info("DATABASE_URL set? %s · USE_PG=%s · DB_PATH=%s", bool(DATABASE_URL), USE_PG, DB_PATH)
+    # Phase 5 (Step 1) — 비공개 exports 디렉토리 자동 생성 (graceful degradation).
+    # 본 단계는 디렉토리만 만들고 사용 안 함. 2단계 이후 신규 endpoint 가 사용.
+    try:
+        EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        EXPORTS_PPTX_DIR.mkdir(parents=True, exist_ok=True)
+        EXPORTS_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
+        log.info("EXPORTS_DIR ready: %s", EXPORTS_DIR)
+    except Exception as e:
+        log.warning("EXPORTS_DIR 생성 실패 (무시 — 2단계 이후 신규 endpoint 영향): %s", e)
     try:
         init_db()
         log.info("init_db OK")

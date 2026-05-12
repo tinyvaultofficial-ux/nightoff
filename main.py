@@ -5824,6 +5824,106 @@ def api_proposals_preview(conv_id: str, regen: int = 0, user: dict = Depends(get
         )
 
 
+# ---------- PPTX 인증 다운로드 (Phase 5 Step 2) ------------------------------
+# 현재 /static/exports/*.pptx 는 인증 없이 공개 서빙 중 — 보안 사고.
+# 본 endpoint 가 인증 + ownership 검증 후 같은 파일을 서빙.
+# ⚠ 이 단계는 신규 endpoint 추가만. 기존 /static/exports/* URL 응답은 그대로 유지
+#   (Step 3 에서 응답 URL 을 본 endpoint 로 전환, Step 5 에서 파일 위치 자체를
+#    EXPORTS_PPTX_DIR 로 이동 예정).
+@app.get("/api/proposals/{conv_id}/download")
+async def api_proposals_download(conv_id: str, user: dict = Depends(get_current_user)):
+    """conv_id 의 저장된 PPTX 를 인증 경유로 다운로드.
+
+    - 인증 필수 (get_current_user dependency)
+    - ownership 검증 (_verify_conv_owned_by_user — 다른 사용자 conv 차단)
+    - path traversal 방어 (파일명 검증 + resolved path 가 STATIC_DIR/exports 안 강제)
+    - paywall 체크는 본 단계에서 추가 X (무료 체험 시스템 단계에서 추가 예정)
+    """
+    log.info("PPTX download 요청: conv_id=%s user=%s", conv_id, user["id"])
+
+    # ownership + pptx_path / 발주처명 동시 조회
+    with get_db() as db:
+        _verify_conv_owned_by_user(db, conv_id, user["id"])
+        row = db.execute(
+            "SELECT cv.pptx_path AS pptx_path, c.name AS client_name "
+            "FROM conversations cv JOIN clients c ON c.id=cv.client_id "
+            "WHERE cv.id=?",
+            (conv_id,),
+        ).fetchone()
+
+    if not row or not (row["pptx_path"] or "").strip():
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "제안서가 아직 생성되지 않았습니다", "code": "PPTX_NOT_GENERATED"},
+        )
+
+    # 파일명 추출 (마지막 segment) — 자동으로 traversal 1차 차단
+    # 추가 방어: 파일명에 위험 문자 검사 + resolved path 가 exports 디렉토리 안인지 확인.
+    pptx_url = row["pptx_path"]
+    fname = Path(pptx_url).name  # 마지막 segment, '..' / 'a/b' 같은 traversal 자동 제거
+    if (not fname
+            or ".." in fname
+            or "/" in fname
+            or "\\" in fname
+            or "\x00" in fname
+            or not fname.lower().endswith(".pptx")):
+        log.warning(
+            "PPTX download — 잘못된 파일명 (path traversal 시도?): user=%s conv=%s pptx_path=%r fname=%r",
+            user["id"], conv_id, pptx_url, fname,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "잘못된 요청입니다", "code": "INVALID_PATH"},
+        )
+
+    # 디스크 경로 구성 + resolved 경로가 exports 디렉토리 안인지 검증
+    # ⚠ 본 단계는 기존 저장 위치 (STATIC_DIR / "exports") 그대로 사용.
+    #   Step 5 에서 EXPORTS_PPTX_DIR 로 전환 예정.
+    exports_dir = STATIC_DIR / "exports"
+    disk_path = exports_dir / fname
+    try:
+        resolved = disk_path.resolve()
+        base_resolved = exports_dir.resolve()
+        if not resolved.is_relative_to(base_resolved):
+            log.warning(
+                "PPTX download — resolved path outside exports: user=%s conv=%s resolved=%s",
+                user["id"], conv_id, resolved,
+            )
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "잘못된 요청입니다", "code": "INVALID_PATH"},
+            )
+    except HTTPException:
+        raise
+    except (OSError, ValueError) as e:
+        log.warning("PPTX download — path resolve 실패: %s", e)
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "잘못된 요청입니다", "code": "INVALID_PATH"},
+        )
+
+    # 실제 파일 존재 확인
+    if not disk_path.is_file():
+        log.warning(
+            "PPTX download — 파일 미존재: user=%s conv=%s disk_path=%s",
+            user["id"], conv_id, disk_path,
+        )
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "제안서 파일을 찾을 수 없습니다", "code": "PPTX_FILE_MISSING"},
+        )
+
+    # 다운로드 파일명 — api_proposals_pptx 패턴 일관 ("{발주처}_제안서.pptx")
+    safe_client = _safe_filename(row["client_name"] or "제안서")
+    download_name = f"{safe_client}_제안서.pptx"
+
+    return FileResponse(
+        path=str(disk_path),
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        filename=download_name,
+    )
+
+
 # ---------- 포인트 컬러 관리 ----------
 class AccentIn(BaseModel):
     accent: str

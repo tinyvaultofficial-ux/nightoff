@@ -886,6 +886,22 @@ def _verify_conv_owned_by_user(db, conv_id: str, user_id: str) -> dict:
     return {"conv_id": row["conv_id"], "client_id": row["client_id"]}
 
 
+# ---------- PPTX URL 응답 정규화 (Phase 5 Step 3) ----------
+def _pptx_url_for_conv(conv_id: str, pptx_path) -> Optional[str]:
+    """conversations.pptx_path (DB raw value) → 응답용 정규화 URL.
+
+    - 빈 문자열/NULL/공백 → None (PPTX 없음)
+    - 그 외 truthy → 항상 ``/api/proposals/{conv_id}/download`` (인증 endpoint)
+    - 옛 형식(``/static/exports/...``) / 새 형식 모두 동일한 새 URL로 정규화
+
+    DB 저장값과 무관하게 응답을 정규화하므로, 마이그레이션 안 된 옛 row 도
+    응답 노출 시 자동으로 새 endpoint URL 로 변환됨. (변경 3 권장 방안)
+    """
+    if not pptx_path or not str(pptx_path).strip():
+        return None
+    return f"/api/proposals/{conv_id}/download"
+
+
 # ---------- Migration helpers (묶음 N Commit 6) ----------
 def activate_admin_from_env() -> Optional[str]:
     """startup 1회 호출 — ADMIN_EMAIL + ADMIN_PASSWORD_HASH env 로 admin 활성화.
@@ -2421,7 +2437,13 @@ def api_convs_list(cid: str, user: dict = Depends(get_current_user)):
             WHERE cv.client_id=?
             ORDER BY cv.updated_at DESC
         """, (cid,)).fetchall()
-    return [dict(r) for r in rows]
+    # Phase 5 Step 3 — pptx_path 응답 정규화 (옛 형식 row 도 새 URL 로 노출)
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["pptx_path"] = _pptx_url_for_conv(d.get("id", ""), d.get("pptx_path"))
+        out.append(d)
+    return out
 
 
 @app.post("/api/clients/{cid}/conversations")
@@ -2468,8 +2490,11 @@ def api_conv_get(conv_id: str, user: dict = Depends(get_current_user)):
             except Exception as e:
                 log.warning("RFP opener lazy backfill 실패 (무시): %s", e)
 
+    # Phase 5 Step 3 — pptx_path 응답 정규화 (옛 형식 row 도 새 URL 로 노출)
+    conv_dict = dict(conv)
+    conv_dict["pptx_path"] = _pptx_url_for_conv(conv_id, conv_dict.get("pptx_path"))
     return {
-        "conversation": dict(conv),
+        "conversation": conv_dict,
         "messages": [dict(m) for m in msgs],
         "client": dict(client) if client else None,
         "rfp_analysis": rfp,
@@ -6469,18 +6494,18 @@ def api_proposals_pptx(body: PptxExportIn, user: dict = Depends(get_current_user
             errors = shape_result.get("errors") or []
             if errors:
                 log.warning("도형 모드 렌더 경고 %d 건: %s", len(errors), errors[:3])
-            # conversations 에 PPTX 경로 기록
+            # conversations 에 PPTX 경로 기록 — Phase 5 Step 3: 새 인증 endpoint URL 형식
             try:
                 with get_db() as db:
                     db.execute(
                         "UPDATE conversations SET pptx_path=?, pptx_updated_at=datetime('now','localtime') "
                         "WHERE id=?",
-                        (f"/static/exports/{disk_fname}", body.conversation_id),
+                        (f"/api/proposals/{body.conversation_id}/download", body.conversation_id),
                     )
             except Exception as e:
                 log.warning("conversations.pptx_path 기록 실패 (무시): %s", e)
             return {
-                "url": f"/static/exports/{disk_fname}",
+                "url": f"/api/proposals/{body.conversation_id}/download",
                 "filename": download_name,
                 "page_count": slide_count,
                 "mode": "shape",
@@ -6565,19 +6590,19 @@ def api_proposals_pptx(body: PptxExportIn, user: dict = Depends(get_current_user
         log.info("PPTX 생성: 폴백 모드")
         slide_count = _build_pptx_from_pages(pages, title_for_cover, out_path)
 
-    # 3. conversations 에 PPTX 경로 기록
+    # 3. conversations 에 PPTX 경로 기록 — Phase 5 Step 3: 새 인증 endpoint URL 형식
     try:
         with get_db() as db:
             db.execute(
                 "UPDATE conversations SET pptx_path=?, pptx_updated_at=datetime('now','localtime') "
                 "WHERE id=?",
-                (f"/static/exports/{disk_fname}", body.conversation_id),
+                (f"/api/proposals/{body.conversation_id}/download", body.conversation_id),
             )
     except Exception as e:
         log.warning("conversations.pptx_path 기록 실패 (무시): %s", e)
 
     return {
-        "url": f"/static/exports/{disk_fname}",
+        "url": f"/api/proposals/{body.conversation_id}/download",
         "filename": download_name,
         "page_count": slide_count,
         "mode": "master" if used_master else "fallback",

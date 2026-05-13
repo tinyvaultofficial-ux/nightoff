@@ -1603,6 +1603,174 @@ async function downloadPptxAuthenticated(url, fallbackFilename = "proposal.pptx"
   }
 }
 
+// ---------- 📄 부분 페이지 재생성 모달 (Sub-step D-1 MVP) ----------
+// 채팅 헤더 "📄 페이지 재생성" 버튼 → 본 모달 열림 → 페이지 번호 입력 → endpoint 호출.
+// NightOff 설계 철학 준수: 패턴 매칭 ❌, AI 안내 + 명시 버튼 ✅
+// (app.js:4438-4440 의 옛 isProposalRequest 제거 이력 참조 — 키워드 매칭은 오트리거 위험).
+//
+// args:
+//   convId — 대화 ID
+//   totalSlides — 현재 제안서 페이지 수 (data.conversation.last_proposal_pages). null 가능.
+async function openRegeneratePageModal(convId, totalSlides) {
+  const backdrop = h("div", {
+    class: "modal-backdrop",
+    onclick: (e) => { if (e.target === backdrop) backdrop.remove(); },
+  });
+  const modal = h("div", { class: "modal", style: "max-width: 480px;" });
+
+  // 헤더
+  modal.appendChild(h("div", { class: "modal-header" }, [
+    h("h3", {}, "📄 페이지 재생성"),
+    h("button", {
+      class: "icon-btn",
+      onclick: () => backdrop.remove(),
+      html: iconHtml("x", 18),
+    }),
+  ]));
+
+  // 본문
+  const body = h("div", { class: "modal-body" });
+  body.appendChild(h("p", { class: "muted small", style: "margin: 0 0 16px; line-height: 1.5;" },
+    `재생성할 페이지 번호를 입력해주세요. 1페이지당 400 크레딧이 차감돼요.${totalSlides ? ` (현재 제안서: 총 ${totalSlides}페이지)` : ""}`));
+
+  const inputAttrs = {
+    type: "number",
+    min: "1",
+    placeholder: "예: 14",
+    style: "width: 100%; padding: 10px 12px; font-size: 14px; border: 1px solid #DDD; border-radius: 6px; box-sizing: border-box; font-family: inherit;",
+  };
+  if (totalSlides) inputAttrs.max = String(totalSlides);
+  const input = h("input", inputAttrs);
+  body.appendChild(input);
+
+  // 상태 / 결과 / 에러 영역 (초기 hidden)
+  const statusEl = h("div", { style: "margin-top: 16px; display: none; padding: 10px 12px; background: var(--bg-2); border-radius: 6px; font-size: 13px;" });
+  const resultEl = h("div", { style: "margin-top: 16px; display: none;" });
+  const errorEl = h("div", { style: "margin-top: 12px; display: none; color: var(--danger); font-size: 13px; padding: 8px 10px; background: #FDEDEC; border-left: 3px solid #C0392B; border-radius: 4px;" });
+  body.appendChild(statusEl);
+  body.appendChild(resultEl);
+  body.appendChild(errorEl);
+  modal.appendChild(body);
+
+  // Footer
+  const regenBtn = h("button", { class: "btn btn-primary" }, "재생성");
+  const closeBtn = h("button", { class: "btn btn-ghost", onclick: () => backdrop.remove() }, "닫기");
+  modal.appendChild(h("div", { class: "modal-footer" }, [closeBtn, regenBtn]));
+
+  // 친화 에러 메시지 매핑
+  function friendlyError(status, data) {
+    const detail = data && data.detail;
+    const code = (detail && typeof detail === "object") ? detail.code : null;
+    const messages = {
+      INVALID_PAGE: "페이지는 1 이상이어야 해요.",
+      PAGE_OUT_OF_RANGE: totalSlides
+        ? `이 제안서는 ${totalSlides}페이지까지 있어요. 다른 번호를 입력해주세요.`
+        : "페이지 범위를 초과했어요. 페이지 번호를 다시 확인해주세요.",
+      OUTLINE_MISSING: "이 제안서는 부분 재생성을 지원하지 않는 옛 버전이에요. ✨ 제안서 생성 버튼으로 전체 재생성해주세요.",
+      QUOTA_EXCEEDED: "크레딧이 부족해요 (1페이지 재생성에 400 크레딧 필요). 결제 후 다시 시도해주세요.",
+      PROPOSAL_NOT_FOUND: "제안서 데이터가 없어요. 먼저 ✨ 제안서 생성 버튼을 눌러주세요.",
+    };
+    if (code && messages[code]) return messages[code];
+    if (typeof detail === "string") return detail;
+    if (typeof (detail && detail.error) === "string") return detail.error;
+    return `재생성에 실패했어요. (HTTP ${status}) 잠시 후 다시 시도해주세요.`;
+  }
+
+  function showError(msg) {
+    errorEl.textContent = `❌ ${msg}`;
+    errorEl.style.display = "block";
+  }
+  function clearError() {
+    errorEl.textContent = "";
+    errorEl.style.display = "none";
+  }
+
+  // 재생성 클릭 핸들러
+  regenBtn.addEventListener("click", async () => {
+    clearError();
+    const page = parseInt(input.value, 10);
+    if (!page || page < 1) {
+      showError("페이지 번호를 입력해주세요 (1 이상).");
+      return;
+    }
+    if (totalSlides && page > totalSlides) {
+      showError(`이 제안서는 ${totalSlides}페이지까지 있어요.`);
+      return;
+    }
+
+    // UI 잠금 — 중복 호출 방지
+    regenBtn.disabled = true;
+    closeBtn.disabled = true;
+    input.disabled = true;
+    resultEl.style.display = "none";
+    statusEl.innerHTML = `<span class="loading-dots" style="display:inline-flex; gap:4px; margin-right:6px;"><span></span><span></span><span></span></span><span>${page}페이지 재생성 중… (약 1분 소요)</span>`;
+    statusEl.style.display = "block";
+
+    const start = Date.now();
+    try {
+      const r = await fetch(`/api/conversations/${convId}/proposals/regenerate-page`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${getToken()}`,
+        },
+        body: JSON.stringify({ page }),
+      });
+      const data = await r.json().catch(() => ({}));
+
+      if (r.ok) {
+        const elapsedSec = (typeof data.elapsed_sec === "number")
+          ? data.elapsed_sec.toFixed(1)
+          : ((Date.now() - start) / 1000).toFixed(1);
+        statusEl.style.display = "none";
+        resultEl.innerHTML = "";
+        resultEl.appendChild(h("div", { style: "padding: 12px 14px; background: var(--primary-soft); border-radius: 8px; line-height: 1.6;" }, [
+          h("div", { style: "font-weight: 600; margin-bottom: 4px;" }, `✅ ${data.page}페이지 재생성 완료 (${elapsedSec}초)`),
+          data.section ? h("div", { class: "muted small" }, `섹션: ${data.section}`) : null,
+          typeof data.credits_remaining === "number"
+            ? h("div", { class: "muted small", style: "margin-top: 4px;" }, `크레딧 잔량: ${data.credits_remaining.toLocaleString("ko-KR")}`)
+            : null,
+        ]));
+        const dlBtn = h("button", {
+          class: "btn btn-primary",
+          style: "margin-top: 12px; width: 100%;",
+          html: "📄 새 PPTX 다운로드",
+          onclick: () => {
+            downloadPptxAuthenticated(data.url, data.filename || "proposal.pptx");
+          },
+        });
+        resultEl.appendChild(dlBtn);
+        resultEl.style.display = "block";
+        // 사이드바 크레딧 즉시 갱신 (1페이지 차감 = 400 크레딧)
+        try { refreshQuotaUI("proposal", 1); } catch (e) { console.warn("refreshQuotaUI 실패:", e); }
+        // 다음 재생성 가능하도록 UI 재활성화
+        regenBtn.textContent = "다시 재생성";
+        regenBtn.disabled = false;
+        closeBtn.disabled = false;
+        input.disabled = false;
+        input.value = "";
+      } else {
+        statusEl.style.display = "none";
+        showError(friendlyError(r.status, data));
+        regenBtn.disabled = false;
+        closeBtn.disabled = false;
+        input.disabled = false;
+      }
+    } catch (e) {
+      statusEl.style.display = "none";
+      showError("서버와 연결할 수 없어요. 네트워크 상태를 확인해주세요.");
+      regenBtn.disabled = false;
+      closeBtn.disabled = false;
+      input.disabled = false;
+    }
+  });
+
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
+  setTimeout(() => input.focus(), 100);
+}
+
+
 // 한국어 금액 표기 영역 — '1억2천5백만' 형태 (간소: 억/만 단위)
 function _korean_amount(n) {
   if (!n) return "영원";
@@ -4345,6 +4513,23 @@ async function renderChat(cid, convId) {
           }
         };
         return btn;
+      })(),
+      // 📄 페이지 재생성 버튼 (Sub-step D-1) — multi-pass 완료된 conv 에서만 활성.
+      // 클릭 → openRegeneratePageModal (line 1607+) → endpoint 호출 → 새 PPTX 다운로드.
+      // NightOff 설계 철학: 패턴 매칭 ❌, AI 안내 + 명시 버튼 ✅ (app.js:4438-4440 이력 준수).
+      (function () {
+        const hasPptx = !!(data.conversation && data.conversation.pptx_path);
+        if (!hasPptx) return null;
+        const totalSlides = parseInt(data.conversation.last_proposal_pages || 0, 10) || null;
+        return h("button", {
+          class: "btn btn-outline",
+          style: "text-decoration:none;",
+          title: "특정 페이지만 다시 만들기 (1페이지 = 400 크레딧)",
+          html: `<span style="margin-right:4px;">📄</span><span>페이지 재생성</span>`,
+          onclick: () => {
+            openRegeneratePageModal(convId, totalSlides);
+          },
+        });
       })(),
     ]),
   ]);

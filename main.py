@@ -6207,6 +6207,154 @@ def _build_pptx_from_pages(pages: list[dict], title: str, output_path: Path,
     return len(prs.slides)
 
 
+# ─── 부분 재생성 헬퍼 (Sub-step A) ───────────────────────────────────────────
+# 부분 재생성 기능 (페이지 N만 다시 만들기) 의 컨텍스트 재구성 헬퍼 3개.
+# 본 sub-step 은 헬퍼만 추가 (호출처 없음). Sub-step C 의 신규 endpoint 에서 활용 예정.
+# proposal_multi_pass.orchestrate 가 messages 에 저장한 final_payload 를 재활용 —
+# outline 데이터가 함께 저장되므로 부분 재생성 시 별도 컬럼/테이블 불필요.
+
+def _load_proposal_payload_for_conv(db, conv_id: str) -> Optional[dict]:
+    """conv_id 의 최근 assistant JSON 메시지를 final_payload dict 로 파싱.
+
+    부분 재생성 / 산출내역서 / PPTX 다운로드 등에서 재사용.
+    실패 시 None 반환 (caller 가 404 등으로 처리).
+    """
+    row = db.execute(
+        "SELECT content FROM messages WHERE conversation_id=? AND role='assistant' "
+        "AND content LIKE '{%' "
+        "ORDER BY created_at DESC LIMIT 1",
+        (conv_id,),
+    ).fetchone()
+    if not row:
+        return None
+    try:
+        payload = json.loads(row["content"])
+        if not isinstance(payload, dict):
+            return None
+        if "slides" not in payload:
+            return None
+        return payload
+    except Exception:
+        return None
+
+
+def _reconstruct_outline_item_from_payload(payload: dict, page: int):
+    """final_payload 에서 특정 페이지의 OutlineItem 재구성.
+
+    부분 재생성 시 proposal_multi_pass.generate_one_slide() 의 item 인자로 사용.
+    payload.outline 배열에서 page 일치하는 항목 검색 → OutlineItem dataclass 인스턴스 빌드.
+    OutlineItem 필드: page, section, governing_main, governing_sub, key_msgs, viz_hint.
+    실패 (해당 page 없음 / dataclass 구성 실패) 시 None 반환.
+    """
+    from proposal_multi_pass import OutlineItem
+
+    outline = payload.get("outline") or []
+    for item_dict in outline:
+        if not isinstance(item_dict, dict):
+            continue
+        if item_dict.get("page") == page:
+            try:
+                return OutlineItem(
+                    page=item_dict["page"],
+                    section=item_dict.get("section", ""),
+                    governing_main=item_dict.get("governing_main", ""),
+                    governing_sub=item_dict.get("governing_sub", []) or [],
+                    key_msgs=item_dict.get("key_msgs", []) or [],
+                    viz_hint=item_dict.get("viz_hint", ""),
+                )
+            except Exception:
+                return None
+    return None
+
+
+def _build_outline_summary_from_payload(payload: dict) -> str:
+    """final_payload 의 outline 을 outline_summary 텍스트로 빌드.
+
+    proposal_multi_pass.generate_slides_parallel (line 1505-1508) 의 빌드 패턴과
+    정확히 일치 — generate_one_slide 의 outline_summary 인자로 동일 형식 전달.
+    형식: "  p{page}. {section}: {governing_main}" 줄바꿈 join.
+    """
+    outline = payload.get("outline") or []
+    lines = []
+    for item in outline:
+        if not isinstance(item, dict):
+            continue
+        page = item.get("page", 0)
+        section = item.get("section", "")
+        gm = item.get("governing_main", "")
+        lines.append(f"  p{page}. {section}: {gm}")
+    return "\n".join(lines)
+
+
+# ─── 부분 재생성 헬퍼 (Sub-step B) ───────────────────────────────────────────
+# RFP / RAG / intel block 재구성 — 풀 생성 (api_proposals_generate_multipass) 의
+# 호출부 (line 3357, 3374-3396, 3399, 3402-3414) 패턴과 정확히 동일.
+# generate_one_slide 외부 호출 시 동일 컨텍스트 보장 → 풀 생성과 일관된 결과.
+# conversation_block 은 기존 _get_conversation_block(conv_id) 직접 호출 (별도 wrapper 불필요).
+
+def _build_rfp_block_for_regen(client_id: str) -> tuple[str, dict]:
+    """conv 의 client_id 에서 RFP 분석 결과 → RFP block 텍스트 빌드.
+
+    풀 생성 흐름 (api_proposals_generate_multipass line 3357, 3399) 동일 패턴.
+    Returns: (rfp_block, rfp_analysis_dict) — rfp_analysis 는
+    _build_rag_block_for_slide_regen 에서도 도메인 라벨 추출용으로 재사용.
+    """
+    rfp_analysis = _get_rfp_aggregated(client_id) or {}
+    rfp_block = "[RFP 분석]\n" + json.dumps(rfp_analysis, ensure_ascii=False, indent=2)
+    return rfp_block, rfp_analysis
+
+
+def _build_rag_block_for_slide_regen(rfp_analysis: dict, item) -> str:
+    """OutlineItem + RFP 분석 기반 슬라이드별 RAG block 빌드.
+
+    풀 생성 흐름의 `_rag_for_slide` closure (line 3374-3396) 와 동일 패턴.
+    rag_retriever 미가용 / 검색 결과 0 시 빈 문자열 반환 (graceful degrade).
+    """
+    if rag_retriever is None or not rag_retriever.is_available():
+        return ""
+    try:
+        domain_label = (rfp_analysis or {}).get("project_domain_label", "")
+        q = rag_retriever.build_query_from_slide(
+            section=item.section,
+            key_msgs=item.key_msgs,
+            domain_label=domain_label,
+            governing=item.governing_main,
+        )
+        if not q:
+            return ""
+        hints = rag_retriever.retrieve_style_hints(
+            q, top_k=8, excerpt_chars=900, excerpt_count=4,
+        )
+        if not hints:
+            return ""
+        return rag_retriever.format_hints_for_prompt(hints)
+    except Exception as e:
+        log.warning("partial-regen: 슬라이드 RAG 실패 (p%d): %s", item.page, e)
+        return ""
+
+
+def _build_intel_block_for_regen(client_id: str) -> str:
+    """발주처 들여다보기 데이터 (client_intel 테이블) → intel block 텍스트.
+
+    풀 생성 흐름 (api_proposals_generate_multipass line 3402-3414) 동일 패턴.
+    데이터 없음 / 에러 시 빈 문자열 (graceful degrade).
+    """
+    intel_block = ""
+    try:
+        with get_db() as db:
+            intel_row = db.execute(
+                "SELECT intel_json FROM client_intel WHERE client_id=?",
+                (client_id,),
+            ).fetchone()
+        if intel_row:
+            intel_obj = json.loads(intel_row["intel_json"] or "{}")
+            if intel_obj and not intel_obj.get("error"):
+                intel_block = "[발주처 들여다보기]\n" + json.dumps(intel_obj, ensure_ascii=False, indent=2)
+    except Exception:
+        intel_block = ""
+    return intel_block
+
+
 @app.post("/api/proposals/pptx")
 def api_proposals_pptx(body: PptxExportIn, user: dict = Depends(get_current_user)):
     """대화의 최신 제안서 → .pptx (마스터 템플릿 우선, 없으면 폴백).

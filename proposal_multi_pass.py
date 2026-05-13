@@ -1647,6 +1647,7 @@ async def orchestrate(
                 "governing_main": it.governing_main,
                 "governing_sub": it.governing_sub,
                 "key_msgs": it.key_msgs,
+                "viz_hint": it.viz_hint,  # 잠재 버그 fix (D-6-0) — 부분 재생성 시 viz_hint 컨텍스트 보존
             }
             for it in outline.outline
         ],

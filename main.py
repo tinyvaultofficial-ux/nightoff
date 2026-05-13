@@ -892,7 +892,7 @@ def _pptx_url_for_conv(conv_id: str, pptx_path) -> Optional[str]:
 
     - 빈 문자열/NULL/공백 → None (PPTX 없음)
     - 그 외 truthy → 항상 ``/api/proposals/{conv_id}/download`` (인증 endpoint)
-    - 옛 형식(``/static/exports/...``) / 새 형식 모두 동일한 새 URL로 정규화
+    - 옛 DB 값 (Step 3 이전 row, ``/static/exports/...``) / 새 값 모두 동일하게 정규화
 
     DB 저장값과 무관하게 응답을 정규화하므로, 마이그레이션 안 된 옛 row 도
     응답 노출 시 자동으로 새 endpoint URL 로 변환됨. (변경 3 권장 방안)
@@ -5814,19 +5814,17 @@ def api_budget_xlsx(body: BudgetXlsxRequest, user: dict = Depends(get_current_us
 # pptx_generator.pptx_to_png_previews 함수 정의는 향후 재활용 가능성 위해 보존.
 
 
-# ---------- PPTX 인증 다운로드 (Phase 5 Step 2) ------------------------------
-# 현재 /static/exports/*.pptx 는 인증 없이 공개 서빙 중 — 보안 사고.
-# 본 endpoint 가 인증 + ownership 검증 후 같은 파일을 서빙.
-# ⚠ 이 단계는 신규 endpoint 추가만. 기존 /static/exports/* URL 응답은 그대로 유지
-#   (Step 3 에서 응답 URL 을 본 endpoint 로 전환, Step 5 에서 파일 위치 자체를
-#    EXPORTS_PPTX_DIR 로 이동 예정).
+# ---------- PPTX 인증 다운로드 (Phase 5 Step 2 + Step 5) ---------------------
+# PPTX 는 EXPORTS_PPTX_DIR (비공개 디렉토리) 에 저장 (Step 5-A). 본 endpoint 가
+# 인증 + ownership 검증 후 디스크에서 파일 서빙. 옛 공개 URL /static/exports/*
+# 은 block_old_pptx_exports middleware (Step 5-B) 가 명시 404 차단 + 보안 모니터링.
 @app.get("/api/proposals/{conv_id}/download")
 async def api_proposals_download(conv_id: str, user: dict = Depends(get_current_user)):
     """conv_id 의 저장된 PPTX 를 인증 경유로 다운로드.
 
     - 인증 필수 (get_current_user dependency)
     - ownership 검증 (_verify_conv_owned_by_user — 다른 사용자 conv 차단)
-    - path traversal 방어 (파일명 검증 + resolved path 가 STATIC_DIR/exports 안 강제)
+    - path traversal 방어 (파일명 검증 + resolved path 가 EXPORTS_PPTX_DIR 안 강제)
     - paywall 체크는 본 단계에서 추가 X (무료 체험 시스템 단계에서 추가 예정)
     """
     log.info("PPTX download 요청: conv_id=%s user=%s", conv_id, user["id"])
@@ -5856,9 +5854,8 @@ async def api_proposals_download(conv_id: str, user: dict = Depends(get_current_
     safe_client = _safe_filename(row["client_name"] or "제안서")
     fname = f"{safe_client}_{conv_id[:8]}.pptx"
 
-    # 디스크 경로 구성 + resolved 경로가 exports 디렉토리 안인지 검증
-    # ⚠ 본 단계는 기존 저장 위치 (STATIC_DIR / "exports") 그대로 사용.
-    #   Step 5 에서 EXPORTS_PPTX_DIR 로 전환 예정.
+    # 디스크 경로 구성 + resolved 경로가 EXPORTS_PPTX_DIR 안인지 검증
+    # Step 5-A 적용: 옛 STATIC_DIR/"exports" 에서 EXPORTS_PPTX_DIR (비공개) 로 이동 완료.
     exports_dir = EXPORTS_PPTX_DIR
     disk_path = exports_dir / fname
     try:
@@ -6342,7 +6339,7 @@ def _build_pptx_from_pages(pages: list[dict], title: str, output_path: Path,
 @app.post("/api/proposals/pptx")
 def api_proposals_pptx(body: PptxExportIn, user: dict = Depends(get_current_user)):
     """대화의 최신 제안서 → .pptx (마스터 템플릿 우선, 없으면 폴백).
-    파일명: '{발주처명}_제안서.pptx', /static/exports/ 영구 보관.
+    파일명: '{발주처명}_제안서.pptx', EXPORTS_PPTX_DIR 에 저장 (인증 endpoint 경유 다운로드).
     """
     try:
         from pptx import Presentation

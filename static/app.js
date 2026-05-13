@@ -3121,10 +3121,8 @@ async function renderConvHistorySection(cid) {
         html: `${iconHtml("file", 12)}<span>PPTX</span>`,
         onclick: (e) => {
           e.stopPropagation();
-          const a = document.createElement("a");
-          a.href = cv.pptx_path;
-          a.download = "";  // 서버 Content-Disposition 따름
-          document.body.appendChild(a); a.click(); a.remove();
+          // Phase 5 Phase 2 Step 2 — anchor click 우회 (Bearer 헤더 부착 위해 helper 경유)
+          downloadPptxAuthenticated(cv.pptx_path, "proposal.pptx");
         },
       }));
       actionBtns.push(h("button", {
@@ -4303,13 +4301,16 @@ async function renderChat(cid, convId) {
       (function () {
         const hasPptx = !!(data.conversation && data.conversation.pptx_path);
         if (!hasPptx) return null;
-        return h("a", {
+        // Phase 5 Phase 2 Step 2 — <a> → <button> 교체 (anchor click 우회).
+        // 시각 동일성: .btn .pptx-dl-btn .active 클래스 + style 그대로 보존.
+        return h("button", {
           class: "btn pptx-dl-btn active",
-          href: data.conversation.pptx_path,
-          download: "",
           title: "저장된 제안서 다운로드",
           style: "text-decoration:none;",
           html: `<span style="margin-right:4px;">⬇</span><span>제안서 다운로드</span>`,
+          onclick: () => {
+            downloadPptxAuthenticated(data.conversation.pptx_path, "proposal.pptx");
+          },
         });
       })(),
       // 산출내역서 버튼 — 조건부 활성화 (제안서 생성 후만 클릭 가능).
@@ -4738,10 +4739,9 @@ function renderAssistant(bubble, text, final = false) {
             try {
               const r = await api.post("/api/proposals/pptx", { conversation_id: convId }, { timeoutMs: 60000 });
               if (r.url) {
-                const a = document.createElement("a");
-                a.href = r.url; a.download = r.filename || "proposal.pptx";
-                document.body.appendChild(a); a.click(); a.remove();
-                toast(`PPTX 다운로드 완료 (${r.page_count} 슬라이드) ✨`, "success");
+                // Phase 5 Phase 2 Step 2 — anchor click 우회 (helper 가 Bearer + Blob 처리)
+                const ok = await downloadPptxAuthenticated(r.url, r.filename || "proposal.pptx");
+                if (ok) toast(`PPTX 다운로드 완료 (${r.page_count} 슬라이드) ✨`, "success");
               }
             } catch (err) {
               toast("PPTX 변환 실패: " + (err.message || err), "error");
@@ -5190,12 +5190,20 @@ async function runMultiPassProposal({ convId, pages, asstEl, bubble, progress, b
   // PPTX 변환 트리거 — 기존 endpoint 활용
   try {
     const pptxResp = await api.post("/api/proposals/pptx", { conversation_id: convId }, { timeoutMs: 180000 });
+    // Phase 5 Phase 2 Step 2 — anchor → button (인증 헤더 부착 위해 helper 경유).
+    // innerHTML 로 button 렌더링 후 querySelector + addEventListener 로 onclick 부착.
     bubble.innerHTML =
       `<div style="line-height:1.6;">` +
         `<div style="font-weight:600;">✅ 제안서 ${totalSlides}장 + PPTX 변환 완료</div>` +
         `<div class="muted small" style="margin-top:6px;">우측 미리보기에서 확인하세요 😊</div>` +
-        `<a href="${pptxResp.url}" download="${pptxResp.filename || ''}" style="display:inline-block; margin-top:8px; padding:8px 14px; background:#1A1A1A; color:#fff; border-radius:8px; text-decoration:none; font-weight:600;">⬇ PPTX 다운로드</a>` +
+        `<button class="pptx-dl-inline" style="display:inline-block; margin-top:8px; padding:8px 14px; background:#1A1A1A; color:#fff; border:none; border-radius:8px; font-weight:600; cursor:pointer; font-family:inherit; font-size:inherit;">⬇ PPTX 다운로드</button>` +
       `</div>`;
+    const _dlBtn = bubble.querySelector(".pptx-dl-inline");
+    if (_dlBtn) {
+      _dlBtn.addEventListener("click", () => {
+        downloadPptxAuthenticated(pptxResp.url, pptxResp.filename || "proposal.pptx");
+      });
+    }
     autoScroll();
     // 우측 미리보기 패널 갱신 — 기존 함수 활용
     try { window.shellSetSidePanelPng && window.shellSetSidePanelPng(pptxResp.url); } catch {}

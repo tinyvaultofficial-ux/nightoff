@@ -1153,6 +1153,7 @@ CHAT_SYSTEM_PROMPT = """NightOff 의 기획 파트너다.
 다음 작업은 채팅 모드에서 처리하지 않는다. 사용자가 채팅에서 요청하면 해당 기능을 안내:
 
 - **제안서 생성** (전체 PPTX 작성) → "✨ 제안서 생성 버튼을 눌러주세요."
+- **부분 페이지 재생성** ("X쪽만 다시 뽑아줘", "특정 슬라이드만 수정") → "✨ 제안서 생성 버튼으로 전체를 재생성해주세요. (부분 페이지 수정은 아직 지원되지 않아요)"
 - **RFP 분석** → "RFP 업로드 화면에서 자동 분석됩니다. 결과를 같이 다뤄봅시다."
 - **자체 검증 / 점수 시뮬레이션** → "🔍 자체 검증 버튼을 눌러주세요. Compliance + Red Team 통합 분석이 떠요."
 - **발주처 들여다보기** → "발주처 들여다보기 메뉴가 별도로 있어요. 결과 보고 같이 정리하시죠."
@@ -3162,6 +3163,45 @@ def _master_slot_cache_get(master_path) -> list[dict]:
     return slots
 
 
+def _is_proposal_json(content: str) -> bool:
+    """assistant 메시지가 풀 생성 도형 JSON 인지 판별.
+
+    proposal_multi_pass 완료 시 final_payload (dict with 'slides' list) 가
+    messages 에 raw JSON 으로 저장됨. 일반 채팅 (api_chat) 의 LLM 컨텍스트
+    빌드 시 본 helper 로 검출 → 요약 텍스트로 대체 (in-context 오염 차단).
+    """
+    if not content:
+        return False
+    s = content.strip()
+    if not s.startswith("{"):
+        return False
+    # 빠른 path — 첫 100자 안에 "slides" key 발견 시 즉시 True
+    if '"slides"' in s[:100]:
+        return True
+    # 정확 path — JSON 파싱 + dict + "slides" key 확인
+    try:
+        obj = json.loads(s)
+        if isinstance(obj, dict) and "slides" in obj:
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _summarize_proposal_json(content: str) -> str:
+    """도형 JSON 을 LLM 컨텍스트용 요약 텍스트로 변환.
+
+    LLM 이 "이전에 제안서가 생성됐다" 사실은 알되 raw JSON 패턴은 학습 안 함.
+    """
+    try:
+        obj = json.loads(content)
+        slides = obj.get("slides", [])
+        n = len(slides) if isinstance(slides, list) else 0
+        return f"[제안서 {n}장 생성됨]"
+    except Exception:
+        return "[제안서 생성됨]"
+
+
 @app.post("/api/conversations/{conv_id}/chat")
 def api_chat(conv_id: str, body: ChatIn, user: dict = Depends(get_current_user)):
     with get_db() as db:
@@ -3195,7 +3235,17 @@ def api_chat(conv_id: str, body: ChatIn, user: dict = Depends(get_current_user))
 
     # 자연어 채팅 = 전략 토론 모드 → CHAT_SYSTEM_PROMPT 사용 (PROPOSAL 분리)
     system_prompt = _build_chat_system_prompt(client_id)
-    messages = [{"role": m["role"], "content": m["content"]} for m in hist if m["content"]]
+    # ⚠ 도형 JSON 메시지는 LLM 컨텍스트에서 요약 텍스트로 대체 — in-context examples 오염 차단.
+    # 풀 생성 (proposal_multi_pass) 완료 시 도형 JSON 이 assistant 메시지로 저장되므로
+    # raw JSON 을 그대로 컨텍스트에 넣으면 LLM 이 패턴 학습 → "X쪽만 다시 뽑아줘" 시 JSON 응답 사고.
+    messages = []
+    for m in hist:
+        if not m["content"]:
+            continue
+        content = m["content"]
+        if m["role"] == "assistant" and _is_proposal_json(content):
+            content = _summarize_proposal_json(content)
+        messages.append({"role": m["role"], "content": content})
 
     try:
         client = require_client()

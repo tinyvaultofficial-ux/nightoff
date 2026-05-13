@@ -6218,10 +6218,15 @@ def _load_proposal_payload_for_conv(db, conv_id: str) -> Optional[dict]:
 
     부분 재생성 / 산출내역서 / PPTX 다운로드 등에서 재사용.
     실패 시 None 반환 (caller 가 404 등으로 처리).
+
+    SELECT 조건 강화 (2026-05-13 hotfix):
+    - 옛 부분 생성 사고로 raw JSON ({"slide": ...} 단수) 메시지가 messages 에 잔존
+    - 가장 최근 JSON 메시지로 잡혀서 진짜 풀 생성 payload ({"slides": [...]} 복수) 가림
+    - 해결: LIKE '%"slides"%' 추가하여 도형 JSON (복수 slides) 메시지만 선택
     """
     row = db.execute(
         "SELECT content FROM messages WHERE conversation_id=? AND role='assistant' "
-        "AND content LIKE '{%' "
+        "AND content LIKE '{%' AND content LIKE '%\"slides\"%' "
         "ORDER BY created_at DESC LIMIT 1",
         (conv_id,),
     ).fetchone()
@@ -6232,6 +6237,9 @@ def _load_proposal_payload_for_conv(db, conv_id: str) -> Optional[dict]:
         if not isinstance(payload, dict):
             return None
         if "slides" not in payload:
+            return None
+        slides = payload.get("slides")
+        if not isinstance(slides, list) or len(slides) == 0:
             return None
         return payload
     except Exception:

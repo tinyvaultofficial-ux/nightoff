@@ -1599,6 +1599,38 @@ async def no_cache_static(request, call_next):
     return response
 
 
+@app.middleware("http")
+async def block_old_pptx_exports(request: Request, call_next):
+    """Phase 5 Step 5-B — 옛 /static/exports/* 공개 URL 명시 차단.
+
+    Step 5-A 에서 PPTX 저장 경로를 EXPORTS_PPTX_DIR 로 이동했으나, StaticFiles 마운트
+    자체는 유지 (style.css, app.js, fonts 등 다른 자산 서빙용). 디렉토리에 옛 PPTX
+    파일이 잔존할 가능성 (Railway deploy 직후 / dev 환경) 을 차단.
+
+    매칭 패턴 — startswith('/static/exports/') 정확 사용:
+    - 차단: /static/exports/foo.pptx, /static/exports/preview/*.png (4단계 잔재) 등
+    - 통과: /static/style.css, /static/app.js, /static/fonts/*, /static/*.html 등
+
+    LIFO 등록 — no_cache_static 직후 등록되어 outer (먼저 실행) → 차단된 요청은
+    no_cache_static 거치지 않고 즉시 404 반환.
+
+    보안 모니터링: 옛 URL 접근 시도 log.warning 으로 기록 (정상 사용자는 새 endpoint
+    `/api/proposals/{conv_id}/download` 사용 — 옛 URL 접근은 봇/공격자 또는 옛 북마크).
+    """
+    if request.url.path.startswith("/static/exports/"):
+        log.warning(
+            "Old PPTX exports URL access attempt: path=%s ip=%s ua=%s",
+            request.url.path,
+            request.client.host if request.client else "?",
+            (request.headers.get("user-agent", "?") or "?")[:80],
+        )
+        return JSONResponse(
+            status_code=404,
+            content={"error": "Not Found", "code": "LEGACY_EXPORTS_BLOCKED"},
+        )
+    return await call_next(request)
+
+
 from fastapi.responses import HTMLResponse
 
 

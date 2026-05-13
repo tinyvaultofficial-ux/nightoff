@@ -2526,11 +2526,26 @@ def api_conv_get(conv_id: str, user: dict = Depends(get_current_user)):
     # Phase 5 Step 3 — pptx_path 응답 정규화 (옛 형식 row 도 새 URL 로 노출)
     conv_dict = dict(conv)
     conv_dict["pptx_path"] = _pptx_url_for_conv(conv_id, conv_dict.get("pptx_path"))
+
+    # Sub-step D-2 — 부분 재생성 모달 outline list 용 outline 배열 응답에 포함.
+    # messages JSON 의 final_payload.outline 활용 (Sub-step A 헬퍼 재사용).
+    # 옛 conv (outline 없음) / 풀 생성 안 됨 → None (클라이언트가 list hidden).
+    proposal_outline = None
+    try:
+        with get_db() as db:
+            payload = _load_proposal_payload_for_conv(db, conv_id)
+        if payload and isinstance(payload.get("outline"), list):
+            proposal_outline = payload["outline"]
+    except Exception as e:
+        log.warning("api_conv_get: proposal_outline 추출 실패 (무시): %s", e)
+        proposal_outline = None
+
     return {
         "conversation": conv_dict,
         "messages": [dict(m) for m in msgs],
         "client": dict(client) if client else None,
         "rfp_analysis": rfp,
+        "proposal_outline": proposal_outline,
     }
 
 

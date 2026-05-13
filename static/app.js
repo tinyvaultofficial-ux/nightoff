@@ -1603,15 +1603,19 @@ async function downloadPptxAuthenticated(url, fallbackFilename = "proposal.pptx"
   }
 }
 
-// ---------- 📄 부분 페이지 재생성 모달 (Sub-step D-1 MVP) ----------
-// 채팅 헤더 "📄 페이지 재생성" 버튼 → 본 모달 열림 → 페이지 번호 입력 → endpoint 호출.
+// ---------- 📄 부분 페이지 재생성 모달 (Sub-step D-1 + D-2) ----------
+// 채팅 헤더 "📄 페이지 재생성" 버튼 → 본 모달 열림 → 페이지 번호 입력/선택 → endpoint 호출.
 // NightOff 설계 철학 준수: 패턴 매칭 ❌, AI 안내 + 명시 버튼 ✅
 // (app.js:4438-4440 의 옛 isProposalRequest 제거 이력 참조 — 키워드 매칭은 오트리거 위험).
+//
+// D-2: outline 배열 전달 시 페이지 list (페이지 번호 + 섹션 이름) 표시 → 클릭 선택 + input sync.
+// outline null (옛 conv / 풀 생성 안 됨) → list 영역 hidden, input 만 표시 (D-1 fallback).
 //
 // args:
 //   convId — 대화 ID
 //   totalSlides — 현재 제안서 페이지 수 (data.conversation.last_proposal_pages). null 가능.
-async function openRegeneratePageModal(convId, totalSlides) {
+//   outline — proposal_outline 배열 [{page, section, governing_main, ...}, ...]. null 가능.
+async function openRegeneratePageModal(convId, totalSlides, outline) {
   const backdrop = h("div", {
     class: "modal-backdrop",
     onclick: (e) => { if (e.target === backdrop) backdrop.remove(); },
@@ -1642,6 +1646,58 @@ async function openRegeneratePageModal(convId, totalSlides) {
   if (totalSlides) inputAttrs.max = String(totalSlides);
   const input = h("input", inputAttrs);
   body.appendChild(input);
+
+  // Sub-step D-2 — outline list (페이지 + 섹션 이름 클릭 선택)
+  // outline 있을 때만 렌더. 없으면 D-1 처럼 input 만 사용.
+  let outlineListEl = null;
+  if (Array.isArray(outline) && outline.length > 0) {
+    body.appendChild(h("p", { class: "muted small", style: "margin: 12px 0 6px;" }, "또는 아래 페이지에서 선택"));
+    outlineListEl = h("div", {
+      style: "max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 4px; background: #fff;",
+    });
+    // 아이템 렌더 — 한 줄에 "페이지번호. 섹션 이름" 형식, 클릭 시 input sync + 시각 강조.
+    outline.forEach((it) => {
+      if (!it || typeof it.page !== "number") return;
+      const section = (it.section || "").toString();
+      const itemEl = h("div", {
+        style: "padding: 6px 10px; cursor: pointer; border-radius: 4px; font-size: 13px; line-height: 1.5;",
+        title: it.governing_main || section || `${it.page}페이지`,
+      }, `${it.page}. ${section || "(섹션 없음)"}`);
+      itemEl.dataset.page = String(it.page);
+      itemEl.addEventListener("mouseenter", () => {
+        if (!itemEl.classList.contains("regen-selected")) {
+          itemEl.style.background = "var(--bg-2)";
+        }
+      });
+      itemEl.addEventListener("mouseleave", () => {
+        if (!itemEl.classList.contains("regen-selected")) {
+          itemEl.style.background = "";
+        }
+      });
+      itemEl.addEventListener("click", () => {
+        input.value = String(it.page);
+        syncSelection(it.page);
+      });
+      outlineListEl.appendChild(itemEl);
+    });
+    body.appendChild(outlineListEl);
+  }
+
+  // input ↔ list sync — input 입력 시 list 강조 변경, list 클릭 시 input 변경 (위 onclick).
+  function syncSelection(page) {
+    if (!outlineListEl) return;
+    outlineListEl.querySelectorAll("[data-page]").forEach((el) => {
+      const isSelected = parseInt(el.dataset.page, 10) === page;
+      el.classList.toggle("regen-selected", isSelected);
+      el.style.background = isSelected ? "var(--primary-soft)" : "";
+      el.style.color = isSelected ? "var(--primary, #1A1A1A)" : "";
+      el.style.fontWeight = isSelected ? "600" : "";
+    });
+  }
+  input.addEventListener("input", () => {
+    const p = parseInt(input.value, 10);
+    if (!isNaN(p)) syncSelection(p);
+  });
 
   // 상태 / 결과 / 에러 영역 (초기 hidden)
   const statusEl = h("div", { style: "margin-top: 16px; display: none; padding: 10px 12px; background: var(--bg-2); border-radius: 6px; font-size: 13px;" });
@@ -4514,20 +4570,22 @@ async function renderChat(cid, convId) {
         };
         return btn;
       })(),
-      // 📄 페이지 재생성 버튼 (Sub-step D-1) — multi-pass 완료된 conv 에서만 활성.
+      // 📄 페이지 재생성 버튼 (Sub-step D-1 + D-2) — multi-pass 완료된 conv 에서만 활성.
       // 클릭 → openRegeneratePageModal (line 1607+) → endpoint 호출 → 새 PPTX 다운로드.
+      // D-2: outline 배열 전달 → 모달이 페이지 list 표시 (페이지 + 섹션 클릭 선택).
       // NightOff 설계 철학: 패턴 매칭 ❌, AI 안내 + 명시 버튼 ✅ (app.js:4438-4440 이력 준수).
       (function () {
         const hasPptx = !!(data.conversation && data.conversation.pptx_path);
         if (!hasPptx) return null;
         const totalSlides = parseInt(data.conversation.last_proposal_pages || 0, 10) || null;
+        const outline = Array.isArray(data.proposal_outline) ? data.proposal_outline : null;
         return h("button", {
           class: "btn btn-outline",
           style: "text-decoration:none;",
           title: "특정 페이지만 다시 만들기 (1페이지 = 400 크레딧)",
           html: `<span style="margin-right:4px;">📄</span><span>페이지 재생성</span>`,
           onclick: () => {
-            openRegeneratePageModal(convId, totalSlides);
+            openRegeneratePageModal(convId, totalSlides, outline);
           },
         });
       })(),

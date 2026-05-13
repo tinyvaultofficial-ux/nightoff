@@ -6581,6 +6581,220 @@ def api_proposals_pptx(body: PptxExportIn, user: dict = Depends(get_current_user
 
 
 # ---------------------------------------------------------------------------
+# 📝 부분 페이지 재생성 — 50p 중 N페이지만 LLM 재생성 후 새 PPTX 제공 (Sub-step C)
+# ---------------------------------------------------------------------------
+# 사용자가 마음에 안 드는 페이지 발견 시 전체 재생성 ($5, 7분) 대신 1페이지 재생성
+# ($0.10, 20-40초). 풀 생성 시 messages 에 저장된 final_payload (outline 포함) 를
+# 활용해 generate_one_slide 외부 호출 → slides[N-1] 교체 → 전체 PPTX 재생성.
+#
+# 핵심 자산 보호:
+#   - proposal_multi_pass: generate_one_slide 호출만 (시그니처 무변경)
+#   - pptx_generator: generate_from_shape_json 호출만 (변경 0)
+#   - AI 프롬프트 영역 0 (SLIDE pass user prompt 빌더가 받는 컨텍스트만 inject)
+#
+# 진단 결과: _build_slide_user_prompt 는 rfp_block / intel_block / conversation_block
+# 받지 않음 (outline 자체가 RFP/intel 반영 상태로 messages 에 저장됨).
+# 따라서 RFP/intel block 헬퍼 (Sub-step B) 는 본 endpoint 에서 미호출 — 향후
+# SLIDE pass 확장 시 활용 가능. RAG 헬퍼만 호출 (slide RAG 는 SLIDE pass 가 사용).
+
+class RegenPageIn(BaseModel):
+    page: int
+
+
+@app.post("/api/conversations/{conv_id}/proposals/regenerate-page")
+async def api_proposals_regenerate_page(
+    conv_id: str, body: RegenPageIn, user: dict = Depends(get_current_user)
+):
+    """부분 페이지 재생성 — 기존 PPTX 의 N페이지만 LLM 재생성 후 새 PPTX 제공.
+
+    크레딧: 페이지당 400 (풀 생성 단가 동일).
+    응답: {"page", "section", "url", "filename", "credits_remaining", "elapsed_sec"}
+    """
+    import proposal_multi_pass as mp
+    import pptx_generator
+    import time as _time_local
+
+    page = int(body.page)
+    if page < 1:
+        raise HTTPException(400, "페이지는 1 이상이어야 해요.")
+
+    # 1. Auth + Ownership + 기본 정보 조회
+    with get_db() as db:
+        _verify_conv_owned_by_user(db, conv_id, user["id"])
+        conv = db.execute("SELECT * FROM conversations WHERE id=?", (conv_id,)).fetchone()
+        client_id = conv["client_id"]
+
+        # 2. quota 검증 (400 크레딧)
+        quota_row = db.execute(
+            "SELECT monthly_proposal_quota FROM users WHERE id=?", (user["id"],)
+        ).fetchone()
+        prop_q = int(quota_row["monthly_proposal_quota"] or 0) if quota_row else 0
+        if prop_q < 400:
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "error": "크레딧 부족 (1페이지 재생성에 400 크레딧 필요)",
+                    "code": "QUOTA_EXCEEDED",
+                    "quota_remaining": prop_q,
+                    "required": 400,
+                },
+            )
+
+        # 3. messages JSON 로드 (Sub-step A-1)
+        payload = _load_proposal_payload_for_conv(db, conv_id)
+        if not payload:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "제안서 데이터가 없어요. 먼저 ✨ 제안서 생성 버튼을 눌러주세요.",
+                    "code": "PROPOSAL_NOT_FOUND",
+                },
+            )
+
+        # 발주처명 (PPTX 파일명용)
+        cli_row = db.execute(
+            "SELECT name FROM clients WHERE id=?",
+            (client_id,),
+        ).fetchone()
+        client_name = (cli_row["name"] if cli_row else "") or "제안서"
+
+    # 4. page 유효성 검증
+    slides = payload.get("slides") or []
+    if page > len(slides):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": f"페이지 범위 초과: 현재 제안서는 {len(slides)}페이지예요.",
+                "code": "PAGE_OUT_OF_RANGE",
+                "max_page": len(slides),
+            },
+        )
+
+    # 5. OutlineItem 재구성 (Sub-step A-2)
+    item = _reconstruct_outline_item_from_payload(payload, page)
+    if item is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "이 제안서는 부분 재생성을 지원하지 않는 옛 버전이에요. ✨ 제안서 생성 버튼으로 전체 재생성해주세요.",
+                "code": "OUTLINE_MISSING",
+            },
+        )
+
+    # 6. SLIDE pass 컨텍스트 빌드
+    outline_summary = _build_outline_summary_from_payload(payload)  # Sub-step A-3
+    # RFP analysis 추출 — slide RAG block 빌드에 domain_label 필요
+    _, rfp_analysis = _build_rfp_block_for_regen(client_id)  # Sub-step B-1 (rfp_analysis 만 사용)
+    rag_block = _build_rag_block_for_slide_regen(rfp_analysis, item)  # Sub-step B-2
+
+    canvas = (
+        float(payload.get("slide_width", 11.69)),
+        float(payload.get("slide_height", 8.27)),
+    )
+    total_slides = len(slides)
+    domain = payload.get("domain", "other")
+    quantitative_locks = payload.get("quantitative_locks") or {}
+
+    # 7. LLM 호출 (generate_one_slide — 핵심 자산, 시그니처 무변경)
+    try:
+        client = require_client()
+    except HTTPException:
+        raise
+
+    model = get_setting("model", MODEL_DEFAULT)
+
+    log.info("partial-regen 시작: conv=%s page=%d user=%s", conv_id, page, user["id"])
+    t0 = _time_local.time()
+
+    try:
+        sr = await mp.generate_one_slide(
+            client=client,
+            item=item,
+            outline_summary=outline_summary,
+            rag_per_slide_block=rag_block,
+            canvas=canvas,
+            total_slides=total_slides,
+            model=model,
+            domain=domain,
+            quantitative_locks=quantitative_locks,
+        )
+    except Exception as e:
+        log.exception("partial-regen 예외 conv=%s page=%d", conv_id, page)
+        raise HTTPException(500, f"페이지 재생성 실패: {str(e)[:120]}")
+
+    if sr.error or not sr.shapes:
+        log.error("partial-regen 실패 conv=%s page=%d err=%s", conv_id, page, sr.error)
+        raise HTTPException(500, f"페이지 재생성 실패: {sr.error or 'shapes 비어있음'}")
+
+    # 8. payload 업데이트 (slides[page-1] 교체)
+    payload["slides"][page - 1] = {
+        "section": sr.section,
+        "shapes": sr.shapes,
+    }
+
+    # 9. 새 assistant 메시지 INSERT — history 보존 (옛 메시지는 audit 용 잔존)
+    assistant_id = uuid.uuid4().hex[:12]
+    try:
+        with get_db() as db:
+            db.execute(
+                "INSERT INTO messages(id,conversation_id,role,content) VALUES(?,?,?,?)",
+                (assistant_id, conv_id, "assistant",
+                 json.dumps(payload, ensure_ascii=False)),
+            )
+    except Exception as e:
+        log.warning("partial-regen: assistant 메시지 저장 실패 (무시): %s", e)
+
+    # 10. PPTX 재생성 (옵션 A — 전체 PPTX 재생성, ~5-10초)
+    safe_client = _safe_filename(client_name)
+    disk_fname = f"{safe_client}_{conv_id[:8]}.pptx"
+    out_path = EXPORTS_PPTX_DIR / disk_fname
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        pptx_generator.generate_from_shape_json(payload, out_path)
+    except Exception as e:
+        log.exception("partial-regen: PPTX 생성 실패 conv=%s page=%d", conv_id, page)
+        raise HTTPException(500, f"PPTX 생성 실패: {str(e)[:120]}")
+
+    # 11. conversations.pptx_path 업데이트 + quota 차감 (400)
+    quota_remaining = prop_q
+    try:
+        with get_db() as db:
+            db.execute(
+                "UPDATE conversations SET pptx_path=?, pptx_updated_at=datetime('now','localtime') "
+                "WHERE id=?",
+                (f"/api/proposals/{conv_id}/download", conv_id),
+            )
+            db.execute(
+                "UPDATE users SET monthly_proposal_quota = "
+                "  MAX(0, monthly_proposal_quota - ?) WHERE id=?",
+                (400, user["id"]),
+            )
+            row = db.execute(
+                "SELECT monthly_proposal_quota FROM users WHERE id=?", (user["id"],)
+            ).fetchone()
+            quota_remaining = int(row["monthly_proposal_quota"] or 0) if row else 0
+    except Exception as e:
+        log.warning("partial-regen: DB 업데이트 실패 (무시): %s", e)
+
+    elapsed = _time_local.time() - t0
+    download_name = f"{safe_client}_제안서.pptx"
+    log.info(
+        "partial-regen 완료: conv=%s page=%d elapsed=%.1fs section=%s",
+        conv_id, page, elapsed, sr.section,
+    )
+
+    return {
+        "page": page,
+        "section": sr.section,
+        "url": f"/api/proposals/{conv_id}/download",
+        "filename": download_name,
+        "credits_remaining": quota_remaining,
+        "elapsed_sec": round(elapsed, 1),
+    }
+
+
+# ---------------------------------------------------------------------------
 # 🎤 PT 연습 — 발표 큐시트 + 예상 Q&A 생성
 # ---------------------------------------------------------------------------
 PT_SCRIPT_PROMPT = """다음 제안서를 발표할 때 쓸 큐시트(스크립트)를 만들어 주세요.

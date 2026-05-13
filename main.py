@@ -5827,7 +5827,7 @@ async def api_proposals_download(conv_id: str, user: dict = Depends(get_current_
     # 디스크 경로 구성 + resolved 경로가 exports 디렉토리 안인지 검증
     # ⚠ 본 단계는 기존 저장 위치 (STATIC_DIR / "exports") 그대로 사용.
     #   Step 5 에서 EXPORTS_PPTX_DIR 로 전환 예정.
-    exports_dir = STATIC_DIR / "exports"
+    exports_dir = EXPORTS_PPTX_DIR
     disk_path = exports_dir / fname
     try:
         resolved = disk_path.resolve()
@@ -6366,7 +6366,7 @@ def api_proposals_pptx(body: PptxExportIn, user: dict = Depends(get_current_user
     html = raw_content if proposal_json is None else ""
 
     # 출력 경로
-    out_dir = STATIC_DIR / "exports"
+    out_dir = EXPORTS_PPTX_DIR
     out_dir.mkdir(exist_ok=True)
     safe_client = _safe_filename(client_name)
     download_name = f"{safe_client}_제안서.pptx"

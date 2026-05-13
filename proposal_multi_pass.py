@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import random
 import re
 import time
 from dataclasses import dataclass, field
@@ -1437,12 +1438,12 @@ async def generate_one_slide(
         domain=domain,
         quantitative_locks=quantitative_locks,
     )
-    # 재시도 로직 — 1회 실패 시 0.5초 대기 후 자동 재시도 (최대 2회 시도).
-    # 영역 영역 영역 영역 영역 영역 (Anthropic API 영역 영역 영역 / V.5/V.7 영역 영역 영역 영역 영역 영역) 영역 강력.
-    # 비용 영역: 영역 영역 슬라이드 영역만 영역 (영역 1-2장) → 영역 영역 영향 미미 (~0.5-1%).
+    # 재시도 로직 — 최대 4회 시도 (rate limit / 일시 LLM 오류 회피 강화).
+    # exponential backoff (1초 → 2초 → 4초) + jitter (0~0.5초) → 동시 호출 분산.
+    # 비용 영향: 실패 슬라이드만 재호출 (~1-2장 평균) → 전체 비용 ~1.1x 미미.
     last_err = ""
     last_raw = ""
-    MAX_ATTEMPTS = 2
+    MAX_ATTEMPTS = 4
     for attempt in range(MAX_ATTEMPTS):
         try:
             raw = await asyncio.to_thread(
@@ -1453,8 +1454,14 @@ async def generate_one_slide(
             if not parsed or not isinstance(parsed.get("shapes"), list):
                 last_err = f"파싱 실패. raw 앞 200자: {(raw or '')[:200]}"
                 if attempt < MAX_ATTEMPTS - 1:
-                    await asyncio.sleep(0.5)
+                    backoff = (2 ** attempt) + random.uniform(0, 0.5)
+                    log.warning(
+                        "slide gen 파싱 실패 p%d attempt=%d/%d 재시도 (backoff=%.2fs)",
+                        item.page, attempt + 1, MAX_ATTEMPTS, backoff,
+                    )
+                    await asyncio.sleep(backoff)
                     continue
+                log.error("slide gen 최종 파싱 실패 p%d 총 %d회 시도", item.page, MAX_ATTEMPTS)
                 return SlideResult(
                     page=item.page, section=item.section,
                     error=f"{last_err} (재시도 {MAX_ATTEMPTS}회 모두 실패)",
@@ -1467,13 +1474,22 @@ async def generate_one_slide(
         except Exception as e:
             last_err = str(e)[:200]
             if attempt < MAX_ATTEMPTS - 1:
-                await asyncio.sleep(0.5)
+                backoff = (2 ** attempt) + random.uniform(0, 0.5)
+                log.warning(
+                    "slide gen API 오류 p%d attempt=%d/%d 재시도 (backoff=%.2fs) err=%s",
+                    item.page, attempt + 1, MAX_ATTEMPTS, backoff, str(e)[:120],
+                )
+                await asyncio.sleep(backoff)
                 continue
+            log.error(
+                "slide gen 최종 API 실패 p%d 총 %d회 시도: %s",
+                item.page, MAX_ATTEMPTS, last_err[:120],
+            )
             return SlideResult(
                 page=item.page, section=item.section,
                 error=f"{last_err} (재시도 {MAX_ATTEMPTS}회 모두 실패)",
             )
-    # 영역 영역 도달 X — for 영역 영역 영역 return 영역 영역. 영역 영역 영역 X.
+    # 안전 가드 — for 루프 안 return 누락 시 fallback (정상 흐름에서는 도달 X).
     return SlideResult(page=item.page, section=item.section, error=last_err or "unknown")
 
 
@@ -1609,7 +1625,7 @@ async def orchestrate(
                 "section": sr.section,
                 "shapes": [
                     {"type": "text", "x": 1, "y": 3, "w": 11, "h": 1,
-                     "text": f"[페이지 {sr.page} 작성 실패 — 다시 생성해주세요]",
+                     "text": f"[페이지 {sr.page} 일시 생성 오류 — 제안서를 다시 만들어주세요]",
                      "size": 18, "color": "#999"},
                 ],
             })
@@ -1637,10 +1653,19 @@ async def orchestrate(
         "quantitative_locks": outline.quantitative_locks,
     }
 
+    # 실패율 모니터링 — 본 사고 (페이지 빈 채로 박힘) 빈도 추적용 (단일 페이지 retry 강화 후 효과 측정).
+    ok_count = sum(1 for s in slides.values() if not s.error)
+    total_count = len(slides)
+    fail_rate = (total_count - ok_count) * 100 / total_count if total_count else 0
+    log.info(
+        "slide gen 종료: ok=%d/%d (실패율 %.1f%%) elapsed=%.1fs",
+        ok_count, total_count, fail_rate, time.time() - t0,
+    )
+
     yield {
         "type": "done",
         "payload": payload,
         "elapsed_sec": round(time.time() - t0, 1),
-        "ok_slides": sum(1 for s in slides.values() if not s.error),
+        "ok_slides": ok_count,
         "total": outline.total_slides,
     }

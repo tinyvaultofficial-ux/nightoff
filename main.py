@@ -4372,13 +4372,6 @@ def api_auth_me(user: dict = Depends(get_current_user)):
       - 이미 받았으면 정보만 반환 (freshly_granted=false)
       - 실패해도 quota 정보는 정상 반환 (graceful degrade)
     """
-    # Phase 4 (Step 7) — 일일 보상 시도 (quota 조회 전에 — 보상 적용된 최신값 반환)
-    daily_bonus: Optional[dict] = None
-    try:
-        daily_bonus = _grant_daily_bonus_if_needed(user["id"])
-    except Exception as e:
-        log.warning("daily_bonus 처리 실패 (무시): %s", e)
-
     # 사용자 quota + bonus (보상 적용 후 최신값)
     with get_db() as db:
         row = db.execute(
@@ -4408,7 +4401,6 @@ def api_auth_me(user: dict = Depends(get_current_user)):
                 "conversation_remaining": conv_remaining,
                 "conversation_total": conv_total,
             },
-            "daily_bonus": daily_bonus,  # None 가능 (실패 시 / 또는 helper 가 안 호출 시)
         },
     }
 

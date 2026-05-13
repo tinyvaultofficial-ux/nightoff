@@ -1547,6 +1547,85 @@ async function downloadBudgetXlsx(data) {
   }
 }
 
+// ---------- 🔐 PPTX 인증 다운로드 helper (Phase 5 Phase 2 Step 1) ----------
+// 배경: /api/proposals/{conv_id}/download 는 Bearer 인증 필수.
+// anchor click → 브라우저 native navigation → Authorization 헤더 미부착 → 401.
+// 본 helper 는 fetch + Bearer + Blob + ObjectURL + anchor click 패턴으로 우회.
+// (downloadBudgetXlsx 와 동일 패턴 일반화. _call() 우회 — _call() 은 binary 미지원.)
+//
+// args:
+//   url               — PPTX 다운로드 URL (예: /api/proposals/{conv_id}/download)
+//   fallbackFilename  — Content-Disposition 미파싱 시 사용 (기본 'proposal.pptx')
+// returns: true (성공) / false (실패 — toast 로 사용자 안내까지 완료)
+async function downloadPptxAuthenticated(url, fallbackFilename = "proposal.pptx") {
+  const tok = getToken();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(new Error("timeout")), 60000);
+  let objectUrl = null;
+  try {
+    const headers = {};
+    // _call() 패턴 일관 — 토큰 없으면 헤더 미부착 (서버가 401 응답 → 아래 분기에서 redirect)
+    if (tok) headers["Authorization"] = `Bearer ${tok}`;
+    const r = await fetch(url, { method: "GET", headers, signal: ctrl.signal });
+
+    if (r.status === 401) {
+      // _call() 의 401 처리 동일 패턴
+      clearToken();
+      redirectToLogin();
+      return false;
+    }
+    if (!r.ok) {
+      // detail.code 추출 시도 (api_proposals_download 의 PPTX_NOT_GENERATED / PPTX_FILE_MISSING / INVALID_PATH 등)
+      let code = null;
+      try { const j = await r.json(); code = j && j.detail && j.detail.code; } catch {}
+      if (r.status === 404) {
+        if (code === "PPTX_NOT_GENERATED") toast("제안서가 아직 생성되지 않았어요. 먼저 생성해 주세요.", "error");
+        else if (code === "PPTX_FILE_MISSING") toast("저장된 제안서 파일을 찾지 못했어요. 다시 생성해 주세요.", "error");
+        else toast("제안서를 찾을 수 없어요.", "error");
+      } else if (r.status === 400) {
+        toast("잘못된 다운로드 요청입니다.", "error");
+      } else {
+        toast(`다운로드 실패 (HTTP ${r.status})`, "error");
+      }
+      return false;
+    }
+
+    // Content-Disposition 파싱 — RFC 5987 (filename*=UTF-8'') 우선, filename= fallback
+    const cd = r.headers.get("Content-Disposition") || "";
+    let filename = fallbackFilename;
+    const m5987 = cd.match(/filename\*=UTF-8''([^;]+)/i);
+    if (m5987) {
+      try { filename = decodeURIComponent(m5987[1].trim()); } catch {}
+    } else {
+      const mPlain = cd.match(/filename="?([^";]+)"?/i);
+      if (mPlain) filename = mPlain[1].trim();
+    }
+
+    const blob = await r.blob();
+    objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // 진단서 권장 — 즉시 revoke 시 일부 브라우저에서 다운로드 시작 전 URL 무효화 가능성 회피 (5초 지연)
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 5000);
+    return true;
+  } catch (e) {
+    if (e.name === "AbortError" || String(e.message || "").includes("timeout")) {
+      toast("다운로드 응답이 지연되고 있어요. 잠시 후 다시 시도해 주세요.", "error");
+    } else if (e instanceof TypeError && /fetch|Failed|Network/i.test(e.message || "")) {
+      toast("서버와 연결할 수 없어요. 네트워크 상태를 확인해 주세요.", "error");
+    } else {
+      toast("PPTX 다운로드 실패: " + (e.message || e), "error");
+    }
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // 한국어 금액 표기 영역 — '1억2천5백만' 형태 (간소: 억/만 단위)
 function _korean_amount(n) {
   if (!n) return "영원";

@@ -210,7 +210,7 @@ function renderUsersTable() {
   const rows = usersState.users.map((u) => {
     // Phase 4 (Step 3) — 제안서는 크레딧 단위 + 페이지 환산, 대화는 '무제한 ∞'
     const propQ = u.monthly_proposal_quota != null ? u.monthly_proposal_quota : 0;
-    const propPages = Math.floor(propQ / 400);
+    const propPages = Math.floor(propQ / 100);
     const propBonus = u.monthly_proposal_quota_bonus || 0;
     const bonusCell = (propBonus === 0)
       ? `<span style="color:var(--fg-2);">-</span>`
@@ -296,7 +296,7 @@ function openUserModal(userId) {
 
   // Phase 4 (Step 3) — 제안서 크레딧 직접 수정 필드 추가.
   const propQ = u.monthly_proposal_quota != null ? u.monthly_proposal_quota : 0;
-  const propPages = Math.floor(propQ / 400);
+  const propPages = Math.floor(propQ / 100);
 
   const root = document.getElementById("modal-root");
   root.innerHTML = `
@@ -305,7 +305,7 @@ function openUserModal(userId) {
         <h3>사용자 수정 — ${escapeHtml(u.email || u.id)}</h3>
         <div class="form-row">
           <label>제안서 크레딧 (현재 ${fmtNumber(propQ)} = 약 ${propPages}페이지)</label>
-          <input type="number" id="m-prop-quota" value="${propQ}" min="0" step="400" />
+          <input type="number" id="m-prop-quota" value="${propQ}" min="0" step="100" />
           <div style="font-size:11px; color:var(--fg-2); margin-top:2px;">1페이지 = 400 크레딧 · 월 정책 기본값 100,000</div>
         </div>
         <div class="form-row">
@@ -1001,7 +1001,7 @@ async function loadQuota() {
     const end = quotaState.offset + quotaState.users.length;
     // Phase 4 (Step 3) — 크레딧 단위 표시. proposal_base 는 크레딧 (예: 100,000), 1 페이지 = 400 크레딧.
     const propBase = quotaState.policy.proposal_base || 0;
-    const propBasePages = Math.floor(propBase / 400);
+    const propBasePages = Math.floor(propBase / 100);
     meta.textContent =
       `총 ${fmtNumber(quotaState.total)}명 (${start}~${end}) · ` +
       `정책 기본값: 제안서 ${fmtNumber(propBase)} 크레딧 (≈${propBasePages}페이지) / 대화 무제한 ∞`;
@@ -1034,9 +1034,9 @@ function _quotaCell(remaining, total, used) {
     </div>`;
 }
 
-// 크레딧 → 페이지 환산 (1 페이지 = 400 크레딧)
+// 크레딧 → 페이지 환산 (1 페이지 = 100 크레딧, Step 2-A/B 적용)
 function _creditsToPages(credits) {
-  return Math.floor((credits || 0) / 400);
+  return Math.floor((credits || 0) / 100);
 }
 
 // Phase 4 (Step 3) — 제안서 셀 (크레딧 단위 + 페이지 환산 표시).

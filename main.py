@@ -433,6 +433,43 @@ def init_db() -> None:
                 FOREIGN KEY (admin_user_id) REFERENCES users(id) ON DELETE CASCADE
             );
 
+            -- ───────── Phase 4 — 무료체험 Phase 1-A-2 (신규 테이블 + 인덱스) ─────────
+            -- sms_verifications: SMS 인증 요청/검증 추적 + 어뷰징 방지 기반
+            -- code_hash: HMAC-SHA256 또는 bcrypt (Phase 1-B 결정), TEXT NOT NULL 로 둘 다 수용
+            -- expires_at: 5분 후 KST, NOT NULL (무한 유효 회피)
+            -- attempts: 검증 시도 횟수, 5회 cap (Phase 1-B endpoint에서 적용)
+            CREATE TABLE IF NOT EXISTS sms_verifications (
+                id            TEXT PRIMARY KEY,
+                phone         TEXT NOT NULL,
+                code_hash     TEXT NOT NULL,
+                ip_address    TEXT DEFAULT '',
+                user_agent    TEXT DEFAULT '',
+                attempts      INTEGER DEFAULT 0,
+                verified_at   TEXT DEFAULT '',
+                expires_at    TEXT NOT NULL,
+                created_at    TEXT DEFAULT (datetime('now','localtime'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_sms_phone ON sms_verifications(phone, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_sms_ip ON sms_verifications(ip_address, created_at DESC);
+
+            -- trial_usage: 무료체험 활성화/사용 이력 (감사 + 통계 + 어뷰징 추적)
+            -- FK ON DELETE CASCADE: 사용자 삭제 시 자동 정리 (12+ 테이블 동일 패턴)
+            -- 1회 활성화 보장은 users.is_trial_eligible=0 분기 (Phase 1-D)
+            CREATE TABLE IF NOT EXISTS trial_usage (
+                id            TEXT PRIMARY KEY,
+                user_id       TEXT NOT NULL,
+                phone         TEXT DEFAULT '',
+                activated_at  TEXT DEFAULT '',
+                used_at       TEXT DEFAULT '',
+                conv_id       TEXT DEFAULT '',
+                pages_used    INTEGER DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_trial_user ON trial_usage(user_id);
+            CREATE INDEX IF NOT EXISTS idx_trial_activated ON trial_usage(activated_at DESC);
+            -- idx_trial_phone: "한 번호로 여러 user 활성화" 어뷰징 추적 (Phase 1-E 통계 필수)
+            CREATE INDEX IF NOT EXISTS idx_trial_phone ON trial_usage(phone, activated_at DESC);
+
             CREATE INDEX IF NOT EXISTS idx_conv_client ON conversations(client_id);
             CREATE INDEX IF NOT EXISTS idx_msg_conv ON messages(conversation_id);
             CREATE INDEX IF NOT EXISTS idx_nuance_client ON nuance_memories(client_id);
@@ -466,6 +503,19 @@ def init_db() -> None:
                 ('package_price', '380000'),
                 ('monthly_proposals', '100000'),
                 ('monthly_conversations', '999999');
+
+            -- ───────── Phase 1-A-3 — 무료체험 정책 시드 ─────────
+            -- trial_enabled: kill-switch (Y/N) — 어드민이 운영 중 전체 비활성화 가능
+            -- trial_credits: 활성화 시 부여 크레딧 (5000 = 50p, Step 2-A 단위)
+            -- trial_sms_max_per_day: 전체 일일 SMS 발송 cap (비용 모니터링)
+            -- trial_sms_max_per_phone_day: 번호당 일일 cap (어뷰징 방지)
+            -- trial_sms_max_per_ip_day: IP당 일일 cap (어뷰징 방지)
+            INSERT OR IGNORE INTO policy_settings(key, value) VALUES
+                ('trial_enabled',                'Y'),
+                ('trial_credits',                '5000'),
+                ('trial_sms_max_per_day',        '500'),
+                ('trial_sms_max_per_phone_day',  '5'),
+                ('trial_sms_max_per_ip_day',     '10');
         """)
 
         # 구버전 competitors 테이블 흔적 제거 (있으면)

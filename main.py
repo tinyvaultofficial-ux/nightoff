@@ -568,6 +568,19 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     ("users",         "monthly_conversation_quota_bonus","INTEGER DEFAULT 0"),
     # 마지막 생성 제안서의 페이지 수 — 어드민 통계 + 사용자 quota 추적
     ("conversations", "last_proposal_pages",            "INTEGER DEFAULT 0"),
+    # ───────── 무료체험 Phase 1-A-1 — users 컬럼 (DB 스키마만 추가, 코드 path 미사용) ─────────
+    # 신규 가입자는 register endpoint(1-C)에서 is_trial_eligible=1 + phone_verified_* 명시 설정.
+    # 기존 사용자는 DEFAULT 0/'' 유지 — 어드민도 일반도 영향 0.
+    # 활성화 흐름 (1-D):
+    #   가입 직후 → is_trial_eligible=1 / trial_activated_at='' / trial_used=0
+    #   /api/trial/activate 클릭 → is_trial_eligible=0 / trial_activated_at=now / bonus += 5000
+    #   풀 생성 차감 hook (api_proposals_create) → trial_used=1 / trial_used_at=now
+    ("users",         "is_trial_eligible",      "INTEGER DEFAULT 0"),   # 무료체험 자격 (신규 가입 시 1)
+    ("users",         "trial_activated_at",     "TEXT DEFAULT ''"),     # KST 활성화 시각
+    ("users",         "trial_used",             "INTEGER DEFAULT 0"),   # 활성화 후 풀 생성 완료 시 1
+    ("users",         "trial_used_at",          "TEXT DEFAULT ''"),     # KST 사용 시각
+    ("users",         "phone_verified_at",      "TEXT DEFAULT ''"),     # SMS 인증 완료 시각
+    ("users",         "phone_verified_number",  "TEXT DEFAULT ''"),     # 정규화된 11자 (010xxxxxxxx)
 ]
 
 

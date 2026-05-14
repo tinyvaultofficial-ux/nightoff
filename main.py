@@ -69,6 +69,11 @@ EXPORTS_PREVIEW_DIR = EXPORTS_DIR / "preview"
 MODEL_DEFAULT = "claude-sonnet-4-5-20250929"
 MODEL_FAST = "claude-haiku-4-5-20251001"
 
+# 크레딧 정책 — 단일 진실원 (Step 1: 매직 넘버 통합, 값 변경 X)
+# 1 페이지 = 400 크레딧. 향후 값 변경 시 본 상수만 수정.
+# 다른 파일 (static/app.js:284 CREDITS_PER_PAGE 동일 값) 도 함께 갱신 필요.
+CREDITS_PER_PAGE = 400
+
 
 # ---------------------------------------------------------------------------
 # DB helpers — SQLite(로컬) / PostgreSQL(운영) 자동 스위치
@@ -3586,7 +3591,7 @@ async def api_proposals_generate_multipass(
                 # underflow 시 GREATEST/MAX(0, ...) 가 0 으로 클램프 (안전망 — fail-open).
                 # 실패 / 취소 시 차감 X (final_payload 미존재 → 본 블록 미진입).
                 n_pages = len(final_payload.get("slides") or [])
-                credits_to_deduct = n_pages * 400
+                credits_to_deduct = n_pages * CREDITS_PER_PAGE
                 if n_pages > 0:
                     try:
                         with get_db() as db:
@@ -6747,7 +6752,7 @@ async def api_proposals_regenerate_page(
             "SELECT monthly_proposal_quota FROM users WHERE id=?", (user["id"],)
         ).fetchone()
         prop_q = int(quota_row["monthly_proposal_quota"] or 0) if quota_row else 0
-        if prop_q < 400:
+        if prop_q < CREDITS_PER_PAGE:
             raise HTTPException(
                 status_code=402,
                 detail={
@@ -6886,7 +6891,7 @@ async def api_proposals_regenerate_page(
             db.execute(
                 "UPDATE users SET monthly_proposal_quota = "
                 "  MAX(0, monthly_proposal_quota - ?) WHERE id=?",
-                (400, user["id"]),
+                (CREDITS_PER_PAGE, user["id"]),
             )
             row = db.execute(
                 "SELECT monthly_proposal_quota FROM users WHERE id=?", (user["id"],)

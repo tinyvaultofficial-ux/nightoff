@@ -275,7 +275,7 @@ const api = {
 
 // ─── Phase 4 (Step 3) — quota UI 실시간 갱신 helper ─────────────────────────
 // 차감 후 페이지 새로고침 X — window.__nightoff_user.quota 직접 mutate + DOM 갱신.
-// 페이지 기반 크레딧 시스템 (1페이지 = 400 크레딧, 월 100,000 크레딧 = 약 250페이지).
+// 페이지 기반 크레딧 시스템 (1페이지 = 100 크레딧, 월 25,000 크레딧 = 약 250페이지).
 // 대화는 무제한 — UI 에 "무제한 ∞" 라벨만, 차감 없음.
 //
 // args:
@@ -287,7 +287,7 @@ function refreshQuotaUI(kind, pages) {
   if (!u || !u.quota) return;
   const q = u.quota;
 
-  // 제안서 차감 (페이지 × 400 크레딧). underflow 시 0 클램프.
+  // 제안서 차감 (페이지 × 100 크레딧). underflow 시 0 클램프.
   if (kind === "proposal" && typeof pages === "number" && pages > 0) {
     q.proposal_remaining = Math.max(0, q.proposal_remaining - (pages * CREDITS_PER_PAGE));
   }
@@ -616,7 +616,7 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
           h("span", { class: "sidebar-footer-user-email" }, window.__nightoff_user.email),
         ]),
       ] : []),
-      // Phase 4 (Step 3) — 페이지 기반 크레딧 표시. 1 페이지 = 400 크레딧.
+      // Phase 4 (Step 3) — 페이지 기반 크레딧 표시. 1 페이지 = 100 크레딧.
       // 대화 quota 항목은 사용자에게 노출 X (메시지 무제한 — 내부 정책, 마케팅 금지).
       // id 그대로 유지 → refreshQuotaUI() 가 동적 갱신.
       ...((window.__nightoff_user && window.__nightoff_user.quota) ? [
@@ -1797,7 +1797,7 @@ async function openRegeneratePageModal(convId, totalSlides, outline) {
         });
         resultEl.appendChild(dlBtn);
         resultEl.style.display = "block";
-        // 사이드바 크레딧 즉시 갱신 (1페이지 차감 = 400 크레딧)
+        // 사이드바 크레딧 즉시 갱신 (1페이지 차감 = 100 크레딧)
         try { refreshQuotaUI("proposal", 1); } catch (e) { console.warn("refreshQuotaUI 실패:", e); }
         // 다음 재생성 가능하도록 UI 재활성화
         regenBtn.textContent = "다시 재생성";
@@ -4444,7 +4444,7 @@ async function renderChat(cid, convId) {
             : (q ? `남은 크레딧: ${(propRemain).toLocaleString("ko-KR")} (≈${propPagesNow}페이지)` : "제안서 생성"),
           disabled: exhausted ? "" : null,
           onclick: async () => {
-          // Phase 4 (Step 3) — 1 페이지 분(400 크레딧) 미만이면 거부. window.__nightoff_user.quota 직접 참조.
+          // Phase 4 (Step 3) — 1 페이지 분(100 크레딧) 미만이면 거부. window.__nightoff_user.quota 직접 참조.
           const liveQ = (window.__nightoff_user && window.__nightoff_user.quota) || null;
           if (liveQ && liveQ.proposal_remaining < CREDITS_PER_PAGE) {
             toast("제안서 크레딧이 부족해요 (1페이지 = 100 크레딧) — 다음 달 1일 리셋", "error", 5000);
@@ -5396,7 +5396,7 @@ async function runMultiPassProposal({ convId, pages, asstEl, bubble, progress, b
           `</div>`;
         autoScroll();
         // Phase 4 (Step 3) — 페이지 기반 차감. ev.total = 생성된 슬라이드 수.
-        // 백엔드의 GREATEST(0, q - pages*400) 와 동일 식으로 클라 UI sync.
+        // 백엔드의 GREATEST(0, q - pages*100) 와 동일 식으로 클라 UI sync.
         try { refreshQuotaUI("proposal", ev.total || 0); } catch (e) { console.warn("quota UI refresh 실패:", e); }
       }
     }

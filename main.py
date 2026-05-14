@@ -3326,6 +3326,26 @@ def api_chat(conv_id: str, body: ChatIn, user: dict = Depends(get_current_user))
             content = _summarize_proposal_json(content)
         messages.append({"role": m["role"], "content": content})
 
+    # D-B: RFP 원문 inject (Anthropic prompt caching ephemeral, 5분 TTL).
+    # 분석 요약본 (_format_chat_block_rfp_summary 13 필드) 만으로는 세부 조항 답변 불가.
+    # 본 블록 추가로 LLM 이 RFP 원문 전체 학습 → "3.2.1항 어때?" 같은 질문 답변 가능.
+    # 비용 영향: 첫 호출 cache write (input × 1.25), 5분 내 추가 호출 cache read (input × 0.1).
+    # RFP 없는 conv (raw_rfp == "") → 기존 string system 형식 유지 (회귀 0).
+    raw_rfp = _get_raw_rfp_text(client_id) if client_id else ""
+    if raw_rfp:
+        log.info("api_chat: RFP 원문 inject (client=%s, chars=%d)", client_id, len(raw_rfp))
+        system_param = [
+            {"type": "text", "text": system_prompt},
+            {
+                "type": "text",
+                "text": f"[RFP 원문 전체]\n\n{raw_rfp}",
+                "cache_control": {"type": "ephemeral"},
+            },
+        ]
+    else:
+        # RFP 없는 conv — 기존 string 형식 그대로 (회귀 0)
+        system_param = system_prompt
+
     try:
         client = require_client()
     except HTTPException as e:
@@ -3344,7 +3364,7 @@ def api_chat(conv_id: str, body: ChatIn, user: dict = Depends(get_current_user))
             with client.messages.stream(
                 model=get_setting("model", MODEL_DEFAULT),
                 max_tokens=16000,
-                system=system_prompt,
+                system=system_param,
                 messages=messages,
             ) as s:
                 for chunk in s.text_stream:

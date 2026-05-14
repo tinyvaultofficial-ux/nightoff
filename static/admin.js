@@ -306,16 +306,12 @@ function openUserModal(userId) {
         <div class="form-row">
           <label>제안서 크레딧 (현재 ${fmtNumber(propQ)} = 약 ${propPages}페이지)</label>
           <input type="number" id="m-prop-quota" value="${propQ}" min="0" step="100" />
-          <div style="font-size:11px; color:var(--fg-2); margin-top:2px;">1페이지 = 400 크레딧 · 월 정책 기본값 100,000</div>
+          <div style="font-size:11px; color:var(--fg-2); margin-top:2px;">1페이지 = 100 크레딧 · 월 정책 기본값 25,000</div>
         </div>
-        <div class="form-row">
-          <label>유료 크레딧 (현재 ${fmtNumber(u.credits || 0)})</label>
-          <input type="number" id="m-credits" value="${u.credits || 0}" min="0" />
-        </div>
-        <div class="form-row">
-          <label>이달 사용액 (현재 ${fmtNumber(u.credits_used_this_month || 0)})</label>
-          <input type="number" id="m-used" value="${u.credits_used_this_month || 0}" min="0" />
-        </div>
+        <!-- Step 3-4 (옵션 A) — "유료 크레딧" + "이달 사용액" 필드 제거.
+             DB 컬럼 (users.credits / credits_used_this_month) + AdminUserPatch 모델 + endpoint 보존.
+             error_report 보상 자동 누적 (main.py:7617) + 월간 reset (main.py:7969,8028) 백엔드 그대로.
+             향후 PG 연동 시 git history 에서 UI 복구 가능. -->
         <div class="form-row">
           <label>마지막 리셋 날짜 (YYYY-MM-DD)</label>
           <input type="date" id="m-reset" value="${escapeHtml((u.last_reset_date || "").slice(0, 10))}" />
@@ -365,8 +361,8 @@ async function saveUserModal(userId) {
   const btn = document.getElementById("user-save-btn");
   if (btn && btn.disabled) return;  // 중복 클릭 방지
 
-  const credits = Number(document.getElementById("m-credits").value);
-  const used = Number(document.getElementById("m-used").value);
+  // Step 3-4 (옵션 A) — m-credits / m-used 필드 모달에서 제거 (DOM 없음).
+  // DB 컬럼 + AdminUserPatch 모델 + endpoint 는 보존 → 백엔드 자동 누적 (error_report 보상) 정상.
   const reset = document.getElementById("m-reset").value.trim();
   const suspend = Number(document.getElementById("m-suspend").value);
   // Phase 4 (Step 3) — 제안서 크레딧 직접 수정 필드
@@ -380,8 +376,6 @@ async function saveUserModal(userId) {
   }
 
   const body = {
-    credits,
-    credits_used_this_month: used,
     is_suspended: suspend,
   };
   if (reset) body.last_reset_date = reset;
@@ -662,14 +656,9 @@ function renderStats() {
           ${fmtNumber(u.suspended_count || 0)}<span class="stat-suffix">명</span>
         </div>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">전체 유료 크레딧 합계</div>
-        <div class="stat-value">${fmtNumber(u.total_credits || 0)}<span class="stat-suffix">크레딧</span></div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">이달 사용액 합계</div>
-        <div class="stat-value">${fmtNumber(u.total_used_this_month || 0)}<span class="stat-suffix">크레딧</span></div>
-      </div>
+      <!-- Step 3-4 (옵션 A) — "전체 유료 크레딧 합계" + "이달 사용액 합계" 통계 카드 제거.
+           통계 endpoint (/api/admin/stats) 응답 데이터 (total_credits/total_used_this_month)
+           는 그대로 유지 — UI 미사용만. 향후 PG 연동 시 git history 복구 가능. -->
     </div>
 
     <div class="stats-section-title">보상 (오류 보고 → 사용자 credits 자동 INCREMENT)</div>

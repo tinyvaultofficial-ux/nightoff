@@ -1635,7 +1635,7 @@ async function openRegeneratePageModal(convId, totalSlides, outline) {
   // 본문
   const body = h("div", { class: "modal-body" });
   body.appendChild(h("p", { class: "muted small", style: "margin: 0 0 16px; line-height: 1.5;" },
-    `재생성할 페이지 번호를 입력해주세요. 1페이지당 400 크레딧이 차감돼요.${totalSlides ? ` (현재 제안서: 총 ${totalSlides}페이지)` : ""}`));
+    `재생성할 페이지 번호를 입력해주세요. 1페이지당 100 크레딧이 차감돼요.${totalSlides ? ` (현재 제안서: 총 ${totalSlides}페이지)` : ""}`));
 
   const inputAttrs = {
     type: "number",
@@ -1723,7 +1723,7 @@ async function openRegeneratePageModal(convId, totalSlides, outline) {
         ? `이 제안서는 ${totalSlides}페이지까지 있어요. 다른 번호를 입력해주세요.`
         : "페이지 범위를 초과했어요. 페이지 번호를 다시 확인해주세요.",
       OUTLINE_MISSING: "이 제안서는 부분 재생성을 지원하지 않는 옛 버전이에요. ✨ 제안서 생성 버튼으로 전체 재생성해주세요.",
-      QUOTA_EXCEEDED: "크레딧이 부족해요 (1페이지 재생성에 400 크레딧 필요). 결제 후 다시 시도해주세요.",
+      QUOTA_EXCEEDED: "크레딧이 부족해요 (1페이지 재생성에 100 크레딧 필요). 결제 후 다시 시도해주세요.",
       PROPOSAL_NOT_FOUND: "제안서 데이터가 없어요. 먼저 ✨ 제안서 생성 버튼을 눌러주세요.",
     };
     if (code && messages[code]) return messages[code];
@@ -4427,10 +4427,10 @@ async function renderChat(cid, convId) {
       // ✨ 제안서 생성 (multi-pass) — Phase 4 (Step 3) 페이지 기반 크레딧 표시
       (function () {
         const q = (window.__nightoff_user && window.__nightoff_user.quota) || null;
-        const CR_PER_PAGE = 400;
         const propRemain = q ? q.proposal_remaining : null;
-        const propPagesNow = q ? Math.floor((propRemain || 0) / CR_PER_PAGE) : 0;
-        const exhausted = q && propRemain < CR_PER_PAGE;  // 1 페이지 분 미만이면 disabled
+        // CREDITS_PER_PAGE (L284 module-level 정의, Step 2-A: 1p = 100 크레딧) 활용
+        const propPagesNow = q ? Math.floor((propRemain || 0) / CREDITS_PER_PAGE) : 0;
+        const exhausted = q && propRemain < CREDITS_PER_PAGE;  // 1 페이지 분 미만이면 disabled
         const badgeHtml = q
           ? `<span id="proposal-quota-badge" class="btn-quota-badge${exhausted ? " quota-exhausted" : ""}">${propPagesNow}p</span>`
           : "";
@@ -4440,14 +4440,14 @@ async function renderChat(cid, convId) {
           class: "btn btn-primary sparkle-generate-btn" + (exhausted ? " btn-quota-disabled" : ""),
           html: labelHtml,
           title: exhausted
-            ? "제안서 크레딧이 1페이지(400) 미만 — 다음 달 1일 리셋"
+            ? "제안서 크레딧이 1페이지(100) 미만 — 다음 달 1일 리셋"
             : (q ? `남은 크레딧: ${(propRemain).toLocaleString("ko-KR")} (≈${propPagesNow}페이지)` : "제안서 생성"),
           disabled: exhausted ? "" : null,
           onclick: async () => {
           // Phase 4 (Step 3) — 1 페이지 분(400 크레딧) 미만이면 거부. window.__nightoff_user.quota 직접 참조.
           const liveQ = (window.__nightoff_user && window.__nightoff_user.quota) || null;
-          if (liveQ && liveQ.proposal_remaining < 400) {
-            toast("제안서 크레딧이 부족해요 (1페이지 = 400 크레딧) — 다음 달 1일 리셋", "error", 5000);
+          if (liveQ && liveQ.proposal_remaining < CREDITS_PER_PAGE) {
+            toast("제안서 크레딧이 부족해요 (1페이지 = 100 크레딧) — 다음 달 1일 리셋", "error", 5000);
             return;
           }
           // Step 2 — 페이지 선택 모달 표시 → 사용자 선택 후 콜백에서 실제 생성 진행
@@ -4582,7 +4582,7 @@ async function renderChat(cid, convId) {
         return h("button", {
           class: "btn btn-outline",
           style: "text-decoration:none;",
-          title: "특정 페이지만 다시 만들기 (1페이지 = 400 크레딧)",
+          title: "특정 페이지만 다시 만들기 (1페이지 = 100 크레딧)",
           html: `<span style="margin-right:4px;">📄</span><span>페이지 재생성</span>`,
           onclick: () => {
             openRegeneratePageModal(convId, totalSlides, outline);

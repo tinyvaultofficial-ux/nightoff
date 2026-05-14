@@ -280,8 +280,8 @@ const api = {
 //
 // args:
 //   kind: "proposal" (제안서 차감) | "all" (전체 다시 그리기)
-//   pages: kind="proposal" 일 때 차감할 페이지 수 (1 페이지 = 400 크레딧 차감)
-const CREDITS_PER_PAGE = 400;
+//   pages: kind="proposal" 일 때 차감할 페이지 수 (1 페이지 = 100 크레딧 차감)
+const CREDITS_PER_PAGE = 100;  // Step 2-A: 단위 단순화 (1p = 100 크레딧)
 function refreshQuotaUI(kind, pages) {
   const u = window.__nightoff_user;
   if (!u || !u.quota) return;

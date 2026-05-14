@@ -69,10 +69,10 @@ EXPORTS_PREVIEW_DIR = EXPORTS_DIR / "preview"
 MODEL_DEFAULT = "claude-sonnet-4-5-20250929"
 MODEL_FAST = "claude-haiku-4-5-20251001"
 
-# 크레딧 정책 — 단일 진실원 (Step 1: 매직 넘버 통합, 값 변경 X)
-# 1 페이지 = 400 크레딧. 향후 값 변경 시 본 상수만 수정.
+# 크레딧 정책 — 단일 진실원 (Step 2-A: 단위 단순화)
+# 1 페이지 = 100 크레딧. 향후 값 변경 시 본 상수만 수정.
 # 다른 파일 (static/app.js:284 CREDITS_PER_PAGE 동일 값) 도 함께 갱신 필요.
-CREDITS_PER_PAGE = 400
+CREDITS_PER_PAGE = 100  # Step 2-A: 단위 단순화 (1p = 100 크레딧)
 
 
 # ---------------------------------------------------------------------------
@@ -562,7 +562,7 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     # Phase 4 (Step 3) — 페이지 기반 크레딧 시스템:
     #   1 페이지 = 400 크레딧, 월 100,000 크레딧 = 약 250페이지
     #   기존 사용자는 DEFAULT 그대로 (어드민 대시보드에서 직접 100,000 으로 갱신)
-    ("users",         "monthly_proposal_quota",         "INTEGER DEFAULT 100000"),
+    ("users",         "monthly_proposal_quota",         "INTEGER DEFAULT 25000"),
     ("users",         "monthly_conversation_quota",     "INTEGER DEFAULT 999999"),  # 무제한 sentinel — 코드 path 미사용
     ("users",         "monthly_proposal_quota_bonus",   "INTEGER DEFAULT 0"),
     ("users",         "monthly_conversation_quota_bonus","INTEGER DEFAULT 0"),
@@ -755,12 +755,12 @@ def _get_initial_quota() -> tuple[int, int]:
                 "WHERE key IN ('monthly_proposals', 'monthly_conversations')"
             ).fetchall()
             kv = {r["key"]: r["value"] for r in rows}
-            p = int(kv.get("monthly_proposals") or 100000)
+            p = int(kv.get("monthly_proposals") or 25000)
             c = int(kv.get("monthly_conversations") or 999999)
             return max(0, p), max(0, c)
     except Exception as e:
         log.warning("_get_initial_quota fallback (정책 조회 실패): %s", e)
-        return 100000, 999999
+        return 25000, 999999
 
 
 def get_api_key() -> str:

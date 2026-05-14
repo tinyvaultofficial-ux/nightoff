@@ -254,7 +254,7 @@ function renderUsersTable() {
             <th>회사</th>
             <th>역할</th>
             <th>상태</th>
-            <th class="num" title="제안서 크레딧 (1페이지 = 400 크레딧)">제안서 크레딧</th>
+            <th class="num" title="제안서 크레딧 (1페이지 = 100 크레딧)">제안서 크레딧</th>
             <th>대화</th>
             <th title="프로모션 충전">보너스</th>
             <th>마지막 리셋일</th>
@@ -774,7 +774,7 @@ const POLICY_META = {
     suffix: "크레딧",
     type: "number",
     min: 0,
-    desc: "월 1회 결제 시 사용자에게 지급되는 제안서 크레딧 (1페이지 = 400 크레딧, 예: 100000 = 250페이지)",
+    desc: "월 1회 결제 시 사용자에게 지급되는 제안서 크레딧 (1페이지 = 100 크레딧, 예: 25000 = 250페이지)",
   },
   monthly_conversations: {
     label: "월 대화 (미사용 — 무제한)",
@@ -988,7 +988,7 @@ async function loadQuota() {
     quotaState.loaded = true;
     const start = quotaState.offset + 1;
     const end = quotaState.offset + quotaState.users.length;
-    // Phase 4 (Step 3) — 크레딧 단위 표시. proposal_base 는 크레딧 (예: 100,000), 1 페이지 = 400 크레딧.
+    // Phase 4 (Step 3) — 크레딧 단위 표시. proposal_base 는 크레딧 (예: 25,000), 1 페이지 = 100 크레딧.
     const propBase = quotaState.policy.proposal_base || 0;
     const propBasePages = Math.floor(propBase / 100);
     meta.textContent =

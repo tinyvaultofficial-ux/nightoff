@@ -560,7 +560,7 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     # 차감 흐름: 제안서 생성 성공 시 -1 / 사용자 메시지 INSERT 시 -1
     # 리셋 흐름: 월 1일 영역 quota 영역 policy_settings 영역 초기값 / bonus 영역 0 (Phase 3 단계 6)
     # Phase 4 (Step 3) — 페이지 기반 크레딧 시스템:
-    #   1 페이지 = 400 크레딧, 월 100,000 크레딧 = 약 250페이지
+    #   1 페이지 = 100 크레딧, 월 25,000 크레딧 = 약 250페이지
     #   기존 사용자는 DEFAULT 그대로 (어드민 대시보드에서 직접 100,000 으로 갱신)
     ("users",         "monthly_proposal_quota",         "INTEGER DEFAULT 25000"),
     ("users",         "monthly_conversation_quota",     "INTEGER DEFAULT 999999"),  # 무제한 sentinel — 코드 path 미사용
@@ -755,7 +755,7 @@ def _get_initial_quota() -> tuple[int, int]:
     """policy_settings 영역 quota 초기값 반환. (proposal, conversation).
 
     Phase 4 (Step 3) — 페이지 기반 크레딧 시스템:
-      proposal: 100,000 크레딧 (= 250페이지, 1페이지 = 400 크레딧)
+      proposal: 25,000 크레딧 (= 250페이지, 1페이지 = 100 크레딧)
       conversation: 999,999 sentinel (무제한, 코드 path 미사용 — UI 에선 '무제한 ∞')
 
     fallback (DB 조회 실패 / 키 누락): (100000, 999999) — inline + exception 모두 동일.
@@ -3600,7 +3600,7 @@ async def api_proposals_generate_multipass(
                 except Exception as e:
                     log.warning("multi-pass: assistant 메시지 저장 실패: %s", e)
                 # Phase 4 (Step 3) — 페이지 기반 크레딧 차감 + conversations.last_proposal_pages 기록.
-                # 1 페이지 = 400 크레딧. final_payload["slides"] 길이 × 400 차감.
+                # 1 페이지 = 100 크레딧. final_payload["slides"] 길이 × 100 차감.
                 # underflow 시 GREATEST/MAX(0, ...) 가 0 으로 클램프 (안전망 — fail-open).
                 # 실패 / 취소 시 차감 X (final_payload 미존재 → 본 블록 미진입).
                 n_pages = len(final_payload.get("slides") or [])
@@ -4542,7 +4542,7 @@ def api_auth_me(user: dict = Depends(get_current_user)):
     """현재 인증된 사용자 정보 + Phase 3 quota.
 
     quota:
-      - proposal_remaining/total: 제안서 크레딧 (1페이지 = 400)
+      - proposal_remaining/total: 제안서 크레딧 (1페이지 = 100)
       - conversation_remaining/total: 무제한 sentinel (UI 무시)
     """
     # 사용자 quota + bonus
@@ -6760,7 +6760,7 @@ async def api_proposals_regenerate_page(
         conv = db.execute("SELECT * FROM conversations WHERE id=?", (conv_id,)).fetchone()
         client_id = conv["client_id"]
 
-        # 2. quota 검증 (400 크레딧)
+        # 2. quota 검증 (100 크레딧)
         quota_row = db.execute(
             "SELECT monthly_proposal_quota FROM users WHERE id=?", (user["id"],)
         ).fetchone()

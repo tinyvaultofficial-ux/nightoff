@@ -2633,6 +2633,70 @@ def _get_rfp_aggregated(client_id: str) -> Optional[dict]:
     return None
 
 
+def _get_raw_rfp_text(client_id: str, max_chars: int = 45000) -> str:
+    """client_id 의 RFP 원문 텍스트 조합 반환 (D-A).
+
+    옵션 D (Anthropic prompt caching) 의 cache 영역에 inject 용도.
+    _run_rfp_aggregate (line 3719+) 의 SELECT 패턴 재사용:
+    - 역할별 정렬 (공고문 → 과업지시서 → 제안요청서 → 기타)
+    - 누적 max_chars 자 cap (default 45,000자)
+    - rfp_files 우선, fallback 으로 rfp_docs (구 단일 RFP 테이블)
+    - 실패/비어있음 시 빈 문자열 반환 (caller graceful degrade)
+
+    반환 형식:
+    "[공고문] file1.pdf\\n<본문>\\n\\n---\\n\\n[과업지시서] file2.pdf\\n<본문>"
+    """
+    parts: list[str] = []
+    total_chars = 0
+    try:
+        with get_db() as db:
+            # 1) 신규 rfp_files 테이블 우선 — 역할별 정렬 (CASE WHEN, SQLite+PG 표준 호환)
+            rows = db.execute(
+                "SELECT role, filename, raw_text FROM rfp_files "
+                "WHERE client_id=? AND raw_text IS NOT NULL AND raw_text <> '' "
+                "ORDER BY CASE role "
+                "  WHEN '공고문' THEN 1 "
+                "  WHEN '과업지시서' THEN 2 "
+                "  WHEN '제안요청서' THEN 3 "
+                "  ELSE 4 END",
+                (client_id,),
+            ).fetchall()
+
+            for row in rows:
+                role = row["role"] or "기타"
+                filename = row["filename"] or ""
+                text = row["raw_text"] or ""
+                if not text.strip():
+                    continue
+                # 누적 cap 적용 — 남은 여유분만큼만 추가
+                remaining = max_chars - total_chars
+                if remaining <= 0:
+                    break
+                if len(text) > remaining:
+                    text = text[:remaining]
+                parts.append(f"[{role}] {filename}\n{text}")
+                total_chars += len(text)
+
+            # 2) fallback — rfp_files 결과 0건 시 옛 rfp_docs (단일 RFP) 테이블 시도
+            if not parts:
+                old = db.execute(
+                    "SELECT filename, raw_text FROM rfp_docs WHERE client_id=?",
+                    (client_id,),
+                ).fetchone()
+                if old and old["raw_text"]:
+                    text = (old["raw_text"] or "")[:max_chars]
+                    filename = old["filename"] or ""
+                    if text.strip():
+                        parts.append(f"[RFP] {filename}\n{text}")
+
+        if not parts:
+            return ""
+        return "\n\n---\n\n".join(parts)
+    except Exception as e:
+        log.warning("_get_raw_rfp_text 실패 (client_id=%s): %s", client_id, e)
+        return ""
+
+
 def _format_client_block(client) -> str:
     """발주처 정보 블록 (PROPOSAL + CHAT 공용).
 

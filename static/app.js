@@ -315,7 +315,7 @@ function refreshQuotaUI(kind, pages) {
     propBtn.classList.toggle("btn-quota-disabled", exhausted);
     if (exhausted) {
       propBtn.setAttribute("disabled", "");
-      propBtn.setAttribute("title", "제안서 크레딧이 1페이지(400) 미만이에요 — 다음 달 1일 리셋");
+      propBtn.setAttribute("title", "제안서 크레딧이 1페이지(100) 미만이에요 — 다음 달 1일 리셋");
     } else {
       propBtn.removeAttribute("disabled");
       propBtn.setAttribute(
@@ -622,9 +622,9 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
       ...((window.__nightoff_user && window.__nightoff_user.quota) ? [
         (function () {
           const q = window.__nightoff_user.quota;
-          const CR_PER_PAGE = 400;
-          const propPagesNow = Math.floor((q.proposal_remaining || 0) / CR_PER_PAGE);
-          const propLow = q.proposal_remaining < CR_PER_PAGE;
+          // CREDITS_PER_PAGE (L284 module-level 정의, Step 2-A: 1p = 100 크레딧) 활용
+          const propPagesNow = Math.floor((q.proposal_remaining || 0) / CREDITS_PER_PAGE);
+          const propLow = q.proposal_remaining < CREDITS_PER_PAGE;
 
           const children = [
             h("div", {

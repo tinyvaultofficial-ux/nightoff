@@ -783,6 +783,44 @@ const POLICY_META = {
     min: 0,
     desc: "대화는 무제한 정책이라 코드에서 사용 안 함 (999999 sentinel 유지). 변경 시 UI 만 영향, 백엔드 차감 X.",
   },
+
+  // ───────── Phase 1-A-3 — 무료체험 정책 메타데이터 (Phase 1-E 일부) ─────────
+  // trial_enabled 를 무료체험 그룹 최상위로 정의 — kill-switch 시인성 ↑
+  trial_enabled: {
+    label: "무료체험 활성화 (kill-switch)",
+    suffix: "",
+    type: "select",
+    options: ["Y", "N"],
+    desc: "전체 무료체험 ON/OFF — 'Y' 활성 / 'N' 비활성. 사고/어뷰징 시 즉시 'N' 으로 비활성화 가능 (Phase 1-B/C/D endpoint 가 본 정책 참조).",
+  },
+  trial_credits: {
+    label: "무료체험 크레딧",
+    suffix: "크레딧",
+    type: "number",
+    min: 0,
+    desc: "활성화 시 부여 크레딧 (1페이지 = 100 크레딧, 5000 = 50페이지). 활성화 시점에만 적용 — 이미 활성화한 사용자에게 소급 X.",
+  },
+  trial_sms_max_per_day: {
+    label: "일일 SMS 발송 한도 (전체)",
+    suffix: "건",
+    type: "number",
+    min: 0,
+    desc: "전체 일일 SMS 발송 cap (비용 모니터링). 1건 ≈ 20원 — 500 = 일 최대 10,000원.",
+  },
+  trial_sms_max_per_phone_day: {
+    label: "번호당 일일 SMS 한도",
+    suffix: "건",
+    type: "number",
+    min: 0,
+    desc: "한 번호로 받을 수 있는 일일 SMS 횟수 cap (어뷰징 방지). 5 권장.",
+  },
+  trial_sms_max_per_ip_day: {
+    label: "IP당 일일 SMS 한도",
+    suffix: "건",
+    type: "number",
+    min: 0,
+    desc: "한 IP에서 발송 가능한 일일 SMS cap (봇 방지). 10 권장.",
+  },
 };
 
 async function loadSettings() {
@@ -826,9 +864,19 @@ function renderSettingsForm() {
 
   const rows = ordered.map((s) => {
     const m = POLICY_META[s.key] || { label: s.key, suffix: "", type: "text", desc: "" };
-    const inputAttrs = m.type === "number"
-      ? `type="number" min="${m.min ?? 0}"`
-      : `type="text"`;
+    // 옵션 B (Phase 1-E 일부) — select 분기 추가, kill-switch (trial_enabled) Y/N 오타 방지.
+    // 기존 number/text 분기 유지 + select 신규 type 추가.
+    let inputHtml;
+    if (m.type === "select" && Array.isArray(m.options)) {
+      const optionsHtml = m.options.map(opt =>
+        `<option value="${escapeHtml(opt)}" ${opt === (s.value || "") ? "selected" : ""}>${escapeHtml(opt)}</option>`
+      ).join("");
+      inputHtml = `<select id="set-${escapeHtml(s.key)}">${optionsHtml}</select>`;
+    } else if (m.type === "number") {
+      inputHtml = `<input type="number" min="${m.min ?? 0}" id="set-${escapeHtml(s.key)}" value="${escapeHtml(s.value || "")}" />`;
+    } else {
+      inputHtml = `<input type="text" id="set-${escapeHtml(s.key)}" value="${escapeHtml(s.value || "")}" />`;
+    }
     const updatedInfo = s.updated_at
       ? `최종 갱신 ${escapeHtml(s.updated_at)} ${s.updated_by ? `· ${escapeHtml(s.updated_by)}` : ""}`
       : "초기값";
@@ -838,7 +886,7 @@ function renderSettingsForm() {
           ${escapeHtml(m.label)}
           <span class="key-id">${escapeHtml(s.key)}</span>
         </div>
-        <input ${inputAttrs} id="set-${escapeHtml(s.key)}" value="${escapeHtml(s.value || "")}" />
+        ${inputHtml}
         <div class="settings-suffix">${escapeHtml(m.suffix)}</div>
         <div class="settings-meta-row">
           ${m.desc ? escapeHtml(m.desc) + " · " : ""}${updatedInfo}

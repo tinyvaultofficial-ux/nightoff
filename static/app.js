@@ -5096,22 +5096,57 @@ function createStreamProgress() {
 // pageLimit (선택 인자): RFP 분석의 page_limit 값. 권장 배지 동적 매핑 + 초과 경고.
 //   - 유효한 양의 정수: opt.pages ≤ pageLimit 중 최대값에 권장 (모두 초과 시 최소값에 권장)
 //   - null / undefined / 0 / 비숫자: 기존 동작 (100페이지에 권장)
+// pageLimit 기반 동적 옵션 생성 (RFP 한도 정밀 반영).
+//   - pageLimit 없음/0/비숫자: 기존 고정 옵션 (100/50/30)
+//   - pageLimit 있음: [한도-5p (정석), 한도/2 (표준), 30p (간단)] 동적 — 중복 제거 + 내림차순.
+// credits = pages × CREDITS_PER_PAGE (= 100, Step 2-A 단위 단순화 반영).
+function buildPageOptions(pageLimit) {
+  const C = CREDITS_PER_PAGE;  // L284 module-level 정의 (= 100)
+  // pageLimit 타입 가드 — LLM 이 가끔 문자열 반환 가능. 숫자 양수만 신뢰.
+  if (typeof pageLimit !== "number" || pageLimit <= 0) {
+    return [
+      { pages: 100, credits: 100 * C, label: "100페이지", desc: "풀 분량 제안서" },
+      { pages: 50,  credits: 50 * C,  label: "50페이지",  desc: "표준 분량" },
+      { pages: 30,  credits: 30 * C,  label: "30페이지",  desc: "간단 분량" },
+    ];
+  }
+  // 한도 기반 동적 — 정석 (-5p 안전 마진) + 중간 (한도/2) + 최소 (30p)
+  const recommended = Math.max(10, pageLimit - 5);
+  const middle = Math.max(20, Math.round(pageLimit / 2));
+  const minimum = 30;
+  const candidates = [
+    { pages: recommended, label: `${recommended}페이지`, desc: "정석 (RFP 한도 -5p)" },
+    { pages: middle,      label: `${middle}페이지`,      desc: "표준 분량" },
+    { pages: minimum,     label: "30페이지",             desc: "간단 분량" },
+  ];
+  // 중복 제거 (예: 한도 35 → recommended=30 + middle=18→20 + minimum=30 → 30 중복) + credits 계산
+  const seen = new Set();
+  const unique = [];
+  for (const opt of candidates) {
+    if (!seen.has(opt.pages)) {
+      seen.add(opt.pages);
+      opt.credits = opt.pages * C;
+      unique.push(opt);
+    }
+  }
+  // 내림차순 정렬 (큰 페이지부터)
+  unique.sort((a, b) => b.pages - a.pages);
+  return unique;
+}
+
 function showProposalPageSelectionModal(onConfirm, pageLimit = null) {
   if (document.querySelector(".pages-modal-overlay")) return;
 
-  // 옵션 (페이지, 크레딧, 설명) — recommended 는 effectiveLimit 기준으로 동적 계산
-  const OPTIONS = [
-    { pages: 100, credits: 40000, label: "100페이지", desc: "풀 분량 제안서" },
-    { pages: 50,  credits: 20000, label: "50페이지",  desc: "표준 분량" },
-    { pages: 30,  credits: 12000, label: "30페이지",  desc: "간단 분량" },
-  ];
+  // 옵션 (페이지, 크레딧, 설명) — pageLimit 있으면 동적, 없으면 기존 고정.
+  // recommended 는 effectiveLimit 기준으로 동적 계산 (아래 권장 결정 로직).
+  const OPTIONS = buildPageOptions(pageLimit);
 
   // pageLimit 타입 가드 — LLM 이 가끔 문자열 반환 가능. 숫자 양수만 신뢰.
   const effectiveLimit = (typeof pageLimit === "number" && pageLimit > 0) ? pageLimit : null;
 
   // 권장 페이지 결정:
   //   - effectiveLimit 없음 → 100 (기존 동작)
-  //   - opt.pages ≤ effectiveLimit 인 옵션 있음 → 그 중 최대값
+  //   - opt.pages ≤ effectiveLimit 인 옵션 있음 → 그 중 최대값 (동적 OPTIONS 의 경우 자동으로 한도 -5p)
   //   - 모든 옵션이 effectiveLimit 초과 → 가장 작은 옵션 (limit 에 가장 근접한 선택 유도)
   let recommendedPages;
   if (effectiveLimit === null) {

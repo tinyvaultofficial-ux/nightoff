@@ -75,13 +75,21 @@ def _normalize_weight(weight) -> int:
 def _resolve_font(font_family, weight) -> str:
     """font_family 명시 시 우선, 미지정 시 weight 기반 자동 매핑.
 
-    fallback 강화:
-    - font_family 명시 → 그대로 사용
-    - weight 정상 (100/200/.../900) → WEIGHT_FONT_MAP 매핑
+    fallback 강화 (가설 A fix):
+    - font_family 명시 + "Paperlogy" 시작 → WEIGHT_FONT_MAP 표준 형식 강제 정규화
+      (AI 가 prompt 예시 따라 "Paperlogy 9Black" (스페이스 없음) 명시해도
+       표준 형식 "Paperlogy 9 Black" (스페이스 있음) 으로 정상 매핑 — ttf
+       Family Name 매칭 실패로 시스템 fallback 되던 사고 차단)
+    - font_family 명시 + 다른 폰트 (사용자 의도) → 그대로 사용 (호환성 유지)
+    - 미지정 → weight 기반 자동 매핑
     - weight 매핑 X → DEFAULT (Paperlogy 4 Regular)
     """
     if font_family:
-        return str(font_family)
+        f = str(font_family).strip()
+        # Paperlogy 변형 명시 시 → WEIGHT_FONT_MAP 표준 형식 강제
+        if f.lower().startswith("paperlogy"):
+            return WEIGHT_FONT_MAP.get(_normalize_weight(weight), DEFAULT_FONT_FAMILY)
+        return f  # 다른 폰트 명시 (사용자 의도) → 그대로
     norm_weight = _normalize_weight(weight)
     return WEIGHT_FONT_MAP.get(norm_weight, DEFAULT_FONT_FAMILY)
 

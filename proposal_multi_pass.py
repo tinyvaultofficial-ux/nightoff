@@ -1404,7 +1404,7 @@ def _build_slide_user_prompt(
     if item.governing_sub:
         parts.append(f"[서브 거버닝] {' / '.join(item.governing_sub)}")
     parts.extend([
-        f"[핵심 메시지 (이걸 본문으로 풀어서 빽빽하게 채워라)] {' / '.join(item.key_msgs)}",
+        f"[핵심 메시지 (함축해서 핵심만 — 디자이너가 시각 요소로 풀어냄)] {' / '.join(item.key_msgs)}",
         f"[시각화 힌트] {item.viz_hint}",
         "",
         # 도메인 톤 매트릭스 inline (LAYER 2 발췌) — outline.domain 값에 따라 동적

@@ -4704,6 +4704,182 @@ def _today_kst_str() -> str:
     return datetime.now(_KST).strftime("%Y-%m-%d")
 
 
+# ───────── Phase 1-B-a — SMS 헬퍼 + 알리고 wrapper + verification JWT ─────────
+# 무료체험 SMS 인증 기반 (1-B-b/c endpoint 가 본 헬퍼 활용).
+# 기존 패턴 활용:
+#   _credit_quiz_salt / _hash_credit_answer (L758/775) — HMAC 동일 패턴
+#   encode_jwt / decode_jwt (L884/895) — JWT 동일 시크릿, purpose 로 분리
+#   _KST (L4684) — KST 타임존 재사용
+
+def _now_kst_str() -> str:
+    """현재 KST 시각 'YYYY-MM-DD HH:MM:SS' 문자열 — sms_verifications.created_at 등."""
+    return datetime.now(_KST).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _plus_minutes_kst_str(base: str, minutes: int) -> str:
+    """base ('YYYY-MM-DD HH:MM:SS') + N분 → KST 문자열 — expires_at 계산."""
+    dt = datetime.strptime(base, "%Y-%m-%d %H:%M:%S")
+    return (dt + timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _normalize_phone(raw: str) -> Optional[str]:
+    """다양한 입력 형식 → 010xxxxxxxx 11자 정규화. 잘못된 형식이면 None.
+
+    수용 형식: '010-1234-5678', '010 1234 5678', '01012345678', '+821012345678', '821012345678'.
+    """
+    if not raw:
+        return None
+    digits = re.sub(r"\D", "", str(raw))
+    # +82 / 82 prefix 제거 → 0 + 나머지
+    if digits.startswith("82") and len(digits) == 12 and digits[2:5] == "010":
+        digits = "0" + digits[2:]
+    if len(digits) == 11 and digits.startswith("010"):
+        return digits
+    return None
+
+
+def _client_ip(request: Request) -> str:
+    """X-Forwarded-For 우선 (Railway 프록시 환경) → fallback request.client.host.
+
+    Railway 환경에서 request.client.host 는 internal proxy IP (100.x.x.x).
+    X-Forwarded-For 첫 번째가 진짜 클라이언트 IP. IPv6 max 39자 + 안전 마진 45자 잘림.
+    """
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        first = xff.split(",")[0].strip()
+        if first:
+            return first[:45]
+    return (request.client.host if request.client else "")[:45]
+
+
+def _sms_code_salt() -> str:
+    """SMS_CODE_SALT env — 부재/짧음 시 503 raise. 기존 _credit_quiz_salt() 패턴 동일."""
+    salt = os.environ.get("SMS_CODE_SALT", "").strip()
+    if not salt or len(salt) < 16:
+        raise HTTPException(503, detail={
+            "error": "SMS 검증 시스템이 일시 중단되었어요.",
+            "code": "SMS_SALT_MISSING",
+        })
+    return salt
+
+
+def _sms_code_hash(code: str) -> str:
+    """HMAC-SHA256(SMS_CODE_SALT, code) → 64 hex chars. 기존 _hash_credit_answer 패턴 동일."""
+    import hmac, hashlib
+    return hmac.new(
+        _sms_code_salt().encode("utf-8"),
+        str(code).strip().encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _aligo_credentials() -> dict:
+    """ALIGO_* 환경변수 검증 — 부재 시 503 raise.
+
+    Returns: {key, user_id, sender (정규화된 raw digits, 하이픈 자동 제거)}.
+    """
+    api_key = os.environ.get("ALIGO_API_KEY", "").strip()
+    user_id = os.environ.get("ALIGO_USER_ID", "").strip()
+    sender = re.sub(r"\D", "", os.environ.get("ALIGO_SENDER", ""))
+    if not (api_key and user_id and sender):
+        raise HTTPException(503, detail={
+            "error": "SMS 발송 시스템이 일시 중단되었어요. 관리자에게 문의해 주세요.",
+            "code": "ALIGO_CREDENTIALS_MISSING",
+        })
+    return {"key": api_key, "user_id": user_id, "sender": sender}
+
+
+def _sms_send(phone: str, code: str, *, test_mode: bool = False) -> dict:
+    """알리고 SMS 발송 — POST https://apis.aligo.in/send/ (form-data, HTTPS).
+
+    Args:
+        phone: 정규화된 11자 (010xxxxxxxx) — receiver.
+        code: 6자리 인증번호.
+        test_mode: True 시 testmode_yn=Y (과금 + 발송 없음, 검증 영역).
+
+    Returns:
+        {ok: bool, result_code: int, msg_id: Optional[int], error_msg: str}
+        - result_code 양수 = 성공 (요청 수신), 음수 = 실패. -101=인증오류.
+        - graceful fallback: 네트워크/파싱 사고 시 ok=False, result_code=0.
+    """
+    import urllib.parse
+    import urllib.request
+    import urllib.error
+    import json as _json
+
+    creds = _aligo_credentials()
+    body = {
+        "key": creds["key"],
+        "user_id": creds["user_id"],
+        "sender": creds["sender"],
+        "receiver": phone,
+        "msg": f"[NightOff] 인증번호 [{code}]\n5분 안에 입력해 주세요.",
+        "msg_type": "SMS",
+    }
+    if test_mode:
+        body["testmode_yn"] = "Y"
+
+    data = urllib.parse.urlencode(body).encode("utf-8")
+    req = urllib.request.Request(
+        "https://apis.aligo.in/send/",
+        data=data,
+        method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            raw = resp.read().decode("utf-8")
+            result = _json.loads(raw)
+    except urllib.error.URLError as e:
+        log.warning("aligo SMS 네트워크 사고: %s", e)
+        return {"ok": False, "result_code": 0, "msg_id": None, "error_msg": "네트워크 오류"}
+    except Exception:
+        log.exception("aligo SMS 응답 파싱 실패")
+        return {"ok": False, "result_code": 0, "msg_id": None, "error_msg": "응답 파싱 실패"}
+
+    code_int = int(result.get("result_code") or 0)
+    return {
+        "ok": code_int > 0,
+        "result_code": code_int,
+        "msg_id": result.get("msg_id"),
+        "error_msg": str(result.get("message", ""))[:200],
+    }
+
+
+def _encode_verification_jwt(phone: str) -> str:
+    """SMS 검증 완료 토큰 (10분 유효) — 가입 endpoint 에서 phone 변조 방지.
+
+    기존 encode_jwt 와 분리: purpose='sms_verified' 강제 매칭으로 user JWT 우회 방지.
+    동일 시크릿 (JWT_SECRET) + 동일 알고리즘 (HS256), payload 만 분리.
+    """
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": phone,
+        "purpose": "sms_verified",
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=10)).timestamp()),
+    }
+    return _jwt.encode(payload, _jwt_secret(), algorithm=JWT_ALGORITHM)
+
+
+def _decode_verification_jwt(token: str) -> Optional[str]:
+    """검증 토큰 디코드 → phone. 만료/위조/purpose 불일치 시 None.
+
+    purpose='sms_verified' 강제 매칭 — 일반 user JWT 가 verification_token 자리에 사용되어
+    인증 우회되는 사고 방지.
+    """
+    try:
+        payload = _jwt.decode(token, _jwt_secret(), algorithms=[JWT_ALGORITHM])
+        if payload.get("purpose") != "sms_verified":
+            return None
+        return payload.get("sub")
+    except _jwt.ExpiredSignatureError:
+        return None
+    except _jwt.InvalidTokenError:
+        return None
+
+
 def _seed_pick(date_kst: str, user_id: str, pool_size: int) -> int:
     """date+user_id → 풀 안에서 1-pool_size 고정 인덱스 반환.
 
@@ -7794,6 +7970,61 @@ def api_admin_settings_patch(
 
     _admin_audit(admin["id"], "policy_settings_modify", "policy_settings", "", changes)
     return {"ok": True, "changes": len(changes), "details": changes}
+
+
+# ─── Phase 1-B-a — 어드민 SMS 테스트 endpoint ───────────────────────────────
+# 알리고 wrapper (_sms_send) 단독 검증용. 1-B-c (verify endpoint) 완료 후 운영 후
+# 디버깅용 유지. test_mode=True 시 알리고 testmode_yn=Y (과금 + 발송 없음).
+class AdminSmsTestIn(BaseModel):
+    phone: str
+    test_mode: bool = False
+
+
+@app.post("/api/admin/sms/test")
+def api_admin_sms_test(body: AdminSmsTestIn, admin: dict = Depends(require_admin)):
+    """어드민 전용: 알리고 wrapper 단독 테스트.
+
+    실제 발송: test_mode=False (기본) — 본인 휴대폰으로 검증 권장. 잔액 1건 차감.
+    안전 검증: test_mode=True — testmode_yn=Y, SMS 도착 X + 잔액 차감 X, 응답에 code 포함.
+
+    감사 로그: 모든 호출은 admin_audit_log 에 'sms_test' action 으로 기록.
+    """
+    phone = _normalize_phone(body.phone)
+    if not phone:
+        raise HTTPException(400, detail={
+            "error": "휴대폰 번호 형식을 확인해 주세요 (010xxxxxxxx).",
+            "code": "PHONE_INVALID",
+        })
+
+    code = f"{_secrets.randbelow(1_000_000):06d}"  # 000000 ~ 999999
+    result = _sms_send(phone, code, test_mode=body.test_mode)
+
+    # 감사 로그 (어드민 SMS 발송 추적) — code 자체는 미기록 (보안)
+    _admin_audit(
+        admin["id"],
+        "sms_test",
+        "sms",
+        phone,
+        {
+            "phone": phone,
+            "test_mode": body.test_mode,
+            "result_code": result["result_code"],
+            "msg_id": result["msg_id"],
+            "ok": result["ok"],
+            "error_msg": result["error_msg"],
+        },
+    )
+
+    return {
+        "ok": result["ok"],
+        "result_code": result["result_code"],
+        "msg_id": result["msg_id"],
+        "error_msg": result["error_msg"],
+        "phone": phone,
+        "test_mode": body.test_mode,
+        # 보안: 실제 발송 시 code 응답에 미포함. test_mode 시만 검증 편의로 포함.
+        "code": code if body.test_mode else None,
+    }
 
 
 # ─── 감시 로그 조회 ─────────────────────────────────────────────────────────

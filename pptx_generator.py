@@ -1494,8 +1494,8 @@ def _add_text(slide, x, y, w, h, text, *,
     tf.word_wrap = True
     tf.margin_left = Inches(0.04)
     tf.margin_right = Inches(0.04)
-    tf.margin_top = Inches(0.02)
-    tf.margin_bottom = Inches(0.02)
+    tf.margin_top = Inches(0.04)     # Phase 4 — 본문 시각 여백 ↑ (옵션 1)
+    tf.margin_bottom = Inches(0.04)  # Phase 4 — 본문 시각 여백 ↑ (옵션 1)
     valign_map = {
         "top": MSO_ANCHOR.TOP,
         "middle": MSO_ANCHOR.MIDDLE,
@@ -1524,6 +1524,7 @@ def _add_text(slide, x, y, w, h, text, *,
 
     for i, line in enumerate(lines):
         p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        p.line_spacing = 1.15  # Phase 4 — 본문 시각 여백 ↑ (옵션 1, 모든 paragraph)
         try:
             p.alignment = align_map.get(str(align).lower(), PP_ALIGN.LEFT)
         except Exception:

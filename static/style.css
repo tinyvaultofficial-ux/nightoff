@@ -716,45 +716,12 @@ body.right-panel-off .right-panel { display: none; }
 }
 .risk-alert .risk-emoji { font-size: 16px; flex-shrink: 0; }
 
-/* 성향 — 태그 클라우드 */
-.tag-cloud {
-  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
-  padding: 8px 4px;
-}
-.cloud-tag {
-  padding: 6px 14px; border-radius: 999px;
-  background: var(--primary-soft); color: var(--primary);
-  font-weight: 600; letter-spacing: -0.01em;
-  transition: all 0.15s;
-}
-.cloud-tag.sz-lg { font-size: 16px; padding: 8px 18px; }
-.cloud-tag.sz-md { font-size: 14px; }
-.cloud-tag.sz-sm { font-size: 12.5px; opacity: 0.88; }
-.cloud-tag:hover { background: var(--primary); color: #fff; }
-
-/* 성향 — 가로 바 차트 */
-.hbar-chart { display: flex; flex-direction: column; gap: 6px; }
-.hbar-row { display: grid; grid-template-columns: 160px 1fr; gap: 12px; align-items: center; font-size: 13px; }
-.hbar-label { font-weight: 500; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hbar { height: 10px; background: var(--bg-2); border-radius: 999px; overflow: hidden; }
-.hbar > span {
-  display: block; height: 100%;
-  background: linear-gradient(90deg, var(--primary) 0%, color-mix(in oklab, var(--primary) 70%, #a78bfa) 100%);
-  border-radius: 999px; transition: width 0.4s ease;
-}
-
-/* 성향 — 인사이트 카드 */
-.insight-stack { display: flex; flex-direction: column; gap: 8px; }
-.insight-card {
-  display: flex; gap: 12px; align-items: flex-start;
-  padding: 10px 14px; background: #fff; border: 1px solid var(--border); border-radius: 10px;
-  font-size: 13.5px; line-height: 1.55;
-}
-.insight-card .insight-icon {
-  width: 28px; height: 28px; border-radius: 8px;
-  background: var(--primary-soft); color: var(--primary);
-  display: grid; place-items: center; flex-shrink: 0;
-}
+/* 성향 (Profile) 전용 CSS — Spec 2 (5/16) 폐기.
+ * 제거된 클래스: .tag-cloud / .cloud-tag(+ .sz-lg/.sz-md/.sz-sm/:hover) /
+ *   .hbar-chart / .hbar-row / .hbar-label / .hbar / .hbar > span /
+ *   .insight-stack / .insight-card / .insight-card .insight-icon
+ * ⚠ .onboarding-hint (L670 영역) 은 공유 클래스 (app.js:1882 사용) 절대 유지.
+ */
 
 /* 경쟁사 — 3열 카드 + 비교표 */
 .comp-3col {
@@ -776,14 +743,7 @@ body.right-panel-off .right-panel { display: none; }
 .comp-col-card ul li { margin: 3px 0; }
 .comp-col-card.diff p { margin: 0; font-size: 13px; line-height: 1.55; font-weight: 500; color: var(--fg); }
 
-/* Win rate 뱃지 (프로파일 헤더) */
-.win-rate-badge {
-  display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 999px;
-  font-size: 12px; font-weight: 700;
-}
-.win-rate-badge.good { background: var(--success-soft); color: var(--success); }
-.win-rate-badge.warn { background: var(--warning-soft); color: var(--warning); }
-.win-rate-badge.muted { background: var(--bg-2); color: var(--fg-2); }
+/* Win rate 뱃지 (프로파일 헤더) — Spec 2 (5/16) 폐기 */
 
 /* 큰 CTA — 새 대화 시작 */
 .btn.big-cta {

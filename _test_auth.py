@@ -394,8 +394,9 @@ assert r.status_code == 401
 print("  unauthenticated -> 401 OK")
 
 # ─── Commit 4-2 Integration: nested resources ─────────────────────────────
-# A 가 client 다시 만들고 nested resource (memories) 생성
+# A 가 client 다시 만들고 nested resource 생성
 # B 가 cross-user 접근 → 모두 404 검증
+# ※ Spec 1 (5/16) 폐기: memories ownership 테스트 제거 (endpoint 폐기됨)
 
 print("=== 28. nested resources (4-2): cross-user denial ===")
 r = client.post("/api/clients",
@@ -403,16 +404,6 @@ r = client.post("/api/clients",
     headers=hdr_a)
 assert r.status_code == 200
 a_cid2 = r.json()["id"]
-
-# A 가 자신 cid 의 memories list 보기 → 200
-r = client.get(f"/api/clients/{a_cid2}/memories", headers=hdr_a)
-assert r.status_code == 200, f"A own memories: {r.status_code}"
-print(f"  A GET own/memories -> 200 OK")
-
-# B 가 같은 cid 의 memories → 404
-r = client.get(f"/api/clients/{a_cid2}/memories", headers=hdr_b)
-assert r.status_code == 404, f"B cross memories: {r.status_code}"
-print("  B GET A's/memories -> 404 OK")
 
 # B 가 cid RFP 목록 → 404
 r = client.get(f"/api/clients/{a_cid2}/rfp", headers=hdr_b)
@@ -450,8 +441,8 @@ r = client.delete(f"/api/clients/{a_cid2}/rfp", headers=hdr_b)
 assert r.status_code == 404
 print("  B DELETE A's/rfp -> 404 OK")
 
-# 인증 없이 → 401
-r = client.get(f"/api/clients/{a_cid2}/memories")
+# 인증 없이 → 401 (Spec 1 폐기로 memories endpoint 폐기 → /references 로 검증)
+r = client.get(f"/api/clients/{a_cid2}/references")
 assert r.status_code == 401
 print("  unauth nested -> 401 OK")
 

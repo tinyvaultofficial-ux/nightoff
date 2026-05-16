@@ -1465,24 +1465,8 @@ JSON 스키마(JSON만 출력):
 JSON:"""
 
 
-NUANCE_SUMMARY_PROMPT = """아래 대화를 기반으로, 이 발주처와의 이후 대화에 이어갈 수 있도록
-핵심 맥락·뉘앙스·선호·금지사항을 뽑아내세요.
-
-JSON 배열 스키마(0~6개 항목):
-[
-  {"category": "선호사항|의사결정자|예산|기술환경|경쟁상황|톤앤매너|금지사항|맥락",
-   "content": "한 문장으로 기억할 내용",
-   "tags": ["태그1", "태그2"]}
-]
-이미 알려진 일반 사실(ex. 회사 개요)은 제외하고, 이 대화에서만 얻을 수 있는 뉘앙스 위주로.
-JSON 배열만 출력.
-
-대화:
----
-{DIALOG}
----
-
-JSON:"""
+# ── NUANCE_SUMMARY_PROMPT (대화 종료 시 뉘앙스 추출) 는 Spec 1 (5/16) 폐기.
+#    사유: B2G 입찰 = 매번 다른 과업 = 누적 학습 가치 ↓, Intel/RFP 가 70~80% 커버.
 
 
 # ---------------------------------------------------------------------------
@@ -2464,7 +2448,6 @@ def api_clients_list(user: dict = Depends(get_current_user)):
               (SELECT COUNT(*) FROM conversations cv WHERE cv.client_id=c.id) conv_count,
               (SELECT MAX(created_at) FROM conversations cv WHERE cv.client_id=c.id) last_conv,
               (SELECT COUNT(*) FROM rfp_files r WHERE r.client_id=c.id) has_rfp,
-              (SELECT COUNT(*) FROM nuance_memories n WHERE n.client_id=c.id) memory_count,
               (SELECT analysis_json FROM rfp_aggregated WHERE client_id=c.id
                  ORDER BY updated_at DESC LIMIT 1) rfp_analysis_json
             FROM clients c
@@ -2640,58 +2623,15 @@ def api_conv_delete(conv_id: str, user: dict = Depends(get_current_user)):
 
 @app.post("/api/conversations/{conv_id}/end")
 def api_conv_end(conv_id: str, user: dict = Depends(get_current_user)):
-    """대화 종료 시 Claude에게 뉘앙스 요약 요청 후 nuance_memories에 저장."""
+    """대화 종료 — conversations.ended=1 표시 (미션크리티컬).
+
+    Spec 1 (5/16) 폐기: 본 endpoint 에서 NUANCE_SUMMARY_PROMPT 호출 +
+    nuance_memories INSERT 로직 제거. ended=1 UPDATE 만 유지.
+    """
     with get_db() as db:
         _verify_conv_owned_by_user(db, conv_id, user["id"])
-        conv = db.execute("SELECT * FROM conversations WHERE id=?", (conv_id,)).fetchone()
-        msgs = db.execute(
-            "SELECT role,content FROM messages WHERE conversation_id=? ORDER BY created_at",
-            (conv_id,),
-        ).fetchall()
-
-    if not msgs:
-        with get_db() as db:
-            db.execute("UPDATE conversations SET ended=1 WHERE id=?", (conv_id,))
-        return {"ok": True, "memories_added": 0}
-
-    dialog = "\n\n".join(f"[{m['role']}] {m['content']}" for m in msgs if m["content"])
-
-    try:
-        client = require_client()
-        prompt = NUANCE_SUMMARY_PROMPT.replace("{DIALOG}", dialog[:20000])
-        resp = client.messages.create(
-            model=get_setting("model", MODEL_DEFAULT),
-            max_tokens=2000,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        raw = _extract_text_from_resp(resp)
-        # Strip accidental code fences
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```$", "", raw)
-        memories = json.loads(raw)
-    except Exception as e:
-        memories = []
-        err = str(e)
-    else:
-        err = None
-
-    added = 0
-    with get_db() as db:
-        for m in memories or []:
-            db.execute(
-                "INSERT INTO nuance_memories(id,client_id,category,content,tags) "
-                "VALUES(?,?,?,?,?)",
-                (
-                    uuid.uuid4().hex[:12],
-                    conv["client_id"],
-                    (m.get("category") or "맥락")[:30],
-                    (m.get("content") or "").strip(),
-                    json.dumps(m.get("tags") or [], ensure_ascii=False),
-                ),
-            )
-            added += 1
         db.execute("UPDATE conversations SET ended=1 WHERE id=?", (conv_id,))
-    return {"ok": True, "memories_added": added, "error": err}
+    return {"ok": True}
 
 
 # ---------- Streaming chat ----------
@@ -3063,38 +3003,7 @@ def _format_chat_block_profile(profile_row) -> str:
     return "\n".join(lines)
 
 
-def _format_chat_block_memories(memories) -> str:
-    """블록 #9 뉘앙스 메모리 (CHAT 용).
-
-    nuance_memories 테이블 row list (PROPOSAL 30개 LIMIT → CHAT 10개로 약화).
-    한국어 라벨 + 불릿 + 시간순 (PROPOSAL 패턴 정합).
-    content 50자 cap. 카테고리 빈값 시 [기타] 폴백. tags 무시.
-
-    빈 입력 / 모든 row content 빈 시 빈 문자열 (블록 통째 생략).
-    """
-    if not memories:
-        return ""
-
-    lines = []
-    for m in memories[:10]:
-        if not m:
-            continue
-        try:
-            content = (m["content"] or "").strip()[:50]
-        except (KeyError, IndexError, TypeError):
-            content = ""
-        if not content:
-            continue
-        try:
-            category = (m["category"] or "").strip() or "기타"
-        except (KeyError, IndexError, TypeError):
-            category = "기타"
-        lines.append(f"- [{category}] {content}")
-
-    if not lines:
-        return ""
-
-    return "[대화 기억(뉘앙스) — 최근 10개]\n" + "\n".join(lines)
+# ── _format_chat_block_memories (블록 #9 뉘앙스 메모리) 은 Spec 1 (5/16) 폐기.
 
 
 def _format_chat_block_refs(refs) -> str:
@@ -3242,21 +3151,19 @@ def _build_chat_system_prompt(client_id: str) -> str:
     """채팅용 시스템 프롬프트.
 
     CHAT_SYSTEM_PROMPT 정적 본문 (기획 파트너 정체성) +
-    8 inject 블록 (#1 client / #2 RFP / #4 도메인 톤 / #8 refs / #9 memories /
+    7 inject 블록 (#1 client / #2 RFP / #4 도메인 톤 / #8 refs /
     #10 intel / #11 profile / #13 outcomes).
+
+    Spec 1 (5/16) 폐기: #9 memories (nuance_memories) 블록 제거.
 
     PROPOSAL/SLIDE 흐름과 분리 — 도형 JSON / RAG / 캔버스 / 색감 가이드 없음.
     api_chat (자연어 채팅) 전용. 캐시 X (PROPOSAL 패턴과 일관).
     """
-    # DB 조회 (PROPOSAL 패턴 동일 — 9건)
+    # DB 조회
     with get_db() as db:
         client = db.execute("SELECT * FROM clients WHERE id=?", (client_id,)).fetchone()
         refs = db.execute(
             "SELECT id, filename, summary FROM references_lib WHERE client_id=? ORDER BY created_at",
-            (client_id,),
-        ).fetchall()
-        memories = db.execute(
-            "SELECT category, content, tags FROM nuance_memories WHERE client_id=? ORDER BY created_at DESC LIMIT 30",
             (client_id,),
         ).fetchall()
         intel_row = db.execute(
@@ -3286,8 +3193,6 @@ def _build_chat_system_prompt(client_id: str) -> str:
     if (block := _format_chat_block_domain_tone(rfp_analysis)):
         parts.append(block)
     if (block := _format_chat_block_refs(refs)):
-        parts.append(block)
-    if (block := _format_chat_block_memories(memories)):
         parts.append(block)
     if (block := _format_chat_block_intel(intel_row)):
         parts.append(block)
@@ -6154,37 +6059,8 @@ def api_client_accent_get(cid: str, user: dict = Depends(get_current_user)):
 
 
 
-# ---------- Nuance Memory ----------
-@app.get("/api/clients/{cid}/memories")
-def api_mem_list(cid: str, user: dict = Depends(get_current_user)):
-    with get_db() as db:
-        _verify_client_owned_by_user(db, cid, user["id"])
-        rows = db.execute(
-            "SELECT * FROM nuance_memories WHERE client_id=? ORDER BY created_at DESC",
-            (cid,),
-        ).fetchall()
-    out = []
-    for r in rows:
-        d = dict(r)
-        d["tags"] = json.loads(d["tags"] or "[]")
-        out.append(d)
-    return out
-
-
-@app.delete("/api/memories/{mem_id}")
-def api_mem_delete(mem_id: str, user: dict = Depends(get_current_user)):
-    with get_db() as db:
-        # JOIN clients 로 ownership 검증 (path 에 cid 없음)
-        row = db.execute(
-            "SELECT m.id FROM nuance_memories m "
-            "JOIN clients c ON c.id=m.client_id "
-            "WHERE m.id=? AND c.user_id=?",
-            (mem_id, user["id"]),
-        ).fetchone()
-        if not row:
-            raise HTTPException(404, "메모리를 찾을 수 없습니다.")
-        db.execute("DELETE FROM nuance_memories WHERE id=?", (mem_id,))
-    return {"ok": True}
+# ── Nuance Memory endpoint (api_mem_list / api_mem_delete) 은 Spec 1 (5/16) 폐기.
+#    nuance_memories 테이블 + 인덱스 idx_nuance_client 는 데이터 보존을 위해 유지.
 
 
 # ---------------------------------------------------------------------------

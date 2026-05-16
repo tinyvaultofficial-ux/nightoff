@@ -120,8 +120,7 @@ def main():
         ("POST", "/api/clients/{cid}/profile/rebuild"),
         ("GET", "/api/strengths/catalog"),
         ("GET", "/api/clients/{cid}/strengths"),
-        ("GET", "/api/clients/{cid}/memories"),
-        ("DELETE", "/api/memories/{mem_id}"),
+        # Spec 1 (5/16) 폐기: memories endpoint 2개 (api_mem_list / api_mem_delete) 제거
         ("GET", "/api/clients/{cid}/intel"),
         ("POST", "/api/clients/{cid}/intel/rebuild"),
         ("PATCH", "/api/clients/{cid}/accent"),

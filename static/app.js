@@ -2929,14 +2929,13 @@ async function renderClientDetail(cid) {
   //  3️⃣ 발주처 들여다보기 👀 (RFP 분석 후 자동 채워짐)
   //  4️⃣ ✨ 대화 시작 + 🎤 PT 연습 + 🔍 자체 검증 (Task Actions)
   //  📋 대화 기록
-  //  🧠 대화 기억 (단계 2 복구) — AI 자동 학습 뉘앙스, 사용자가 확인 + 삭제 가능
+  // ── 대화 기억 (renderMemorySection / nuance_memories) 은 Spec 1 (5/16) 폐기 — Intel/RFP 가 커버
   // ── 강점 기능 (renderProfileSection / "과업 성향") 은 의도적으로 제거됨 (추상적 신호라 제안서 품질에 역효과 + 발주처 들여다보기 와 70% 겹침)
-  const [rfpSec, qualSec, intelSec, historySec, memorySec] = await Promise.all([
+  const [rfpSec, qualSec, intelSec, historySec] = await Promise.all([
     renderRfpSection(cid),
     renderQualificationsSection(cid),
     renderClientIntelSection(cid, client),
     renderConvHistorySection(cid),
-    renderMemorySection(cid),
   ]);
   stack.appendChild(rfpSec);
   stack.appendChild(qualSec);
@@ -2947,9 +2946,6 @@ async function renderClientDetail(cid) {
 
   // 📋 대화 기록 (하단)
   stack.appendChild(historySec);
-
-  // 🧠 대화 기억 (단계 2 복구) — nuance_memories 자동 학습 데이터 + 삭제 통제
-  stack.appendChild(memorySec);
 }
 
 // ---------- 핵심 CTA: 대화 시작 + PT 연습 ----------
@@ -3923,66 +3919,6 @@ async function renderProfileSection(cid) {
   return card;
 }
 
-// ---------- Memory ----------
-async function renderMemorySection(cid) {
-  const mems = await api.get(`/api/clients/${cid}/memories`).catch(() => []);
-  const card = h("div", { class: "card" });
-
-  let expanded = false;
-  const headBtn = h("div", { class: "card-head", style: "cursor: pointer; user-select: none;" }, [
-    h("div", { class: "card-title-row" }, [
-      h("div", { class: "card-title-icon", html: iconHtml("brain", 18) }),
-      h("div", {}, [
-        h("h3", { class: "card-title" }, "대화 기억"),
-        h("p", { class: "card-subtitle" }, `AI가 학습한 과업 정보 ${mems.length}개 · 새 대화에 자동 주입됩니다`),
-      ]),
-    ]),
-    h("button", { class: "icon-btn", id: "mem-toggle", html: iconHtml("chevronD", 18) }),
-  ]);
-  card.appendChild(headBtn);
-
-  const body = h("div", { class: "card-body row-gap-10", style: "display: none;" });
-  card.appendChild(body);
-
-  if (mems.length === 0) {
-    body.appendChild(h("div", { class: "muted small", style: "padding: 4px 0;" }, "대화 종료 시 자동으로 뉘앙스가 축적됩니다."));
-  }
-
-  mems.forEach((m) => {
-    body.appendChild(h("div", { class: "file-row", style: "align-items: flex-start;" }, [
-      h("div", { class: "left" }, [
-        h("div", { style: "min-width: 0; flex: 1;" }, [
-          h("div", { class: "flex-row", style: "gap: 8px; margin-bottom: 6px;" }, [
-            h("span", { class: "badge badge-primary" }, m.category),
-            h("span", { class: "small muted" }, fmtDate(m.created_at)),
-          ]),
-          h("p", { class: "file-name", style: "font-weight: 400; font-size: 14px;" }, m.content),
-          m.tags?.length ? h("div", { style: "margin-top: 8px; display: flex; flex-wrap: wrap; gap: 5px;" },
-            m.tags.map((t) => h("span", { class: "tag-chip" }, "#" + t))) : null,
-        ]),
-      ]),
-      h("button", {
-        class: "icon-btn", title: "삭제", html: iconHtml("x", 14),
-        onclick: async () => {
-          if (!confirm("이 기억을 삭제하시겠습니까?")) return;
-          await api.del(`/api/memories/${m.id}`);
-          toast("삭제되었습니다", "success");
-          renderClientDetail(cid);
-        },
-      }),
-    ]));
-  });
-
-  headBtn.addEventListener("click", () => {
-    expanded = !expanded;
-    body.style.display = expanded ? "flex" : "none";
-    $("#mem-toggle", card).innerHTML = iconHtml(expanded ? "chevronD" : "chevronD", 18);
-    $("#mem-toggle", card).style.transform = expanded ? "rotate(180deg)" : "";
-  });
-
-  return card;
-}
-
 // ---------- Chat Screen ----------
 async function renderChat(cid, convId) {
   const root = $("#app-root");
@@ -4262,14 +4198,11 @@ async function renderChat(cid, convId) {
   shell._setSidePanelPng = setSidePanelPng;
 
   // Detect context injection flags
+  // Spec 1 (5/16) 폐기: memory inject 제거 → injected.memory + 호출 제거
   const injected = {
     rfp: !!data.rfp_analysis,
-    memory: false,
     refs: false,
   };
-  try {
-    const m = await api.get(`/api/clients/${cid}/memories`); injected.memory = m.length > 0;
-  } catch {}
   try {
     const r = await api.get(`/api/clients/${cid}/references`); injected.refs = r.length > 0;
   } catch {}
@@ -4291,10 +4224,6 @@ async function renderChat(cid, convId) {
     ]),
     h("div", { class: "flex-row", style: "gap: 12px;" }, [
       pageLimit ? h("span", { class: "page-limit-badge" }, `최대 ${pageLimit}페이지`) : null,
-      injected.memory ? h("span", { class: "nuance-badge", title: "대화 기억이 이 대화에 자동 적용됩니다" }, [
-        h("span", { class: "dot" }),
-        document.createTextNode("이 과업의 대화 기억이 적용됐어요"),
-      ]) : null,
       h("div", { class: "context-badges" }, [
         injected.rfp ? h("span", { class: "badge badge-primary" }, "RFP") : null,
         injected.refs ? h("span", { class: "badge badge-primary" }, "레퍼런스") : null,

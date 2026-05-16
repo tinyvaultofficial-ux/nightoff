@@ -1058,18 +1058,6 @@ function _quotaBarClass(usedPct) {
   return "";
 }
 
-function _quotaCell(remaining, total, used) {
-  const pct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
-  const cls = _quotaBarClass(pct);
-  return `
-    <div class="quota-cell">
-      <span class="quota-text">${fmtNumber(remaining)}/${fmtNumber(total)}</span>
-      <div class="quota-bar" title="사용 ${used}/${total} (${pct}%)">
-        <div class="quota-bar-fill ${cls}" style="width:${pct}%"></div>
-      </div>
-      <span class="quota-pct">${pct}%</span>
-    </div>`;
-}
 
 // 크레딧 → 페이지 환산 (1 페이지 = 100 크레딧, Step 2-A/B 적용)
 function _creditsToPages(credits) {

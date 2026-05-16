@@ -933,7 +933,7 @@ function _fmt(n) { return (Number(n) || 0).toLocaleString("ko-KR"); }
 // 기본 투찰율 영역 — 사용자 영역 변경 가능 (90~100%, 0.1 step)
 // 기본 투찰율 — B2G 표준 (RFP 예산 대비 청구 비율).
 // main.py:DEFAULT_BID_RATE 와 sync. 92-95% 권장 / 안전 영역 82-88% / 적극 영역 96-98%.
-const DEFAULT_BID_RATE = 0.90;
+const DEFAULT_BID_RATE = 0.95;
 
 function recalcBudget(data) {
   let subtotalSum = 0;
@@ -5055,12 +5055,12 @@ function showProposalPageSelectionModal(onConfirm, pageLimit = null) {
   const effectiveLimit = (typeof pageLimit === "number" && pageLimit > 0) ? pageLimit : null;
 
   // 권장 페이지 결정:
-  //   - effectiveLimit 없음 → 100 (기존 동작)
+  //   - effectiveLimit 없음 → 50 (중간값, 보수적 권장 — 사용자가 한도 모를 때 100p 는 과다)
   //   - opt.pages ≤ effectiveLimit 인 옵션 있음 → 그 중 최대값 (동적 OPTIONS 의 경우 자동으로 한도 -5p)
   //   - 모든 옵션이 effectiveLimit 초과 → 가장 작은 옵션 (limit 에 가장 근접한 선택 유도)
   let recommendedPages;
   if (effectiveLimit === null) {
-    recommendedPages = 100;
+    recommendedPages = 50;
   } else {
     const eligible = OPTIONS.filter((o) => o.pages <= effectiveLimit);
     if (eligible.length > 0) {

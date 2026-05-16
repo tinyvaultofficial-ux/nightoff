@@ -2001,13 +2001,10 @@ async function renderDashboard() {
   leftCol.appendChild(renderClosingNoticesWidget());
   twoCol.appendChild(leftCol);
 
-  // [우] 오늘의 팁 + 가짜 광고
+  // [우] 사이드 카드 영역 (오늘의 팁은 Spec 4-A 5/16 폐기 — daily-credit 만 잔존 / Spec 4-B 대상)
   const rightCol = h("aside", { class: "dashboard-side-col" });
 
-  // 1) 오늘의 팁 (5초 롤링)
-  rightCol.appendChild(renderTodayTipCard());
-
-  // 2) 💰 오늘의 무료 크레딧 (퀴즈/로또/운세 3 슬라이드 롤링) — fake-ad 영역 대체
+  // 💰 오늘의 무료 크레딧 (퀴즈/로또/운세 3 슬라이드 롤링)
   rightCol.appendChild(renderDailyCreditCard());
 
   twoCol.appendChild(rightCol);
@@ -2031,60 +2028,8 @@ function getTimeBasedGreeting() {
 }
 
 
-// ---------- 💡 오늘의 팁 (사이드 카드 · 5초 롤링) ----------
-const PROPOSAL_TIPS = [
-  "RFP 복붙은 평가위원이 바로 알아채요. 반드시 우리 언어로 재해석하세요 ✍️",
-  "배점 30점 이상 항목은 반드시 3페이지 이상 할애하세요 📄",
-  "거버닝 메시지는 서술형이 아니라 명사형으로 끊어야 임팩트 있어요 💥",
-  "추상적 표현은 금물! '우수한 안전관리' 대신 '99.9% 무사고 운영 실적'으로 📊",
-  "페이지당 시각화 요소 최소 2개, 텍스트만 가득한 페이지는 평가위원이 안 읽어요 👀",
-  "제안서 제출 전 업체명 노출 여부 반드시 확인하세요. 실격 사유예요 ⚠️",
-  "페이지 수 초과는 아무리 잘 써도 실격이에요. 꼭 세어보세요 🔢",
-  "PT 발표는 10분 안에 끝내야 해요. 시간 초과하면 강제 종료돼요 ⏱️",
-  "평가위원은 하루에 수십 개 제안서를 봐요. 첫 페이지가 전부예요 🎯",
-  "직접생산증명서, 사업수행실적 등 자격서류 미리 준비해두세요 📁",
-  "배점이 같아도 발주처가 강조한 키워드가 있어요. RFP를 세 번 읽으세요 🔍",
-  "경쟁사보다 못한 부분은 언급 말고, 잘하는 부분을 극대화하세요 💪",
-  "발주처 담당자가 바뀌어도 기관의 방향성은 유지돼요. 과거 사업을 꼭 찾아보세요 🏛️",
-  "'우리는 ~합니다' ❌ → '발주처는 ~을 확보합니다' ✅",
-  "안전관리 계획은 얼마나 구체적이냐가 승패를 갈라요. 수치로 써주세요 🦺",
-  "마감 당일 제출은 용기가 아니라 도박이에요 🎲",
-  "나라장터 전자입찰은 마감 30분 전에 서버가 폭주해요. 일찍 제출하세요 🏃",
-  "PT 심사 날짜 확인했나요? 제안서 제출일과 다를 수 있어요 📅",
-];
+// ── 오늘의 팁 (PROPOSAL_TIPS + renderTodayTipCard) 은 Spec 4-A (5/16) 폐기.
 
-function renderTodayTipCard() {
-  // 시작 인덱스는 날짜 시드로 — 새로고침 시마다 약간 다르게
-  let idx = Math.floor(Math.random() * PROPOSAL_TIPS.length);
-
-  const card = h("div", { class: "tip-card" });
-  card.appendChild(h("div", { class: "tip-card-head" }, [
-    h("span", { class: "tip-emoji" }, "💡"),
-    h("span", { class: "tip-label" }, "오늘의 팁"),
-  ]));
-  const quote = h("blockquote", { class: "tip-quote" });
-  quote.textContent = PROPOSAL_TIPS[idx];
-  card.appendChild(quote);
-
-  // 5초마다 부드럽게 다음 팁으로 교체 (fade out → in)
-  const interval = setInterval(() => {
-    // DOM 에서 떠난 카드면 정리
-    if (!document.body.contains(card)) {
-      clearInterval(interval);
-      return;
-    }
-    idx = (idx + 1) % PROPOSAL_TIPS.length;
-    quote.classList.add("tip-out");
-    setTimeout(() => {
-      quote.textContent = PROPOSAL_TIPS[idx];
-      quote.classList.remove("tip-out");
-      quote.classList.add("tip-in");
-      setTimeout(() => quote.classList.remove("tip-in"), 350);
-    }, 280);
-  }, 5000);
-
-  return card;
-}
 
 // ---------- 💰 오늘의 무료 크레딧 (퀴즈 / 로또 / 운세) ----------
 // 백엔드 endpoint 정합 (PR afb0453):

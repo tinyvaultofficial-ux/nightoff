@@ -1423,27 +1423,8 @@ JSON만 출력. 모른다/관찰 안 됨인 필드는 null 또는 빈 배열.
 JSON:"""
 
 
-CLIENT_PROFILE_PROMPT = """이 발주처의 "프로파일"을 업데이트하세요.
-- 기존 프로파일이 있으면 새 정보를 누적(중복 제거, 더 정확한 버전으로 교체).
-- RFP 분석 + 최근 대화를 함께 읽고 공통된 패턴을 추출.
-
-기존 프로파일(JSON):
-{EXISTING}
-
-RFP 분석(JSON):
-{RFP}
-
-최근 대화:
-{CONV}
-
-JSON 스키마(JSON만 출력, 다른 텍스트 금지):
-{
-  "keywords": ["이 발주처가 자주 쓰거나 중요시하는 키워드 10개 이내"],
-  "high_weight_items": ["높은 배점이 매겨지는 평가 항목 6개 이내"],
-  "recurring_reqs": ["반복되는 요구사항 6개 이내"],
-  "insights": ["발주처 특성·성향 한 줄 요약 5개 이내"]
-}
-JSON:"""
+# ── CLIENT_PROFILE_PROMPT (RFP 업로드 시 발주처 프로파일 누적 추출) 는 Spec 2 (5/16) 폐기.
+#    사유: B2G 입찰 = 매번 다른 과업 = 누적 학습 가치 ↓, Intel/RFP 가 충분.
 
 
 COMPANY_DNA_PROMPT = """우리 회사가 과거에 만든 제안서/레퍼런스 요약들을 보고,
@@ -2923,86 +2904,7 @@ def _format_chat_block_outcomes(won_rows, lost_rows) -> str:
     return "[승패 기록 — 승리 패턴 우선 반영, 패배 원인 회피]\n" + "\n".join(lines)
 
 
-def _format_chat_block_profile(profile_row) -> str:
-    """블록 #11 발주처 성향 프로필 (CHAT 용).
-
-    client_profiles 테이블 1행 → 4 list (keywords / high_weight_items /
-    recurring_reqs / insights) + sample_count.
-
-    PROPOSAL 흐름의 json.dumps(indent=2) (~2,000자) 와 달리 한국어 라벨 +
-    불릿 + 각 list LIMIT/cap 적용. sample_count < 5 시 신뢰도 안내 노출.
-    빈 입력 / 모든 list 빈 시 빈 문자열 (블록 통째 생략).
-    """
-    if not profile_row:
-        return ""
-
-    def _safe_json_list(field_name: str) -> list:
-        try:
-            v = json.loads(profile_row[field_name] or "[]")
-            return v if isinstance(v, list) else []
-        except Exception:
-            return []
-
-    keywords = _safe_json_list("keywords")
-    high_weight = _safe_json_list("high_weight_items")
-    recurring = _safe_json_list("recurring_reqs")
-    insights = _safe_json_list("insights")
-
-    if not (keywords or high_weight or recurring or insights):
-        return ""
-
-    try:
-        sample_count = int(profile_row["sample_count"] or 0)
-    except (KeyError, TypeError, ValueError):
-        sample_count = 0
-
-    lines = ["[발주처 성향 — 축적된 인사이트]"]
-
-    # keywords — 5개 LIMIT, 30자 cap, 단일 줄 join
-    if keywords:
-        kws = [str(k).strip()[:30] for k in keywords[:5] if k]
-        kws = [k for k in kws if k]
-        if kws:
-            lines.append("- 단골 키워드: " + ", ".join(kws))
-
-    # high_weight_items — 3개 LIMIT, 60자 cap, 불릿
-    if high_weight:
-        items = [str(h).strip()[:60] for h in high_weight[:3] if h]
-        items = [it for it in items if it]
-        if items:
-            lines.append("- 고배점·핵심 평가:")
-            for it in items:
-                lines.append(f"  · {it}")
-
-    # recurring_reqs — 3개 LIMIT, 60자 cap, 불릿
-    if recurring:
-        items = [str(r).strip()[:60] for r in recurring[:3] if r]
-        items = [it for it in items if it]
-        if items:
-            lines.append("- 반복 요구사항:")
-            for it in items:
-                lines.append(f"  · {it}")
-
-    # insights — 3개 LIMIT, 80자 cap, 불릿
-    if insights:
-        items = [str(i).strip()[:80] for i in insights[:3] if i]
-        items = [it for it in items if it]
-        if items:
-            lines.append("- 발주처 성향:")
-            for it in items:
-                lines.append(f"  · {it}")
-
-    # 헤더 외 실제 inject 줄이 없으면 통째 생략
-    if len(lines) <= 1:
-        return ""
-
-    # sample_count 임계값 5 미만 시 신뢰도 안내 (마지막 줄)
-    if sample_count < 5:
-        lines.append(f"(분석 샘플 {sample_count}건 — 신뢰도 참고용)")
-
-    return "\n".join(lines)
-
-
+# ── _format_chat_block_profile (블록 #11 발주처 성향) 은 Spec 2 (5/16) 폐기.
 # ── _format_chat_block_memories (블록 #9 뉘앙스 메모리) 은 Spec 1 (5/16) 폐기.
 
 
@@ -3151,10 +3053,11 @@ def _build_chat_system_prompt(client_id: str) -> str:
     """채팅용 시스템 프롬프트.
 
     CHAT_SYSTEM_PROMPT 정적 본문 (기획 파트너 정체성) +
-    7 inject 블록 (#1 client / #2 RFP / #4 도메인 톤 / #8 refs /
-    #10 intel / #11 profile / #13 outcomes).
+    6 inject 블록 (#1 client / #2 RFP / #4 도메인 톤 / #8 refs /
+    #10 intel / #13 outcomes).
 
     Spec 1 (5/16) 폐기: #9 memories (nuance_memories) 블록 제거.
+    Spec 2 (5/16) 폐기: #11 profile (client_profiles) 블록 제거.
 
     PROPOSAL/SLIDE 흐름과 분리 — 도형 JSON / RAG / 캔버스 / 색감 가이드 없음.
     api_chat (자연어 채팅) 전용. 캐시 X (PROPOSAL 패턴과 일관).
@@ -3168,10 +3071,6 @@ def _build_chat_system_prompt(client_id: str) -> str:
         ).fetchall()
         intel_row = db.execute(
             "SELECT intel_json FROM client_intel WHERE client_id=?",
-            (client_id,),
-        ).fetchone()
-        profile_row = db.execute(
-            "SELECT * FROM client_profiles WHERE client_id=?",
             (client_id,),
         ).fetchone()
         won_rows = db.execute(
@@ -3195,8 +3094,6 @@ def _build_chat_system_prompt(client_id: str) -> str:
     if (block := _format_chat_block_refs(refs)):
         parts.append(block)
     if (block := _format_chat_block_intel(intel_row)):
-        parts.append(block)
-    if (block := _format_chat_block_profile(profile_row)):
         parts.append(block)
     if (block := _format_chat_block_outcomes(won_rows, lost_rows)):
         parts.append(block)
@@ -3892,79 +3789,13 @@ def _run_rfp_aggregate(cid: str) -> dict:
         except Exception as e:
             log.warning("RFP opener 동기화 실패 (무시): %s", e)
 
-    # 프로파일 자동 업데이트 (best-effort, 실패해도 RFP 분석은 유지)
-    try:
-        _rebuild_client_profile(cid, rfp_analysis=analysis)
-    except Exception as e:
-        log.warning("프로파일 자동 업데이트 실패: %s", e)
+    # ── 프로파일 자동 업데이트 (_rebuild_client_profile) 은 Spec 2 (5/16) 폐기.
+    #    RFP 업로드 latency 1~3초 단축 + Claude API 비용 절감.
 
     return analysis
 
 
-def _rebuild_client_profile(cid: str, rfp_analysis: Optional[dict] = None) -> dict:
-    """RFP 분석 + 최근 대화 + 기존 프로파일 → 누적 프로파일."""
-    with get_db() as db:
-        existing_row = db.execute("SELECT * FROM client_profiles WHERE client_id=?", (cid,)).fetchone()
-        existing = {}
-        if existing_row:
-            for k in ("keywords", "high_weight_items", "recurring_reqs", "insights"):
-                try: existing[k] = json.loads(existing_row[k] or "[]")
-                except Exception: existing[k] = []
-        msgs = db.execute(
-            "SELECT role,content FROM messages m "
-            "JOIN conversations cv ON cv.id=m.conversation_id WHERE cv.client_id=? "
-            "ORDER BY m.created_at DESC LIMIT 50",
-            (cid,),
-        ).fetchall()
-        rfp_json = rfp_analysis
-        if rfp_json is None:
-            row = db.execute("SELECT analysis_json FROM rfp_aggregated WHERE client_id=?", (cid,)).fetchone()
-            if row:
-                try: rfp_json = json.loads(row["analysis_json"] or "{}")
-                except Exception: rfp_json = {}
-
-    conv_text = "\n".join(f"[{m['role']}] {m['content'][:200]}" for m in msgs if m["content"])[:6000]
-    rfp_text = json.dumps(rfp_json or {}, ensure_ascii=False)[:4000]
-    existing_text = json.dumps(existing or {}, ensure_ascii=False)[:2000]
-
-    if not conv_text and not (rfp_json or {}).get("key_requirements"):
-        return {}
-
-    try:
-        client = require_client()
-        prompt = (CLIENT_PROFILE_PROMPT
-                  .replace("{EXISTING}", existing_text or "{}")
-                  .replace("{RFP}", rfp_text or "{}")
-                  .replace("{CONV}", conv_text or "(대화 없음)"))
-        resp = client.messages.create(
-            model=get_setting("model", MODEL_DEFAULT),
-            max_tokens=1500,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        raw = _extract_text_from_resp(resp)
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```$", "", raw)
-        data = json.loads(raw)
-    except Exception as e:
-        log.warning("프로파일 추출 실패: %s", e)
-        return existing
-
-    with get_db() as db:
-        db.execute(
-            "INSERT INTO client_profiles(client_id,keywords,high_weight_items,recurring_reqs,insights,sample_count,updated_at) "
-            "VALUES(?,?,?,?,?,COALESCE((SELECT sample_count FROM client_profiles WHERE client_id=?), 0) + 1, datetime('now','localtime')) "
-            "ON CONFLICT(client_id) DO UPDATE SET "
-            "keywords=excluded.keywords, high_weight_items=excluded.high_weight_items, "
-            "recurring_reqs=excluded.recurring_reqs, insights=excluded.insights, "
-            "sample_count=client_profiles.sample_count + 1, updated_at=excluded.updated_at",
-            (cid,
-             json.dumps(data.get("keywords") or [], ensure_ascii=False),
-             json.dumps(data.get("high_weight_items") or [], ensure_ascii=False),
-             json.dumps(data.get("recurring_reqs") or [], ensure_ascii=False),
-             json.dumps(data.get("insights") or [], ensure_ascii=False),
-             cid),
-        )
-    return data
+# ── _rebuild_client_profile (RFP 자동 학습 + 누적 UPSERT) 은 Spec 2 (5/16) 폐기.
 
 
 def _rebuild_company_dna() -> dict:
@@ -4317,43 +4148,9 @@ def api_ref_delete(ref_id: str, user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
-# ---------- Client Profile + Company DNA + Outcome endpoints ----------
-@app.get("/api/clients/{cid}/profile")
-def api_client_profile_get(cid: str, user: dict = Depends(get_current_user)):
-    with get_db() as db:
-        _verify_client_owned_by_user(db, cid, user["id"])
-        row = db.execute("SELECT * FROM client_profiles WHERE client_id=?", (cid,)).fetchone()
-        # 승률 계산 — 이 발주처 대화 중 won/lost 기준
-        outcomes = db.execute(
-            "SELECT outcome, COUNT(*) c FROM conversations WHERE client_id=? AND outcome IN ('won','lost') GROUP BY outcome",
-            (cid,),
-        ).fetchall()
-    win = next((o["c"] for o in outcomes if o["outcome"] == "won"), 0)
-    lose = next((o["c"] for o in outcomes if o["outcome"] == "lost"), 0)
-    total = win + lose
-    if not row:
-        return {"exists": False, "win": win, "lose": lose, "win_rate": None}
-    data = {
-        "exists": True,
-        "keywords": json.loads(row["keywords"] or "[]"),
-        "high_weight_items": json.loads(row["high_weight_items"] or "[]"),
-        "recurring_reqs": json.loads(row["recurring_reqs"] or "[]"),
-        "insights": json.loads(row["insights"] or "[]"),
-        "sample_count": row["sample_count"],
-        "updated_at": row["updated_at"],
-        "win": win,
-        "lose": lose,
-        "win_rate": round(win / total * 100) if total else None,
-    }
-    return data
-
-
-@app.post("/api/clients/{cid}/profile/rebuild")
-def api_client_profile_rebuild(cid: str, user: dict = Depends(get_current_user)):
-    with get_db() as db:
-        _verify_client_owned_by_user(db, cid, user["id"])
-    data = _rebuild_client_profile(cid)
-    return {"ok": True, "data": data}
+# ---------- Company DNA + Outcome endpoints ----------
+# ── Client Profile endpoints (api_client_profile_get / api_client_profile_rebuild) 은 Spec 2 (5/16) 폐기.
+#    client_profiles 테이블 + 데이터는 보존 (CREATE TABLE 멱등 유지).
 
 
 @app.get("/api/company-dna")

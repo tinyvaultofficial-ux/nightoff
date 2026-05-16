@@ -2930,7 +2930,7 @@ async function renderClientDetail(cid) {
   //  4️⃣ ✨ 대화 시작 + 🎤 PT 연습 + 🔍 자체 검증 (Task Actions)
   //  📋 대화 기록
   // ── 대화 기억 (renderMemorySection / nuance_memories) 은 Spec 1 (5/16) 폐기 — Intel/RFP 가 커버
-  // ── 강점 기능 (renderProfileSection / "과업 성향") 은 의도적으로 제거됨 (추상적 신호라 제안서 품질에 역효과 + 발주처 들여다보기 와 70% 겹침)
+  // ── 과업 성향 (renderProfileSection / client_profiles) 은 Spec 2 (5/16) 폐기 — Intel/RFP 가 충분
   const [rfpSec, qualSec, intelSec, historySec] = await Promise.all([
     renderRfpSection(cid),
     renderQualificationsSection(cid),
@@ -3831,92 +3831,6 @@ function buildScoreBarChart(items) {
     wrap.appendChild(h("p", { class: "score-total small muted" }, label));
   }
   return wrap;
-}
-
-// ---------- 과업 성향 ----------
-async function renderProfileSection(cid) {
-  const p = await api.get(`/api/clients/${cid}/profile`).catch(() => ({ exists: false }));
-  const card = h("div", { class: "card" });
-
-  card.appendChild(h("div", { class: "card-head" }, [
-    h("div", { class: "card-title-row" }, [
-      h("div", { class: "card-title-icon", style: "background: var(--primary-soft); color: var(--primary);", html: iconHtml("brain", 18) }),
-      h("div", {}, [
-        h("h3", { class: "card-title" }, "과업 성향"),
-        h("p", { class: "card-subtitle" }, p.exists ? `${p.sample_count || 1}회 축적 · RFP와 대화에서 자동 학습` : "RFP를 넣고 대화할수록 NightOff이 이 과업을 더 깊이 이해해요"),
-      ]),
-    ]),
-    p.exists ? h("span", {
-      class: "win-rate-badge " + (p.win_rate === null ? "muted" : (p.win_rate >= 50 ? "good" : "warn")),
-      title: `수주 ${p.win}건 / 탈락 ${p.lose}건`,
-    }, p.win_rate === null ? "기록 없음" : `승률 ${p.win_rate}%`) : null,
-  ]));
-
-  const body = h("div", { class: "card-body row-gap-14" });
-  card.appendChild(body);
-
-  if (!p.exists) {
-    body.appendChild(h("div", { class: "onboarding-hint" }, [
-      h("span", { class: "ob-emoji" }, "✨"),
-      h("div", {}, [
-        h("p", { class: "ob-title" }, "다음 입찰엔 더 정확한 제안서가 나와요"),
-        h("p", { class: "ob-desc" }, "RFP를 분석하고 대화를 나눌수록 이 과업의 선호 키워드·높은 배점 항목·반복 요구사항을 자동으로 축적해요. 쌓인 프로파일은 모든 새 제안서에 자동으로 반영됩니다."),
-      ]),
-    ]));
-    return card;
-  }
-
-  // 선호 키워드 — 태그 클라우드 (빈도 가중치 없어도 크기 랜덤 배분 느낌)
-  if (p.keywords?.length) {
-    body.appendChild(h("div", {}, [
-      h("p", { class: "small muted", style: "margin: 0 0 10px; font-weight: 500;" }, "선호 키워드"),
-      h("div", { class: "tag-cloud" },
-        p.keywords.map((k, i) => {
-          const sizes = ["sz-lg", "sz-md", "sz-sm"];
-          const sz = sizes[i % sizes.length];
-          return h("span", { class: `cloud-tag ${sz}` }, k);
-        })),
-    ]));
-  }
-
-  // 높은 배점 항목 — 가로 바 차트
-  if (p.high_weight_items?.length) {
-    const items = p.high_weight_items.slice(0, 6);
-    body.appendChild(h("div", {}, [
-      h("p", { class: "small muted", style: "margin: 0 0 10px; font-weight: 500;" }, "높은 배점 항목 (상위 6개)"),
-      h("div", { class: "hbar-chart" },
-        items.map((x, i) => {
-          // 순위 기반 가중치: 1등 100%, 2등 82%, 3등 68%, ...
-          const pct = Math.round(100 - (i * 14));
-          return h("div", { class: "hbar-row" }, [
-            h("div", { class: "hbar-label" }, x),
-            h("div", { class: "hbar" }, [h("span", { style: `width: ${pct}%;` })]),
-          ]);
-        })),
-    ]));
-  }
-
-  if (p.recurring_reqs?.length) {
-    body.appendChild(h("div", {}, [
-      h("p", { class: "small muted", style: "margin: 0 0 8px; font-weight: 500;" }, "반복 요구사항"),
-      h("div", { class: "flex-row", style: "flex-wrap: wrap; gap: 6px;" },
-        p.recurring_reqs.map((x) => h("span", { class: "badge badge-warning" }, x))),
-    ]));
-  }
-
-  // 축적된 인사이트 — 아이콘 + 한 줄 카드
-  if (p.insights?.length) {
-    body.appendChild(h("div", {}, [
-      h("p", { class: "small muted", style: "margin: 0 0 10px; font-weight: 500;" }, "축적된 인사이트"),
-      h("div", { class: "insight-stack" },
-        p.insights.map((ins) => h("div", { class: "insight-card" }, [
-          h("div", { class: "insight-icon", html: iconHtml("brain", 16) }),
-          h("span", {}, ins),
-        ]))),
-    ]));
-  }
-
-  return card;
 }
 
 // ---------- Chat Screen ----------

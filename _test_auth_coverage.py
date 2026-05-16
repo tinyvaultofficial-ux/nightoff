@@ -116,8 +116,7 @@ def main():
         ("GET", "/api/clients/{cid}/references"),
         ("POST", "/api/clients/{cid}/references"),
         ("DELETE", "/api/references/{ref_id}"),
-        ("GET", "/api/clients/{cid}/profile"),
-        ("POST", "/api/clients/{cid}/profile/rebuild"),
+        # Spec 2 (5/16) 폐기: profile endpoint 2개 (api_client_profile_get / rebuild) 제거
         ("GET", "/api/strengths/catalog"),
         ("GET", "/api/clients/{cid}/strengths"),
         # Spec 1 (5/16) 폐기: memories endpoint 2개 (api_mem_list / api_mem_delete) 제거

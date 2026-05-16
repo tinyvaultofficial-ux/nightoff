@@ -415,10 +415,7 @@ r = client.get(f"/api/clients/{a_cid2}/references", headers=hdr_b)
 assert r.status_code == 404
 print("  B GET A's/references -> 404 OK")
 
-# B 가 cid profile → 404
-r = client.get(f"/api/clients/{a_cid2}/profile", headers=hdr_b)
-assert r.status_code == 404
-print("  B GET A's/profile -> 404 OK")
+# ※ Spec 2 (5/16) 폐기: profile ownership 테스트 제거 (endpoint 폐기됨)
 
 # B 가 cid intel → 404
 r = client.get(f"/api/clients/{a_cid2}/intel", headers=hdr_b)

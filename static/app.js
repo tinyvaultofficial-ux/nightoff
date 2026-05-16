@@ -4390,21 +4390,22 @@ async function renderChat(cid, convId) {
       });
       })(),
       // PPTX 다운로드 버튼 — 재진입 시 (multi-pass 완료된 conversation) 활성.
-      // 활성화 판별: data.conversation.pptx_path 존재 시. 미존재 = null (DOM X).
+      // 활성화 판별: data.conversation.pptx_path 존재 시.
       // ⚠ multi-pass 직후엔 bubble 영역 inline ⬇ PPTX 다운로드 영역 별도 — 본 헤더 버튼은
       //   재진입 / 새로고침 시 영역 다운로드 흐름 보존용 (기존 사고 fix).
+      // 산출내역서 패턴 동일: 항상 렌더링 (id) + 초기 display 가드 + __nightoff_enableProposalButtons 글로벌 갱신.
+      // → multi-pass 완료 직후 재진입 없이도 버튼 표시 (stale 사고 fix).
       (function () {
         const hasPptx = !!(data.conversation && data.conversation.pptx_path);
-        if (!hasPptx) return null;
-        // Phase 5 Phase 2 Step 2 — <a> → <button> 교체 (anchor click 우회).
-        // 시각 동일성: .btn .pptx-dl-btn .active 클래스 + style 그대로 보존.
         return h("button", {
+          id: "header-pptx-download-btn",
           class: "btn pptx-dl-btn active",
           title: "저장된 제안서 다운로드",
-          style: "text-decoration:none;",
+          style: "text-decoration:none;" + (hasPptx ? "" : " display:none;"),
           html: `<span style="margin-right:4px;">⬇</span><span>제안서 다운로드</span>`,
           onclick: () => {
-            downloadPptxAuthenticated(data.conversation.pptx_path, "proposal.pptx");
+            // data.conversation.pptx_path 는 글로벌 함수가 mutate (closure 활용)
+            downloadPptxAuthenticated(data.conversation && data.conversation.pptx_path, "proposal.pptx");
           },
         });
       })(),
@@ -4442,6 +4443,28 @@ async function renderChat(cid, convId) {
           lastHoverToastAt = now;
           toast("제안서를 먼저 생성해 주세요 (✨ 버튼)", "", 3500);
         });
+        // 채팅 헤더 3 버튼 (PPTX 다운로드 / 페이지 재생성 / 자체 검증) stale 사고 fix.
+        // multi-pass 완료 직후 재진입 없이도 버튼 표시 — 산출내역서 패턴 동일.
+        // closure 안 data 객체 mutate → onclick 안 stale 값 참조 사고 차단.
+        // (runMultiPassProposal 영역에서 PPTX 변환 완료 후 호출, 멱등 — 두 번 호출 안전)
+        window.__nightoff_enableProposalButtons = (pptxPath, lastProposalPages, proposalOutline) => {
+          // closure 안 data 객체 mutate — 3 버튼 onclick 의 stale 값 차단
+          if (data.conversation) {
+            data.conversation.pptx_path = pptxPath || data.conversation.pptx_path;
+            if (typeof lastProposalPages === "number") {
+              data.conversation.last_proposal_pages = lastProposalPages;
+            }
+          }
+          if (Array.isArray(proposalOutline)) {
+            data.proposal_outline = proposalOutline;
+          }
+          // 3 버튼 display 토글 (산출내역서는 별도 패턴이라 무관)
+          ["header-pptx-download-btn", "header-regen-page-btn", "header-audit-btn"].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = "";
+          });
+        };
+
         // multi-pass 완료 시 동적 enable — window 영역 hook 통해 외부에서 호출 가능.
         // (runMultiPassProposal 영역에서 PPTX 변환 완료 후 호출, 멱등 — 두 번 호출 안전)
         window.__nightoff_enableBudgetBtn = () => {
@@ -4468,17 +4491,19 @@ async function renderChat(cid, convId) {
       // 클릭 → openRegeneratePageModal (line 1607+) → endpoint 호출 → 새 PPTX 다운로드.
       // D-2: outline 배열 전달 → 모달이 페이지 list 표시 (페이지 + 섹션 클릭 선택).
       // NightOff 설계 철학: 패턴 매칭 ❌, AI 안내 + 명시 버튼 ✅ (app.js:4438-4440 이력 준수).
+      // stale 사고 fix: 항상 렌더링 (id) + 초기 display 가드 + __nightoff_enableProposalButtons 글로벌 갱신.
       (function () {
         const hasPptx = !!(data.conversation && data.conversation.pptx_path);
-        if (!hasPptx) return null;
-        const totalSlides = parseInt(data.conversation.last_proposal_pages || 0, 10) || null;
-        const outline = Array.isArray(data.proposal_outline) ? data.proposal_outline : null;
         return h("button", {
+          id: "header-regen-page-btn",
           class: "btn btn-outline",
-          style: "text-decoration:none;",
+          style: "text-decoration:none;" + (hasPptx ? "" : " display:none;"),
           title: "특정 페이지만 다시 만들기 (1페이지 = 100 크레딧)",
           html: `<span style="margin-right:4px;">📄</span><span>페이지 재생성</span>`,
           onclick: () => {
+            // totalSlides / outline 은 data 객체 closure 참조 — 글로벌 함수가 mutate
+            const totalSlides = parseInt((data.conversation && data.conversation.last_proposal_pages) || 0, 10) || null;
+            const outline = Array.isArray(data.proposal_outline) ? data.proposal_outline : null;
             openRegeneratePageModal(convId, totalSlides, outline);
           },
         });
@@ -4486,12 +4511,13 @@ async function renderChat(cid, convId) {
       // 🔍 자체 검증 버튼 — 제안서 완성된 conv 에서만 활성.
       // 클릭 → openAuditModal (line 1042+) → /api/proposals/audit 호출 → Compliance + Red Team 결과 모달.
       // NightOff 핵심 차별화 영역. CHAT_SYSTEM_PROMPT L1177 안내와 정합.
+      // stale 사고 fix: 항상 렌더링 (id) + 초기 display 가드 + __nightoff_enableProposalButtons 글로벌 갱신.
       (function () {
         const hasPptx = !!(data.conversation && data.conversation.pptx_path);
-        if (!hasPptx) return null;
         return h("button", {
+          id: "header-audit-btn",
           class: "btn btn-outline",
-          style: "text-decoration:none;",
+          style: "text-decoration:none;" + (hasPptx ? "" : " display:none;"),
           title: "AI 가 평가위원처럼 점검합니다 (30~60초) — Compliance + Red Team",
           html: `<span style="margin-right:4px;">🔍</span><span>자체 검증</span>`,
           onclick: () => {
@@ -5376,6 +5402,15 @@ async function runMultiPassProposal({ convId, pages, asstEl, bubble, progress, b
     // hotfix: runMultiPassProposal 영역 enable 호출 누락 영역 영역 (이전 Fix 1A-1 영역 SSE 흐름 영역만 적용).
     if (pptxResp && pptxResp.url) {
       try { window.__nightoff_enableBudgetBtn && window.__nightoff_enableBudgetBtn(); } catch {}
+      // 채팅 헤더 3 버튼 (PPTX 다운로드 / 페이지 재생성 / 자체 검증) 동적 활성화 — stale 사고 fix.
+      // outline 은 SSE 응답 outline 이벤트에서 받음 (있으면 inject, 없으면 null — 페이지 재생성 modal 이 추가 fetch).
+      try {
+        window.__nightoff_enableProposalButtons && window.__nightoff_enableProposalButtons(
+          pptxResp.url,
+          totalSlides,
+          (typeof outline !== "undefined" ? outline : null)
+        );
+      } catch {}
     }
   } catch (e) {
     bubble.innerHTML = `<span style="color:var(--danger);">❌ PPTX 변환 실패: ${escapeHtml(e.message || String(e))}</span>`;

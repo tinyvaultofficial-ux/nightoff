@@ -113,9 +113,10 @@ def _adapt_sql(sql: str) -> str:
     )
     # MAX(a, b) (SQLite scalar) → GREATEST(a, b) (PostgreSQL).
     # PG 의 MAX 는 집계함수 전용 — 2-arg scalar 호출 시 'function max(int,int) does not exist'.
-    # 단일 인자 MAX(col) 은 매치 안 됨 (콤마 강제) — 집계 호출 영향 0.
+    # paren-aware 매치: 단일 인자 MAX(col) 은 매치 X (콤마 강제 + paren 경계 존중)
+    # 옛 regex 는 over-greedy 로 단일 인자 MAX(created_at) 까지 잘못 매치 → CardinalityViolation 사고 fix
     sql = re.sub(
-        r"MAX\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)",
+        r"MAX\s*\(\s*([^,()]+)\s*,\s*([^()]+)\s*\)",
         r"GREATEST(\1, \2)",
         sql,
         flags=re.IGNORECASE,

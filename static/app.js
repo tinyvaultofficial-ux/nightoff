@@ -186,7 +186,6 @@ const AUTH_TOKEN_KEY = "nightoff_jwt";
 const AUTH_PUBLIC_PAGES = new Set(["/", "/landing", "/login.html", "/register.html"]);
 
 function getToken() { return localStorage.getItem(AUTH_TOKEN_KEY) || ""; }
-function setToken(t) { localStorage.setItem(AUTH_TOKEN_KEY, t || ""); }
 function clearToken() { localStorage.removeItem(AUTH_TOKEN_KEY); }
 
 function redirectToLogin(force = false) {
@@ -346,45 +345,6 @@ function toast(msg, kind = "", duration = 2800) {
   const el = h("div", { class: `toast ${kind}` }, msg);
   $("#toast-root").appendChild(el);
   setTimeout(() => el.remove(), duration);
-}
-
-// ---------- Soft pulse loader with fading emoji + text sequence ----------
-// Steps: [{emoji, text}] rotated every ~1.8s with fade in/out
-function createSoftLoader(steps, opts = {}) {
-  const { block = false } = opts;
-  const el = h("div", { class: "soft-loader" + (block ? " block" : "") });
-  const emojiEl = h("span", { class: "soft-emoji" }, steps[0]?.emoji || "✨");
-  const textEl = h("span", { class: "soft-text fade-in" }, steps[0]?.text || "잠시만요…");
-  el.appendChild(emojiEl);
-  el.appendChild(textEl);
-  let idx = 0, stopped = false;
-  const tick = () => {
-    if (stopped || steps.length < 2) return;
-    textEl.classList.remove("fade-in");
-    textEl.classList.add("fade-out");
-    setTimeout(() => {
-      if (stopped) return;
-      idx = (idx + 1) % steps.length;
-      emojiEl.textContent = steps[idx].emoji;
-      textEl.textContent = steps[idx].text;
-      textEl.classList.remove("fade-out");
-      textEl.classList.add("fade-in");
-      setTimeout(tick, 1800);
-    }, 400);
-  };
-  if (steps.length > 1) setTimeout(tick, 1800);
-  return {
-    el,
-    finish(finalEmoji = "✅", finalText = "완료!") {
-      stopped = true;
-      textEl.classList.remove("fade-out");
-      textEl.classList.add("fade-in");
-      emojiEl.textContent = finalEmoji;
-      textEl.textContent = finalText;
-      el.style.animation = "none";
-    },
-    stop() { stopped = true; el.remove(); },
-  };
 }
 
 const WITTY_LINES = [
@@ -1841,38 +1801,6 @@ function _korean_amount(n) {
   return (parts.join("") || "영") + "원";
 }
 
-function downloadBudgetCsv(data) {
-  const header = ["구분", "항목", "세부내역", "단가", "수량", "단위", "기간", "투입율", "금액", "비고"];
-  const rows = [header];
-  (data.categories || []).forEach((cat) => {
-    (cat.items || []).forEach((it) => {
-      rows.push([
-        cat.name, it.item || "", it.spec || "",
-        it.unit_price, it.qty, it.unit || "",
-        it.period || "", it.utilization || 100,
-        it.amount, it.note || "",
-      ]);
-    });
-    rows.push(["", "", "", "", "", "", "", "소계", cat.subtotal, ""]);
-  });
-  rows.push(["", "", "", "", "", "", "", "소계합", data.subtotal_sum, ""]);
-  rows.push(["", "", "", "", "", "", "", "일반관리비(8%)", data.admin_fee, ""]);
-  rows.push(["", "", "", "", "", "", "", "대행료(10%)", data.agency_fee, ""]);
-  rows.push(["", "", "", "", "", "", "", "합계", data.total, ""]);
-  rows.push(["", "", "", "", "", "", "", "제안가(만원절사)", data.proposed, ""]);
-  rows.push(["", "", "", "", "", "", "", "부가세(10%)", data.vat, ""]);
-  rows.push(["", "", "", "", "", "", "", "최종 제안가(VAT포함)", data.grand_total, ""]);
-
-  const csv = "\uFEFF" + rows.map((r) => r.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `산출내역서_${(data.title || "제안").replace(/\s+/g, "_")}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 function printBudget(data) {
   const w = window.open("", "_blank", "width=1000,height=800");
   if (!w) { toast("팝업이 차단됐어요. 팝업 허용 후 다시 시도해주세요.", "error"); return; }
@@ -2102,10 +2030,6 @@ function getTimeBasedGreeting() {
   return "🌙 야근은 그만! 내일 또 봐요";
 }
 
-// 시간대별 인사가 dnaR 등을 사용하지 않도록 만든 더미 (renderSmartLearningBanner 호환)
-function renderSmartLearningBanner() {
-  return document.createDocumentFragment();
-}
 
 // ---------- 💡 오늘의 팁 (사이드 카드 · 5초 롤링) ----------
 const PROPOSAL_TIPS = [
@@ -3104,23 +3028,6 @@ async function renderTaskActionsSection(cid) {
   return card;
 }
 
-// ---------- 🎉 제안서 완성 confetti (가벼운 vanilla — 외부 라이브러리 X) ----------
-function celebrateConfetti() {
-  const colors = ['#7C3AED', '#EC4899', '#F59E0B', '#16A34A', '#3B82F6'];
-  const layer = h("div", { class: "confetti-layer" });
-  document.body.appendChild(layer);
-  for (let i = 0; i < 60; i++) {
-    const piece = document.createElement("span");
-    piece.className = "confetti-piece";
-    piece.style.background = colors[i % colors.length];
-    piece.style.left = (Math.random() * 100) + "%";
-    piece.style.animationDelay = (Math.random() * 0.3) + "s";
-    piece.style.animationDuration = (1.6 + Math.random() * 1.2) + "s";
-    piece.style.transform = `rotate(${Math.random() * 360}deg)`;
-    layer.appendChild(piece);
-  }
-  setTimeout(() => layer.remove(), 3500);
-}
 
 // ---------- 🖼 PPTX PNG 미리보기 모달 — 제거됨 (Phase 5 Step 4) ----------
 // 호출처(/chat 화면 "🖼 미리보기" 버튼) 가 함께 제거됨 → 사용 0 으로 dead code.
@@ -5503,88 +5410,7 @@ function decorateProposalPages(propEl) {
   });
 }
 
-// 새 탭으로 제안서 열기 — 독립 HTML 문서 생성
-function openProposalInNewTab(propEl) {
-  const title = propEl.getAttribute("data-title") || "제안서";
-  const accent = propEl.getAttribute("data-accent") || "#6b46e5";
-  const w = window.open("", "_blank");
-  if (!w) { toast("팝업이 차단됐어요. 브라우저 팝업 허용 후 다시 시도해주세요.", "error"); return; }
-  // style.css 링크의 절대 경로 — 실패 시에도 안전 fallback
-  const cssLink = document.querySelector('link[rel="stylesheet"][href*="/static/style.css"]');
-  const cssHref = cssLink
-    ? new URL(cssLink.getAttribute("href"), location.origin).href
-    : `${location.origin}/static/style.css`;
-  const bodyHtml = propEl.outerHTML;
-  w.document.write(`<!DOCTYPE html><html lang="ko"><head>
-<meta charset="utf-8"/>
-<title>${title.replace(/</g, "&lt;")} · NightOff</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css"/>
-<link rel="stylesheet" href="${cssHref}"/>
-<style>
-  body { margin:0; background:#f5f5f5; font-family:'Pretendard Variable',Pretendard,sans-serif; }
-  .proposal-viewer-root {
-    padding: 40px 32px 80px;
-    display: flex; flex-direction: column; align-items: center; gap: 24px;
-  }
-  .proposal-viewer-root .proposal { --proposal-accent: ${accent}; width: 100%; max-width: 1240px; display:flex; flex-direction:column; gap:24px; }
-  .proposal-viewer-root .proposal-page {
-    width: 100%; aspect-ratio: 1.4142/1; box-shadow: 0 20px 40px -10px rgba(0,0,0,0.15);
-  }
-  .pv-topbar {
-    position: sticky; top: 0; background: #fff; padding: 14px 24px;
-    border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center;
-    z-index: 10;
-  }
-  .pv-topbar h1 { font-size: 16px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
-  .pv-topbar .actions { display: flex; gap: 8px; }
-  .pv-btn { padding: 8px 14px; border-radius: 8px; border: 1px solid #d1d1d1; background: #fff; cursor: pointer; font-size: 13px; font-weight: 500; }
-  .pv-btn.primary { background: ${accent}; color: #fff; border-color: ${accent}; }
-  @media print {
-    .pv-topbar { display:none; }
-    .proposal-viewer-root { padding: 0; }
-    .proposal-viewer-root .proposal-page { box-shadow:none; break-after:page; page-break-after:always; }
-    @page { size: A4 landscape; margin: 0; }
-  }
-</style>
-</head><body>
-<div class="pv-topbar">
-  <h1>${title.replace(/</g, "&lt;")}</h1>
-  <div class="actions">
-    <button class="pv-btn" onclick="window.print()">🖨 인쇄 / PDF</button>
-    <button class="pv-btn" onclick="window.close()">닫기</button>
-  </div>
-</div>
-<div class="proposal-viewer-root">${bodyHtml}</div>
-</body></html>`);
-  w.document.close();
-}
 
-function findProposalEnd(s) {
-  // s 는 <div class="proposal"... 로 시작하는 문자열.
-  // AI가 outer div 를 중간에 잘못 닫고 이후에도 제안서 HTML(page/figure/table 등)을
-  // 계속 출력하는 경우가 있어 단순 depth matching 은 신뢰할 수 없다.
-  // → 전략: s 안에서 제안서성 HTML 태그가 등장하는 한 계속 포함하고,
-  //   마지막 </div> 뒤 "순수 산문"이 나타나면 거기서 컷.
-  // 먼저 문자열 끝까지 가장 마지막 </div> 위치를 찾는다.
-  const allCloses = [...s.matchAll(/<\/div>/gi)];
-  if (!allCloses.length) return -1;
-  const lastClose = allCloses[allCloses.length - 1];
-  const lastCloseEnd = lastClose.index + "</div>".length;
-
-  // 그 뒤에 의미 있는 HTML 태그(제안서 블록류)가 더 있으면 그것도 포함
-  const after = s.slice(lastCloseEnd);
-  const moreHtml = /<(div|section|table|figure|svg|ul|ol|h\d)\b/i.exec(after);
-  if (moreHtml) {
-    // 뒤쪽에도 제안서 요소가 있음 → 문자열 끝까지 전부 proposal 로 포함
-    return s.length;
-  }
-  // 마지막 </div> 이후가 짧은 산문(설명/마침문구)이면 잘라내고 post 로 분리
-  if (after.trim().length > 0 && after.trim().length < 400) {
-    return lastCloseEnd;
-  }
-  // 그 외엔 문자열 끝까지 전부 proposal 취급 (안전)
-  return s.length;
-}
 
 function sanitizeProposalHtml(html) {
   // Very permissive sanitizer: removes script, iframe, on* attrs, javascript: URLs.
@@ -5619,51 +5445,6 @@ function printProposal(propEl) {
   }, 100);
 }
 
-function openProposalFullscreen(propEl) {
-  const backdrop = h("div", {
-    class: "modal-backdrop proposal-viewer-backdrop",
-    onclick: (e) => { if (e.target === backdrop) backdrop.remove(); },
-  });
-  const modal = h("div", { class: "proposal-viewer" });
-
-  // 상단 고정 툴바
-  const pages = propEl.querySelectorAll(".proposal-page");
-  const total = pages.length;
-  modal.appendChild(h("div", { class: "proposal-viewer-topbar" }, [
-    h("div", { class: "pv-title" }, propEl.getAttribute("data-title") || "제안서 미리보기"),
-    h("div", { class: "pv-meta" }, [
-      h("span", {}, `총 ${total} 페이지`),
-      h("button", { class: "btn btn-outline", html: `${iconHtml("printer", 14)}<span>인쇄 / PDF</span>`,
-        onclick: () => printProposal(propEl) }),
-      h("button", {
-        class: "pv-close-btn",
-        title: "닫기 (ESC)",
-        "aria-label": "닫기",
-        onclick: () => backdrop.remove(),
-        html: iconHtml("x", 22),
-      }),
-    ]),
-  ]));
-
-  // 본문 — 세로 스크롤로 모든 페이지 표시
-  const scrollArea = h("div", { class: "proposal-viewer-scroll" });
-  const clone = propEl.cloneNode(true);
-  clone.querySelectorAll(".keyword-row").forEach((e) => e.remove());
-  // 각 페이지에 번호 표시
-  clone.querySelectorAll(".proposal-page").forEach((p, i) => {
-    const num = h("div", { class: "pv-page-num" }, `${i + 1} / ${total}`);
-    p.appendChild(num);
-  });
-  scrollArea.appendChild(clone);
-  modal.appendChild(scrollArea);
-
-  backdrop.appendChild(modal);
-  document.body.appendChild(backdrop);
-
-  // ESC 로 닫기
-  const onKey = (e) => { if (e.key === "Escape") { backdrop.remove(); document.removeEventListener("keydown", onKey); } };
-  document.addEventListener("keydown", onKey);
-}
 
 // ---------- Settings modal ----------
 async function openSettings() {

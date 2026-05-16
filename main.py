@@ -350,8 +350,7 @@ def init_db() -> None:
             );
 
             -- ───────── 오늘의 무료 크레딧 (퀴즈 / 운세 / 로또) ─────────
-            -- 보안: 정답 평문 X, HMAC-SHA256(SALT, normalize(answer)) hash 만 보관.
-            -- 시드: data/credit_pools_seed.py (hash 인라인) → startup _seed_credit_pools().
+            -- ⚠ Spec 4-B (5/16) 폐기: 시드 + endpoints + 헬퍼 모두 폐기, 테이블만 데이터 보존용 잔존.
 
             -- 퀴즈 풀 (50문제, hash 인라인 시드)
             CREATE TABLE IF NOT EXISTS credit_quiz_pool (
@@ -710,80 +709,10 @@ def _migrate_db() -> dict:
     return {"added": added, "skipped": skipped, "failed": failed}
 
 
-# ─────────────────────────── 크레딧 풀 시드 ───────────────────────────
-# data/credit_pools_seed.py 의 hash 인라인 데이터 → DB UPSERT (멱등).
-# 정답 평문은 시드에 없음 — _build_credit_pools_seed.py 가 _credit_data_input/ 의
-# raw md 파일을 HMAC-SHA256(SALT) hash 로 변환해 인라인. 운세는 평문(게임 콘텐츠).
-# UPSERT 동작: 첫 startup = 풀 INSERT, 이후 startup = 변경 시만 UPDATE (멱등).
-def _seed_credit_pools() -> dict:
-    """credit_pools_seed.py → DB UPSERT. 멱등 — 매 startup 안전."""
-    result = {"quiz": 0, "fortune": 0, "skipped": False, "error": None}
-    try:
-        from data.credit_pools_seed import QUIZ_POOL, FORTUNE_POOL
-    except ImportError as e:
-        result["skipped"] = True
-        result["error"] = f"credit_pools_seed import 실패: {e}"
-        log.warning("크레딧 풀 시드 skip: %s", e)
-        return result
-    import json as _json
-    try:
-        with get_db() as db:
-            # 퀴즈 풀 UPSERT (id 충돌 시 question / hashes 모두 갱신)
-            for q in QUIZ_POOL:
-                hashes_json = _json.dumps(q["answer_hashes"], ensure_ascii=False)
-                db.execute(
-                    "INSERT INTO credit_quiz_pool(id, question, answer_hashes_json) "
-                    "VALUES(?,?,?) "
-                    "ON CONFLICT(id) DO UPDATE SET "
-                    "  question=excluded.question, "
-                    "  answer_hashes_json=excluded.answer_hashes_json",
-                    (int(q["id"]), str(q["question"]), hashes_json),
-                )
-                result["quiz"] += 1
-            # 운세 풀 UPSERT
-            for f in FORTUNE_POOL:
-                db.execute(
-                    "INSERT INTO credit_fortune_pool(id, message) "
-                    "VALUES(?,?) "
-                    "ON CONFLICT(id) DO UPDATE SET message=excluded.message",
-                    (int(f["id"]), str(f["message"])),
-                )
-                result["fortune"] += 1
-        log.info("크레딧 풀 시드 OK · 퀴즈 %d / 운세 %d", result["quiz"], result["fortune"])
-    except Exception as e:
-        result["error"] = str(e)[:200]
-        log.exception("크레딧 풀 시드 실패: %s", e)
-    return result
-
-
-def _credit_quiz_salt() -> str:
-    """CREDIT_QUIZ_SALT env — 부재 시 endpoint 단계에서 500 raise.
-
-    startup 단계에서는 시드 자체에는 SALT 가 필요 없음 (hash 가 이미 인라인).
-    SALT 는 endpoint 응답 시 사용자 답을 hash 로 변환할 때만 필요.
-    """
-    salt = os.environ.get("CREDIT_QUIZ_SALT", "").strip()
-    if not salt or len(salt) < 16:
-        raise HTTPException(500, "CREDIT_QUIZ_SALT 환경변수가 설정되지 않았어요. 관리자에게 문의해 주세요.")
-    return salt
-
-
-def _normalize_credit_answer(s: str) -> str:
-    """대소문자 / 공백 / 탭 / 전각공백 무시. 빌드 스크립트와 정확히 동일 흐름."""
-    return s.lower().replace(" ", "").replace("\t", "").replace("　", "")
-
-
-def _hash_credit_answer(answer: str, salt: str | None = None) -> str:
-    """HMAC-SHA256(SALT, normalize(answer)) → 64 hex chars.
-    DB 의 answer_hashes 와 매칭 비교용."""
-    import hmac, hashlib
-    if salt is None:
-        salt = _credit_quiz_salt()
-    return hmac.new(
-        salt.encode("utf-8"),
-        _normalize_credit_answer(answer).encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
+# ── 크레딧 풀 시드 + 헬퍼 (_seed_credit_pools / _credit_quiz_salt /
+#    _normalize_credit_answer / _hash_credit_answer) 은 Spec 4-B (5/16) 폐기.
+#    DB 테이블 (credit_quiz_pool / credit_fortune_pool / credit_lotto_daily /
+#    credit_attempts) 은 데이터 보존을 위해 유지 (CREATE TABLE 멱등).
 
 
 def get_setting(key: str, default: str = "") -> str:
@@ -1584,13 +1513,7 @@ def _startup() -> None:
             log.warning("DB 마이그레이션 failed: %s", result["failed"])
     except Exception as e:
         log.exception("DB 마이그레이션 자체 실패 (무시): %s", e)
-    # 크레딧 풀 시드 (멱등 UPSERT) — _migrate_db 직후 (users.credit_count 컬럼 추가 후 가능)
-    try:
-        seed = _seed_credit_pools()
-        if not seed.get("skipped"):
-            log.info("크레딧 풀 시드: 퀴즈 %d / 운세 %d", seed["quiz"], seed["fortune"])
-    except Exception as e:
-        log.exception("크레딧 풀 시드 자체 실패 (무시 — endpoint 호출 시 미작동): %s", e)
+    # ── 크레딧 풀 시드 (_seed_credit_pools 호출) 은 Spec 4-B (5/16) 폐기.
     # 묶음 N Commit 6 — admin 활성화 + clients.user_id 마이그레이션 (멱등)
     try:
         admin_id = activate_admin_from_env()
@@ -4372,48 +4295,24 @@ def api_me_dismiss_chat_intro(user: dict = Depends(get_current_user)):
         return {"ok": True, "persisted": False}
 
 
-# ---------- /api/credit/* — 오늘의 무료 크레딧 (퀴즈 / 운세 / 로또) ----------
-# 본질:
-#   - 베타 기간 = 횟수만 누적, 정식 런칭 시 환산 (사용자 결정 정합).
-#   - 1일 1회 가드 = (user_id, kind, date_kst) UNIQUE.
-#   - 퀴즈 정답 = HMAC-SHA256(SALT, normalize(answer)) hash 매칭 (정답 평문 X).
-#   - 로또 = 매일 자정 KST 자동 생성 (lazy create — cron 없이도 동작).
-#   - 운세 = date+user_id 시드 → 매일 같은 사용자에게 같은 운세 (새로고침 spam 무력화).
-#   - Rate limit = lotto draw 영역 만 (3초 영역 안 X 클릭 차단).
+# ── /api/credit/* — 오늘의 무료 크레딧 (퀴즈 / 운세 / 로또) 은 Spec 4-B (5/16) 폐기.
+#    DB 테이블 / 인덱스 / users.credit_count 컬럼 은 데이터 보존을 위해 유지 (CREATE TABLE 멱등).
 
-import time as _time
-import hashlib as _hashlib
-
-# KST 타임존 (UTC+9)
+# KST 타임존 (UTC+9) — SMS 영역 + 다른 영역 KST 시각 정합 영역 사용
 _KST = timezone(timedelta(hours=9))
-
-# Rate limit 영역 — in-memory dict (Railway 영역 단일 인스턴스 가정)
-# key=user_id, value=last hit timestamp (unix sec)
-_CREDIT_RATE_LIMIT: dict[str, float] = {}
-
-# 로또 보상 / 메시지 영역 (lotto_spec.md 정합)
-LOTTO_REWARDS = {1: 100, 2: 30, 3: 10, 4: 3, 5: 1, 0: 0}
-LOTTO_MESSAGES = {
-    1: "🎉 1등 당첨! 6개 모두 맞았어요! (이건 진짜로 흥분할 만한데요)",
-    2: "🎊 2등! 5개 + 보너스! 정말 아쉽지만 대박이에요!",
-    3: "🎁 3등! 5개 맞췄어요. 오늘 운이 좋네요!",
-    4: "😊 4등! 4개 맞춤. 점심 한 끼 가치는 됩니다!",
-    5: "☕ 5등! 3개 맞춤. 커피 한 잔 정도의 행운이에요.",
-    0: "🎲 아쉽게도 꽝. 내일 다시 도전해보세요!",
-}
 
 
 def _today_kst_str() -> str:
-    """KST 기준 오늘 날짜 'YYYY-MM-DD'."""
+    """KST 기준 오늘 날짜 'YYYY-MM-DD' — quota 리셋 / SMS 영역 등 공용 헬퍼."""
     return datetime.now(_KST).strftime("%Y-%m-%d")
 
 
 # ───────── Phase 1-B-a — SMS 헬퍼 + 알리고 wrapper + verification JWT ─────────
 # 무료체험 SMS 인증 기반 (1-B-b/c endpoint 가 본 헬퍼 활용).
 # 기존 패턴 활용:
-#   _credit_quiz_salt / _hash_credit_answer (L758/775) — HMAC 동일 패턴
+#   환경변수 영역 SALT + HMAC-SHA256 — 자립 영역 (Spec 4-B credit 영역 폐기로 의존성 0)
 #   encode_jwt / decode_jwt (L884/895) — JWT 동일 시크릿, purpose 로 분리
-#   _KST (L4684) — KST 타임존 재사용
+#   _KST — KST 타임존 재사용
 
 def _now_kst_str() -> str:
     """현재 KST 시각 'YYYY-MM-DD HH:MM:SS' 문자열 — sms_verifications.created_at 등."""
@@ -4457,7 +4356,7 @@ def _client_ip(request: Request) -> str:
 
 
 def _sms_code_salt() -> str:
-    """SMS_CODE_SALT env — 부재/짧음 시 503 raise. 기존 _credit_quiz_salt() 패턴 동일."""
+    """SMS_CODE_SALT env — 부재/짧음 시 503 raise. HMAC-SHA256 영역 자립 영역."""
     salt = os.environ.get("SMS_CODE_SALT", "").strip()
     if not salt or len(salt) < 16:
         raise HTTPException(503, detail={
@@ -4468,7 +4367,7 @@ def _sms_code_salt() -> str:
 
 
 def _sms_code_hash(code: str) -> str:
-    """HMAC-SHA256(SMS_CODE_SALT, code) → 64 hex chars. 기존 _hash_credit_answer 패턴 동일."""
+    """HMAC-SHA256(SMS_CODE_SALT, code) → 64 hex chars. 자립 영역."""
     import hmac, hashlib
     return hmac.new(
         _sms_code_salt().encode("utf-8"),
@@ -4584,360 +4483,10 @@ def _decode_verification_jwt(token: str) -> Optional[str]:
         return None
 
 
-def _seed_pick(date_kst: str, user_id: str, pool_size: int) -> int:
-    """date+user_id → 풀 안에서 1-pool_size 고정 인덱스 반환.
+# ── credit 영역 후반 (_seed_pick / _credit_rate_limit / _get_or_create_lotto /
+#    _lotto_rank / _credit_attempt_today / _credit_record_attempt + 6 endpoints)
+#    은 Spec 4-B (5/16) 폐기. DB 테이블 + users.credit_count 컬럼 보존.
 
-    매일 같은 사용자에게 같은 결과. 새로고침 spam 무력화.
-    """
-    seed = f"{date_kst}|{user_id}".encode("utf-8")
-    digest = _hashlib.sha256(seed).digest()
-    return (int.from_bytes(digest[:4], "big") % pool_size) + 1
-
-
-def _credit_rate_limit(user_id: str, min_interval: float = 3.0) -> None:
-    """3초 영역 안 같은 사용자 재시도 차단. 429 raise."""
-    now = _time.time()
-    last = _CREDIT_RATE_LIMIT.get(user_id, 0)
-    if now - last < min_interval:
-        wait = max(0, int(min_interval - (now - last)) + 1)
-        raise HTTPException(429, f"잠시만요, {wait}초 후 다시 시도해 주세요.")
-    _CREDIT_RATE_LIMIT[user_id] = now
-
-
-def _get_or_create_lotto(date_kst: str) -> dict:
-    """오늘의 당첨번호 lazy create. lotto_spec.md 정합 (today.toordinal() 시드).
-
-    멱등 — 같은 date_kst 영역 항상 같은 결과 (race condition 영역 catch).
-    """
-    import json as _json
-    import random as _random
-    with get_db() as db:
-        row = db.execute(
-            "SELECT date_kst, numbers_json, bonus FROM credit_lotto_daily WHERE date_kst=?",
-            (date_kst,),
-        ).fetchone()
-        if row:
-            return {
-                "date_kst": row["date_kst"],
-                "numbers": _json.loads(row["numbers_json"]),
-                "bonus": int(row["bonus"]),
-            }
-        # 신규 생성 — date.toordinal() 시드 (lotto_spec.md 정합)
-        d = datetime.strptime(date_kst, "%Y-%m-%d").date()
-        rng = _random.Random(d.toordinal())
-        numbers = sorted(rng.sample(range(1, 46), 6))
-        bonus = rng.choice([n for n in range(1, 46) if n not in numbers])
-        try:
-            with get_db() as db2:
-                db2.execute(
-                    "INSERT INTO credit_lotto_daily(date_kst, numbers_json, bonus) VALUES(?,?,?)",
-                    (date_kst, _json.dumps(numbers), bonus),
-                )
-        except Exception as e:
-            # race condition — 다른 요청이 INSERT 먼저. 다시 SELECT.
-            log.info("로또 lazy-create race (정상): %s", str(e)[:80])
-            with get_db() as db3:
-                row2 = db3.execute(
-                    "SELECT date_kst, numbers_json, bonus FROM credit_lotto_daily WHERE date_kst=?",
-                    (date_kst,),
-                ).fetchone()
-            if row2:
-                return {
-                    "date_kst": row2["date_kst"],
-                    "numbers": _json.loads(row2["numbers_json"]),
-                    "bonus": int(row2["bonus"]),
-                }
-            raise
-        return {"date_kst": date_kst, "numbers": numbers, "bonus": bonus}
-
-
-def _lotto_rank(user_numbers: list[int], winning: list[int], bonus: int) -> int:
-    """0=꽝 / 1-5=등수 (lotto_spec.md 정합)."""
-    user_set = set(user_numbers)
-    win_set = set(winning)
-    matched = len(user_set & win_set)
-    if matched == 6:
-        return 1
-    if matched == 5 and bonus in user_set:
-        return 2
-    if matched == 5:
-        return 3
-    if matched == 4:
-        return 4
-    if matched == 3:
-        return 5
-    return 0
-
-
-def _credit_attempt_today(user_id: str, kind: str, date_kst: str) -> dict | None:
-    """오늘의 시도 결과 조회 (1일 1회 검증용)."""
-    import json as _json
-    with get_db() as db:
-        row = db.execute(
-            "SELECT result_json, credits_earned, created_at "
-            "FROM credit_attempts WHERE user_id=? AND kind=? AND date_kst=?",
-            (user_id, kind, date_kst),
-        ).fetchone()
-    if not row:
-        return None
-    return {
-        "result": _json.loads(row["result_json"] or "{}"),
-        "credits_earned": int(row["credits_earned"]),
-        "created_at": row["created_at"],
-    }
-
-
-def _credit_record_attempt(user_id: str, kind: str, date_kst: str,
-                            result: dict, credits_earned: int) -> bool:
-    """시도 INSERT + users.credit_count 누적. UNIQUE 충돌 시 False 반환 (이미 시도)."""
-    import json as _json
-    import uuid as _uuid
-    try:
-        with get_db() as db:
-            db.execute(
-                "INSERT INTO credit_attempts(id, user_id, kind, date_kst, result_json, credits_earned) "
-                "VALUES(?,?,?,?,?,?)",
-                (str(_uuid.uuid4()), user_id, kind, date_kst,
-                 _json.dumps(result, ensure_ascii=False), int(credits_earned)),
-            )
-            if credits_earned > 0:
-                db.execute(
-                    "UPDATE users SET credit_count = COALESCE(credit_count,0) + ? WHERE id=?",
-                    (int(credits_earned), user_id),
-                )
-        return True
-    except Exception as e:
-        msg = str(e).lower()
-        if "unique" in msg or "constraint" in msg or "duplicate" in msg:
-            return False
-        raise
-
-
-# ── 1. GET /api/credit/quiz/today ──────────────────────────────────────
-@app.get("/api/credit/quiz/today")
-def api_credit_quiz_today(user: dict = Depends(get_current_user)):
-    """오늘의 퀴즈 1문제 + 시도 여부 (정답 X)."""
-    date_kst = _today_kst_str()
-    qid = _seed_pick(date_kst, user["id"], 50)
-    with get_db() as db:
-        row = db.execute(
-            "SELECT id, question FROM credit_quiz_pool WHERE id=?",
-            (qid,),
-        ).fetchone()
-    if not row:
-        raise HTTPException(500, "퀴즈 풀이 비어있어요. 잠시 후 다시 시도해 주세요.")
-    attempted = _credit_attempt_today(user["id"], "quiz", date_kst)
-    return {
-        "quiz_id": int(row["id"]),
-        "question": row["question"],
-        "date_kst": date_kst,
-        "attempted": attempted is not None,
-        "result": attempted["result"] if attempted else None,
-    }
-
-
-# ── 2. POST /api/credit/quiz/check ─────────────────────────────────────
-@app.post("/api/credit/quiz/check")
-def api_credit_quiz_check(payload: dict = Body(...),
-                          user: dict = Depends(get_current_user)):
-    """퀴즈 정답 검증 (1일 1회, 틀려도 1회 차감)."""
-    import json as _json
-    answer = (payload.get("answer") or "").strip()
-    if not answer:
-        raise HTTPException(422, "답을 입력해 주세요.")
-    if len(answer) > 200:
-        raise HTTPException(422, "답이 너무 길어요. 짧게 입력해 주세요.")
-
-    date_kst = _today_kst_str()
-    qid = _seed_pick(date_kst, user["id"], 50)
-
-    # 이미 시도 영역
-    attempted = _credit_attempt_today(user["id"], "quiz", date_kst)
-    if attempted:
-        return {
-            "already_attempted": True,
-            "result": attempted["result"],
-            "credits_earned": attempted["credits_earned"],
-            "message": "오늘은 이미 도전했어요. 내일 다시 도전해 주세요!",
-        }
-
-    # 정답 hash 매칭
-    salt = _credit_quiz_salt()
-    user_hash = _hash_credit_answer(answer, salt)
-    with get_db() as db:
-        row = db.execute(
-            "SELECT id, answer_hashes_json FROM credit_quiz_pool WHERE id=?",
-            (qid,),
-        ).fetchone()
-    if not row:
-        raise HTTPException(500, "퀴즈 데이터 사고. 관리자에게 문의해 주세요.")
-    db_hashes = _json.loads(row["answer_hashes_json"] or "[]")
-    correct = user_hash in db_hashes
-    credits_earned = 1 if correct else 0
-    message = "🎯 정답!" if correct else "💪 다시 도전해보세요. (내일 새 문제로 만나요)"
-
-    result = {
-        "correct": correct,
-        "user_answer_normalized_len": len(_normalize_credit_answer(answer)),  # debug — 평문 X
-        "message": message,
-    }
-    inserted = _credit_record_attempt(user["id"], "quiz", date_kst, result, credits_earned)
-    if not inserted:
-        # race — 다시 조회
-        attempted2 = _credit_attempt_today(user["id"], "quiz", date_kst)
-        if attempted2:
-            return {
-                "already_attempted": True,
-                "result": attempted2["result"],
-                "credits_earned": attempted2["credits_earned"],
-                "message": "오늘은 이미 도전했어요.",
-            }
-
-    # 누적 카운트 조회
-    with get_db() as db:
-        row2 = db.execute("SELECT COALESCE(credit_count,0) AS n FROM users WHERE id=?", (user["id"],)).fetchone()
-    total = int(row2["n"]) if row2 else 0
-
-    return {
-        "already_attempted": False,
-        "correct": correct,
-        "message": message,
-        "credits_earned": credits_earned,
-        "total_credits": total,
-    }
-
-
-# ── 3. GET /api/credit/lotto/today ─────────────────────────────────────
-@app.get("/api/credit/lotto/today")
-def api_credit_lotto_today(user: dict = Depends(get_current_user)):
-    """오늘 뽑았는지 + (뽑았으면) 결과 / (안 뽑았으면) 당첨번호 미공개."""
-    date_kst = _today_kst_str()
-    attempted = _credit_attempt_today(user["id"], "lotto", date_kst)
-    if attempted:
-        return {
-            "attempted": True,
-            "result": attempted["result"],  # numbers, winning, bonus, rank, message
-            "credits_earned": attempted["credits_earned"],
-            "date_kst": date_kst,
-        }
-    return {"attempted": False, "date_kst": date_kst}
-
-
-# ── 4. POST /api/credit/lotto/draw ─────────────────────────────────────
-@app.post("/api/credit/lotto/draw")
-def api_credit_lotto_draw(user: dict = Depends(get_current_user)):
-    """6개 번호 자동 생성 + 등수 산정 + 1일 1회 + 누적."""
-    import random as _random
-    _credit_rate_limit(user["id"], min_interval=3.0)
-
-    date_kst = _today_kst_str()
-
-    # 이미 뽑음
-    attempted = _credit_attempt_today(user["id"], "lotto", date_kst)
-    if attempted:
-        return {
-            "already_attempted": True,
-            "result": attempted["result"],
-            "credits_earned": attempted["credits_earned"],
-            "message": "오늘은 이미 뽑았어요. 내일 다시 도전해 주세요!",
-        }
-
-    # 당첨번호 (lazy create)
-    lotto = _get_or_create_lotto(date_kst)
-    winning = lotto["numbers"]
-    bonus = lotto["bonus"]
-
-    # 사용자 6개 — 매 호출 새로 (일반 로또 정합)
-    user_numbers = sorted(_random.sample(range(1, 46), 6))
-    rank = _lotto_rank(user_numbers, winning, bonus)
-    credits_earned = LOTTO_REWARDS[rank]
-    message = LOTTO_MESSAGES[rank]
-    if rank == 0:
-        # 0개 매칭 = 더 아쉬운 메시지 (lotto_spec.md 정합)
-        matched = len(set(user_numbers) & set(winning))
-        if matched == 0:
-            message = "🎲 한 개도 안 맞았네요. 그럴 때도 있어요. 내일 또 도전!"
-
-    result = {
-        "user_numbers": user_numbers,
-        "winning": winning,
-        "bonus": bonus,
-        "matched": len(set(user_numbers) & set(winning)),
-        "bonus_matched": bonus in set(user_numbers),
-        "rank": rank,  # 0=꽝, 1-5=등수
-        "message": message,
-    }
-    inserted = _credit_record_attempt(user["id"], "lotto", date_kst, result, credits_earned)
-    if not inserted:
-        attempted2 = _credit_attempt_today(user["id"], "lotto", date_kst)
-        if attempted2:
-            return {
-                "already_attempted": True,
-                "result": attempted2["result"],
-                "credits_earned": attempted2["credits_earned"],
-                "message": "오늘은 이미 뽑았어요.",
-            }
-
-    with get_db() as db:
-        row2 = db.execute("SELECT COALESCE(credit_count,0) AS n FROM users WHERE id=?", (user["id"],)).fetchone()
-    total = int(row2["n"]) if row2 else 0
-
-    return {
-        "already_attempted": False,
-        "result": result,
-        "credits_earned": credits_earned,
-        "total_credits": total,
-    }
-
-
-# ── 5. GET /api/credit/fortune ─────────────────────────────────────────
-@app.get("/api/credit/fortune")
-def api_credit_fortune(user: dict = Depends(get_current_user)):
-    """오늘의 운세 (date+user_id 시드 — 같은 사용자 = 같은 운세, 매일 갱신)."""
-    date_kst = _today_kst_str()
-    fid = _seed_pick(date_kst, user["id"], 50)
-    with get_db() as db:
-        row = db.execute(
-            "SELECT id, message FROM credit_fortune_pool WHERE id=?",
-            (fid,),
-        ).fetchone()
-    if not row:
-        raise HTTPException(500, "운세 풀이 비어있어요. 잠시 후 다시 시도해 주세요.")
-    return {
-        "fortune_id": int(row["id"]),
-        "message": row["message"],
-        "date_kst": date_kst,
-    }
-
-
-# ── 6. GET /api/credit/balance ─────────────────────────────────────────
-@app.get("/api/credit/balance")
-def api_credit_balance(user: dict = Depends(get_current_user)):
-    """누적 횟수 + 오늘의 시도 상태."""
-    date_kst = _today_kst_str()
-    with get_db() as db:
-        row = db.execute(
-            "SELECT COALESCE(credit_count,0) AS total FROM users WHERE id=?",
-            (user["id"],),
-        ).fetchone()
-        # kind별 통계 (전체 누적)
-        stats = {}
-        for kind in ("quiz", "lotto"):
-            r = db.execute(
-                "SELECT COUNT(*) AS n FROM credit_attempts WHERE user_id=? AND kind=?",
-                (user["id"], kind),
-            ).fetchone()
-            stats[kind] = int(r["n"]) if r else 0
-        # 오늘 시도 여부
-        today_status = {}
-        for kind in ("quiz", "lotto"):
-            today_status[kind] = _credit_attempt_today(user["id"], kind, date_kst) is not None
-    return {
-        "total_credits": int(row["total"]) if row else 0,
-        "stats": stats,         # 누적 시도 수 (성공/실패 합산)
-        "today": today_status,  # {quiz: bool, lotto: bool} — 오늘 이미 시도했는지
-        "date_kst": date_kst,
-    }
 
 
 # ---------- Admin endpoints (invite codes + users) — 묶음 N Commit 3 ----------
@@ -7222,10 +6771,11 @@ def api_admin_users_list(
     limit = max(1, min(200, int(limit)))
     offset = max(0, int(offset))
     with get_db() as db:
+        # credit_count 은 Spec 4-B (5/16) 폐기로 응답에서 제외 (DB 컬럼은 보존).
         rows = db.execute(
             "SELECT id, email, company, role, is_active, "
             "       credits, credits_used_this_month, last_reset_date, is_suspended, "
-            "       credit_count, last_login, created_at, "
+            "       last_login, created_at, "
             "       monthly_proposal_quota, monthly_conversation_quota, "
             "       monthly_proposal_quota_bonus, monthly_conversation_quota_bonus "
             "FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?",
@@ -7244,10 +6794,11 @@ def api_admin_users_list(
 def api_admin_users_detail(user_id: str, admin: dict = Depends(require_admin)):
     """사용자 상세 + 사용 내역 영역 영역 통계."""
     with get_db() as db:
+        # credit_count 은 Spec 4-B (5/16) 폐기로 응답에서 제외 (DB 컬럼은 보존).
         row = db.execute(
             "SELECT id, email, company, role, is_active, "
             "       credits, credits_used_this_month, last_reset_date, is_suspended, "
-            "       credit_count, last_login, created_at "
+            "       last_login, created_at "
             "FROM users WHERE id=?",
             (user_id,),
         ).fetchone()

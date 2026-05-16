@@ -3023,6 +3023,23 @@ async function renderTaskActionsSection(cid) {
         },
         html: `<span class="ta-emoji">🎤</span><div class="ta-text"><div class="ta-title">PT 연습하기</div><div class="ta-sub">${hasProposal ? "발표 큐시트 · 예상 Q&A" : "제안서 완성 후 활성화"}</div></div>`,
       }),
+      // 6️⃣ 자체 검증 — 제안서 완성 후 활성화 (Compliance + Red Team 모달)
+      // NightOff 핵심 차별화 영역. AI 가 평가위원처럼 RFP 매핑 + 예상 점수 분석.
+      h("button", {
+        class: "btn btn-outline task-action-cta task-action-secondary" + (hasProposal ? "" : " disabled-soft"),
+        disabled: !hasProposal,
+        title: hasProposal ? "AI 가 평가위원처럼 점검합니다 (30~60초)" : "제안서를 먼저 완성하면 활성화돼요",
+        onclick: async () => {
+          if (!hasProposal) { toast("제안서를 먼저 완성해 주세요 🙂", ""); return; }
+          try {
+            const convs = await api.get(`/api/clients/${cid}/conversations`);
+            const target = (Array.isArray(convs) ? convs : []).find((c) => (c.msg_count ?? 0) > 1);
+            if (!target) { toast("작성된 제안서를 찾지 못했어요", "error"); return; }
+            openAuditModal(target.id);
+          } catch (e) { toast("대화를 불러올 수 없어요", "error"); }
+        },
+        html: `<span class="ta-emoji">🔍</span><div class="ta-text"><div class="ta-title">자체 검증</div><div class="ta-sub">${hasProposal ? "Compliance + Red Team 점검" : "제안서 완성 후 활성화"}</div></div>`,
+      }),
     ]),
   ]);
   return card;
@@ -4493,6 +4510,22 @@ async function renderChat(cid, convId) {
           html: `<span style="margin-right:4px;">📄</span><span>페이지 재생성</span>`,
           onclick: () => {
             openRegeneratePageModal(convId, totalSlides, outline);
+          },
+        });
+      })(),
+      // 🔍 자체 검증 버튼 — 제안서 완성된 conv 에서만 활성.
+      // 클릭 → openAuditModal (line 1042+) → /api/proposals/audit 호출 → Compliance + Red Team 결과 모달.
+      // NightOff 핵심 차별화 영역. CHAT_SYSTEM_PROMPT L1177 안내와 정합.
+      (function () {
+        const hasPptx = !!(data.conversation && data.conversation.pptx_path);
+        if (!hasPptx) return null;
+        return h("button", {
+          class: "btn btn-outline",
+          style: "text-decoration:none;",
+          title: "AI 가 평가위원처럼 점검합니다 (30~60초) — Compliance + Red Team",
+          html: `<span style="margin-right:4px;">🔍</span><span>자체 검증</span>`,
+          onclick: () => {
+            openAuditModal(convId);
           },
         });
       })(),

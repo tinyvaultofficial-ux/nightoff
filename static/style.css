@@ -2730,17 +2730,7 @@ body.fs-loader-active {
   50%      { box-shadow: 0 0 0 10px color-mix(in oklab, var(--primary) 0%, transparent); transform: translateY(-1px); }
 }
 
-/* Nuance badge on chat header */
-.nuance-badge {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 5px 12px; border-radius: 999px;
-  background: var(--primary-soft); color: var(--primary);
-  font-size: 12px; font-weight: 500;
-}
-.nuance-badge .dot {
-  width: 6px; height: 6px; border-radius: 50%; background: var(--primary);
-  animation: soft-pulse 2s infinite;
-}
+/* Nuance badge — Spec 1 (5/16) 폐기 (대화 기억 inject 제거) */
 
 /* Stop button in chat input area (red-ish but monochrome) */
 .stop-btn {

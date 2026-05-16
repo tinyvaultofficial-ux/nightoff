@@ -2464,7 +2464,8 @@ def api_clients_list(user: dict = Depends(get_current_user)):
               (SELECT MAX(created_at) FROM conversations cv WHERE cv.client_id=c.id) last_conv,
               (SELECT COUNT(*) FROM rfp_files r WHERE r.client_id=c.id) has_rfp,
               (SELECT COUNT(*) FROM nuance_memories n WHERE n.client_id=c.id) memory_count,
-              (SELECT analysis_json FROM rfp_aggregated WHERE client_id=c.id) rfp_analysis_json
+              (SELECT analysis_json FROM rfp_aggregated WHERE client_id=c.id
+                 ORDER BY updated_at DESC LIMIT 1) rfp_analysis_json
             FROM clients c
             WHERE c.user_id = ?
             ORDER BY c.updated_at DESC

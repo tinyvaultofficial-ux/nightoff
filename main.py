@@ -5301,10 +5301,11 @@ def _budget_item_amount(it: dict) -> int:
 
 
 # 기본 투찰율 — RFP 예산 대비 청구 비율 (B2G 표준 정합).
-# 의미: bid_price = budget_limit × bid_rate (RFP 예산 영역 90%만 청구).
+# 의미: bid_price = budget_limit × bid_rate (RFP 예산 영역 95%만 청구).
 # 한국 B2G 영역 권장 92-95% / 안전 영역 90% / 영역 영역 영역 82-85%.
 # 사용자가 프론트 영역에서 변경 = 자체 재계산 (백엔드 영역 X 영향).
-DEFAULT_BID_RATE = 0.90
+# 5/16 sync: app.js:936 (472df26) 와 sync — 0.90 → 0.95.
+DEFAULT_BID_RATE = 0.95
 
 
 def _validate_and_adjust_budget(data: dict, budget_limit: int) -> tuple[dict, bool]:

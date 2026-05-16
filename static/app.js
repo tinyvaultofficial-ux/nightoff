@@ -2753,40 +2753,6 @@ function openClosingNoticesModal(notices) {
   document.addEventListener("keydown", onKey);
 }
 
-function clientCard(c) {
-  const initials = (c.name || "?").trim().slice(0, 1);
-  const badges = [];
-  if (c.has_rfp > 0) badges.push({ cls: "badge-primary", label: "RFP" });
-  if (c.memory_count > 0) badges.push({ cls: "badge-success", label: `대화기억 ${c.memory_count}` });
-  if (c.conv_count > 0) badges.push({ cls: "badge-muted", label: `제안서 ${c.conv_count}` });
-
-  // D-day 계산 (서버가 client.deadline 을 내려주면 사용, 없으면 null)
-  const dday = calcDday(c.deadline);
-
-  return h("div", {
-    class: "card client-card",
-    onclick: () => navigate(`/client/${c.id}`),
-  }, [
-    h("div", { class: "client-card-head" }, [
-      h("div", { class: "flex-row", style: "gap: 12px; flex: 1; min-width: 0;" }, [
-        h("div", { class: "client-logo" }, initials),
-        h("div", { style: "flex: 1; min-width: 0;" }, [
-          h("h3", {}, c.name),
-          h("p", { class: "client-sub" }, c.industry || "업종 미지정"),
-        ]),
-      ]),
-      ddayBadge(dday),
-    ]),
-    badges.length
-      ? h("div", { class: "flex-row", style: "flex-wrap: wrap; gap: 6px;" },
-          badges.map((b) => h("span", { class: `badge ${b.cls}` }, b.label)))
-      : null,
-    h("div", { class: "client-meta" }, [
-      h("span", { class: "flex-row", html: `${iconHtml("calendar", 14)}<span>${fmtDate(c.last_conv || c.updated_at)}</span>` }),
-      h("span", { class: "flex-row", html: `${iconHtml("msg", 14)}<span>대화 ${c.conv_count}건</span>` }),
-    ]),
-  ]);
-}
 
 // ---------- Client Form ----------
 const INDUSTRIES = [
@@ -2961,25 +2927,29 @@ async function renderClientDetail(cid) {
   //  1️⃣ RFP 분석 (필수 첫 단계)
   //  2️⃣ 📋 입찰참가자격 (RFP 분석 결과 영역 — 자격 데이터 있을 때만 노출)
   //  3️⃣ 발주처 들여다보기 👀 (RFP 분석 후 자동 채워짐)
-  //  4️⃣ ✨ 대화 시작하기 (보라 큰 CTA 버튼)
-  //  5️⃣ 🎤 PT 연습하기 (제안서 완성 후 활성화 / 지금은 비활성)
-  //  📋 대화 기록 (하단)
-  // ── 강점 기능은 의도적으로 제거됨 (추상적 신호라 제안서 품질에 역효과)
-  const [rfpSec, qualSec, intelSec, historySec] = await Promise.all([
+  //  4️⃣ ✨ 대화 시작 + 🎤 PT 연습 + 🔍 자체 검증 (Task Actions)
+  //  📋 대화 기록
+  //  🧠 대화 기억 (단계 2 복구) — AI 자동 학습 뉘앙스, 사용자가 확인 + 삭제 가능
+  // ── 강점 기능 (renderProfileSection / "과업 성향") 은 의도적으로 제거됨 (추상적 신호라 제안서 품질에 역효과 + 발주처 들여다보기 와 70% 겹침)
+  const [rfpSec, qualSec, intelSec, historySec, memorySec] = await Promise.all([
     renderRfpSection(cid),
     renderQualificationsSection(cid),
     renderClientIntelSection(cid, client),
     renderConvHistorySection(cid),
+    renderMemorySection(cid),
   ]);
   stack.appendChild(rfpSec);
   stack.appendChild(qualSec);
   stack.appendChild(intelSec);
 
-  // 4️⃣ + 5️⃣ — 핵심 CTA 묶음 (대화 시작 + PT 연습)
+  // 4️⃣ — 핵심 CTA 묶음 (대화 시작 + PT 연습 + 자체 검증)
   stack.appendChild(await renderTaskActionsSection(cid));
 
   // 📋 대화 기록 (하단)
   stack.appendChild(historySec);
+
+  // 🧠 대화 기억 (단계 2 복구) — nuance_memories 자동 학습 데이터 + 삭제 통제
+  stack.appendChild(memorySec);
 }
 
 // ---------- 핵심 CTA: 대화 시작 + PT 연습 ----------

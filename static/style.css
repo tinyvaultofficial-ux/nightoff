@@ -3003,7 +3003,7 @@ body.fs-loader-active {
   align-content: start;   /* 카드는 위에서부터 채우고 남는 공간은 아래 */
 }
 .dashboard-side-col { min-width: 0; display: flex; flex-direction: column; gap: 16px; height: 100%; }
-.dashboard-side-col > .tip-card { flex: 0 0 auto; }
+/* .dashboard-side-col > .tip-card 는 Spec 4-A (5/16) 폐기 */
 /* 오늘의 무료 크레딧 영역 늘어남 — 좌측 closing-widget 영역 height 정합 영역.
    margin-top = .dashboard-side-col gap 영역으로 영역 일관 영역. */
 .dashboard-side-col > .daily-credit { flex: 1 1 auto; margin-top: 0; }
@@ -3029,8 +3029,8 @@ body, .msg-bubble, .card, .strengths-intro,
   overflow-wrap: break-word;
 }
 
-/* 사이드 패널 카드 폭 안정 */
-.tip-card, .daily-credit { max-width: 100%; min-width: 0; }
+/* 사이드 패널 카드 폭 안정 (.tip-card 는 Spec 4-A (5/16) 폐기) */
+.daily-credit { max-width: 100%; min-width: 0; }
 
 /* 작은 뷰포트 (1100px 이하) — 사이드 컬럼 더 좁게 */
 @media (max-width: 1280px) {
@@ -4267,72 +4267,12 @@ input.locked-by-env::placeholder {
   text-align: center;
 }
 
-/* ===== 대시보드 사이드 컬럼 (팁 + 활동) ===== */
+/* ===== 대시보드 사이드 컬럼 ===== */
+/* .tip-card 영역 + .tip-card-head / .tip-emoji / .tip-label / .tip-quote / .tip-out / .tip-in / @keyframes tipFadeIn 은
+ * Spec 4-A (5/16) 폐기. .dashboard-side-col 영역은 .daily-credit (Spec 4-B 대상) 의존으로 유지. */
 .dashboard-side-col {
   display: flex; flex-direction: column;
   gap: 0;
-}
-/* 오늘의 팁 영역 — 보라 톤 정합 (이전 노란 톤 영역에서 변경, 나라장터 위젯 0db38c3 정합) */
-.tip-card {
-  background: #FAF7FF;
-  border: 1px solid color-mix(in oklab, #6B46E5 18%, var(--border));
-  border-radius: 16px;
-  padding: 20px 22px;
-  position: relative;
-  overflow: hidden;
-}
-.tip-card::before {
-  content: ""; position: absolute;
-  top: -30px; right: -30px;
-  width: 120px; height: 120px;
-  background: radial-gradient(circle, rgba(155, 127, 232, 0.18) 0%, transparent 70%);
-  pointer-events: none;
-}
-.tip-card-head {
-  display: flex; align-items: center; gap: 8px;
-  margin-bottom: 12px;
-}
-.tip-emoji {
-  font-size: 18px;
-  filter: drop-shadow(0 2px 4px rgba(107, 70, 229, 0.3));
-}
-.tip-label {
-  font-size: 12px; font-weight: 700;
-  color: #6B46E5;
-  letter-spacing: 0.04em;
-}
-.tip-quote {
-  margin: 0;
-  padding: 12px 0 6px 16px;
-  border-left: 3px solid color-mix(in oklab, #6B46E5 55%, transparent);
-  font-size: 14px;
-  line-height: 1.7;
-  color: var(--fg);
-  font-weight: 500;
-  font-style: italic;
-  letter-spacing: -0.005em;
-  min-height: 70px;
-  display: flex; align-items: center;
-  position: relative;
-  transition: opacity .28s ease, transform .28s ease;
-}
-.tip-quote::before {
-  content: '"';
-  position: absolute; top: -2px; left: 4px;
-  font-size: 28px; font-weight: 800;
-  color: color-mix(in oklab, #6B46E5 45%, transparent);
-  line-height: 1;
-}
-.tip-quote.tip-out {
-  opacity: 0;
-  transform: translateY(-6px);
-}
-.tip-quote.tip-in {
-  animation: tipFadeIn .35s ease-out;
-}
-@keyframes tipFadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ===== 대시보드 중단 CTA (새 과업 등록 큰 버튼) ===== */

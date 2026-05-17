@@ -869,43 +869,44 @@ function showChatIntroNotice(taElement) {
 }
 
 // ---------- Dashboard ----------
-// 🧠 핵심 기능 히어로 배너 (대시보드 최상단) — 1 메인 + 3 서브, 상시 펼침
-function renderHeroBanner() {
-  const banner = h("section", { class: "hero-banner" });
+// ── renderHeroBanner (옛 1 메인 + 3 서브 카드) 은 Spec 6 (5/16) 폐기.
+//    교체: renderCoreFeatures5 (NightOff 핵심 기능 5 카드, 가운데 강조 영역).
+//    Spec 7 (히어로 배너 5 슬라이드 신규) 진행 시 본 5 카드 위에 슬라이드 영역 추가 예정.
 
-  // 메인 카드 — 핵심 가치 (든든한 AI 작가)
-  // 다크 영역 (NightOff "밤" 정체성) — 타이틀 흰색, "NightOff !!" 영역만 보라 액센트
-  banner.appendChild(h("div", { class: "hero-main-card hero-main-compact" }, [
-    h("div", { class: "hero-main-emoji" }, "🖋"),
-    h("div", { class: "hero-main-text" }, [
-      h("h2", { class: "hero-main-title" }, [
-        document.createTextNode("국내 최초의 B2G / B2B 제안 자동화 플랫폼, "),
-        h("span", { class: "hero-main-title-brand" }, "NightOff !!"),
-      ]),
-      h("p", { class: "hero-main-desc" },
-        "수백 건의 실제 수주 제안서를 학습한 AI 가, 사용자 옆에서 직접 펜을 잡고 써내려가요"),
-    ]),
-    h("div", { class: "hero-main-sparkles" }, "🌙 ✨"),
+// 🌙 NightOff 핵심 기능 5 카드 (대시보드 최상단) — 가운데 강조 (다크 그라데이션 + 엠버 보더 + 배지)
+const CORE_FEATURES_5 = [
+  { emoji: "✨", title: "RFP\n자동 분석",         tone: "purple", featured: false },
+  { emoji: "👀", title: "발주처\n들여다보기",      tone: "blue",   featured: false },
+  { emoji: "✨", title: "제안서 초안\n자동 생성",  tone: "amber",  featured: true  },
+  { emoji: "💰", title: "산출내역서\n자동 생성",   tone: "green",  featured: false },
+  { emoji: "🔍", title: "자체 제안서\n리뷰",       tone: "pink",   featured: false },
+];
+
+function renderCoreFeatures5() {
+  const section = h("section", { class: "features-5" });
+
+  // 헤더 — "NightOff 핵심 기능 5가지"
+  section.appendChild(h("div", { class: "features-5-header" }, [
+    h("h2", { class: "features-5-title" }, "NightOff 핵심 기능 5가지"),
+    h("p", { class: "features-5-subtitle" }, "RFP 한 장이면, 시작부터 마무리까지 NightOff 가 도와요"),
   ]));
 
-  // 서브 카드 3개 — 메인을 뒷받침하는 도구들
-  const feats = [
-    { emoji: "👀", title: "발주처 들여다보기", desc: "RFP를 넣으면 발주처 정보와 과업 내용을 자동으로 파악해요" },
-    { emoji: "📚", title: "고품질 제안서 학습", desc: "수많은 과거 제안서로 학습한 글투·시각화 패턴이 자동 반영돼요" },
-    { emoji: "📊", title: "입찰 활동 히스토리", desc: "수주/탈락 결과를 기록하면 나의 입찰 활동을 한눈에 볼 수 있어요" },
-  ];
-  const grid = h("div", { class: "hero-sub-grid" });
-  feats.forEach((f) => {
-    grid.appendChild(h("div", { class: "hero-sub-card" }, [
-      h("div", { class: "hero-sub-emoji" }, f.emoji),
-      h("div", {}, [
-        h("h4", { class: "hero-sub-title" }, f.title),
-        h("p", { class: "hero-sub-desc" }, f.desc),
-      ]),
-    ]));
+  // 5-열 grid
+  const grid = h("div", { class: "features-5-grid" });
+  CORE_FEATURES_5.forEach((f) => {
+    const card = h("div", {
+      class: "feature-5-card" + (f.featured ? " featured" : ""),
+      "data-tone": f.tone,
+    }, [
+      // featured 카드 상단 "핵심 기능" 배지
+      f.featured ? h("span", { class: "feature-5-card-badge" }, "⭐ 핵심 기능") : null,
+      h("div", { class: "feature-5-card-icon" }, f.emoji),
+      h("h4", { class: "feature-5-card-title" }, f.title),
+    ]);
+    grid.appendChild(card);
   });
-  banner.appendChild(grid);
-  return banner;
+  section.appendChild(grid);
+  return section;
 }
 
 // ===== 산출내역서 (B2G 표준 12 컬럼 양식) =====
@@ -1973,8 +1974,8 @@ async function renderDashboard() {
   const content = h("div", { class: "main-content" });
   main.appendChild(content);
 
-  // ── 최상단: 핵심 기능 히어로 배너 (1 메인 + 3 서브)
-  content.appendChild(renderHeroBanner());
+  // ── 최상단: NightOff 핵심 기능 5 카드 (Spec 6 — 옛 renderHeroBanner 영역 교체)
+  content.appendChild(renderCoreFeatures5());
 
   // ── Stats 4개 영역 → 사이드바로 이동됨. 자리 = 업계 뉴스 가로 롤링 위젯.
   content.appendChild(renderNewsWidget());
@@ -2005,7 +2006,7 @@ async function renderDashboard() {
   const rightCol = h("aside", { class: "dashboard-side-col" });
   twoCol.appendChild(rightCol);
 
-  // 핵심 기능 배너는 최상단으로 옮겨졌고 (renderHeroBanner)
+  // 핵심 기능 5 카드는 최상단으로 옮겨졌고 (renderCoreFeatures5, Spec 6)
   // 푸터는 글로벌 푸터(#global-footer)로 일원화 — 대시보드 자체 푸터 제거
 }
 

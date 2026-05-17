@@ -1083,9 +1083,9 @@ const CORE_FEATURES_5 = [
 function renderCoreFeatures5() {
   const section = h("section", { class: "features-5" });
 
-  // 헤더 — "NightOff 핵심 기능 5가지"
+  // 헤더 — "NightOff 주요 기능 5가지" (Spec 8 (5/16): featured 배지 "⭐ 핵심 기능"과 명확 차별화)
   section.appendChild(h("div", { class: "features-5-header" }, [
-    h("h2", { class: "features-5-title" }, "NightOff 핵심 기능 5가지"),
+    h("h2", { class: "features-5-title" }, "NightOff 주요 기능 5가지"),
     h("p", { class: "features-5-subtitle" }, "RFP 한 장이면, 시작부터 마무리까지 NightOff 가 도와요"),
   ]));
 

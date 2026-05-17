@@ -871,7 +871,205 @@ function showChatIntroNotice(taElement) {
 // ---------- Dashboard ----------
 // ── renderHeroBanner (옛 1 메인 + 3 서브 카드) 은 Spec 6 (5/16) 폐기.
 //    교체: renderCoreFeatures5 (NightOff 핵심 기능 5 카드, 가운데 강조 영역).
-//    Spec 7 (히어로 배너 5 슬라이드 신규) 진행 시 본 5 카드 위에 슬라이드 영역 추가 예정.
+//    Spec 7 (히어로 배너 5 슬라이드 신규, 5 카드 위 영역) 완료 — renderHero5Slides.
+
+// 🌙 히어로 배너 5 슬라이드 (대시보드 최상단) — Spec 7 (5/16)
+// 자동 롤링 5초 + 도트 네비 + 호버 일시정지.
+// 메모리 안전: document.body.contains(section) 체크 → 페이지 이동 시 자동 cleanup.
+const HERO_5_SLIDES = [
+  {
+    id: "slide-1",
+    badge: { label: "국내 최초", emoji: "🔥" },
+    title: "국내 최초 B2G / B2B 제안 자동화,",
+    titleBrand: "NightOff !!",
+    description: "수백 건의 입찰 제안서를 학습한 AI가\nRFP 한 장으로 100페이지 제안서까지 한 번에.\n밤새 야근하던 그 시간, 이제 다른 일에 써요.",
+    tone: "purple-blue",
+    illustration: "🏆",
+    accentDetail: "stars",
+  },
+  {
+    id: "slide-2",
+    badge: { label: "곧 출시", emoji: "🚧" },
+    title: "2D + 3D 디자인 패키지, 곧 출시!",
+    titleBrand: null,
+    description: "행사장 조감도? 부스 배치도?\n이제 AI가 알아서 그려드려요.\n디자이너 없이도 평가위원이 놀랄 비주얼이 완성됩니다.",
+    tone: "pink",
+    illustration: "🎨",
+    accentDetail: "squares",
+  },
+  {
+    id: "slide-3",
+    badge: { label: "곧 출시", emoji: "🚧" },
+    title: "발표 전날, AI 평가위원과 모의 PT!",
+    titleBrand: null,
+    description: "\"이 부분에서 이런 질문이 나올 거예요\"\n\"이 슬라이드는 좀 더 단호하게 설명해주세요\"\n실전 같은 리허설로 자신감을 채워드려요.",
+    tone: "amber",
+    illustration: "🎤",
+    accentDetail: "wave",
+  },
+  {
+    id: "slide-4",
+    badge: { label: "곧 출시", emoji: "🚧" },
+    title: "우리 회사만의 강점, AI가 찾아드려요",
+    titleBrand: null,
+    description: "수주 이력만 넣으면 분석 끝.\n\"이 발주처는 이 강점에 약해요\"\n숨겨진 우리만의 차별점을 발견하세요.",
+    tone: "green",
+    illustration: "📈",
+    accentDetail: "chart",
+  },
+  {
+    id: "slide-5",
+    badge: { label: "곧 출시", emoji: "🚧" },
+    title: "발주처 담당자의 취향까지 읽어드려요",
+    titleBrand: null,
+    description: "RFP가 쌓일수록 AI는 더 똑똑해져요.\n\"이 발주처는 디테일을 좋아해요\"\n\"이번 담당자는 실용성을 봐요\" 같은 인사이트가 늘어납니다.",
+    tone: "purple",
+    illustration: "👁️",
+    accentDetail: "constellation",
+  },
+];
+
+// 액센트 디테일 SVG (inline) — 5 슬라이드별 다른 영역
+function _hero5AccentSvg(kind) {
+  switch (kind) {
+    case "stars":
+      // 별빛 — 작은 원 6개 산점
+      return `<svg viewBox="0 0 200 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <circle cx="20" cy="22" r="1.6" fill="rgba(255,255,255,0.55)"/>
+        <circle cx="55" cy="14" r="2.2" fill="rgba(255,255,255,0.75)"/>
+        <circle cx="92" cy="38" r="1.3" fill="rgba(255,255,255,0.4)"/>
+        <circle cx="138" cy="20" r="1.8" fill="rgba(255,255,255,0.65)"/>
+        <circle cx="172" cy="55" r="2.4" fill="rgba(255,255,255,0.85)"/>
+        <circle cx="40" cy="75" r="1.5" fill="rgba(255,255,255,0.5)"/>
+      </svg>`;
+    case "squares":
+      // 사각형 — 회전 사각형 4개
+      return `<svg viewBox="0 0 200 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect x="20" y="20" width="14" height="14" fill="none" stroke="rgba(212,83,126,0.4)" stroke-width="1.4" transform="rotate(15 27 27)"/>
+        <rect x="70" y="55" width="10" height="10" fill="none" stroke="rgba(212,83,126,0.55)" stroke-width="1.4" transform="rotate(-20 75 60)"/>
+        <rect x="120" y="18" width="18" height="18" fill="none" stroke="rgba(212,83,126,0.35)" stroke-width="1.4" transform="rotate(25 129 27)"/>
+        <rect x="160" y="62" width="12" height="12" fill="none" stroke="rgba(212,83,126,0.5)" stroke-width="1.4" transform="rotate(-10 166 68)"/>
+      </svg>`;
+    case "wave":
+      // 음성파 — 진폭 파형
+      return `<svg viewBox="0 0 200 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M0 60 Q 20 35, 40 60 T 80 60 T 120 60 T 160 60 T 200 60" fill="none" stroke="rgba(239,159,39,0.45)" stroke-width="1.8"/>
+        <path d="M0 75 Q 20 55, 40 75 T 80 75 T 120 75 T 160 75 T 200 75" fill="none" stroke="rgba(239,159,39,0.3)" stroke-width="1.4"/>
+      </svg>`;
+    case "chart":
+      // SVG 차트 — 막대 5개 (오름차순)
+      return `<svg viewBox="0 0 200 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect x="20"  y="68" width="14" height="22" fill="rgba(29,158,117,0.45)" rx="2"/>
+        <rect x="50"  y="55" width="14" height="35" fill="rgba(29,158,117,0.55)" rx="2"/>
+        <rect x="80"  y="42" width="14" height="48" fill="rgba(29,158,117,0.65)" rx="2"/>
+        <rect x="110" y="30" width="14" height="60" fill="rgba(29,158,117,0.75)" rx="2"/>
+        <rect x="140" y="18" width="14" height="72" fill="rgba(29,158,117,0.85)" rx="2"/>
+        <path d="M27 68 L57 55 L87 42 L117 30 L147 18" fill="none" stroke="rgba(250,199,117,0.6)" stroke-width="1.6" stroke-dasharray="3 3"/>
+      </svg>`;
+    case "constellation":
+      // 별자리 — 별 + 연결선
+      return `<svg viewBox="0 0 200 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <line x1="25" y1="30" x2="60" y2="55" stroke="rgba(155,127,232,0.3)" stroke-width="1"/>
+        <line x1="60" y1="55" x2="105" y2="40" stroke="rgba(155,127,232,0.3)" stroke-width="1"/>
+        <line x1="105" y1="40" x2="150" y2="68" stroke="rgba(155,127,232,0.3)" stroke-width="1"/>
+        <line x1="150" y1="68" x2="178" y2="25" stroke="rgba(155,127,232,0.3)" stroke-width="1"/>
+        <circle cx="25"  cy="30" r="2.4" fill="rgba(255,255,255,0.85)"/>
+        <circle cx="60"  cy="55" r="2.0" fill="rgba(255,255,255,0.7)"/>
+        <circle cx="105" cy="40" r="2.6" fill="rgba(255,255,255,0.9)"/>
+        <circle cx="150" cy="68" r="1.8" fill="rgba(255,255,255,0.65)"/>
+        <circle cx="178" cy="25" r="2.2" fill="rgba(255,255,255,0.8)"/>
+      </svg>`;
+    default:
+      return "";
+  }
+}
+
+function renderHero5Slides() {
+  const section = h("section", { class: "hero-5" });
+  const slideEls = [];
+  const dotEls = [];
+
+  // 5 슬라이드 DOM 생성 (absolute stack, 첫 슬라이드 active)
+  HERO_5_SLIDES.forEach((s, i) => {
+    const slide = h("div", {
+      class: "hero-5-slide" + (i === 0 ? " active" : ""),
+      "data-tone": s.tone,
+      "data-slide-id": s.id,
+    }, [
+      // subtle 그리드 패턴 + radial glow (배경 디테일)
+      h("div", { class: "hero-5-grid-pattern" }),
+      h("div", { class: "hero-5-radial-glow" }),
+      // 액센트 디테일 (별빛 / 사각형 / 음성파 / 차트 / 별자리)
+      h("div", { class: "hero-5-accent-detail", "data-accent": s.accentDetail, html: _hero5AccentSvg(s.accentDetail) }),
+      // 좌측 텍스트 영역
+      h("div", { class: "hero-5-slide-content" }, [
+        h("span", { class: "hero-5-badge" }, [
+          h("span", { class: "hero-5-badge-emoji" }, s.badge.emoji),
+          h("span", {}, s.badge.label),
+        ]),
+        h("h2", { class: "hero-5-title" }, [
+          document.createTextNode(s.title),
+          s.titleBrand ? h("span", { class: "hero-5-title-brand" }, [
+            document.createTextNode(" "),
+            document.createTextNode(s.titleBrand),
+          ]) : null,
+        ]),
+        h("p", { class: "hero-5-description" }, s.description),
+      ]),
+      // 우상단 일러스트 카드 (모바일 영역 hide)
+      h("div", { class: "hero-5-illustration" }, s.illustration),
+    ]);
+    section.appendChild(slide);
+    slideEls.push(slide);
+  });
+
+  // 도트 네비 (5 dots, 우측 하단)
+  const dotsWrap = h("div", { class: "hero-5-dots" });
+  HERO_5_SLIDES.forEach((s, i) => {
+    const dot = h("button", {
+      class: "hero-5-dot" + (i === 0 ? " active" : ""),
+      "aria-label": `슬라이드 ${i + 1}로 이동`,
+      type: "button",
+    });
+    dotsWrap.appendChild(dot);
+    dotEls.push(dot);
+  });
+  section.appendChild(dotsWrap);
+
+  // 상태 — 클로저 영역 (모듈 변수 X)
+  let idx = 0;
+  let hovered = false;
+
+  function activateSlide(nextIdx) {
+    if (nextIdx === idx || nextIdx < 0 || nextIdx >= HERO_5_SLIDES.length) return;
+    slideEls[idx].classList.remove("active");
+    dotEls[idx].classList.remove("active");
+    idx = nextIdx;
+    slideEls[idx].classList.add("active");
+    dotEls[idx].classList.add("active");
+  }
+
+  // 도트 클릭 영역
+  dotEls.forEach((dot, i) => {
+    dot.addEventListener("click", () => activateSlide(i));
+  });
+
+  // 호버 일시정지 영역 (newsWidget 패턴 정합)
+  section.addEventListener("mouseenter", () => { hovered = true; });
+  section.addEventListener("mouseleave", () => { hovered = false; });
+
+  // 자동 롤링 5초 + 메모리 안전 (document.body.contains 자동 cleanup)
+  const timer = setInterval(() => {
+    if (!document.body.contains(section)) {
+      clearInterval(timer);
+      return;
+    }
+    if (hovered) return;
+    activateSlide((idx + 1) % HERO_5_SLIDES.length);
+  }, 5000);
+
+  return section;
+}
 
 // 🌙 NightOff 핵심 기능 5 카드 (대시보드 최상단) — 가운데 강조 (다크 그라데이션 + 엠버 보더 + 배지)
 const CORE_FEATURES_5 = [
@@ -1974,7 +2172,10 @@ async function renderDashboard() {
   const content = h("div", { class: "main-content" });
   main.appendChild(content);
 
-  // ── 최상단: NightOff 핵심 기능 5 카드 (Spec 6 — 옛 renderHeroBanner 영역 교체)
+  // ── 최상단 (1): 히어로 배너 5 슬라이드 자동 롤링 (Spec 7 — 5/16)
+  content.appendChild(renderHero5Slides());
+
+  // ── 최상단 (2): NightOff 핵심 기능 5 카드 (Spec 6 — 옛 renderHeroBanner 영역 교체)
   content.appendChild(renderCoreFeatures5());
 
   // ── Stats 4개 영역 → 사이드바로 이동됨. 자리 = 업계 뉴스 가로 롤링 위젯.

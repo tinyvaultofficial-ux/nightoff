@@ -4806,6 +4806,183 @@ input.locked-by-env::placeholder {
    ============================================================ */
 
 /* ============================================================
+   #5 히어로 배너 5 슬라이드 (Spec 7, 5/16)
+   ── 5 카드 위 영역 자동 롤링 (5초) + 도트 네비 + 호버 일시정지
+   ── 메모리 안전: document.body.contains(section) 영역 자동 cleanup
+   ============================================================ */
+.hero-5 {
+  position: relative;
+  width: 100%;
+  margin-bottom: 18px;
+  border-radius: 16px;
+  overflow: hidden;
+  min-height: 260px;
+  box-shadow: 0 14px 32px -14px rgba(0, 0, 0, 0.55);
+}
+
+.hero-5-slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+  padding: 32px 36px;
+  display: flex; align-items: flex-start;
+  color: #fff;
+}
+.hero-5-slide.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 5 톤별 그라데이션 (3단 영역) */
+.hero-5-slide[data-tone="purple-blue"] { background: linear-gradient(135deg, #1A1E3A 0%, #252B52 50%, #1B1F3B 100%); }
+.hero-5-slide[data-tone="pink"]        { background: linear-gradient(135deg, #2E1A2E 0%, #3D1F35 50%, #1F1015 100%); }
+.hero-5-slide[data-tone="amber"]       { background: linear-gradient(135deg, #2E2418 0%, #3D2F1F 50%, #1F1A10 100%); }
+.hero-5-slide[data-tone="green"]       { background: linear-gradient(135deg, #0F2E1F 0%, #1A3D2B 50%, #0F1F1A 100%); }
+.hero-5-slide[data-tone="purple"]      { background: linear-gradient(135deg, #1A0F2E 0%, #2B1A3D 50%, #100F1F 100%); }
+
+/* subtle 그리드 패턴 (32×32, opacity 0.35) */
+.hero-5-grid-pattern {
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 32px 32px;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* radial gradient (우상단 빛 번짐) — 톤별 컬러 */
+.hero-5-radial-glow {
+  position: absolute;
+  top: -60px; right: -80px;
+  width: 360px; height: 360px;
+  pointer-events: none;
+  filter: blur(0.5px);
+}
+.hero-5-slide[data-tone="purple-blue"] .hero-5-radial-glow { background: radial-gradient(circle, rgba(127, 119, 221, 0.35) 0%, transparent 65%); }
+.hero-5-slide[data-tone="pink"]        .hero-5-radial-glow { background: radial-gradient(circle, rgba(212, 83, 126, 0.30) 0%, transparent 65%); }
+.hero-5-slide[data-tone="amber"]       .hero-5-radial-glow { background: radial-gradient(circle, rgba(239, 159, 39, 0.32) 0%, transparent 65%); }
+.hero-5-slide[data-tone="green"]       .hero-5-radial-glow { background: radial-gradient(circle, rgba(29, 158, 117, 0.32) 0%, transparent 65%); }
+.hero-5-slide[data-tone="purple"]      .hero-5-radial-glow { background: radial-gradient(circle, rgba(155, 127, 232, 0.32) 0%, transparent 65%); }
+
+/* 액센트 디테일 (inline SVG 영역, 우측 중간) */
+.hero-5-accent-detail {
+  position: absolute;
+  right: 24px; bottom: 70px;
+  width: 200px; height: 100px;
+  opacity: 0.85;
+  pointer-events: none;
+  z-index: 1;
+}
+.hero-5-accent-detail svg { width: 100%; height: 100%; display: block; }
+
+/* 좌측 텍스트 영역 */
+.hero-5-slide-content {
+  position: relative;
+  z-index: 2;
+  max-width: 62%;
+  display: flex; flex-direction: column; gap: 12px;
+}
+
+.hero-5-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  align-self: flex-start;
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(4px);
+}
+.hero-5-badge-emoji { font-size: 12px; }
+
+.hero-5-title {
+  margin: 0;
+  font-size: 26px; font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+  word-break: keep-all;
+}
+.hero-5-title-brand {
+  color: #C2B5F0;
+  font-weight: 800;
+}
+
+.hero-5-description {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.65;
+  color: rgba(255, 255, 255, 0.78);
+  letter-spacing: -0.005em;
+  word-break: keep-all;
+  white-space: pre-line;   /* 데이터 영역 '\n' 줄바꿈 */
+}
+
+/* 우상단 일러스트 카드 (100×100, rounded 20px) */
+.hero-5-illustration {
+  position: absolute;
+  top: 32px; right: 36px;
+  width: 100px; height: 100px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.04) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 20px;
+  display: grid; place-items: center;
+  font-size: 48px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.4);
+  z-index: 2;
+}
+
+/* 도트 네비 (우측 하단) */
+.hero-5-dots {
+  position: absolute;
+  bottom: 18px; right: 24px;
+  display: flex; gap: 6px;
+  z-index: 3;
+}
+.hero-5-dot {
+  appearance: none;
+  border: 0;
+  width: 8px; height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  transition: width 0.25s ease, background 0.25s ease;
+  padding: 0;
+}
+.hero-5-dot:hover { background: rgba(255, 255, 255, 0.6); }
+.hero-5-dot.active {
+  width: 22px;
+  background: rgba(255, 255, 255, 0.95);
+}
+
+/* 반응형 — ≤1024px 중간 영역 */
+@media (max-width: 1024px) {
+  .hero-5 { min-height: 240px; }
+  .hero-5-slide { padding: 28px 30px; }
+  .hero-5-title { font-size: 22px; }
+  .hero-5-description { font-size: 13.5px; }
+  .hero-5-illustration { width: 80px; height: 80px; font-size: 38px; top: 28px; right: 28px; }
+  .hero-5-accent-detail { width: 160px; height: 80px; }
+}
+
+/* 반응형 — ≤767px 모바일 (일러스트 hide, 텍스트 풀폭) */
+@media (max-width: 767px) {
+  .hero-5 { min-height: 220px; }
+  .hero-5-slide { padding: 22px 20px 50px; }
+  .hero-5-title { font-size: 18px; }
+  .hero-5-description { font-size: 12.5px; line-height: 1.55; }
+  .hero-5-illustration { display: none; }   /* 결정 3 (5/16) — 모바일 hide */
+  .hero-5-slide-content { max-width: 100%; }
+  .hero-5-accent-detail { opacity: 0.5; bottom: 55px; right: 12px; width: 130px; height: 65px; }
+  .hero-5-dots { bottom: 14px; right: 16px; }
+}
+
+/* ============================================================
    #6 NightOff 핵심 기능 5 카드 (Spec 6, 5/16)
    가운데 카드 (data-featured) = 다크 그라데이션 + 2px 엠버 보더 + 배지 + scale 1.06
    ============================================================ */

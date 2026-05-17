@@ -4983,8 +4983,9 @@ input.locked-by-env::placeholder {
 }
 
 /* ============================================================
-   #6 NightOff 핵심 기능 5 카드 (Spec 6, 5/16)
-   가운데 카드 (data-featured) = 다크 그라데이션 + 2px 엠버 보더 + 배지 + scale 1.06
+   #6 NightOff 주요 기능 5 카드 (Spec 6 + Spec 8, 5/16)
+   ── Spec 6: 5 카드 신규 + 가운데 강조 (다크 그라데이션 + 2px 엠버 보더 + 배지 + scale 1.06)
+   ── Spec 8: 카드 콘텐츠 종→횡 + 폰트 ↑ + 헤더 워딩 "주요 기능" + 디자인 정합
    ============================================================ */
 .features-5 {
   margin-bottom: 28px;
@@ -5017,12 +5018,13 @@ input.locked-by-env::placeholder {
 }
 .feature-5-card {
   position: relative;
-  padding: 22px 14px 20px;
+  padding: 14px 12px;
+  min-height: 76px;
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 14px;
-  display: flex; flex-direction: column; align-items: center; gap: 12px;
-  text-align: center;
+  display: flex; flex-direction: row; align-items: center; gap: 10px;
+  text-align: left;
   transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
 }
 .feature-5-card:hover {
@@ -5031,15 +5033,17 @@ input.locked-by-env::placeholder {
   box-shadow: 0 8px 16px -8px rgba(124,58,237,0.18);
 }
 .feature-5-card-icon {
-  width: 48px; height: 48px;
-  border-radius: 14px;
+  width: 38px; height: 38px;
+  border-radius: 12px;
   display: grid; place-items: center;
-  font-size: 24px;
+  font-size: 20px;
+  flex-shrink: 0;   /* 횡방향 정합 — 카드 폭 좁아져도 아이콘 박스 영역 안 줄어듦 */
   /* 톤별 background + color 는 [data-tone] 영역 분기 */
 }
 .feature-5-card-title {
   margin: 0;
-  font-size: 13.5px; font-weight: 700;
+  font-size: 14px;
+  font-weight: 700;
   color: var(--fg);
   letter-spacing: -0.01em;
   line-height: 1.35;
@@ -5083,7 +5087,9 @@ input.locked-by-env::placeholder {
 .feature-5-card[data-tone="pink"]   .feature-5-card-icon { background: rgba(212, 83, 126, 0.12);  color: #D4537E; }
 
 /* featured(엠버) 카드 아이콘은 다크 배경 영역 정합 — 흰색 / 골드 톤 */
+/* Spec 8 (5/16): 일반 38×38 → 가운데 40×40 (살짝 ↑ 강조) */
 .feature-5-card.featured .feature-5-card-icon {
+  width: 40px; height: 40px;
   background: rgba(239, 159, 39, 0.22);
   color: #FFD27A;
 }

@@ -87,7 +87,7 @@
 
   /* ─── 레이아웃 ─── */
   --sidebar-w:      280px;
-  --right-panel-w:  280px;
+  /* --right-panel-w 는 Spec 5 (5/16) 우측 사이드바 폐기 영역 함께 폐기. */
 
   /* ─── 모션 ─── */
   --ease:        cubic-bezier(0.32, 0.72, 0, 1);    /* 토스/애플식 부드러움 */
@@ -389,121 +389,18 @@ input, select, textarea { font-family: inherit; color: inherit; }
 /* (이전 sidebar-recent-* 영역은 사이드바 하단 푸터로 대체됨 — 삭제됨) */
 
 /* ===== Main area ===== */
+/* margin-right (--right-panel-w) + body.right-panel-off 토글 + ≤1280px 우측 패널 분기는
+ * Spec 5 (5/16) 우측 사이드바 폐기 영역 함께 정리. 중앙 영역 폭 +280px 확장. */
 .main {
   margin-left: var(--sidebar-w);
-  margin-right: var(--right-panel-w);
   flex: 1; min-height: 100vh;
   display: flex; flex-direction: column;
-  transition: margin-right .25s ease;
-}
-/* 우측 패널 숨김 모드 (채팅 화면 등 메인 영역을 꽉 써야 할 때) */
-body.right-panel-off .main { margin-right: 0; }
-body.right-panel-off .right-panel { display: none; }
-@media (max-width: 1280px) {
-  /* 작은 화면에서는 우측 패널 자동 숨김 */
-  .main { margin-right: 0; }
-  .right-panel { display: none; }
 }
 
-/* ===== Right Panel (sticky 우측 패널 — 업데이트 예정 + 인체 캐릭터) ===== */
-.right-panel {
-  position: fixed; top: 0; right: 0; bottom: 0;
-  width: var(--right-panel-w);
-  background: #fff;
-  border-left: 1px solid var(--border);
-  display: flex; flex-direction: column;
-  z-index: 35;
-  overflow-y: auto;
-  /* 상단 여백 88px = 사이드바 로고 영역 높이와 정렬 */
-  padding: 88px 18px 32px;
-}
-.rp-section { margin-bottom: 22px; }
-.rp-section:last-child { margin-bottom: 0; }
-.rp-title {
-  font-size: 12px; font-weight: 700; color: var(--fg-2);
-  letter-spacing: 0.04em; text-transform: uppercase;
-  margin: 0 0 12px;
-}
-.rp-coming-list { display: flex; flex-direction: column; gap: 8px; }
-.rp-coming-card {
-  background: var(--card);
-  border: none;
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-sm);
-  padding: var(--space-3) var(--space-3);
-  display: flex; flex-direction: column; gap: var(--space-1);
-  transition: box-shadow var(--duration) var(--ease),
-              transform var(--duration-fast) var(--ease);
-}
-.rp-coming-card:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow);
-}
-.rp-coming-head {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 13px; font-weight: 700;
-  color: var(--fg-strong);
-  letter-spacing: -0.01em;
-}
-.rp-coming-emoji { font-size: 15px; }
-.rp-coming-badge {
-  display: inline-flex; align-items: center; gap: 3px;
-  margin-left: auto;
-  padding: 2px 8px; border-radius: var(--radius-pill);
-  background: var(--peach-soft); color: var(--sunset);
-  font-size: 10px; font-weight: 700;
-  letter-spacing: 0.02em;
-}
-.rp-coming-desc {
-  font-size: 11.5px;
-  color: var(--fg-soft);
-  line-height: 1.5;
-  margin: 0;
-}
-.rp-coming-tagline {
-  margin-top: var(--space-2);
-  font-size: 11.5px;
-  color: var(--fg-soft);
-  text-align: center;
-  font-style: italic;
-  line-height: 1.6;
-}
+/* ===== Right Panel (.right-panel + .rp-section + .rp-title + .rp-coming-* + .rp-body-*) =====
+ * Spec 5 (5/16) 폐기 — 우측 사이드바 통째 제거.
+ */
 
-/* ===== 건강 체크 — 6 자세·휴식 가이드 순환 ===== */
-.rp-body-card {
-  background: #FAFAFA;
-  border: 1px solid #EEE;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
-  padding: var(--space-3) var(--space-3) var(--space-4);
-  display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
-}
-.rp-body-img-btn {
-  appearance: none; background: transparent; border: 0; padding: 0; cursor: pointer;
-  width: 100%; max-width: 200px; aspect-ratio: 280 / 497;
-  border-radius: 10px; overflow: hidden;
-  transition: transform .18s ease, box-shadow .18s ease;
-}
-.rp-body-img-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 14px -8px rgba(0,0,0,0.18); }
-.rp-body-img-btn:active { transform: translateY(0); }
-.rp-body-img {
-  width: 100%; height: 100%; display: block; object-fit: cover;
-  border-radius: 10px;
-}
-.rp-body-msg {
-  min-height: 36px;
-  font-size: 12px;
-  text-align: center;
-  color: var(--fg);
-  line-height: 1.45;
-  font-weight: 500;
-  word-break: keep-all;
-}
-.rp-body-time {
-  font-size: 10.5px; color: var(--fg-2);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
-}
 .main-header {
   position: sticky; top: 0; z-index: 30;
   display: flex; align-items: center; justify-content: space-between;
@@ -3606,21 +3503,17 @@ body, .msg-bubble, .card, .strengths-intro,
 /* ============================================================
    전역 하단 푸터 (item 9)
    ============================================================ */
+/* margin-right (--right-panel-w) + body.right-panel-off 토글 + ≤1280px 분기는
+ * Spec 5 (5/16) 우측 사이드바 폐기 영역 함께 정리. */
 .global-footer {
   background: linear-gradient(180deg, #ffffff 0%, #FAFAFA 100%);
   border-top: 1px solid var(--border);
   padding: 28px 24px 22px;
   margin-top: auto;
   margin-left: var(--sidebar-w);
-  margin-right: var(--right-panel-w);
   font-size: 12.5px;
   color: var(--fg-2);
   letter-spacing: -0.005em;
-  transition: margin-right .25s ease;
-}
-body.right-panel-off .global-footer { margin-right: 0; }
-@media (max-width: 1280px) {
-  .global-footer { margin-right: 0; }
 }
 @media (max-width: 900px) {
   .global-footer { margin-left: 0; }
@@ -5242,12 +5135,7 @@ input.locked-by-env::placeholder {
 }
 body.nav-open .nav-backdrop { opacity: 1; pointer-events: auto; }
 
-/* ===== ≤1280px: 우측 패널 숨김 (이미 위에 있지만 통일) ===== */
-@media (max-width: 1279px) {
-  .main { margin-right: 0 !important; }
-  .right-panel { display: none !important; }
-  .global-footer { margin-right: 0 !important; }
-}
+/* ≤1279px 우측 패널 숨김 분기는 Spec 5 (5/16) 우측 사이드바 폐기 영역 함께 정리. */
 
 /* ===== ≤1024px: 사이드바 햄버거화 ===== */
 @media (max-width: 1023px) {
@@ -5315,8 +5203,7 @@ body.nav-open .nav-backdrop { opacity: 1; pointer-events: auto; }
   .modal { max-width: 92vw !important; max-height: 88vh !important; }
   .toast-root { left: 12px; right: 12px; bottom: 16px; }
 
-  /* 우측 패널의 건강 체크 이미지 — 모바일 데스크탑에선 안 보이지만 혹시 모를 케이스 대응 */
-  .rp-body-img-btn { max-width: 160px; }
+  /* .rp-body-img-btn 모바일 보정은 Spec 5 (5/16) 우측 사이드바 폐기 영역 함께 정리. */
 }
 
 /* ===== ≤480px: 매우 작은 모바일 ===== */
@@ -5326,9 +5213,9 @@ body.nav-open .nav-backdrop { opacity: 1; pointer-events: auto; }
   .btn { font-size: 13px; padding: 8px 12px; }
 }
 
-/* ===== 인쇄 시 햄버거/우측 패널 숨김 ===== */
+/* ===== 인쇄 시 햄버거/푸터 숨김 (우측 패널은 Spec 5 (5/16) 폐기) ===== */
 @media print {
-  .nav-toggle, .nav-backdrop, .right-panel,
+  .nav-toggle, .nav-backdrop,
   .global-footer { display: none !important; }
   .main { margin: 0 !important; }
   .sidebar { display: none !important; }
@@ -5338,14 +5225,11 @@ body.nav-open .nav-backdrop { opacity: 1; pointer-events: auto; }
    랜딩 풀스크린 모드 — 우측 패널 / 푸터 / 햄버거 모두 숨김
    (랜딩은 한 화면 안에 모든 메시지 표시)
    ============================================================ */
-body.landing-fullscreen .right-panel,
+/* body.landing-fullscreen .right-panel + .main margin-right 분기는 Spec 5 (5/16) 폐기. */
 body.landing-fullscreen .global-footer,
 body.landing-fullscreen .nav-toggle,
 body.landing-fullscreen .nav-backdrop {
   display: none !important;
-}
-body.landing-fullscreen .main {
-  margin-right: 0 !important;
 }
 
 /* ============================================================

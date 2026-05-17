@@ -458,8 +458,7 @@ function navigate(path) {
 }
 function route() {
   const path = location.pathname;
-  // 페이지 전환 시 우측 패널은 기본 ON (renderChat 안에서 OFF 토글)
-  document.body.classList.remove("right-panel-off");
+  // 우측 패널 (right-panel-off) 토글은 Spec 5 (5/16) 폐기 — 우측 사이드바 자체 제거됨.
   // 랜딩 페이지 이전 상태도 초기화 (랜딩 진입 시 다시 추가됨)
   document.body.classList.remove("landing-fullscreen");
   for (const r of routes) {
@@ -3477,8 +3476,7 @@ function buildScoreBarChart(items) {
 async function renderChat(cid, convId) {
   const root = $("#app-root");
   root.innerHTML = "";
-  // 채팅 화면은 우측 패널 숨김 (메인 영역 꽉 사용)
-  document.body.classList.add("right-panel-off");
+  // 우측 패널 (right-panel-off) 토글은 Spec 5 (5/16) 폐기 — 우측 사이드바 자체 제거됨.
 
   let data = null;
   try {
@@ -5067,96 +5065,9 @@ $("#test-key")?.addEventListener("click", async () => {
   }
 });
 
-// ---------- 건강 체크 — 6 자세·휴식 가이드 순환 ----------
-// 사용자가 직접 만든 6개 일러스트 + 매핑된 콘텐츠. 5분마다 자동 순환 + 클릭 시 다음 팁.
-const HEALTH_TIPS = [
-  { img: "1_neck",     text: "목을 좌우로 천천히 5번씩 돌려보세요" },
-  { img: "2_shoulder", text: "어깨를 위로 으쓱 → 천천히 내려요. 5번 반복" },
-  { img: "3_wrist",    text: "손목을 시계방향 5번, 반시계방향 5번 돌려보세요" },
-  { img: "4_ankle",    text: "발목 펌핑: 발끝을 위아래로 10번" },
-  { img: "5_monitor",  text: "모니터 상단이 눈높이와 같아야 해요" },
-  { img: "6_chair",    text: "등받이에 등을 완전히 기대 보세요" },
-];
-
-let _bodyStartedAt = null;
-let _bodyTypingTimer = null;
-let _healthTipIdx = 0;
-let _healthRotateTimer = null;
-
-function ensureBodyClock() {
-  // sessionStorage 에 세션 시작 시각 저장 (브라우저 세션 단위)
-  let t = sessionStorage.getItem("nightoff.bodyStartedAt");
-  if (!t) {
-    t = String(Date.now());
-    sessionStorage.setItem("nightoff.bodyStartedAt", t);
-  }
-  _bodyStartedAt = parseInt(t, 10);
-}
-
-function applyHealthTip(idx, animate) {
-  const tips = HEALTH_TIPS;
-  if (!tips.length) return;
-  _healthTipIdx = ((idx % tips.length) + tips.length) % tips.length;
-  const tip = tips[_healthTipIdx];
-  const imgEl = document.getElementById("rp-body-img");
-  const webpEl = document.getElementById("rp-body-img-webp");
-  const msgEl = document.getElementById("rp-body-msg");
-  if (imgEl) imgEl.src = `/static/images/health/${tip.img}.png`;
-  if (webpEl) webpEl.srcset = `/static/images/health/${tip.img}.webp`;
-  if (msgEl) {
-    if (animate) typeBodyMessage(msgEl, tip.text);
-    else msgEl.textContent = tip.text;
-  }
-}
-
-function typeBodyMessage(el, msg) {
-  if (_bodyTypingTimer) clearInterval(_bodyTypingTimer);
-  el.textContent = "";
-  let i = 0;
-  _bodyTypingTimer = setInterval(() => {
-    if (i >= msg.length) {
-      clearInterval(_bodyTypingTimer);
-      _bodyTypingTimer = null;
-      el.textContent = msg;
-      return;
-    }
-    i++;
-    el.textContent = msg.slice(0, i);
-  }, 35);
-}
-
-function tickBodyTime() {
-  if (!_bodyStartedAt) return;
-  const elapsedMs = Date.now() - _bodyStartedAt;
-  const elapsedMin = elapsedMs / 60000;
-  const timeEl = document.getElementById("rp-body-time");
-  if (timeEl) {
-    const h = Math.floor(elapsedMin / 60);
-    const m = Math.floor(elapsedMin % 60);
-    timeEl.textContent = h > 0 ? `${h}시간 ${m}분 째 작업 중` : `${m}분 째 작업 중`;
-  }
-}
-
-function bootBodyCharacter() {
-  ensureBodyClock();
-  // 초기 팁 — 세션마다 랜덤 시작 (같은 팁 매번 보지 X)
-  const startIdx = Math.floor(Math.random() * HEALTH_TIPS.length);
-  applyHealthTip(startIdx, false);
-  tickBodyTime();
-  // 시간 표시 30초마다 갱신
-  setInterval(tickBodyTime, 30 * 1000);
-  // 5분마다 다음 팁 자동 순환
-  if (_healthRotateTimer) clearInterval(_healthRotateTimer);
-  _healthRotateTimer = setInterval(() => {
-    applyHealthTip(_healthTipIdx + 1, true);
-  }, 5 * 60 * 1000);
-  // 클릭 시 즉시 다음 팁
-  const btn = document.getElementById("rp-body-img-btn");
-  if (btn && !btn.dataset.bound) {
-    btn.dataset.bound = "1";
-    btn.addEventListener("click", () => applyHealthTip(_healthTipIdx + 1, true));
-  }
-}
+// ── 건강 체크 (HEALTH_TIPS + ensureBodyClock / applyHealthTip / typeBodyMessage /
+//    tickBodyTime / bootBodyCharacter + sessionStorage 'nightoff.bodyStartedAt') 은
+//    Spec 5 (5/16) 우측 사이드바 폐기 영역 함께 폐기. static/images/health/ 12 이미지 자원은 보존.
 
 // ---------- 햄버거 사이드바 토글 (반응형: 1024px 미만) ----------
 function bootNavToggle() {
@@ -5238,8 +5149,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // token 없음 + 공개 페이지 → 그대로 진행 (랜딩 노출, __nightoff_user 미설정)
   // (legacy ensureSignup 모달 — 묶음 N 인증 시스템 전환 후 폐기됨.
   //  가입 흐름은 랜딩 CTA "지금 시작하기 ✨" -> /register.html 으로 이동.)
-  // 체류시간 인체 캐릭터 시작
-  bootBodyCharacter();
+  // 체류시간 인체 캐릭터 (bootBodyCharacter) 호출은 Spec 5 (5/16) 폐기.
   // 반응형 햄버거 토글
   bootNavToggle();
   // route() 영역 영역 영역 영역 호출 — window.__nightoff_user 영역 영역 영역 영역

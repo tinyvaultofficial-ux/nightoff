@@ -509,8 +509,8 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
   const winRate = (stats.win_rate === null || stats.win_rate === undefined) ? "—" : `${stats.win_rate}%`;
   const winLossLabel = `${stats.wins ?? 0}승 ${stats.losses ?? 0}패`;
   const statsRows = [
-    { label: "등록 과업", value: `${stats.total_clients ?? 0}개` },
-    { label: "작성 제안서", value: `${stats.total_proposals ?? 0}건` },
+    { label: "등록한 과업", value: `${stats.total_clients ?? 0}개` },
+    { label: "작성한 제안서", value: `${stats.total_proposals ?? 0}건` },
     { label: "이번 달 활동", value: `${stats.month_activity ?? 0}회` },
     { label: `수주율 (${winLossLabel})`, value: winRate },
   ];
@@ -2159,12 +2159,11 @@ async function renderDashboard() {
   const main = h("main", { class: "main" });
   root.appendChild(main);
 
-  // 메인 헤더 — 작은 로고 제거. "대시보드" 워딩 = 사이드바 우측 끝에 자연스럽게 인접.
+  // Spec C-4 (5/18): 헤더 미니멀화 — h1 시간대별 메시지만, p 제거.
+  //   "대시보드" 워딩 폐기 + p 부제 제거. getTimeBasedGreeting() 함수 본문 무변경.
   main.appendChild(h("header", { class: "main-header" }, [
     h("div", {}, [
-      h("h1", {}, "대시보드"),
-      // 시간대별 인사 (item 11-C)
-      h("p", {}, getTimeBasedGreeting()),
+      h("h1", {}, getTimeBasedGreeting()),
     ]),
     // "+ 새 과업" 버튼은 사이드바 상단으로 단일화됨 (이중 진입점 제거).
   ]));

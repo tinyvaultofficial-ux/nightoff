@@ -30,16 +30,23 @@
 
   /* ─── 노을 액센트 (퇴근 시간 / 마감 임박) ─── */
   --sunset:       #FF8E5C;   /* 노을 오렌지 */
+  /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
   --sunset-soft:  #FFE8DA;
+  /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
   --peach:        #FFB4A2;   /* 살구 — 위로/캐릭터 메시지 */
   --peach-soft:   #FFEEE8;
+  /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
   --gold:         #FFCB77;   /* 황금시간 / 마감 임박 */
   --gold-soft:    #FFF3DD;
 
   /* ─── 보조 (의미별) ─── */
+  /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
   --accent:       #F4F0FF;
+  /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
   --accent-fg:    #5A38D1;
+  /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
   --secondary:    #F3F0FC;
+  /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
   --secondary-fg: #4E31BF;
   --success:      #2D9D78;   /* 따뜻한 민트 */
   --success-soft: #D6F0E6;
@@ -49,10 +56,12 @@
   --danger-soft:  #FBE0DC;
 
   /* ─── 라운드 (의미별) ─── */
+  /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
   --radius-xs:    6px;       /* 배지, 작은 버튼 */
   --radius-sm:    10px;      /* 인풋, 칩 */
   --radius:       14px;      /* 카드 (메인) */
   --radius-lg:    20px;      /* 모달, 큰 배너 */
+  /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
   --radius-xl:    24px;
   --radius-pill:  999px;
 
@@ -72,17 +81,22 @@
     0 0 0 1px var(--border-card),
     0 4px 12px rgba(0,0,0,0.05),
     0 24px 48px -16px rgba(0,0,0,0.12);
+  /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
   --shadow-primary: 0 12px 32px -12px rgba(107, 70, 229, 0.32);
+  /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
   --shadow-sunset:  0 12px 32px -12px rgba(255, 142, 92, 0.30);
 
   /* ─── 8pt 간격 시스템 ─── */
+  /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
   --space-1:  4px;
+  /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
   --space-2:  8px;
   --space-3:  12px;
   --space-4:  16px;
   --space-5:  24px;
   --space-6:  32px;
   --space-7:  48px;
+  /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
   --space-8:  64px;
 
   /* ─── 레이아웃 ─── */
@@ -91,6 +105,7 @@
 
   /* ─── 모션 ─── */
   --ease:        cubic-bezier(0.32, 0.72, 0, 1);    /* 토스/애플식 부드러움 */
+  /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
   --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
   --duration:    240ms;
   --duration-fast: 160ms;
@@ -98,7 +113,25 @@
   /* ─── 폰트 — Paperlogy 우선 (프레젠테이션 특화. SUIT/Pretendard 폴백) ─── */
   --sans: 'Paperlogy', 'SUIT Variable', 'SUIT', 'Pretendard Variable', 'Pretendard',
           -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', sans-serif;
+  /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* ─── Spec A (5/18) 신규 — 폰트 사이즈 토큰 6단계. Spec B/C/D 영역 점진 도입 예정 ─── */
+  --text-xs:   11px;  /* 캡션, 작은 라벨 */
+  --text-sm:   12px;  /* 보조 정보, 메타 */
+  --text-base: 13px;  /* 본문 (현재 가장 많이 쓰는 사이즈) */
+  --text-md:   15px;  /* 소제목, 카드 타이틀 */
+  --text-lg:   20px;  /* 섹션 타이틀 */
+  --text-xl:   26px;  /* 페이지 타이틀 */
+
+  /* ─── Spec A (5/18) 신규 — 다크 톤 namespace. Spec B 사이드바 다크화 영역 사용 예정 ─── */
+  --dark-bg:          #1A1A1F;
+  --dark-bg-elevated: #25252C;
+  --dark-bg-subtle:   #2C2C34;
+  --dark-fg:          #FFFFFF;
+  --dark-fg-soft:     #9994A1;
+  --dark-fg-muted:    #6E6A75;
+  --dark-border:      #2C2C34;
 }
 
 /* ─── 타이포 위계 — Paperlogy 기준, 한 단계 큰 사이즈 ─── */
@@ -6005,3 +6038,41 @@ body.landing-fullscreen .nav-backdrop {
   .chat-intro-tip-btn { font-size: 13px; padding: 10px 12px; }
   .chat-intro-font-btn { width: 100%; }
 }
+
+/* ============================================
+   Spec A (5/18) 신규 — NightOff 리뉴얼 컴포넌트 베이스
+   Spec B/C/D 영역 점진 도입 예정. 본 spec 영역 정의만, 적용 X.
+   ============================================ */
+
+.no-card {
+  background: var(--card);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+}
+
+.no-card-flat {
+  background: var(--bg-2);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+}
+
+.no-cta-dark {
+  background: var(--dark-bg);
+  color: var(--dark-fg);
+  border: 0;
+  padding: 12px 20px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  font-weight: 500;
+  cursor: pointer;
+  letter-spacing: -0.2px;
+  transition: opacity var(--duration) var(--ease);
+}
+.no-cta-dark:hover { opacity: 0.85; }
+.no-cta-dark:active { transform: scale(0.98); }
+
+.no-pill-purple { background: var(--primary-soft); color: var(--primary); font-size: var(--text-xs); font-weight: 500; padding: 4px 10px; border-radius: var(--radius-sm); }
+.no-pill-amber  { background: #FAEEDA; color: #854F0B; font-size: var(--text-xs); font-weight: 500; padding: 4px 10px; border-radius: var(--radius-sm); }
+.no-pill-red    { background: var(--danger-soft); color: var(--danger); font-size: var(--text-xs); font-weight: 500; padding: 4px 10px; border-radius: var(--radius-sm); }
+.no-pill-gray   { background: var(--bg-2); color: var(--fg-soft); font-size: var(--text-xs); font-weight: 500; padding: 4px 10px; border-radius: var(--radius-sm); }

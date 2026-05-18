@@ -15,6 +15,8 @@ boto3==1.35.92
 # 베타 인증 — 묶음 N
 bcrypt==4.1.2
 PyJWT==2.8.0
+# Spec D-Fix-8 (5/18) — 이메일 인증 (Resend SDK, noreply@nightoff.ai)
+resend==2.0.0
 # Phase 4 — 매일 00:00 KST quota 자동 리셋 (BackgroundScheduler 데몬 스레드).
 # 미설치 시 graceful skip → 어드민 수동 트리거(설정 탭 버튼)로 대체 가능.
 apscheduler==3.10.4

@@ -127,8 +127,17 @@
           else showError(data.detail || "가입에 실패했어요. 다시 시도해 주세요.");
           return;
         }
-        localStorage.setItem(AUTH_TOKEN_KEY, data.token);
-        location.href = "/";
+        // Spec D-Fix-8 (5/18) — 인증 메일 발송 → verify-pending 페이지로 redirect
+        // JWT 토큰은 인증 완료 후 verify endpoint 영역 발급 (자동 로그인 차단)
+        if (data.status === "pending_verification") {
+          location.href = `/verify-pending.html?email=${encodeURIComponent(data.email)}`;
+          return;
+        }
+        // Fallback (구 흐름) — token 받으면 그대로 처리
+        if (data.token) {
+          localStorage.setItem(AUTH_TOKEN_KEY, data.token);
+          location.href = "/";
+        }
       } catch (err) {
         showError("서버에 연결할 수 없어요. 네트워크를 확인해 주세요.");
       } finally {

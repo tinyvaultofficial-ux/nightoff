@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>이메일 인증 · NightOff</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+  <link rel="preload" as="font" href="/static/fonts/Paperlogy-7Bold.ttf" type="font/ttf" crossorigin />
+  <link rel="preload" as="font" href="/static/fonts/Paperlogy-4Regular.ttf" type="font/ttf" crossorigin />
+  <style>
+    /* Spec D-Fix-8 (5/18) — 이메일 인증 안내 페이지 */
+    body {
+      background: #FAFAFF;
+      font-family: 'Paperlogy', -apple-system, BlinkMacSystemFont, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      color: #1F1147;
+    }
+    .verify-pending {
+      max-width: 480px;
+      width: 100%;
+      background: white;
+      border-radius: 14px;
+      padding: 48px 40px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+      text-align: center;
+    }
+    .verify-pending-icon {
+      font-size: 56px;
+      margin-bottom: 16px;
+    }
+    .verify-pending h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1F1147;
+      margin: 0 0 12px;
+      letter-spacing: -0.3px;
+    }
+    .verify-pending-desc {
+      font-size: 15px;
+      color: #555;
+      line-height: 1.6;
+      margin: 0 0 20px;
+    }
+    .verify-pending-email {
+      display: inline-block;
+      padding: 8px 16px;
+      background: #F5F0FF;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #6E56CF;
+      margin-bottom: 28px;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .verify-pending-hint {
+      font-size: 13px;
+      color: #888;
+      line-height: 1.6;
+      margin: 0 0 20px;
+    }
+    .verify-pending-resend {
+      width: 100%;
+      padding: 13px 24px;
+      background: linear-gradient(135deg, #6E56CF 0%, #9D8AE6 100%);
+      color: white;
+      font-size: 14px;
+      font-weight: 700;
+      border: 0;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: opacity 0.15s ease;
+      font-family: inherit;
+    }
+    .verify-pending-resend:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+    .verify-pending-resend:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .verify-pending-status {
+      font-size: 13px;
+      color: #555;
+      margin: 12px 0 0;
+      min-height: 18px;
+    }
+    .verify-pending-status.success { color: #2D9D78; }
+    .verify-pending-status.error { color: #C0392B; }
+    .verify-pending-login {
+      margin: 24px 0 0;
+      font-size: 13px;
+      color: #888;
+    }
+    .verify-pending-login a {
+      color: #6E56CF;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .verify-pending-login a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="verify-pending">
+    <div class="verify-pending-icon">📧</div>
+    <h1>이메일을 확인해주세요</h1>
+    <p class="verify-pending-desc">가입하신 이메일 주소로 인증 링크를 보냈어요.</p>
+    <div class="verify-pending-email" id="email-display">—</div>
+    <p class="verify-pending-hint">
+      메일이 도착하지 않았다면 스팸 메일함을 확인하거나<br>
+      아래 버튼을 눌러 재발송해주세요.
+    </p>
+    <button class="verify-pending-resend" id="resend-btn" type="button">재발송</button>
+    <p class="verify-pending-status" id="resend-status"></p>
+    <p class="verify-pending-login">
+      이미 인증했어요 → <a href="/login.html">로그인</a>
+    </p>
+  </div>
+  <script>
+    // URL ?email=xxx 추출
+    const params = new URLSearchParams(window.location.search);
+    const email = params.get("email") || "";
+    if (email) {
+      document.getElementById("email-display").textContent = email;
+    } else {
+      document.getElementById("email-display").style.display = "none";
+    }
+
+    const btn = document.getElementById("resend-btn");
+    const status = document.getElementById("resend-status");
+
+    function showStatus(msg, cls) {
+      status.textContent = msg;
+      status.className = "verify-pending-status" + (cls ? " " + cls : "");
+    }
+
+    function startCooldown(seconds) {
+      let remaining = seconds;
+      btn.disabled = true;
+      btn.textContent = `재발송 (${remaining}초 후 가능)`;
+      const timer = setInterval(() => {
+        remaining--;
+        if (remaining <= 0) {
+          clearInterval(timer);
+          btn.disabled = false;
+          btn.textContent = "재발송";
+        } else {
+          btn.textContent = `재발송 (${remaining}초 후 가능)`;
+        }
+      }, 1000);
+    }
+
+    btn.addEventListener("click", async () => {
+      if (!email) {
+        showStatus("이메일 정보가 없어요. 다시 가입해주세요.", "error");
+        return;
+      }
+      btn.disabled = true;
+      showStatus("발송 중...", "");
+      try {
+        const res = await fetch("/api/auth/resend-verification", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+        if (res.ok) {
+          showStatus("✅ 재발송 완료. 메일을 확인해주세요.", "success");
+          startCooldown(60);
+        } else if (res.status === 429) {
+          const data = await res.json().catch(() => ({}));
+          const retryAfter = (data.detail && data.detail.retry_after) || 60;
+          showStatus("⏱️ 잠시 후 다시 시도해주세요.", "error");
+          startCooldown(retryAfter);
+        } else {
+          showStatus("❌ 발송 실패. 잠시 후 다시 시도해주세요.", "error");
+          btn.disabled = false;
+          btn.textContent = "재발송";
+        }
+      } catch (err) {
+        showStatus("❌ 네트워크 오류. 잠시 후 다시 시도해주세요.", "error");
+        btn.disabled = false;
+        btn.textContent = "재발송";
+      }
+    });
+  </script>
+</body>
+</html>

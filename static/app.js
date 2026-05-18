@@ -1438,7 +1438,7 @@ async function openBudgetModal(convId) {
 
   body.appendChild(h("div", { style: "padding: 40px; text-align: center; color: var(--fg-2);" }, [
     h("div", { class: "loading-dots", style: "display: inline-flex; gap: 4px; margin-bottom: 10px;" }, [h("span"), h("span"), h("span")]),
-    h("div", {}, "AI가 과업을 분석하고 업계 평균 시세로 산출내역을 작성하고 있어요…"),
+    h("div", {}, "AI가 제안서를 분석하고 업계 평균 시세로 산출내역을 작성하고 있어요…"),
   ]));
   backdrop.appendChild(modal);
   document.body.appendChild(backdrop);

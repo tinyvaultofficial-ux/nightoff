@@ -886,6 +886,7 @@ const HERO_5_SLIDES = [
     tone: "purple-blue",
     illustration: "🏆",
     accentDetail: "stars",
+    imageUrl: "/static/hero/slide-1-first.png",   // Spec C-6 (5/18): 최초
   },
   {
     id: "slide-2",
@@ -896,6 +897,7 @@ const HERO_5_SLIDES = [
     tone: "pink",
     illustration: "🎨",
     accentDetail: "squares",
+    imageUrl: "/static/hero/slide-3-design.png",  // Spec C-6 (5/18): 디자인
   },
   {
     id: "slide-3",
@@ -906,6 +908,7 @@ const HERO_5_SLIDES = [
     tone: "amber",
     illustration: "🎤",
     accentDetail: "wave",
+    imageUrl: "/static/hero/slide-2-pt.png",      // Spec C-6 (5/18): 발표/PT
   },
   {
     id: "slide-4",
@@ -916,6 +919,7 @@ const HERO_5_SLIDES = [
     tone: "green",
     illustration: "📈",
     accentDetail: "chart",
+    imageUrl: "/static/hero/slide-5-strength.png", // Spec C-6 (5/18): 강점
   },
   {
     id: "slide-5",
@@ -926,6 +930,7 @@ const HERO_5_SLIDES = [
     tone: "purple",
     illustration: "👁️",
     accentDetail: "constellation",
+    imageUrl: "/static/hero/slide-4-client.png",  // Spec C-6 (5/18): 담당자 취향
   },
 ];
 
@@ -989,14 +994,16 @@ function renderHero5Slides() {
   const slideEls = [];
   const dotEls = [];
 
-  // 5 슬라이드 DOM 생성 (absolute stack, 첫 슬라이드 active)
+  // 5 슬라이드 DOM 생성 (absolute stack, 첫 슬라이드 active).
+  // Spec C-6 (5/18): imageUrl 영역 안 inline background-image 적용 (5장 각각 다른 이미지).
   HERO_5_SLIDES.forEach((s, i) => {
     const slide = h("div", {
       class: "hero-5-slide" + (i === 0 ? " active" : ""),
       "data-tone": s.tone,
       "data-slide-id": s.id,
+      style: s.imageUrl ? `background-image: url('${s.imageUrl}');` : "",
     }, [
-      // subtle 그리드 패턴 + radial glow (배경 디테일)
+      // subtle 그리드 패턴 + radial glow (배경 디테일) — Spec C-6 (5/18) CSS display:none 처리
       h("div", { class: "hero-5-grid-pattern" }),
       h("div", { class: "hero-5-radial-glow" }),
       // 액센트 디테일 (별빛 / 사각형 / 음성파 / 차트 / 별자리)
@@ -1016,7 +1023,7 @@ function renderHero5Slides() {
         ]),
         h("p", { class: "hero-5-description" }, s.description),
       ]),
-      // 우상단 일러스트 카드 (모바일 영역 hide)
+      // 우상단 일러스트 카드 — Spec C-6 (5/18) CSS display:none 처리
       h("div", { class: "hero-5-illustration" }, s.illustration),
     ]);
     section.appendChild(slide);

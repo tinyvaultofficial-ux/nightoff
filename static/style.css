@@ -5111,62 +5111,58 @@ input.locked-by-env::placeholder {
   pointer-events: none;
   padding: 32px 36px;
   display: flex; align-items: flex-start;
-  /* Spec C-5 (5/18): 흰 → 다크 보라 (라이트 배경 위 가독성) */
-  color: #1F1147;
+  /* Spec C-6 (5/18): 풀 배너 위 흰 텍스트 (좌측 그라데이션 마스크와 정합) */
+  color: #FFFFFF;
 }
 .hero-5-slide.active {
   opacity: 1;
   pointer-events: auto;
 }
 
-/* Spec C-5 (5/18): 다크 → Light Lavender. "야근 OFF" 브랜드 본질 (가벼움/응원) 정합. */
+/* Spec C-6 (5/18): 풀 배너 이미지 (background-image inline 영역) + cover.
+   비즈폼 패턴 정합 — 좌측 그라데이션 마스크 (::before) + 흰 텍스트. */
 .hero-5-slide[data-tone="purple-blue"],
 .hero-5-slide[data-tone="pink"],
 .hero-5-slide[data-tone="amber"],
 .hero-5-slide[data-tone="green"],
 .hero-5-slide[data-tone="purple"] {
-  background: linear-gradient(135deg, #F5F0FF 0%, #EBE3FF 100%);
-  border: 0.5px solid #D9CFF5;
+  background-size: cover;
+  background-position: center right;
+  background-repeat: no-repeat;
+  border: 0;
+  overflow: hidden;
 }
 
-/* subtle 그리드 패턴 (32×32). Spec C-5 (5/18): 흰 라인 → 옅은 보라 라인 (라이트 배경 정합) */
-.hero-5-grid-pattern {
-  position: absolute; inset: 0;
-  background-image:
-    linear-gradient(rgba(107, 70, 229, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(107, 70, 229, 0.06) 1px, transparent 1px);
-  background-size: 32px 32px;
-  opacity: 0.5;
-  pointer-events: none;
-}
-
-/* radial gradient (우상단 빛 번짐) — 톤별 컬러 */
-.hero-5-radial-glow {
+/* Spec C-6 (5/18): 좌측 그라데이션 마스크 — 흰 텍스트 가독성 영역 */
+.hero-5-slide::before {
+  content: '';
   position: absolute;
-  top: -60px; right: -80px;
-  width: 360px; height: 360px;
-  pointer-events: none;
-  filter: blur(0.5px);
-}
-/* Spec C-5 (5/18): radial glow 라이트 톤 약화 (다크 글로우 → 옅은 보라 글로우) */
-.hero-5-slide[data-tone="purple-blue"] .hero-5-radial-glow,
-.hero-5-slide[data-tone="pink"]        .hero-5-radial-glow,
-.hero-5-slide[data-tone="amber"]       .hero-5-radial-glow,
-.hero-5-slide[data-tone="green"]       .hero-5-radial-glow,
-.hero-5-slide[data-tone="purple"]      .hero-5-radial-glow {
-  background: radial-gradient(circle, rgba(107, 70, 229, 0.08) 0%, transparent 70%);
-}
-
-/* 액센트 디테일 (inline SVG 영역, 우측 중간) */
-.hero-5-accent-detail {
-  position: absolute;
-  right: 24px; bottom: 70px;
-  width: 200px; height: 100px;
-  opacity: 0.85;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(31, 17, 71, 0.85) 0%,
+    rgba(31, 17, 71, 0.55) 40%,
+    rgba(31, 17, 71, 0.15) 70%,
+    transparent 100%
+  );
   pointer-events: none;
   z-index: 1;
 }
-.hero-5-accent-detail svg { width: 100%; height: 100%; display: block; }
+
+/* Spec C-6 (5/18): 자식 영역 마스크 위로 (z-index 2) */
+.hero-5-slide > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* Spec C-6 (5/18): grid 패턴 풀 배너 이미지로 대체 → 영역 폐기 */
+.hero-5-grid-pattern { display: none; }
+
+/* Spec C-6 (5/18): radial glow 풀 배너 이미지로 대체 → 영역 폐기 */
+.hero-5-radial-glow { display: none; }
+
+/* Spec C-6 (5/18): 액센트 디테일 (별빛/사각형/음성파/차트/별자리 SVG) 풀 배너 이미지로 대체 → 영역 폐기 */
+.hero-5-accent-detail { display: none; }
 
 /* 좌측 텍스트 영역 */
 .hero-5-slide-content {
@@ -5176,18 +5172,18 @@ input.locked-by-env::placeholder {
   display: flex; flex-direction: column; gap: 12px;
 }
 
-/* Spec C-5 (5/18): badge 흰 톤 → 옅은 보라 (라이트 배경 정합) */
+/* Spec C-6 (5/18): badge 옅은 보라 → 반투명 흰 (글래스모피즘, 풀 배너 위) */
 .hero-5-badge {
   display: inline-flex; align-items: center; gap: 4px;
   align-self: flex-start;
   padding: 4px 12px;
-  background: rgba(107, 70, 229, 0.10);
-  border: 1px solid rgba(107, 70, 229, 0.20);
+  background: rgba(255, 255, 255, 0.20);
+  border: 1px solid rgba(255, 255, 255, 0.30);
   border-radius: 999px;
   font-size: 11px; font-weight: 700;
   letter-spacing: 0.04em;
-  color: #6B46E5;
-  backdrop-filter: blur(4px);
+  color: #FFFFFF;
+  backdrop-filter: blur(8px);
 }
 .hero-5-badge-emoji { font-size: 12px; }
 
@@ -5197,12 +5193,13 @@ input.locked-by-env::placeholder {
   letter-spacing: -0.4px;
   line-height: 1.25;
   word-break: keep-all;
-  /* Spec C-5 (5/18): 다크 보라 (라이트 배경 위 가독성) */
-  color: #1F1147;
+  /* Spec C-6 (5/18): 다크 보라 → 흰 (풀 배너 위, text-shadow 가독성 보강) */
+  color: #FFFFFF;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
 }
 .hero-5-title-brand {
-  /* Spec C-5 (5/18): #C2B5F0 → Primary 보라 (강조) */
-  color: #6B46E5;
+  /* Spec C-6 (5/18): Primary 보라 → 골드 (어두운 마스크 위 강조) */
+  color: #F4C471;
   font-weight: 600;
 }
 
@@ -5210,28 +5207,16 @@ input.locked-by-env::placeholder {
   margin: 0;
   font-size: 14px;
   line-height: 1.65;
-  /* Spec C-5 (5/18): 옅은 흰 → 옅은 다크 보라 */
-  color: rgba(31, 17, 71, 0.7);
+  /* Spec C-6 (5/18): 옅은 다크 보라 → 옅은 흰 (풀 배너 정합) */
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.3);
   letter-spacing: -0.005em;
   word-break: keep-all;
   white-space: pre-line;   /* 데이터 영역 '\n' 줄바꿈 */
 }
 
-/* 우상단 일러스트 카드 (100×100, rounded 20px).
-   Spec C-5 (5/18): 흰 톤 그라데이션 → 옅은 보라 그라데이션 (라이트 배경 정합) */
-.hero-5-illustration {
-  position: absolute;
-  top: 32px; right: 36px;
-  width: 100px; height: 100px;
-  background: linear-gradient(135deg, rgba(107, 70, 229, 0.12) 0%, rgba(107, 70, 229, 0.04) 100%);
-  border: 1px solid rgba(107, 70, 229, 0.18);
-  border-radius: 20px;
-  display: grid; place-items: center;
-  font-size: 48px;
-  backdrop-filter: blur(8px);
-  box-shadow: 0 8px 24px -8px rgba(107, 70, 229, 0.20);
-  z-index: 2;
-}
+/* Spec C-6 (5/18): 일러스트 카드 풀 배너 이미지로 대체 → 영역 폐기 */
+.hero-5-illustration { display: none; }
 
 /* 도트 네비 (우측 하단) */
 .hero-5-dots {
@@ -5245,17 +5230,17 @@ input.locked-by-env::placeholder {
   border: 0;
   width: 8px; height: 8px;
   border-radius: 999px;
-  /* Spec C-5 (5/18): 흰 → 옅은 보라 (라이트 배경 정합) */
-  background: rgba(107, 70, 229, 0.25);
+  /* Spec C-6 (5/18): 옅은 보라 → 옅은 흰 (풀 배너 위 가독성) */
+  background: rgba(255, 255, 255, 0.40);
   cursor: pointer;
   transition: width 0.3s ease, background 0.3s ease;
   padding: 0;
 }
-.hero-5-dot:hover { background: rgba(107, 70, 229, 0.5); }
+.hero-5-dot:hover { background: rgba(255, 255, 255, 0.70); }
 .hero-5-dot.active {
   width: 22px;
-  /* Spec C-5 (5/18): 흰 → Primary 보라 */
-  background: #6B46E5;
+  /* Spec C-6 (5/18): Primary 보라 → 흰 */
+  background: #FFFFFF;
 }
 
 /* 반응형 — ≤1024px 중간 영역 */

@@ -2624,12 +2624,21 @@ function openClosingNoticesModal(notices) {
 const SAMPLE_POOL = [
   {
     id: "sample-1",
-    title: "[샘플 제목 — 추후 확정]",
-    agency: "[발주처 — 추후 확정]",
-    domain: "[도메인 — 추후 확정]",
+    title: "112의 날 기념식",
+    agency: "경찰청",
+    domain: "행사",
     budget: 0,
-    pdfUrl: "/static/samples/sample-1.pdf",
-    thumbnailUrl: null,
+    pdfUrl: "/static/samples/sample-1-police-112.pdf",
+    thumbnailUrl: "/static/samples/sample-1-police-112-thumb.png",
+  },
+  {
+    id: "sample-2",
+    title: "세계유산축전 기념행사",
+    agency: "국가유산진흥원",
+    domain: "행사",
+    budget: 0,
+    pdfUrl: "/static/samples/sample-2-heritage.pdf",
+    thumbnailUrl: "/static/samples/sample-2-heritage-thumb.png",
   },
 ];
 

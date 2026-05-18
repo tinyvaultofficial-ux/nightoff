@@ -90,8 +90,15 @@
         });
         const data = await r.json().catch(() => ({}));
         if (!r.ok) {
+          // Spec D-Fix-8 (5/18) — 403 EMAIL_NOT_VERIFIED 분기 (인증 미완료 → 안내 페이지)
+          if (r.status === 403 && data.detail && data.detail.code === "EMAIL_NOT_VERIFIED") {
+            location.href = `/verify-pending.html?email=${encodeURIComponent(data.detail.email)}`;
+            return;
+          }
           if (r.status === 401) showError("이메일 또는 비밀번호가 일치하지 않아요.");
-          else if (r.status === 403) showError(data.detail || "계정이 비활성 상태예요. 관리자에게 문의해 주세요.");
+          else if (r.status === 403) showError(
+            (data.detail && data.detail.message) || data.detail || "계정이 비활성 상태예요. 관리자에게 문의해 주세요."
+          );
           else showError(data.detail || "로그인에 실패했어요. 다시 시도해 주세요.");
           return;
         }

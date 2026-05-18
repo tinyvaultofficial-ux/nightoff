@@ -588,6 +588,13 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     # Spec D-Fix-7 (5/18) — 대시보드 첫 진입 안내 모달 (NightOff 차별화 + 70% 솔직 안내).
     # 1회성 / 계정 단위 영구 dismissed. chat_intro_dismissed 패턴 정확 복제.
     ("users",         "dashboard_intro_dismissed", "INTEGER DEFAULT 0"),
+    # Spec D-Fix-8 (5/18) — 이메일 인증 (Resend SDK + UUID 토큰 + 24h 만료).
+    # ⚠ DEFAULT 1 critical — 기존 가입 사용자 (대표님 + 베타) 영업 무중단 보장.
+    # 신규 사용자만 register endpoint 본문 안 명시 INSERT 영역 email_verified=0 부여.
+    ("users",         "email_verified",                  "INTEGER DEFAULT 1"),
+    ("users",         "verification_token",              "TEXT DEFAULT ''"),
+    ("users",         "verification_token_expires_at",   "TEXT DEFAULT ''"),
+    ("users",         "last_verification_sent_at",       "TEXT DEFAULT ''"),  # cooldown용 (1분)
     # 오늘의 무료 크레딧 — 누적 횟수 (베타 = 환산 X, 런칭 시 정밀 환산).
     # 퀴즈 정답 / 로또 등수 / 운세는 합산해서 단순 카운터로 누적.
     ("users",         "credit_count",         "INTEGER DEFAULT 0"),
@@ -734,6 +741,167 @@ def set_setting(key: str, value: str) -> None:
 
 
 # ─── Phase 3 — quota 초기값 helper ──────────────────────────────────────────
+# ============================================================
+# Spec D-Fix-8 (5/18) — 이메일 인증 (Resend SDK)
+# ============================================================
+try:
+    import resend as _resend
+except ImportError:
+    _resend = None
+
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "").strip()
+RESEND_FROM_EMAIL = "noreply@nightoff.ai"
+RESEND_FROM_NAME = "NightOff"
+VERIFICATION_TOKEN_EXPIRES_HOURS = 24
+VERIFICATION_RESEND_COOLDOWN_SECONDS = 60
+
+if RESEND_API_KEY and _resend is not None:
+    _resend.api_key = RESEND_API_KEY
+elif not RESEND_API_KEY:
+    log.warning("RESEND_API_KEY 미설정 — 이메일 인증 발송 비활성 (graceful skip)")
+elif _resend is None:
+    log.warning("resend SDK 미설치 — 이메일 인증 발송 비활성 (graceful skip)")
+
+
+def send_verification_email(email: str, token: str, base_url: str = "https://nightoff.ai") -> bool:
+    """이메일 인증 메일 발송 (Resend SDK).
+
+    Returns:
+        True: 발송 성공
+        False: 발송 실패 (RESEND_API_KEY 미설정 / SDK 미설치 / API 에러 등)
+
+    Graceful fallback: 가입 자체는 성공 처리 (사용자 재발송 가능).
+    """
+    if not RESEND_API_KEY or _resend is None:
+        log.warning("send_verification_email skip (API key 또는 SDK 미설정): %s", email)
+        return False
+
+    verify_url = f"{base_url}/api/auth/verify?token={token}"
+
+    html_body = f"""<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>NightOff 이메일 인증</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 40px auto; padding: 32px; background: #FAFAFF; color: #1F1147;">
+  <div style="background: white; border-radius: 14px; padding: 40px 32px; box-shadow: 0 4px 20px -4px rgba(0,0,0,0.08);">
+    <h1 style="font-size: 22px; font-weight: 700; margin: 0 0 16px; color: #1F1147;">
+      🌙 NightOff에 오신 걸 환영해요
+    </h1>
+    <p style="font-size: 15px; line-height: 1.6; color: #555; margin: 0 0 24px;">
+      NightOff에 가입해주셔서 감사합니다.<br>
+      아래 버튼을 클릭하여 이메일 인증을 완료해주세요.
+    </p>
+    <div style="margin: 32px 0;">
+      <a href="{verify_url}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #6E56CF 0%, #9D8AE6 100%); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 15px;">
+        이메일 인증하기 →
+      </a>
+    </div>
+    <p style="font-size: 13px; color: #888; line-height: 1.6; margin: 24px 0 0;">
+      본 링크는 <strong>24시간 동안</strong> 유효합니다.<br>
+      본 메일을 요청하지 않으셨다면 무시해주세요.
+    </p>
+    <hr style="border: 0; border-top: 1px solid #EEE; margin: 32px 0 16px;">
+    <p style="font-size: 12px; color: #999; margin: 0;">
+      NightOff · noreply@nightoff.ai<br>
+      B2G/B2B 입찰 제안서 자동화 AI
+    </p>
+  </div>
+</body>
+</html>"""
+
+    try:
+        _resend.Emails.send({
+            "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
+            "to": email,
+            "subject": "NightOff 이메일 인증을 완료해주세요",
+            "html": html_body,
+        })
+        log.info("이메일 인증 발송 성공: %s", email)
+        return True
+    except Exception as e:
+        log.error("이메일 인증 발송 실패 (graceful fallback): %s · %s", email, e)
+        return False
+
+
+def _render_verify_success(jwt_token: str) -> str:
+    """인증 성공 — 자동 로그인 + 대시보드 redirect."""
+    return f"""<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>NightOff 이메일 인증 완료</title>
+  <style>
+    body {{ font-family: -apple-system, sans-serif; background: #FAFAFF; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }}
+    .box {{ background: white; padding: 48px 40px; border-radius: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); text-align: center; max-width: 400px; }}
+    h1 {{ color: #1F1147; font-size: 22px; margin: 0 0 16px; }}
+    p {{ color: #555; font-size: 15px; line-height: 1.6; margin: 0; }}
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>✅ 이메일 인증 완료</h1>
+    <p>NightOff에 오신 걸 환영해요.<br>잠시 후 대시보드로 이동합니다.</p>
+  </div>
+  <script>
+    localStorage.setItem("nightoff_jwt", "{jwt_token}");
+    setTimeout(() => {{ location.href = "/"; }}, 1500);
+  </script>
+</body>
+</html>"""
+
+
+def _render_verify_success_already() -> str:
+    """이미 인증된 경우 — 로그인 페이지 이동."""
+    return """<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>NightOff 이메일 인증</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; background: #FAFAFF; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+    .box { background: white; padding: 48px 40px; border-radius: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); text-align: center; max-width: 400px; }
+    h1 { color: #1F1147; font-size: 22px; margin: 0 0 16px; }
+    p { color: #555; font-size: 15px; line-height: 1.6; margin: 0 0 20px; }
+    a { color: #6E56CF; font-weight: 600; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>✅ 이미 인증 완료된 계정</h1>
+    <p>이메일 인증이 이미 완료되어 있어요.</p>
+    <p><a href="/login.html">로그인 페이지로 이동 →</a></p>
+  </div>
+</body>
+</html>"""
+
+
+def _render_verify_error(message: str) -> str:
+    """인증 실패 HTML — 재발송 안내."""
+    return f"""<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>NightOff 이메일 인증 실패</title>
+  <style>
+    body {{ font-family: -apple-system, sans-serif; background: #FAFAFF; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }}
+    .box {{ background: white; padding: 48px 40px; border-radius: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); text-align: center; max-width: 400px; }}
+    h1 {{ color: #C0392B; font-size: 22px; margin: 0 0 16px; }}
+    p {{ color: #555; font-size: 15px; line-height: 1.6; margin: 0 0 20px; }}
+    a {{ color: #6E56CF; font-weight: 600; text-decoration: none; }}
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>⚠️ 인증 실패</h1>
+    <p>{message}</p>
+    <p><a href="/login.html">로그인 페이지에서 재발송 →</a></p>
+  </div>
+</body>
+</html>"""
+
+
 def _get_initial_quota() -> tuple[int, int]:
     """policy_settings 영역 quota 초기값 반환. (proposal, conversation).
 
@@ -1659,6 +1827,15 @@ def register_page():
     p = STATIC_DIR / "register.html"
     if not p.exists():
         raise HTTPException(404, "register page not found")
+    return FileResponse(str(p), media_type="text/html")
+
+
+# Spec D-Fix-8 (5/18) — 이메일 인증 안내 페이지 (가입 후 / 미인증 로그인 시도 후)
+@app.get("/verify-pending.html")
+def verify_pending_page():
+    p = STATIC_DIR / "verify-pending.html"
+    if not p.exists():
+        raise HTTPException(404, "verify-pending page not found")
     return FileResponse(str(p), media_type="text/html")
 
 
@@ -4165,12 +4342,12 @@ class LoginIn(BaseModel):
 
 
 @app.post("/api/auth/register")
-def api_auth_register(body: RegisterIn):
-    """이메일/비밀번호 등록 + JWT 발급 (SaaS 표준 — 초대코드 미사용).
+def api_auth_register(body: RegisterIn, request: Request):
+    """이메일/비밀번호 등록 + 인증 메일 발송 (자동 로그인 차단 — Spec D-Fix-8).
 
     보안: 이메일 중복 시 is_active 상태 무관하게 409 반환.
-    (구 wait-list 활성화 흐름 제거 — 초대코드 없이는 wait-list row 탈취 위험).
-    구 wait-list/admin row 는 어드민 측에서 별도 마이그레이션 필요 시 처리.
+    Spec D-Fix-8 (5/18) — 신규 사용자 email_verified=0 + 인증 토큰 발급 + Resend 메일 발송.
+    JWT 토큰 반환 X (인증 후 verify endpoint 영역 발급).
     """
     email = body.email.strip().lower()
     pw = body.password
@@ -4184,6 +4361,11 @@ def api_auth_register(body: RegisterIn):
     if not body.terms_agreed or not body.privacy_agreed:
         raise HTTPException(400, "이용약관과 개인정보처리방침에 모두 동의해주세요.")
 
+    # Spec D-Fix-8 (5/18) — 인증 토큰 영역 신규 (UUID + 24h 만료)
+    verification_token = uuid.uuid4().hex
+    token_expires_at = (datetime.utcnow() + timedelta(hours=VERIFICATION_TOKEN_EXPIRES_HOURS)).isoformat()
+    now_iso = datetime.utcnow().isoformat()
+
     with get_db() as db:
         # 이메일 중복 체크 — is_active 무관 (wait-list row 탈취 방지).
         existing = db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
@@ -4196,28 +4378,38 @@ def api_auth_register(body: RegisterIn):
         # Phase 3 — quota 초기값 (policy_settings 어드민이 변경 가능)
         prop_q, conv_q = _get_initial_quota()
 
-        # 신규 사용자 INSERT (wait-list 활성화 분기 제거 — 보안)
+        # 신규 사용자 INSERT (Spec D-Fix-8 — email_verified=0 명시 + 토큰 영역)
         uid = uuid.uuid4().hex[:12]
         db.execute(
             "INSERT INTO users(id, email, company, password_hash, role, is_active, last_login, "
-            "                  monthly_proposal_quota, monthly_conversation_quota) "
-            "VALUES(?, ?, ?, ?, ?, 1, datetime('now','localtime'), ?, ?)",
-            (uid, email, company, pw_hash, "user", prop_q, conv_q),
+            "                  monthly_proposal_quota, monthly_conversation_quota, "
+            "                  email_verified, verification_token, verification_token_expires_at, "
+            "                  last_verification_sent_at) "
+            "VALUES(?, ?, ?, ?, ?, 1, datetime('now','localtime'), ?, ?, 0, ?, ?, ?)",
+            (uid, email, company, pw_hash, "user", prop_q, conv_q,
+             verification_token, token_expires_at, now_iso),
         )
 
-    token = encode_jwt(uid)
-    return {"token": token, "user": {"id": uid, "email": email, "role": "user"}}
+    # Spec D-Fix-8 — 인증 메일 발송 (graceful fallback — 실패해도 가입 성공)
+    base_url = str(request.base_url).rstrip("/")
+    send_verification_email(email, verification_token, base_url)
+
+    # 인증 전 자동 로그인 차단 — JWT 토큰 반환 X
+    return {"status": "pending_verification", "email": email}
 
 
 @app.post("/api/auth/login")
 def api_auth_login(body: LoginIn):
-    """이메일/비밀번호 검증 + JWT 발급."""
+    """이메일/비밀번호 검증 + JWT 발급.
+
+    Spec D-Fix-8 (5/18) — email_verified=0 시 403 EMAIL_NOT_VERIFIED 분기.
+    """
     email = body.email.strip().lower()
     pw = body.password
 
     with get_db() as db:
         row = db.execute(
-            "SELECT id, email, role, is_active, password_hash FROM users WHERE email=?",
+            "SELECT id, email, role, is_active, password_hash, email_verified FROM users WHERE email=?",
             (email,),
         ).fetchone()
 
@@ -4235,6 +4427,17 @@ def api_auth_login(body: LoginIn):
     if not row["is_active"]:
         raise HTTPException(403, "활성화 대기 중인 계정이에요. 관리자에게 초대 코드 발급을 요청해 주세요.")
 
+    # Spec D-Fix-8 (5/18) — 이메일 인증 미완료 분기 (기존 사용자 DEFAULT 1 영역 영향 0)
+    if row["email_verified"] == 0:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "EMAIL_NOT_VERIFIED",
+                "email": email,
+                "message": "이메일 인증이 필요해요. 가입하신 이메일을 확인해주세요.",
+            },
+        )
+
     with get_db() as db:
         db.execute("UPDATE users SET last_login=datetime('now','localtime') WHERE id=?", (row["id"],))
 
@@ -4246,6 +4449,117 @@ def api_auth_login(body: LoginIn):
 def api_auth_logout():
     """Stateless — 서버는 상태 없음. 프론트가 localStorage 토큰 삭제 처리."""
     return {"ok": True}
+
+
+# Spec D-Fix-8 (5/18) — 이메일 인증 검증 endpoint (메일 안 링크 클릭 영역)
+@app.get("/api/auth/verify")
+def api_auth_verify(token: str):
+    """이메일 인증 토큰 검증 → email_verified=1 + 자동 로그인 HTML.
+
+    HTML 응답 (JSON X) — 사용자가 메일에서 직접 클릭 → 브라우저 페이지 표시.
+    """
+    if not token or len(token) < 16:
+        return HTMLResponse(_render_verify_error("유효하지 않은 인증 링크입니다."), status_code=400)
+
+    with get_db() as db:
+        row = db.execute(
+            "SELECT id, email, email_verified, verification_token_expires_at "
+            "FROM users WHERE verification_token=?",
+            (token,),
+        ).fetchone()
+
+    if not row:
+        return HTMLResponse(_render_verify_error("유효하지 않은 인증 링크입니다."), status_code=400)
+
+    # 이미 인증 완료 (idempotent — 사용자 재클릭 케이스)
+    if row["email_verified"] == 1:
+        return HTMLResponse(_render_verify_success_already(), status_code=200)
+
+    # 만료 체크 (24h)
+    try:
+        expires_at = datetime.fromisoformat(row["verification_token_expires_at"])
+        if datetime.utcnow() > expires_at:
+            return HTMLResponse(
+                _render_verify_error("만료된 인증 링크입니다. 재발송을 요청해주세요."),
+                status_code=400,
+            )
+    except (ValueError, TypeError):
+        return HTMLResponse(_render_verify_error("유효하지 않은 인증 링크입니다."), status_code=400)
+
+    # 인증 완료 — email_verified=1 + 토큰 폐기
+    with get_db() as db:
+        db.execute(
+            "UPDATE users SET email_verified=1, verification_token='', "
+            "                  verification_token_expires_at='' WHERE id=?",
+            (row["id"],),
+        )
+
+    # JWT 발급 + 자동 로그인 HTML
+    jwt_token = encode_jwt(row["id"])
+    log.info("이메일 인증 완료: %s", row["email"])
+    return HTMLResponse(_render_verify_success(jwt_token), status_code=200)
+
+
+# Spec D-Fix-8 (5/18) — 인증 메일 재발송 endpoint (1분 cooldown)
+class ResendVerificationIn(BaseModel):
+    email: str
+
+
+@app.post("/api/auth/resend-verification")
+def api_auth_resend_verification(body: ResendVerificationIn, request: Request):
+    """인증 메일 재발송 (1분 cooldown).
+
+    보안: 미존재 / 이미 인증 영역 silent OK (이메일 존재 노출 X).
+    """
+    email = body.email.strip().lower()
+
+    with get_db() as db:
+        row = db.execute(
+            "SELECT id, email_verified, last_verification_sent_at "
+            "FROM users WHERE email=?",
+            (email,),
+        ).fetchone()
+
+    # 미존재 / 이미 인증 — silent OK (보안)
+    if not row:
+        return {"status": "ok"}
+    if row["email_verified"] == 1:
+        return {"status": "ok"}
+
+    # cooldown 체크 (1분)
+    if row["last_verification_sent_at"]:
+        try:
+            last_sent = datetime.fromisoformat(row["last_verification_sent_at"])
+            elapsed = (datetime.utcnow() - last_sent).total_seconds()
+            if elapsed < VERIFICATION_RESEND_COOLDOWN_SECONDS:
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "code": "COOLDOWN",
+                        "message": "잠시 후 다시 시도해주세요. (1분 내 재요청 제한)",
+                        "retry_after": int(VERIFICATION_RESEND_COOLDOWN_SECONDS - elapsed),
+                    },
+                )
+        except (ValueError, TypeError):
+            pass  # 파싱 실패 시 cooldown 무시 (graceful)
+
+    # 토큰 재발급 + DB 업데이트
+    new_token = uuid.uuid4().hex
+    new_expires = (datetime.utcnow() + timedelta(hours=VERIFICATION_TOKEN_EXPIRES_HOURS)).isoformat()
+    now_iso = datetime.utcnow().isoformat()
+
+    with get_db() as db:
+        db.execute(
+            "UPDATE users SET verification_token=?, verification_token_expires_at=?, "
+            "                  last_verification_sent_at=? WHERE id=?",
+            (new_token, new_expires, now_iso, row["id"]),
+        )
+
+    # 메일 재발송 (graceful — 실패해도 OK 응답)
+    base_url = str(request.base_url).rstrip("/")
+    send_verification_email(email, new_token, base_url)
+
+    return {"status": "sent"}
 
 
 @app.get("/api/auth/me")

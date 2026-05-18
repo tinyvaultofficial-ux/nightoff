@@ -2617,10 +2617,11 @@ function openClosingNoticesModal(notices) {
 }
 
 
-// ---------- 📑 샘플 위젯 (Spec C-3, 5/18 / Spec C-5 (5/18) 카피 정리) ----------
-// 대시보드 우측 35% 영역. PDF 자산 (sample-1.pdf) 업로드 후 자동 작동.
-// 데이터: placeholder ("[샘플 제목 — 추후 확정]") — 샘플 완성 후 데이터만 교체.
+// ---------- 📑 샘플 위젯 (Spec C-3 / C-5 톤 / D-Fix-4 실 데이터 / D-Fix-5 자동 롤링) ----------
+// 대시보드 우측 35% 영역. SAMPLE_POOL 영역 데이터 자동 롤링 (6초) + 도트 네비.
+// 데이터: 실 데이터 2건 (112의 날 기념식 / 세계유산축전).
 // 클릭: openSampleModal → PDF iframe 미리보기 + sticky CTA bar (/client/new).
+// hover: 자동 롤링 일시정지 (Hero / 마감 임박 패턴 정합).
 const SAMPLE_POOL = [
   {
     id: "sample-1",
@@ -2643,30 +2644,82 @@ const SAMPLE_POOL = [
 ];
 
 function renderSampleWidget() {
-  const sample = SAMPLE_POOL[0];
-  if (!sample) return null;
+  if (!SAMPLE_POOL.length) return null;
 
-  const metaChildren = [
-    h("span", {}, sample.agency),
-  ];
-  if (sample.domain) {
-    metaChildren.push(h("span", { class: "sep" }, "·"));
-    metaChildren.push(h("span", {}, sample.domain));
+  // Spec D-Fix-5: 클로저 상태 (Hero 자동 롤링 패턴 정합)
+  let idx = 0;
+  let hovered = false;
+
+  // 카드 DOM (참조 보관 — 동적 갱신 대상)
+  const cardEl = h("button", { class: "sample-card" }, []);
+
+  // 카드 영역 갱신 함수 — idx 기반 SAMPLE_POOL 영역 sample 적용
+  function renderCard() {
+    const sample = SAMPLE_POOL[idx];
+    if (!sample) return;
+
+    // meta children (agency + domain + budget)
+    const metaChildren = [
+      h("span", {}, sample.agency),
+    ];
+    if (sample.domain) {
+      metaChildren.push(h("span", { class: "sep" }, "·"));
+      metaChildren.push(h("span", {}, sample.domain));
+    }
+    const budgetText = formatBudget(sample.budget);
+    if (budgetText) {
+      metaChildren.push(h("span", { class: "sep" }, "·"));
+      metaChildren.push(h("span", {}, budgetText));
+    }
+
+    // thumbnail children (img 또는 CSS fallback)
+    const thumbnailChildren = sample.thumbnailUrl
+      ? [h("img", { src: sample.thumbnailUrl, alt: sample.title })]
+      : [
+          h("p", { class: "sample-card-thumbnail-title" }, sample.title),
+          h("p", { class: "sample-card-thumbnail-agency" }, sample.agency),
+        ];
+
+    // 카드 children 영역 교체
+    cardEl.innerHTML = "";
+    cardEl.appendChild(h("div", { class: "sample-card-thumbnail" }, thumbnailChildren));
+    cardEl.appendChild(h("div", { class: "sample-card-info" }, [
+      h("h4", { class: "sample-card-title-text" }, sample.title),
+      h("p", { class: "sample-card-meta" }, metaChildren),
+      h("p", { class: "sample-card-cta" }, "전체보기 →"),
+    ]));
+    // onclick — closure idx 영역 참조 (activateSample 영역 갱신됨)
+    cardEl.onclick = () => openSampleModal(SAMPLE_POOL[idx]);
   }
-  const budgetText = formatBudget(sample.budget);
-  if (budgetText) {
-    metaChildren.push(h("span", { class: "sep" }, "·"));
-    metaChildren.push(h("span", {}, budgetText));
+
+  // 도트 영역 (1건 시 hide — Hero 패턴 정합)
+  const showDots = SAMPLE_POOL.length > 1;
+  const dotEls = showDots
+    ? SAMPLE_POOL.map((_, i) => h("button", {
+        class: "sample-widget-dot" + (i === 0 ? " active" : ""),
+        "aria-label": `샘플 ${i + 1}`,
+        type: "button",
+      }))
+    : [];
+
+  // activateSample 함수 (Hero activateSlide 패턴 정합)
+  function activateSample(nextIdx) {
+    if (nextIdx === idx || nextIdx < 0 || nextIdx >= SAMPLE_POOL.length) return;
+    if (showDots) {
+      dotEls[idx].classList.remove("active");
+      dotEls[nextIdx].classList.add("active");
+    }
+    idx = nextIdx;
+    renderCard();
   }
 
-  const thumbnailChildren = sample.thumbnailUrl
-    ? [h("img", { src: sample.thumbnailUrl, alt: sample.title })]
-    : [
-        h("p", { class: "sample-card-thumbnail-title" }, sample.title),
-        h("p", { class: "sample-card-thumbnail-agency" }, sample.agency),
-      ];
+  // 도트 클릭 핸들러
+  dotEls.forEach((dot, i) => {
+    dot.addEventListener("click", () => activateSample(i));
+  });
 
-  return h("div", { class: "sample-widget" }, [
+  // widget root
+  const widget = h("div", { class: "sample-widget" }, [
     h("div", { class: "sample-widget-head" }, [
       h("span", { class: "sample-widget-icon" }, "📑"),
       h("div", { class: "sample-widget-title-wrap" }, [
@@ -2674,22 +2727,38 @@ function renderSampleWidget() {
       ]),
       h("span", { class: "sample-widget-badge" }, "FREE"),
     ]),
-    h("button", {
-      class: "sample-card",
-      onclick: () => openSampleModal(sample),
-    }, [
-      h("div", { class: "sample-card-thumbnail" }, thumbnailChildren),
-      h("div", { class: "sample-card-info" }, [
-        h("h4", { class: "sample-card-title-text" }, sample.title),
-        h("p", { class: "sample-card-meta" }, metaChildren),
-        h("p", { class: "sample-card-cta" }, "전체보기 →"),
-      ]),
-    ]),
+    cardEl,
+    showDots
+      ? h("div", { class: "sample-widget-nav" }, [
+          h("div", { class: "sample-widget-dots" }, dotEls),
+        ])
+      : null,
     h("div", { class: "sample-widget-footer" }, [
       h("p", { class: "sample-widget-footer-hint" },
         "실제 수주 제안서로 NightOff 품질을 확인하세요"),
     ]),
-  ]);
+  ].filter(Boolean));
+
+  // 초기 카드 렌더
+  renderCard();
+
+  // hover 일시정지 (Hero / 마감 임박 패턴 정합)
+  widget.addEventListener("mouseenter", () => { hovered = true; });
+  widget.addEventListener("mouseleave", () => { hovered = false; });
+
+  // 자동 롤링 6초 + 메모리 안전 (document.body.contains 자동 cleanup — Hero 패턴 정합)
+  if (showDots) {
+    const timer = setInterval(() => {
+      if (!document.body.contains(widget)) {
+        clearInterval(timer);
+        return;
+      }
+      if (hovered) return;
+      activateSample((idx + 1) % SAMPLE_POOL.length);
+    }, 6000);
+  }
+
+  return widget;
 }
 
 function openSampleModal(sample) {

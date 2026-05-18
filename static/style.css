@@ -3408,6 +3408,37 @@ body, .msg-bubble, .card, .strengths-intro,
   font-weight: 600;
   margin-top: 4px;
 }
+/* Spec D-Fix-5 (5/18) 신규 — 도트 네비 (마감 임박 도트 패턴 정합) */
+.sample-widget-nav {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 12px 0 6px;
+}
+.sample-widget-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.sample-widget-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--border-strong, #DDD);
+  padding: 0;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.sample-widget-dot.active {
+  background: var(--primary);
+  transform: scale(1.2);
+}
+.sample-widget-dot:hover {
+  background: var(--primary);
+  opacity: 0.7;
+}
+
 .sample-widget-footer {
   border-top: 0.5px solid var(--border);
   margin-top: 14px;

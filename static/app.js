@@ -2202,9 +2202,11 @@ async function renderDashboard() {
   leftCol.appendChild(renderClosingNoticesWidget());
   twoCol.appendChild(leftCol);
 
-  // [우] 사이드 카드 영역 — Spec 4-A (오늘의 팁) + Spec 4-B (무료 크레딧) 폐기로 현재 비어있음.
-  //      향후 견본 풀 위젯 영역 또는 다른 콘텐츠 영역 추가 가능.
+  // [우] 사이드 카드 영역 — Spec C-3 (5/18): 견본 위젯 신규 추가.
+  //      PDF 자산 (sample-1.pdf) 업로드 후 자동 작동. 데이터 placeholder.
   const rightCol = h("aside", { class: "dashboard-side-col" });
+  const sampleWidget = renderSampleWidget();
+  if (sampleWidget) rightCol.appendChild(sampleWidget);
   twoCol.appendChild(rightCol);
 
   // 핵심 기능 5 카드는 최상단으로 옮겨졌고 (renderCoreFeatures5, Spec 6)
@@ -2532,10 +2534,24 @@ function renderClosingNoticesWidget() {
   return wrap;
 }
 
+// Spec C-3 (5/18) 신규 — 금액 포맷팅 helper (raw 숫자 → "409,090,909원")
+function formatBudget(raw) {
+  if (!raw) return null;
+  const num = parseInt(String(raw).replace(/[^\d]/g, ""), 10);
+  if (isNaN(num) || num === 0) return null;
+  return `${num.toLocaleString()}원`;
+}
+
 function renderClosingCard(n) {
   const dday = Number(n.d_day);
   const urgent = dday >= 0 && dday <= 2;
-  const ddayLabel = dday === 0 ? "D-day" : `D-${dday}`;
+  // Spec C-3 (5/18): D-day 직관 표기 (오늘/내일/모레/N일)
+  let ddayLabel;
+  if (dday === 0) ddayLabel = "오늘";
+  else if (dday === 1) ddayLabel = "내일";
+  else if (dday === 2) ddayLabel = "모레";
+  else ddayLabel = `${dday}일`;
+  const budgetText = formatBudget(n.budget);
   // ⚠ 카드 클릭 = 새 탭 (target="_blank" + rel="noopener noreferrer")
   const a = h("a", {
     class: "closing-card",
@@ -2548,11 +2564,11 @@ function renderClosingCard(n) {
       h("p", { class: "closing-card-title", title: n.title || "" }, n.title || "(제목 없음)"),
       h("p", { class: "closing-card-meta" }, [
         h("span", { class: "closing-card-agency" }, n.agency || "발주기관 미상"),
-        n.budget ? h("span", { class: "closing-card-sep" }, "·") : null,
-        n.budget ? h("span", { class: "closing-card-budget" }, n.budget) : null,
+        budgetText ? h("span", { class: "closing-card-sep" }, "·") : null,
+        budgetText ? h("span", { class: "closing-card-budget" }, budgetText) : null,
       ]),
     ]),
-    h("span", { class: "closing-card-cta" }, "상세 →"),
+    h("span", { class: "closing-card-cta" }, "›"),
   ]);
   // url 없으면 클릭 막기 (보안 + UX)
   if (!n.url) {
@@ -2592,6 +2608,125 @@ function openClosingNoticesModal(notices) {
   ]);
   document.body.appendChild(backdrop);
   document.addEventListener("keydown", onKey);
+}
+
+
+// ---------- 📑 견본 위젯 (Spec C-3, 5/18) ----------
+// 대시보드 우측 35% 영역. PDF 자산 (sample-1.pdf) 업로드 후 자동 작동.
+// 데이터: placeholder ("[견본 제목 — 추후 확정]") — 견본 완성 후 데이터만 교체.
+// 클릭: openSampleModal → PDF iframe 미리보기 + sticky CTA bar (/client/new).
+const SAMPLE_POOL = [
+  {
+    id: "sample-1",
+    title: "[견본 제목 — 추후 확정]",
+    agency: "[발주처 — 추후 확정]",
+    domain: "[도메인 — 추후 확정]",
+    budget: 0,
+    pdfUrl: "/static/samples/sample-1.pdf",
+    thumbnailUrl: null,
+  },
+];
+
+function renderSampleWidget() {
+  const sample = SAMPLE_POOL[0];
+  if (!sample) return null;
+
+  const metaChildren = [
+    h("span", {}, sample.agency),
+  ];
+  if (sample.domain) {
+    metaChildren.push(h("span", { class: "sep" }, "·"));
+    metaChildren.push(h("span", {}, sample.domain));
+  }
+  const budgetText = formatBudget(sample.budget);
+  if (budgetText) {
+    metaChildren.push(h("span", { class: "sep" }, "·"));
+    metaChildren.push(h("span", {}, budgetText));
+  }
+
+  const thumbnailChildren = sample.thumbnailUrl
+    ? [h("img", { src: sample.thumbnailUrl, alt: sample.title })]
+    : [
+        h("p", { class: "sample-card-thumbnail-title" }, sample.title),
+        h("p", { class: "sample-card-thumbnail-agency" }, sample.agency),
+      ];
+
+  return h("div", { class: "sample-widget" }, [
+    h("div", { class: "sample-widget-head" }, [
+      h("span", { class: "sample-widget-icon" }, "📑"),
+      h("div", { class: "sample-widget-title-wrap" }, [
+        h("h2", { class: "sample-widget-title" }, "제안서 견본"),
+      ]),
+      h("span", { class: "sample-widget-badge" }, "FREE"),
+    ]),
+    h("button", {
+      class: "sample-card",
+      onclick: () => openSampleModal(sample),
+    }, [
+      h("div", { class: "sample-card-thumbnail" }, thumbnailChildren),
+      h("div", { class: "sample-card-info" }, [
+        h("h4", { class: "sample-card-title-text" }, sample.title),
+        h("p", { class: "sample-card-meta" }, metaChildren),
+        h("p", { class: "sample-card-cta" }, "전체보기 →"),
+      ]),
+    ]),
+    h("div", { class: "sample-widget-footer" }, [
+      h("p", { class: "sample-widget-footer-hint" },
+        "실제 수주 제안서로 NightOff 품질을 확인하세요"),
+    ]),
+  ]);
+}
+
+function openSampleModal(sample) {
+  // 기존 모달 제거 (중복 방지)
+  document.querySelectorAll(".sample-modal-backdrop").forEach((el) => el.remove());
+
+  const backdrop = h("div", { class: "sample-modal-backdrop" });
+
+  const close = () => {
+    document.removeEventListener("keydown", onEsc);
+    backdrop.remove();
+  };
+  const onEsc = (e) => { if (e.key === "Escape") close(); };
+  document.addEventListener("keydown", onEsc);
+
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop) close();
+  });
+
+  const subtitle = [sample.agency, sample.domain].filter(Boolean).join(" · ");
+
+  const modal = h("div", { class: "sample-modal" }, [
+    h("div", { class: "sample-modal-head" }, [
+      h("div", { class: "sample-modal-head-info" }, [
+        h("h3", { class: "sample-modal-title" }, sample.title),
+        h("p", { class: "sample-modal-subtitle" }, subtitle),
+      ]),
+      h("button", {
+        class: "sample-modal-close",
+        "aria-label": "닫기",
+        onclick: close,
+      }, "×"),
+    ]),
+    h("div", { class: "sample-modal-body" }, [
+      h("iframe", {
+        class: "sample-modal-pdf",
+        src: `${sample.pdfUrl}#toolbar=0&navpanes=0&scrollbar=1`,
+        title: sample.title,
+      }),
+    ]),
+    h("div", { class: "sample-modal-cta-bar" }, [
+      h("p", { class: "sample-modal-cta-text" },
+        "이런 제안서, 직접 만들어보세요"),
+      h("button", {
+        class: "sample-modal-cta-btn",
+        onclick: () => { close(); navigate("/client/new"); },
+      }, "새 과업 시작 →"),
+    ]),
+  ]);
+
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
 }
 
 

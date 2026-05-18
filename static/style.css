@@ -2912,10 +2912,11 @@ body.fs-loader-active {
    (Stats grid 와 같은 24px gap 으로 시각 정렬 정합)
    align-items: start  → 위젯 placeholder 의 자연 높이 유지 (오/열 정밀 정렬) */
 .dashboard-two-col {
-  grid-template-columns: minmax(0, 1fr) 320px;
+  /* Spec C-3 (5/18): 좌 65 / 우 35 비율 변경 (이전 minmax(0,1fr) 320px → 65fr 35fr) */
+  grid-template-columns: 65fr 35fr;
   gap: 24px;
-  /* 좌측 (나라장터) 끝선 = 우측 (오늘의 팁 + 무료 크레딧) 끝선 정합 영역.
-     stretch 영역 = 좌우 영역 동일 height → 우측 daily-credit 영역이 늘어남 (flex: 1 1 auto). */
+  /* 좌측 (나라장터) 끝선 = 우측 (견본 위젯) 끝선 정합 영역.
+     stretch 영역 = 좌우 영역 동일 height → 우측 위젯 영역 늘어남 (flex: 1 1 auto). */
   align-items: stretch;
 }
 .dashboard-two-col > section,
@@ -2959,9 +2960,17 @@ body, .msg-bubble, .card, .strengths-intro,
 
 /* 사이드 패널 카드 폭 안정 — .tip-card 는 Spec 4-A / .daily-credit 는 Spec 4-B (5/16) 폐기 */
 
-/* 작은 뷰포트 (1100px 이하) — 사이드 컬럼 더 좁게 */
+/* 작은 뷰포트 (1280px 이하) — Spec C-3 (5/18): 픽셀 고정 → 65fr 35fr 비율 유지 */
 @media (max-width: 1280px) {
-  .dashboard-two-col { grid-template-columns: minmax(0, 1fr) 280px; }
+  .dashboard-two-col { grid-template-columns: 65fr 35fr; }
+}
+
+/* Spec C-3 (5/18) 신규 — 모바일 ≤767px 1 컬럼 stack (좌→우 세로) */
+@media (max-width: 767px) {
+  .dashboard-two-col {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
 }
 
 /* ===== 📰 업계 뉴스 한 줄 위젯 (네이버 검색창 영역 패턴) =====
@@ -3112,9 +3121,9 @@ body, .msg-bubble, .card, .strengths-intro,
 .closing-widget-empty-msg { margin: 0; font-size: 14px; font-weight: 600; color: var(--fg); }
 .closing-widget-empty-sub { margin: 0; font-size: 12.5px; color: var(--fg-2); }
 
-/* 카드 영역 — 5개 세로 스택 */
+/* Spec C-3 (5/18): 카드 영역 → 토스 리스트 패턴 (라인 분리, 박스 폐기) */
 .closing-card-list {
-  display: flex; flex-direction: column; gap: 8px;
+  display: flex; flex-direction: column;
   animation: closing-fade-in .35s ease;
 }
 @keyframes closing-fade-in {
@@ -3122,33 +3131,29 @@ body, .msg-bubble, .card, .strengths-intro,
   to   { opacity: 1; transform: translateY(0); }
 }
 .closing-card {
-  display: flex; align-items: center; gap: 12px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  /* rgba 0.5 — 태극기가 카드까지 비쳐 보이게 (텍스트 가독성은 폰트 weight로 보호) */
-  background: rgba(255, 255, 255, 0.5);
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 4px;
+  border-bottom: 0.5px solid var(--border);
   text-decoration: none;
   color: inherit;
-  transition: border-color .15s ease, transform .12s ease, box-shadow .15s ease;
   cursor: pointer;
+  transition: background .15s ease;
 }
-.closing-card:hover {
-  border-color: var(--primary);
-  box-shadow: 0 4px 12px -6px rgba(107, 70, 229, 0.25);
-  transform: translateY(-1px);
-}
-.closing-card.disabled { cursor: default; opacity: 0.55; }
-.closing-card.disabled:hover { transform: none; box-shadow: none; border-color: var(--border); }
+.closing-card:last-child { border-bottom: 0; }
+.closing-card:hover { background: var(--bg-2); }
+.closing-card.disabled { opacity: 0.55; cursor: not-allowed; }
+.closing-card.disabled:hover { background: transparent; }
 .closing-card-dday {
   flex-shrink: 0;
   display: inline-flex; align-items: center; justify-content: center;
-  min-width: 48px; height: 38px; padding: 0 8px;
+  /* Spec C-3 (5/18): 48 → 56 (한글 "오늘"/"내일"/"모레" 영역 대비) */
+  min-width: 56px; height: 38px; padding: 0 10px;
   border-radius: 8px;
   background: var(--primary-soft, rgba(107, 70, 229, 0.10));
   color: var(--primary);
-  font-weight: 700; font-size: 14px;
-  letter-spacing: 0.01em;
+  /* Spec C-3 (5/18): 700 → 600, 14 → 13, letter-spacing 정합 */
+  font-weight: 600; font-size: 13px;
+  letter-spacing: -0.2px;
 }
 .closing-card-dday.urgent {
   background: var(--danger-soft, #FDEDEC);
@@ -3157,25 +3162,28 @@ body, .msg-bubble, .card, .strengths-intro,
 .closing-card-info { flex: 1; min-width: 0; }
 .closing-card-title {
   margin: 0 0 3px;
-  font-size: 13.5px; font-weight: 600;
-  color: var(--fg);
+  /* Spec C-3 (5/18): 13.5 → 13, 600 → 500, fg-strong 정합 */
+  font-size: 13px; font-weight: 500;
+  color: var(--fg-strong, var(--fg));
+  letter-spacing: -0.2px;
   line-height: 1.4;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .closing-card-meta {
   margin: 0;
-  display: flex; align-items: center; gap: 6px;
-  font-size: 11.5px; color: var(--fg-2);
+  display: flex; align-items: center;
+  /* Spec C-3 (5/18): 11.5 → 11 */
+  font-size: 11px; color: var(--fg-2);
 }
 .closing-card-agency { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
-.closing-card-sep { color: var(--border-strong, #DDD); }
+.closing-card-sep { color: var(--fg-soft); margin: 0 4px; }
 .closing-card-budget { color: var(--fg-2); font-variant-numeric: tabular-nums; }
 .closing-card-cta {
   flex-shrink: 0;
-  font-size: 12px; font-weight: 500;
-  color: var(--primary);
+  /* Spec C-3 (5/18): chevron ">" 단일 문자, "상세 →" 폐기 */
+  font-size: 14px;
+  color: var(--fg-soft);
   padding: 4px 0;
-  letter-spacing: -0.01em;
 }
 
 /* 푸터 — 도트 인디케이터 + 좌우 화살표 + 전체 보기 */
@@ -3287,6 +3295,244 @@ body, .msg-bubble, .card, .strengths-intro,
   display: flex; flex-direction: column; gap: 8px;
   overflow-y: auto;
   flex: 1;
+}
+
+/* ============================================
+   Spec C-3 (5/18) 신규 — 견본 위젯 (.sample-*)
+   대시보드 우측 35% 영역. PDF 자산 대기 placeholder 데이터.
+   ============================================ */
+.sample-widget {
+  background: var(--card);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;   /* 끝선 정렬 — 좌측 closing-widget 과 동일 height stretch */
+}
+.sample-widget-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.sample-widget-icon { font-size: 18px; }
+.sample-widget-title-wrap { flex: 1; }
+.sample-widget-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.2px;
+  color: var(--fg-strong);
+}
+.sample-widget-badge {
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.sample-card {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  width: 100%;
+}
+.sample-card-thumbnail {
+  width: 100%;
+  aspect-ratio: 16/9;
+  background: linear-gradient(135deg, #1A1A2E 0%, #2D2D5F 100%);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+  overflow: hidden;
+}
+.sample-card-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.sample-card-thumbnail-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  margin: 0 0 4px;
+  line-height: 1.4;
+}
+.sample-card-thumbnail-agency {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0;
+}
+.sample-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sample-card-title-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-strong);
+  margin: 0;
+  letter-spacing: -0.2px;
+  line-height: 1.4;
+}
+.sample-card-meta {
+  font-size: 11px;
+  color: var(--fg-2);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.sample-card-meta .sep { color: var(--fg-soft); }
+.sample-card-cta {
+  font-size: 12px;
+  color: var(--primary);
+  font-weight: 600;
+  margin-top: 4px;
+}
+.sample-widget-footer {
+  border-top: 0.5px solid var(--border);
+  margin-top: 14px;
+  padding-top: 12px;
+}
+.sample-widget-footer-hint {
+  font-size: 10px;
+  color: var(--fg-soft);
+  margin: 0;
+  text-align: center;
+  letter-spacing: -0.1px;
+}
+
+/* ============================================
+   Spec C-3 (5/18) 신규 — 미리보기 모달 (.sample-modal-*)
+   패턴 B (.closing-modal-*) 정합 + PDF iframe + sticky CTA bar.
+   ============================================ */
+.sample-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 250;
+  padding: 24px;
+  animation: sample-modal-fade-in 0.18s ease;
+}
+@keyframes sample-modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.sample-modal {
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.25);
+  width: 100%;
+  max-width: 900px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.sample-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.sample-modal-head-info { flex: 1; min-width: 0; }
+.sample-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 4px;
+  letter-spacing: -0.2px;
+  color: var(--fg-strong);
+}
+.sample-modal-subtitle {
+  font-size: 12px;
+  color: var(--fg-2);
+  margin: 0;
+}
+.sample-modal-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 0;
+  background: transparent;
+  font-size: 22px;
+  cursor: pointer;
+  color: var(--fg-2);
+  flex-shrink: 0;
+}
+.sample-modal-close:hover { background: var(--bg-2); }
+.sample-modal-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  background: var(--bg-2);
+}
+.sample-modal-pdf {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.sample-modal-cta-bar {
+  flex-shrink: 0;
+  padding: 16px 22px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: #fff;
+}
+.sample-modal-cta-text {
+  font-size: 13px;
+  color: var(--fg-strong);
+  margin: 0;
+  font-weight: 500;
+}
+.sample-modal-cta-btn {
+  background: var(--primary);
+  color: #fff;
+  border: 0;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: -0.2px;
+}
+.sample-modal-cta-btn:hover { opacity: 0.9; }
+/* 모바일 ≤767px 풀스크린 모달 */
+@media (max-width: 767px) {
+  .sample-modal-backdrop { padding: 0; }
+  .sample-modal {
+    max-width: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+  .sample-modal-cta-bar {
+    flex-direction: column;
+    gap: 8px;
+    align-items: stretch;
+  }
+  .sample-modal-cta-btn { width: 100%; }
 }
 
 /* ===== 📋 입찰참가자격 모달 영역 (closing-modal 패턴 재활용 + 자격 카드) ===== */

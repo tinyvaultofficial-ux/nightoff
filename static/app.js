@@ -1073,7 +1073,7 @@ function renderHero5Slides() {
 
 // 🌙 NightOff 핵심 기능 5 카드 (대시보드 최상단) — 가운데 강조 (다크 그라데이션 + 엠버 보더 + 배지)
 const CORE_FEATURES_5 = [
-  { emoji: "✨", title: "RFP\n자동 분석",         tone: "purple", featured: false },
+  { emoji: "📄", title: "RFP\n자동 분석",         tone: "purple", featured: false },
   { emoji: "👀", title: "발주처\n들여다보기",      tone: "blue",   featured: false },
   { emoji: "✨", title: "제안서 초안\n자동 생성",  tone: "amber",  featured: true  },
   { emoji: "💰", title: "산출내역서\n자동 생성",   tone: "green",  featured: false },
@@ -1096,8 +1096,8 @@ function renderCoreFeatures5() {
       class: "feature-5-card" + (f.featured ? " featured" : ""),
       "data-tone": f.tone,
     }, [
-      // featured 카드 상단 "핵심 기능" 배지
-      f.featured ? h("span", { class: "feature-5-card-badge" }, "⭐ 핵심 기능") : null,
+      // Spec C-2 (5/18): featured 카드 우상단 "핵심" 작은 배지 (5중 → 2중 강조 영역)
+      f.featured ? h("span", { class: "feature-5-card-badge" }, "핵심") : null,
       h("div", { class: "feature-5-card-icon" }, f.emoji),
       h("h4", { class: "feature-5-card-title" }, f.title),
     ]);

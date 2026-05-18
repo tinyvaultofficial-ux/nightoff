@@ -4846,7 +4846,7 @@ input.locked-by-env::placeholder {
 .hero-5 {
   position: relative;
   width: 100%;
-  margin-bottom: 18px;
+  margin-bottom: 32px;   /* Spec C-2 (5/18): 18 → 32, Hero ↔ 5 카드 여백 확대 */
   border-radius: 16px;
   overflow: hidden;
   min-height: 260px;
@@ -4868,12 +4868,14 @@ input.locked-by-env::placeholder {
   pointer-events: auto;
 }
 
-/* 5 톤별 그라데이션 (3단 영역) */
-.hero-5-slide[data-tone="purple-blue"] { background: linear-gradient(135deg, #1A1E3A 0%, #252B52 50%, #1B1F3B 100%); }
-.hero-5-slide[data-tone="pink"]        { background: linear-gradient(135deg, #2E1A2E 0%, #3D1F35 50%, #1F1015 100%); }
-.hero-5-slide[data-tone="amber"]       { background: linear-gradient(135deg, #2E2418 0%, #3D2F1F 50%, #1F1A10 100%); }
-.hero-5-slide[data-tone="green"]       { background: linear-gradient(135deg, #0F2E1F 0%, #1A3D2B 50%, #0F1F1A 100%); }
-.hero-5-slide[data-tone="purple"]      { background: linear-gradient(135deg, #1A0F2E 0%, #2B1A3D 50%, #100F1F 100%); }
+/* Spec C-2 (5/18): 5 톤 → 보라 단일 톤 통일 (#1A1A1F → #2E2E58). 사이드바 다크 톤과 정합 */
+.hero-5-slide[data-tone="purple-blue"],
+.hero-5-slide[data-tone="pink"],
+.hero-5-slide[data-tone="amber"],
+.hero-5-slide[data-tone="green"],
+.hero-5-slide[data-tone="purple"] {
+  background: linear-gradient(135deg, #1A1A1F 0%, #2E2E58 100%);
+}
 
 /* subtle 그리드 패턴 (32×32, opacity 0.35) */
 .hero-5-grid-pattern {
@@ -4894,11 +4896,14 @@ input.locked-by-env::placeholder {
   pointer-events: none;
   filter: blur(0.5px);
 }
-.hero-5-slide[data-tone="purple-blue"] .hero-5-radial-glow { background: radial-gradient(circle, rgba(127, 119, 221, 0.35) 0%, transparent 65%); }
-.hero-5-slide[data-tone="pink"]        .hero-5-radial-glow { background: radial-gradient(circle, rgba(212, 83, 126, 0.30) 0%, transparent 65%); }
-.hero-5-slide[data-tone="amber"]       .hero-5-radial-glow { background: radial-gradient(circle, rgba(239, 159, 39, 0.32) 0%, transparent 65%); }
-.hero-5-slide[data-tone="green"]       .hero-5-radial-glow { background: radial-gradient(circle, rgba(29, 158, 117, 0.32) 0%, transparent 65%); }
-.hero-5-slide[data-tone="purple"]      .hero-5-radial-glow { background: radial-gradient(circle, rgba(155, 127, 232, 0.32) 0%, transparent 65%); }
+/* Spec C-2 (5/18): radial glow 5 톤 → 보라 단일 톤 통일 */
+.hero-5-slide[data-tone="purple-blue"] .hero-5-radial-glow,
+.hero-5-slide[data-tone="pink"]        .hero-5-radial-glow,
+.hero-5-slide[data-tone="amber"]       .hero-5-radial-glow,
+.hero-5-slide[data-tone="green"]       .hero-5-radial-glow,
+.hero-5-slide[data-tone="purple"]      .hero-5-radial-glow {
+  background: radial-gradient(circle, rgba(127, 119, 221, 0.28) 0%, transparent 65%);
+}
 
 /* 액센트 디테일 (inline SVG 영역, 우측 중간) */
 .hero-5-accent-detail {
@@ -4935,14 +4940,14 @@ input.locked-by-env::placeholder {
 
 .hero-5-title {
   margin: 0;
-  font-size: 26px; font-weight: 800;
-  letter-spacing: -0.025em;
+  font-size: 22px; font-weight: 600;
+  letter-spacing: -0.4px;
   line-height: 1.25;
   word-break: keep-all;
 }
 .hero-5-title-brand {
   color: #C2B5F0;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .hero-5-description {
@@ -4980,17 +4985,17 @@ input.locked-by-env::placeholder {
 .hero-5-dot {
   appearance: none;
   border: 0;
-  width: 8px; height: 5px;
+  width: 8px; height: 8px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.3);
   cursor: pointer;
-  transition: width 0.25s ease, background 0.25s ease;
+  transition: width 0.3s ease, background 0.3s ease;
   padding: 0;
 }
 .hero-5-dot:hover { background: rgba(255, 255, 255, 0.6); }
 .hero-5-dot.active {
   width: 22px;
-  background: rgba(255, 255, 255, 0.95);
+  background: #fff;
 }
 
 /* 반응형 — ≤1024px 중간 영역 */
@@ -5021,7 +5026,7 @@ input.locked-by-env::placeholder {
    ── Spec 8: 카드 콘텐츠 종→횡 + 폰트 ↑ + 헤더 워딩 "주요 기능" + 디자인 정합
    ============================================================ */
 .features-5 {
-  margin-bottom: 28px;
+  margin-bottom: 40px;   /* Spec C-2 (5/18): 28 → 40, 5 카드 ↔ 뉴스 위젯 여백 ↑ */
   display: flex; flex-direction: column; gap: 14px;
 }
 .features-5-header {
@@ -5030,7 +5035,7 @@ input.locked-by-env::placeholder {
 }
 .features-5-title {
   margin: 0 0 4px;
-  font-size: 22px; font-weight: 800;
+  font-size: 20px; font-weight: 600;
   letter-spacing: -0.025em;
   color: var(--fg);
   line-height: 1.25;
@@ -5044,8 +5049,8 @@ input.locked-by-env::placeholder {
 .features-5-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 10px;
-  /* featured 카드 scale 1.06 영역 안 클리핑 방지 */
+  gap: 14px;   /* Spec C-2 (5/18): 10 → 14, 카드 간 여백 ↑ */
+  /* Spec C-2 (5/18): baseline scale 폐기로 padding 영역 유지 (배지 우상단 클리핑 방지) */
   padding: 10px 0;
   align-items: stretch;
 }
@@ -5075,41 +5080,38 @@ input.locked-by-env::placeholder {
 }
 .feature-5-card-title {
   margin: 0;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--fg);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.2px;
   line-height: 1.35;
   white-space: pre-line;   /* 데이터 영역 '\n' 줄바꿈 영역 */
 }
 
-/* 가운데 강조 카드 (4중 강조: 다크 그라데이션 + 2px 엠버 보더 + 배지 + scale 1.06) */
+/* Spec C-2 (5/18): 가운데 강조 5중 → 2중 (다크 배경 + 우상단 작은 배지만 유지).
+   폐기: 2px 엠버 보더 → 1px rgba(255,255,255,0.1) / scale(1.06) / 엠버 box-shadow */
 .feature-5-card.featured {
   background: linear-gradient(180deg, #2E2E58 0%, #1B1F3B 100%);
-  border: 2px solid #EF9F27;
-  transform: scale(1.06);
-  box-shadow: 0 16px 32px -14px rgba(239, 159, 39, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   color: #fff;
+  position: relative;
 }
 .feature-5-card.featured:hover {
-  transform: scale(1.06) translateY(-2px);
-  box-shadow: 0 20px 36px -14px rgba(239, 159, 39, 0.45);
+  transform: translateY(-2px);
 }
 .feature-5-card.featured .feature-5-card-title {
   color: #fff;
 }
 .feature-5-card-badge {
   position: absolute;
-  top: -10px; left: 50%;
-  transform: translateX(-50%);
-  padding: 3px 12px;
+  top: -9px; right: 10px;
+  padding: 3px 8px;
   background: #EF9F27;
   color: #fff;
-  font-size: 10.5px; font-weight: 800;
-  letter-spacing: 0.04em;
+  font-size: 10px; font-weight: 500;
+  letter-spacing: 0.02em;
   border-radius: 999px;
   white-space: nowrap;
-  box-shadow: 0 4px 10px -3px rgba(239, 159, 39, 0.5);
 }
 
 /* 5 톤별 컬러 영역 (일반 카드 아이콘 색감) */
@@ -5119,19 +5121,17 @@ input.locked-by-env::placeholder {
 .feature-5-card[data-tone="green"]  .feature-5-card-icon { background: rgba(29, 158, 117, 0.12);  color: #1D9E75; }
 .feature-5-card[data-tone="pink"]   .feature-5-card-icon { background: rgba(212, 83, 126, 0.12);  color: #D4537E; }
 
-/* featured(엠버) 카드 아이콘은 다크 배경 영역 정합 — 흰색 / 골드 톤 */
-/* Spec 8 (5/16): 일반 38×38 → 가운데 40×40 (살짝 ↑ 강조) */
+/* Spec C-2 (5/18): featured 아이콘 크기 40×40 → 38×38 (다른 카드와 baseline 일관).
+   톤 다운: 다크 배경 영역 정합 — 흰색 / 골드 톤 유지 */
 .feature-5-card.featured .feature-5-card-icon {
-  width: 40px; height: 40px;
   background: rgba(239, 159, 39, 0.22);
   color: #FFD27A;
 }
 
-/* 반응형 — ≤1024px 3-열 (사이드바 햄버거화 후 메인 풀폭) */
+/* 반응형 — ≤1024px 3-열 (사이드바 햄버거화 후 메인 풀폭).
+   Spec C-2 (5/18): baseline scale 폐기로 반응형 scale 평탄화 영역 폐기. */
 @media (max-width: 1024px) {
   .features-5-grid { grid-template-columns: repeat(3, 1fr); }
-  .feature-5-card.featured { transform: scale(1); }
-  .feature-5-card.featured:hover { transform: translateY(-2px); }
 }
 /* 반응형 — ≤767px 1-열 (모바일) */
 @media (max-width: 767px) {

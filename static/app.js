@@ -2201,7 +2201,7 @@ async function renderDashboard() {
   leftCol.appendChild(renderClosingNoticesWidget());
   twoCol.appendChild(leftCol);
 
-  // [우] 사이드 카드 영역 — Spec C-3 (5/18): 견본 위젯 신규 추가.
+  // [우] 사이드 카드 영역 — Spec C-3 (5/18): 샘플 위젯 신규 추가.
   //      PDF 자산 (sample-1.pdf) 업로드 후 자동 작동. 데이터 placeholder.
   const rightCol = h("aside", { class: "dashboard-side-col" });
   const sampleWidget = renderSampleWidget();
@@ -2610,14 +2610,14 @@ function openClosingNoticesModal(notices) {
 }
 
 
-// ---------- 📑 견본 위젯 (Spec C-3, 5/18) ----------
+// ---------- 📑 샘플 위젯 (Spec C-3, 5/18 / Spec C-5 (5/18) 카피 정리) ----------
 // 대시보드 우측 35% 영역. PDF 자산 (sample-1.pdf) 업로드 후 자동 작동.
-// 데이터: placeholder ("[견본 제목 — 추후 확정]") — 견본 완성 후 데이터만 교체.
+// 데이터: placeholder ("[샘플 제목 — 추후 확정]") — 샘플 완성 후 데이터만 교체.
 // 클릭: openSampleModal → PDF iframe 미리보기 + sticky CTA bar (/client/new).
 const SAMPLE_POOL = [
   {
     id: "sample-1",
-    title: "[견본 제목 — 추후 확정]",
+    title: "[샘플 제목 — 추후 확정]",
     agency: "[발주처 — 추후 확정]",
     domain: "[도메인 — 추후 확정]",
     budget: 0,
@@ -2654,7 +2654,7 @@ function renderSampleWidget() {
     h("div", { class: "sample-widget-head" }, [
       h("span", { class: "sample-widget-icon" }, "📑"),
       h("div", { class: "sample-widget-title-wrap" }, [
-        h("h2", { class: "sample-widget-title" }, "제안서 견본"),
+        h("h2", { class: "sample-widget-title" }, "제안서 샘플"),
       ]),
       h("span", { class: "sample-widget-badge" }, "FREE"),
     ]),

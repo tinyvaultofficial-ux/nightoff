@@ -501,7 +501,7 @@ def init_db() -> None:
             -- 영역 INSERT 추가만 영역 영역 (영역 영역 영역 동적 추가).
             INSERT OR IGNORE INTO policy_settings(key, value) VALUES
                 ('package_price', '380000'),
-                ('monthly_proposals', '100000'),
+                ('monthly_proposals', '0'),
                 ('monthly_conversations', '999999');
 
             -- ───────── Phase 1-A-3 — 무료체험 정책 시드 ─────────
@@ -609,10 +609,10 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     # · *_bonus = 어드민 충전분 (프라이빗 프로모션) — 영역 추적 영역
     # 차감 흐름: 제안서 생성 성공 시 -1 / 사용자 메시지 INSERT 시 -1
     # 리셋 흐름: 월 1일 영역 quota 영역 policy_settings 영역 초기값 / bonus 영역 0 (Phase 3 단계 6)
-    # Phase 4 (Step 3) — 페이지 기반 크레딧 시스템:
-    #   1 페이지 = 100 크레딧, 월 25,000 크레딧 = 약 250페이지
-    #   기존 사용자는 DEFAULT 그대로 (어드민 대시보드에서 직접 100,000 으로 갱신)
-    ("users",         "monthly_proposal_quota",         "INTEGER DEFAULT 25000"),
+    # Spec D-Fix-3 (2026-05-18) — 비용 폭주 방지:
+    #   신규 가입자 크레딧 0 (체험 영역만 허용)
+    #   결제 사용자는 어드민 대시보드에서 직접 크레딧 부여
+    ("users",         "monthly_proposal_quota",         "INTEGER DEFAULT 0"),
     ("users",         "monthly_conversation_quota",     "INTEGER DEFAULT 999999"),  # 무제한 sentinel — 코드 path 미사용
     ("users",         "monthly_proposal_quota_bonus",   "INTEGER DEFAULT 0"),
     ("users",         "monthly_conversation_quota_bonus","INTEGER DEFAULT 0"),
@@ -734,11 +734,17 @@ def set_setting(key: str, value: str) -> None:
 def _get_initial_quota() -> tuple[int, int]:
     """policy_settings 영역 quota 초기값 반환. (proposal, conversation).
 
-    Phase 4 (Step 3) — 페이지 기반 크레딧 시스템:
-      proposal: 25,000 크레딧 (= 250페이지, 1페이지 = 100 크레딧)
+    Spec D-Fix-3 (2026-05-18) — 비용 폭주 방지:
+      proposal: 0 크레딧 (체험 영역만, 결제 후 어드민이 직접 크레딧 부여)
       conversation: 999,999 sentinel (무제한, 코드 path 미사용 — UI 에선 '무제한 ∞')
 
-    fallback (DB 조회 실패 / 키 누락): (100000, 999999) — inline + exception 모두 동일.
+    신규 가입자 사용 가능 영역 (대표님 명시):
+      - RFP 삽입 1회 + 분석 1회
+      - 채팅 10회 (해당 RFP 만)
+      - 견본 샘플 미리보기 (무한)
+      → 별도 카운터 시스템 (다음 spec)
+
+    fallback (DB 조회 실패 / 키 누락): (0, 999999) — inline + exception 모두 동일.
     어드민이 정책값 변경 시 → 신규 사용자 가입 / 월 리셋에 자동 반영.
     """
     try:
@@ -748,12 +754,12 @@ def _get_initial_quota() -> tuple[int, int]:
                 "WHERE key IN ('monthly_proposals', 'monthly_conversations')"
             ).fetchall()
             kv = {r["key"]: r["value"] for r in rows}
-            p = int(kv.get("monthly_proposals") or 25000)
+            p = int(kv.get("monthly_proposals") or 0)
             c = int(kv.get("monthly_conversations") or 999999)
             return max(0, p), max(0, c)
     except Exception as e:
         log.warning("_get_initial_quota fallback (정책 조회 실패): %s", e)
-        return 25000, 999999
+        return 0, 999999
 
 
 def get_api_key() -> str:

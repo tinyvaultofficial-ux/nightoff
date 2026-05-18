@@ -3347,7 +3347,7 @@ body, .msg-bubble, .card, .strengths-intro,
 }
 .sample-card-thumbnail {
   width: 100%;
-  aspect-ratio: 16/9;
+  aspect-ratio: 297 / 210;  /* Spec D-Fix-6 (5/18): A4 가로형 (NightOff PPTX 정합, 16/9 → 297/210) */
   /* Spec C-5 (5/18): 다크 → Medium Lavender 그라데이션 (브랜드 본질 정합) */
   background: linear-gradient(135deg, #EBE3FF 0%, #BFA8F0 100%);
   border: 0.5px solid #D9CFF5;
@@ -3476,7 +3476,7 @@ body, .msg-bubble, .card, .strengths-intro,
   border-radius: 14px;
   box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.25);
   width: 100%;
-  max-width: 900px;
+  max-width: 1100px;  /* Spec D-Fix-6 (5/18): A4 본문 영역 확보 (900 → 1100) */
   max-height: 90vh;
   display: flex;
   flex-direction: column;
@@ -3517,6 +3517,7 @@ body, .msg-bubble, .card, .strengths-intro,
 .sample-modal-close:hover { background: var(--bg-2); }
 .sample-modal-body {
   flex: 1;
+  aspect-ratio: 297 / 210;  /* Spec D-Fix-6 (5/18): A4 가로형 본문 영역 (NightOff PPTX 정합) */
   overflow: hidden;
   display: flex;
   background: var(--bg-2);

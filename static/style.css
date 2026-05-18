@@ -3348,7 +3348,9 @@ body, .msg-bubble, .card, .strengths-intro,
 .sample-card-thumbnail {
   width: 100%;
   aspect-ratio: 16/9;
-  background: linear-gradient(135deg, #1A1A2E 0%, #2D2D5F 100%);
+  /* Spec C-5 (5/18): 다크 → Medium Lavender 그라데이션 (브랜드 본질 정합) */
+  background: linear-gradient(135deg, #EBE3FF 0%, #BFA8F0 100%);
+  border: 0.5px solid #D9CFF5;
   border-radius: 10px;
   display: flex;
   flex-direction: column;
@@ -3366,13 +3368,15 @@ body, .msg-bubble, .card, .strengths-intro,
 .sample-card-thumbnail-title {
   font-size: 13px;
   font-weight: 600;
-  color: #fff;
+  /* Spec C-5 (5/18): 흰 → 다크 보라 (라이트 배경 위 가독성) */
+  color: #1F1147;
   margin: 0 0 4px;
   line-height: 1.4;
 }
 .sample-card-thumbnail-agency {
   font-size: 10px;
-  color: rgba(255, 255, 255, 0.7);
+  /* Spec C-5 (5/18): 옅은 흰 → 옅은 다크 보라 */
+  color: rgba(31, 17, 71, 0.65);
   margin: 0;
 }
 .sample-card-info {
@@ -5107,30 +5111,32 @@ input.locked-by-env::placeholder {
   pointer-events: none;
   padding: 32px 36px;
   display: flex; align-items: flex-start;
-  color: #fff;
+  /* Spec C-5 (5/18): 흰 → 다크 보라 (라이트 배경 위 가독성) */
+  color: #1F1147;
 }
 .hero-5-slide.active {
   opacity: 1;
   pointer-events: auto;
 }
 
-/* Spec C-2 (5/18): 5 톤 → 보라 단일 톤 통일 (#1A1A1F → #2E2E58). 사이드바 다크 톤과 정합 */
+/* Spec C-5 (5/18): 다크 → Light Lavender. "야근 OFF" 브랜드 본질 (가벼움/응원) 정합. */
 .hero-5-slide[data-tone="purple-blue"],
 .hero-5-slide[data-tone="pink"],
 .hero-5-slide[data-tone="amber"],
 .hero-5-slide[data-tone="green"],
 .hero-5-slide[data-tone="purple"] {
-  background: linear-gradient(135deg, #1A1A1F 0%, #2E2E58 100%);
+  background: linear-gradient(135deg, #F5F0FF 0%, #EBE3FF 100%);
+  border: 0.5px solid #D9CFF5;
 }
 
-/* subtle 그리드 패턴 (32×32, opacity 0.35) */
+/* subtle 그리드 패턴 (32×32). Spec C-5 (5/18): 흰 라인 → 옅은 보라 라인 (라이트 배경 정합) */
 .hero-5-grid-pattern {
   position: absolute; inset: 0;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+    linear-gradient(rgba(107, 70, 229, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(107, 70, 229, 0.06) 1px, transparent 1px);
   background-size: 32px 32px;
-  opacity: 0.35;
+  opacity: 0.5;
   pointer-events: none;
 }
 
@@ -5142,13 +5148,13 @@ input.locked-by-env::placeholder {
   pointer-events: none;
   filter: blur(0.5px);
 }
-/* Spec C-2 (5/18): radial glow 5 톤 → 보라 단일 톤 통일 */
+/* Spec C-5 (5/18): radial glow 라이트 톤 약화 (다크 글로우 → 옅은 보라 글로우) */
 .hero-5-slide[data-tone="purple-blue"] .hero-5-radial-glow,
 .hero-5-slide[data-tone="pink"]        .hero-5-radial-glow,
 .hero-5-slide[data-tone="amber"]       .hero-5-radial-glow,
 .hero-5-slide[data-tone="green"]       .hero-5-radial-glow,
 .hero-5-slide[data-tone="purple"]      .hero-5-radial-glow {
-  background: radial-gradient(circle, rgba(127, 119, 221, 0.28) 0%, transparent 65%);
+  background: radial-gradient(circle, rgba(107, 70, 229, 0.08) 0%, transparent 70%);
 }
 
 /* 액센트 디테일 (inline SVG 영역, 우측 중간) */
@@ -5170,16 +5176,17 @@ input.locked-by-env::placeholder {
   display: flex; flex-direction: column; gap: 12px;
 }
 
+/* Spec C-5 (5/18): badge 흰 톤 → 옅은 보라 (라이트 배경 정합) */
 .hero-5-badge {
   display: inline-flex; align-items: center; gap: 4px;
   align-self: flex-start;
   padding: 4px 12px;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(107, 70, 229, 0.10);
+  border: 1px solid rgba(107, 70, 229, 0.20);
   border-radius: 999px;
   font-size: 11px; font-weight: 700;
   letter-spacing: 0.04em;
-  color: rgba(255, 255, 255, 0.95);
+  color: #6B46E5;
   backdrop-filter: blur(4px);
 }
 .hero-5-badge-emoji { font-size: 12px; }
@@ -5190,9 +5197,12 @@ input.locked-by-env::placeholder {
   letter-spacing: -0.4px;
   line-height: 1.25;
   word-break: keep-all;
+  /* Spec C-5 (5/18): 다크 보라 (라이트 배경 위 가독성) */
+  color: #1F1147;
 }
 .hero-5-title-brand {
-  color: #C2B5F0;
+  /* Spec C-5 (5/18): #C2B5F0 → Primary 보라 (강조) */
+  color: #6B46E5;
   font-weight: 600;
 }
 
@@ -5200,24 +5210,26 @@ input.locked-by-env::placeholder {
   margin: 0;
   font-size: 14px;
   line-height: 1.65;
-  color: rgba(255, 255, 255, 0.78);
+  /* Spec C-5 (5/18): 옅은 흰 → 옅은 다크 보라 */
+  color: rgba(31, 17, 71, 0.7);
   letter-spacing: -0.005em;
   word-break: keep-all;
   white-space: pre-line;   /* 데이터 영역 '\n' 줄바꿈 */
 }
 
-/* 우상단 일러스트 카드 (100×100, rounded 20px) */
+/* 우상단 일러스트 카드 (100×100, rounded 20px).
+   Spec C-5 (5/18): 흰 톤 그라데이션 → 옅은 보라 그라데이션 (라이트 배경 정합) */
 .hero-5-illustration {
   position: absolute;
   top: 32px; right: 36px;
   width: 100px; height: 100px;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.04) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: linear-gradient(135deg, rgba(107, 70, 229, 0.12) 0%, rgba(107, 70, 229, 0.04) 100%);
+  border: 1px solid rgba(107, 70, 229, 0.18);
   border-radius: 20px;
   display: grid; place-items: center;
   font-size: 48px;
   backdrop-filter: blur(8px);
-  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px -8px rgba(107, 70, 229, 0.20);
   z-index: 2;
 }
 
@@ -5233,15 +5245,17 @@ input.locked-by-env::placeholder {
   border: 0;
   width: 8px; height: 8px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.3);
+  /* Spec C-5 (5/18): 흰 → 옅은 보라 (라이트 배경 정합) */
+  background: rgba(107, 70, 229, 0.25);
   cursor: pointer;
   transition: width 0.3s ease, background 0.3s ease;
   padding: 0;
 }
-.hero-5-dot:hover { background: rgba(255, 255, 255, 0.6); }
+.hero-5-dot:hover { background: rgba(107, 70, 229, 0.5); }
 .hero-5-dot.active {
   width: 22px;
-  background: #fff;
+  /* Spec C-5 (5/18): 흰 → Primary 보라 */
+  background: #6B46E5;
 }
 
 /* 반응형 — ≤1024px 중간 영역 */
@@ -5334,25 +5348,27 @@ input.locked-by-env::placeholder {
   white-space: pre-line;   /* 데이터 영역 '\n' 줄바꿈 영역 */
 }
 
-/* Spec C-2 (5/18): 가운데 강조 5중 → 2중 (다크 배경 + 우상단 작은 배지만 유지).
-   폐기: 2px 엠버 보더 → 1px rgba(255,255,255,0.1) / scale(1.06) / 엠버 box-shadow */
+/* Spec C-5 (5/18): 가운데 강조 다크 → Light Lavender. 보더 Primary 보라 1.5px.
+   배지 엠버 → Primary 보라. 브랜드 본질 (가벼움/응원) 정합. */
 .feature-5-card.featured {
-  background: linear-gradient(180deg, #2E2E58 0%, #1B1F3B 100%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: linear-gradient(180deg, #F5F0FF 0%, #EBE3FF 100%);
+  border: 1.5px solid #6B46E5;
+  color: #1F1147;
   position: relative;
 }
 .feature-5-card.featured:hover {
   transform: translateY(-2px);
 }
 .feature-5-card.featured .feature-5-card-title {
-  color: #fff;
+  /* Spec C-5 (5/18): 흰 → 다크 보라 */
+  color: #1F1147;
 }
 .feature-5-card-badge {
   position: absolute;
   top: -9px; right: 10px;
   padding: 3px 8px;
-  background: #EF9F27;
+  /* Spec C-5 (5/18): 엠버 #EF9F27 → Primary 보라 */
+  background: #6B46E5;
   color: #fff;
   font-size: 10px; font-weight: 500;
   letter-spacing: 0.02em;
@@ -5367,11 +5383,11 @@ input.locked-by-env::placeholder {
 .feature-5-card[data-tone="green"]  .feature-5-card-icon { background: rgba(29, 158, 117, 0.12);  color: #1D9E75; }
 .feature-5-card[data-tone="pink"]   .feature-5-card-icon { background: rgba(212, 83, 126, 0.12);  color: #D4537E; }
 
-/* Spec C-2 (5/18): featured 아이콘 크기 40×40 → 38×38 (다른 카드와 baseline 일관).
-   톤 다운: 다크 배경 영역 정합 — 흰색 / 골드 톤 유지 */
+/* Spec C-5 (5/18): featured 아이콘 엠버 → 옅은 보라 (라이트 배경 정합).
+   크기 38×38 baseline 유지 (Spec C-2). */
 .feature-5-card.featured .feature-5-card-icon {
-  background: rgba(239, 159, 39, 0.22);
-  color: #FFD27A;
+  background: rgba(107, 70, 229, 0.15);
+  color: #6B46E5;
 }
 
 /* 반응형 — ≤1024px 3-열 (사이드바 햄버거화 후 메인 풀폭).

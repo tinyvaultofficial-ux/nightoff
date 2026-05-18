@@ -585,6 +585,9 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     # 채팅 첫 진입 안내 팝업 — "다시 보지 않기" 영구 저장 (계정 단위).
     # INTEGER 0/1 — SQLite/PG 양쪽 호환 (BOOLEAN native 회피).
     ("users",         "chat_intro_dismissed", "INTEGER DEFAULT 0"),
+    # Spec D-Fix-7 (5/18) — 대시보드 첫 진입 안내 모달 (NightOff 차별화 + 70% 솔직 안내).
+    # 1회성 / 계정 단위 영구 dismissed. chat_intro_dismissed 패턴 정확 복제.
+    ("users",         "dashboard_intro_dismissed", "INTEGER DEFAULT 0"),
     # 오늘의 무료 크레딧 — 누적 횟수 (베타 = 환산 X, 런칭 시 정밀 환산).
     # 퀴즈 정답 / 로또 등수 / 운세는 합산해서 단순 카운터로 누적.
     ("users",         "credit_count",         "INTEGER DEFAULT 0"),
@@ -4151,6 +4154,9 @@ class RegisterIn(BaseModel):
     email: str
     password: str
     company: str = ""
+    # Spec D-Fix-7 (5/18) — 약관 동의 (법적 필수, 일반 공개 전 critical)
+    terms_agreed: bool = False
+    privacy_agreed: bool = False
 
 
 class LoginIn(BaseModel):
@@ -4174,6 +4180,9 @@ def api_auth_register(body: RegisterIn):
         raise HTTPException(400, "이메일 형식을 확인해 주세요.")
     if not _PASSWORD_POLICY_RE.match(pw):
         raise HTTPException(400, "비밀번호는 8자 이상 + 영문 + 숫자를 포함해야 해요.")
+    # Spec D-Fix-7 (5/18) — 약관 동의 검증 (법적 필수)
+    if not body.terms_agreed or not body.privacy_agreed:
+        raise HTTPException(400, "이용약관과 개인정보처리방침에 모두 동의해주세요.")
 
     with get_db() as db:
         # 이메일 중복 체크 — is_active 무관 (wait-list row 탈취 방지).
@@ -4317,6 +4326,45 @@ def api_me_dismiss_chat_intro(user: dict = Depends(get_current_user)):
         return {"ok": True}
     except Exception as e:
         log.warning("dismiss-chat-intro SQL 사고 (마이그레이션 영역 의심): %s", e)
+        return {"ok": True, "persisted": False}
+
+
+# Spec D-Fix-7 (5/18) — 대시보드 진입 모달 (chat-intro 패턴 정확 복제)
+@app.get("/api/me/dashboard-intro-status")
+def api_me_dashboard_intro_status(user: dict = Depends(get_current_user)):
+    """대시보드 첫 진입 안내 모달 노출 여부. INTEGER 0/1 → bool 변환.
+
+    Graceful fallback: 마이그레이션 영역 사고 (컬럼 미존재) 시 dismissed=False 반환.
+    → 사용자 영역 = 모달 노출 (안전, 첫 진입 케이스 동일 영역).
+    """
+    try:
+        with get_db() as db:
+            row = db.execute(
+                "SELECT dashboard_intro_dismissed FROM users WHERE id=?",
+                (user["id"],),
+            ).fetchone()
+        dismissed = bool(row and (row["dashboard_intro_dismissed"] or 0))
+        return {"dismissed": dismissed}
+    except Exception as e:
+        log.warning("dashboard-intro-status SQL 사고 (마이그레이션 영역 의심): %s", e)
+        return {"dismissed": False}
+
+
+@app.post("/api/me/dismiss-dashboard-intro")
+def api_me_dismiss_dashboard_intro(user: dict = Depends(get_current_user)):
+    """대시보드 첫 진입 안내 모달 '시작할게요' 저장 (계정 단위 영구).
+
+    Graceful fallback: 마이그레이션 영역 사고 시 ok=true 반환 (DB 저장 X 다만 UX 흐름 유지).
+    """
+    try:
+        with get_db() as db:
+            db.execute(
+                "UPDATE users SET dashboard_intro_dismissed=1 WHERE id=?",
+                (user["id"],),
+            )
+        return {"ok": True}
+    except Exception as e:
+        log.warning("dismiss-dashboard-intro SQL 사고 (마이그레이션 영역 의심): %s", e)
         return {"ok": True, "persisted": False}
 
 

@@ -29,6 +29,11 @@
     .auth-footer a:hover { text-decoration: underline; }
     .auth-error { font-size: 12px; color: #C0392B; margin-top: 12px; padding: 8px 10px; background: #FDEDEC; border-left: 3px solid #C0392B; border-radius: 4px; display: none; }
     .auth-error.show { display: block; }
+    /* Spec D-Fix-7 (5/18) — 약관 동의 체크박스 (법적 필수, 일반 공개 전 critical) */
+    .auth-terms { margin: 16px 0 8px; display: flex; flex-direction: column; gap: 8px; }
+    .auth-terms-label { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: #555; cursor: pointer; line-height: 1.5; }
+    .auth-terms-label input[type="checkbox"] { margin-top: 2px; flex-shrink: 0; }
+    .auth-terms-label a { color: #6E56CF; text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -51,7 +56,17 @@
           <label for="company">회사 (선택)</label>
           <input type="text" id="company" name="company" autocomplete="organization" />
         </div>
-        <button type="submit" class="auth-btn" id="submit-btn">가입하고 시작하기</button>
+        <div class="auth-terms">
+          <label class="auth-terms-label">
+            <input type="checkbox" id="terms_agreed" required />
+            <span><a href="/terms" target="_blank">이용약관</a>에 동의합니다 (필수)</span>
+          </label>
+          <label class="auth-terms-label">
+            <input type="checkbox" id="privacy_agreed" required />
+            <span><a href="/privacy" target="_blank">개인정보처리방침</a>에 동의합니다 (필수)</span>
+          </label>
+        </div>
+        <button type="submit" class="auth-btn" id="submit-btn" disabled>가입하고 시작하기</button>
         <div class="auth-error" id="error-msg"></div>
       </form>
       <div class="auth-footer">
@@ -79,6 +94,16 @@
       location.href = "/";
     }
 
+    // Spec D-Fix-7 (5/18) — 약관 체크박스 영역 둘 다 체크 시에만 가입 버튼 활성
+    const termsCheckbox = document.getElementById("terms_agreed");
+    const privacyCheckbox = document.getElementById("privacy_agreed");
+    function updateSubmitState() {
+      btn.disabled = !(termsCheckbox.checked && privacyCheckbox.checked);
+    }
+    termsCheckbox.addEventListener("change", updateSubmitState);
+    privacyCheckbox.addEventListener("change", updateSubmitState);
+    updateSubmitState();
+
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       clearError();
@@ -87,11 +112,13 @@
       const email = document.getElementById("email").value.trim();
       const password = document.getElementById("password").value;
       const company = document.getElementById("company").value.trim();
+      const terms_agreed = termsCheckbox.checked;
+      const privacy_agreed = privacyCheckbox.checked;
       try {
         const r = await fetch("/api/auth/register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password, company }),
+          body: JSON.stringify({ email, password, company, terms_agreed, privacy_agreed }),
         });
         const data = await r.json().catch(() => ({}));
         if (!r.ok) {

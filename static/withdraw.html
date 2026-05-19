@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>회원 탈퇴 · NightOff</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+  <link rel="preload" as="font" href="/static/fonts/Paperlogy-7Bold.ttf" type="font/ttf" crossorigin />
+  <link rel="preload" as="font" href="/static/fonts/Paperlogy-4Regular.ttf" type="font/ttf" crossorigin />
+  <style>
+    /* Spec D-Fix-9 (5/19) — 회원 탈퇴 안내 + 폼 페이지 */
+    body {
+      background: #FAFAFA;
+      font-family: 'Paperlogy', -apple-system, BlinkMacSystemFont, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      padding: 40px 20px;
+      color: #1F1147;
+    }
+    .withdraw-page {
+      max-width: 560px;
+      margin: 0 auto;
+      padding: 40px 36px;
+      background: white;
+      border-radius: 14px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+    }
+    .withdraw-page h1 {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1F1147;
+      margin: 0 0 8px;
+      letter-spacing: -0.3px;
+    }
+    .withdraw-subtitle {
+      font-size: 15px;
+      color: #666;
+      margin: 0 0 32px;
+      line-height: 1.55;
+    }
+    .withdraw-section {
+      background: #FFFBF5;
+      border: 1px solid #FFE8C4;
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin-bottom: 32px;
+    }
+    .withdraw-section h2 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #B8862E;
+      margin: 0 0 12px;
+    }
+    .withdraw-section ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .withdraw-section li {
+      font-size: 14px;
+      color: #555;
+      padding: 5px 0 5px 18px;
+      position: relative;
+      line-height: 1.6;
+    }
+    .withdraw-section li::before {
+      content: "•";
+      position: absolute;
+      left: 4px;
+      color: #B8862E;
+      font-weight: 700;
+    }
+    .withdraw-form-group {
+      margin-bottom: 24px;
+    }
+    .withdraw-form-label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 10px;
+    }
+    .withdraw-reason-options {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .withdraw-reason-option {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border: 1px solid #E5E5E5;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      color: #555;
+      transition: border-color 0.15s ease;
+    }
+    .withdraw-reason-option:hover {
+      border-color: #6E56CF;
+    }
+    .withdraw-reason-option input[type="radio"] {
+      margin: 0;
+      flex-shrink: 0;
+    }
+    .withdraw-reason-other {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #E5E5E5;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-top: 10px;
+      box-sizing: border-box;
+      font-family: inherit;
+      resize: vertical;
+    }
+    .withdraw-password-input {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid #E5E5E5;
+      border-radius: 8px;
+      font-size: 14px;
+      box-sizing: border-box;
+      font-family: inherit;
+    }
+    .withdraw-password-input:focus {
+      outline: none;
+      border-color: #6E56CF;
+    }
+    .withdraw-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 32px;
+    }
+    .withdraw-btn-cancel {
+      flex: 1;
+      padding: 13px 20px;
+      background: #F5F5F5;
+      color: #555;
+      border: 0;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s ease;
+    }
+    .withdraw-btn-cancel:hover {
+      background: #EEE;
+    }
+    .withdraw-btn-submit {
+      flex: 1;
+      padding: 13px 20px;
+      background: #E74C3C;
+      color: white;
+      border: 0;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      transition: opacity 0.15s ease;
+    }
+    .withdraw-btn-submit:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+    .withdraw-btn-submit:disabled {
+      background: #CCC;
+      cursor: not-allowed;
+    }
+    .withdraw-error {
+      color: #E74C3C;
+      font-size: 13px;
+      margin: 8px 0 0;
+      display: none;
+    }
+    .withdraw-error.show { display: block; }
+  </style>
+</head>
+<body>
+  <div class="withdraw-page">
+    <h1>🌙 정말 NightOff를 떠나시나요?</h1>
+    <p class="withdraw-subtitle">탈퇴 전 아래 내용을 꼭 확인해주세요.</p>
+
+    <div class="withdraw-section">
+      <h2>⚠️ 탈퇴 시 영향</h2>
+      <ul>
+        <li>작성하신 제안서 / RFP / 대화 영역 비활성화</li>
+        <li>30일 후 모든 데이터 영구 삭제 (복구 불가)</li>
+        <li>같은 이메일로 즉시 재가입 가능</li>
+        <li>결제 사용자는 별도 환불 절차 진행</li>
+      </ul>
+    </div>
+
+    <form id="withdraw-form">
+      <div class="withdraw-form-group">
+        <label class="withdraw-form-label">탈퇴 사유 (선택)</label>
+        <div class="withdraw-reason-options">
+          <label class="withdraw-reason-option">
+            <input type="radio" name="reason" value="더 이상 필요 없어요" />
+            <span>더 이상 필요 없어요</span>
+          </label>
+          <label class="withdraw-reason-option">
+            <input type="radio" name="reason" value="다른 서비스 사용" />
+            <span>다른 서비스를 사용하게 됐어요</span>
+          </label>
+          <label class="withdraw-reason-option">
+            <input type="radio" name="reason" value="가격 부담" />
+            <span>가격이 부담돼요</span>
+          </label>
+          <label class="withdraw-reason-option">
+            <input type="radio" name="reason" value="기능 부족" />
+            <span>기능이 부족해요</span>
+          </label>
+          <label class="withdraw-reason-option">
+            <input type="radio" name="reason" value="기타" />
+            <span>기타</span>
+          </label>
+        </div>
+        <textarea class="withdraw-reason-other" id="reason-other" placeholder="자세한 사유를 알려주세요 (선택)" rows="3"></textarea>
+      </div>
+
+      <div class="withdraw-form-group">
+        <label class="withdraw-form-label" for="password">비밀번호 확인 *</label>
+        <input type="password" class="withdraw-password-input" id="password" placeholder="비밀번호를 입력해주세요" autocomplete="current-password" required />
+        <p class="withdraw-error" id="error-msg"></p>
+      </div>
+
+      <div class="withdraw-actions">
+        <button type="button" class="withdraw-btn-cancel" id="cancel-btn">취소</button>
+        <button type="submit" class="withdraw-btn-submit" id="submit-btn">탈퇴하기</button>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    const AUTH_TOKEN_KEY = "nightoff_jwt";
+    const errorMsg = document.getElementById("error-msg");
+    const submitBtn = document.getElementById("submit-btn");
+
+    function showError(msg) {
+      errorMsg.textContent = msg;
+      errorMsg.classList.add("show");
+    }
+    function clearError() {
+      errorMsg.classList.remove("show");
+      errorMsg.textContent = "";
+    }
+
+    // 인증 X 시 로그인 페이지 이동
+    if (!localStorage.getItem(AUTH_TOKEN_KEY)) {
+      location.href = "/login.html";
+    }
+
+    // 취소 → 대시보드 돌아가기
+    document.getElementById("cancel-btn").addEventListener("click", () => {
+      location.href = "/";
+    });
+
+    // 탈퇴 폼 제출
+    document.getElementById("withdraw-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      clearError();
+
+      const password = document.getElementById("password").value;
+      const reasonRadio = document.querySelector('input[name="reason"]:checked');
+      const reasonOther = document.getElementById("reason-other").value.trim();
+
+      if (!password) {
+        showError("비밀번호를 입력해주세요.");
+        return;
+      }
+
+      let reason = reasonRadio ? reasonRadio.value : "";
+      if (reasonOther) {
+        reason = reason ? `${reason} - ${reasonOther}` : reasonOther;
+      }
+
+      // 진짜 마지막 확인
+      if (!confirm("정말 탈퇴하시겠어요? 30일 후 모든 데이터가 영구 삭제됩니다.")) {
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = "처리 중...";
+
+      try {
+        const token = localStorage.getItem(AUTH_TOKEN_KEY);
+        const res = await fetch("/api/auth/withdraw", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify({ password, reason }),
+        });
+
+        if (res.ok) {
+          localStorage.removeItem(AUTH_TOKEN_KEY);
+          alert("탈퇴가 완료되었습니다.\n30일 후 모든 데이터가 영구 삭제됩니다.\n그동안 이용해주셔서 감사했습니다. 🌙");
+          location.href = "/landing";
+          return;
+        }
+
+        if (res.status === 401) {
+          const data = await res.json().catch(() => ({}));
+          if (data.detail === "비밀번호가 일치하지 않아요.") {
+            showError("비밀번호가 일치하지 않아요.");
+          } else {
+            showError("인증이 만료됐어요. 다시 로그인해주세요.");
+            setTimeout(() => { location.href = "/login.html"; }, 1500);
+          }
+          submitBtn.disabled = false;
+          submitBtn.textContent = "탈퇴하기";
+          return;
+        }
+
+        showError("탈퇴 처리 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.");
+        submitBtn.disabled = false;
+        submitBtn.textContent = "탈퇴하기";
+      } catch (err) {
+        showError("네트워크 오류. 잠시 후 다시 시도해주세요.");
+        submitBtn.disabled = false;
+        submitBtn.textContent = "탈퇴하기";
+      }
+    });
+  </script>
+</body>
+</html>

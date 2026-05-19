@@ -5499,6 +5499,8 @@ function printProposal(propEl) {
 
 
 // ---------- Settings modal ----------
+// Spec D-Fix-9 (5/19) — 회원 탈퇴 링크 영역 index.html settings-modal 안 추가됨 (/withdraw.html).
+// 모달 하단 작은 회색 텍스트 영역 (사용자 실수 방지). 클릭 시 정적 페이지 이동.
 async function openSettings() {
   const modal = $("#settings-modal");
   const s = await api.get("/api/settings");

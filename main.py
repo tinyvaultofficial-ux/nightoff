@@ -595,6 +595,12 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     ("users",         "verification_token",              "TEXT DEFAULT ''"),
     ("users",         "verification_token_expires_at",   "TEXT DEFAULT ''"),
     ("users",         "last_verification_sent_at",       "TEXT DEFAULT ''"),  # cooldown용 (1분)
+    # Spec D-Fix-9 (5/19) — 회원 탈퇴 (Soft delete + 30일 후 영구 삭제).
+    # ⚠ DEFAULT '' critical — 기존 가입 사용자 (deleted_at IS NULL/'') 영업 무중단 보장.
+    # 옵션 B: 탈퇴 시 email → deleted_<uid>@nightoff.deleted / original_email 보관 / 재가입 즉시 가능.
+    ("users",         "deleted_at",                      "TEXT DEFAULT ''"),
+    ("users",         "withdrawal_reason",               "TEXT DEFAULT ''"),
+    ("users",         "original_email",                  "TEXT DEFAULT ''"),
     # 오늘의 무료 크레딧 — 누적 횟수 (베타 = 환산 X, 런칭 시 정밀 환산).
     # 퀴즈 정답 / 로또 등수 / 운세는 합산해서 단순 카운터로 누적.
     ("users",         "credit_count",         "INTEGER DEFAULT 0"),
@@ -1016,7 +1022,10 @@ _security = HTTPBearer(auto_error=False)
 
 
 def get_current_user(creds: Optional[HTTPAuthorizationCredentials] = Depends(_security)) -> dict:
-    """JWT dependency — Authorization: Bearer <token> 검증."""
+    """JWT dependency — Authorization: Bearer <token> 검증.
+
+    Spec D-Fix-9 (5/19) — deleted_at 체크 추가 (탈퇴 사용자 인증 차단).
+    """
     if not creds or not creds.credentials:
         raise HTTPException(401, "인증이 필요해요. 로그인해 주세요.")
     user_id = decode_jwt(creds.credentials)
@@ -1024,11 +1033,14 @@ def get_current_user(creds: Optional[HTTPAuthorizationCredentials] = Depends(_se
         raise HTTPException(401, "토큰이 만료되었거나 유효하지 않아요. 다시 로그인해 주세요.")
     with get_db() as db:
         row = db.execute(
-            "SELECT id, email, role, is_active FROM users WHERE id=?",
+            "SELECT id, email, role, is_active, deleted_at FROM users WHERE id=?",
             (user_id,),
         ).fetchone()
     if not row or not row["is_active"]:
         raise HTTPException(401, "비활성 계정이에요. 관리자에게 문의해 주세요.")
+    # Spec D-Fix-9 (5/19) — 탈퇴 사용자 차단 (deleted_at 영역 값 존재 시)
+    if row["deleted_at"] and str(row["deleted_at"]).strip():
+        raise HTTPException(401, "탈퇴된 계정이에요.")
     return dict(row)
 
 
@@ -1836,6 +1848,15 @@ def verify_pending_page():
     p = STATIC_DIR / "verify-pending.html"
     if not p.exists():
         raise HTTPException(404, "verify-pending page not found")
+    return FileResponse(str(p), media_type="text/html")
+
+
+# Spec D-Fix-9 (5/19) — 회원 탈퇴 안내 + 폼 페이지
+@app.get("/withdraw.html")
+def withdraw_page():
+    p = STATIC_DIR / "withdraw.html"
+    if not p.exists():
+        raise HTTPException(404, "withdraw page not found")
     return FileResponse(str(p), media_type="text/html")
 
 
@@ -4449,6 +4470,59 @@ def api_auth_login(body: LoginIn):
 def api_auth_logout():
     """Stateless — 서버는 상태 없음. 프론트가 localStorage 토큰 삭제 처리."""
     return {"ok": True}
+
+
+# Spec D-Fix-9 (5/19) — 회원 탈퇴 (Soft delete + 30일 후 영구 삭제)
+class WithdrawIn(BaseModel):
+    password: str
+    reason: str = ""  # 선택 사항 (최대 500자 영역)
+
+
+@app.post("/api/auth/withdraw")
+def api_auth_withdraw(body: WithdrawIn, user: dict = Depends(get_current_user)):
+    """회원 탈퇴 — Soft delete (deleted_at 설정, 30일 후 영구 삭제 스케줄러).
+
+    옵션 B: email → deleted_<uid>@nightoff.deleted / original_email 보관 / 재가입 즉시 가능.
+    비밀번호 재검증 (본인 확인) + verification_token / token_expires_at 클리어.
+    """
+    uid = user["id"]
+
+    # 비밀번호 재검증 (본인 확인)
+    with get_db() as db:
+        row = db.execute(
+            "SELECT email, password_hash FROM users WHERE id=?",
+            (uid,),
+        ).fetchone()
+
+    if not row:
+        raise HTTPException(404, "계정을 찾을 수 없어요.")
+
+    try:
+        ok = _bcrypt.checkpw(body.password.encode("utf-8"), row["password_hash"].encode("utf-8"))
+    except (ValueError, TypeError):
+        ok = False
+    if not ok:
+        raise HTTPException(401, "비밀번호가 일치하지 않아요.")
+
+    # Soft delete (옵션 B — email 변경 + original_email 보관)
+    current_email = row["email"]
+    deleted_email = f"deleted_{uid}@nightoff.deleted"
+    now_iso = datetime.utcnow().isoformat()
+    reason = (body.reason or "").strip()[:500]  # 최대 500자
+
+    with get_db() as db:
+        db.execute(
+            "UPDATE users SET email=?, original_email=?, deleted_at=?, is_active=0, "
+            "                  withdrawal_reason=?, "
+            "                  verification_token='', verification_token_expires_at='' "
+            "WHERE id=?",
+            (deleted_email, current_email, now_iso, reason, uid),
+        )
+
+    log.info("[withdraw] User withdrew: uid=%s, original_email=%s, reason=%s",
+             uid, current_email, reason[:50])
+
+    return {"status": "withdrawn"}
 
 
 # Spec D-Fix-8 (5/18) — 이메일 인증 검증 endpoint (메일 안 링크 클릭 영역)
@@ -7909,6 +7983,59 @@ def api_admin_quota_reset_monthly(admin: dict = Depends(require_admin)):
 _SCHEDULER = None  # type: ignore[var-annotated]
 
 
+# Spec D-Fix-9 (5/19) — 영구 삭제 작업 (매일 00:30 KST, 30일 영역 경과 탈퇴 사용자)
+def permanent_delete_withdrawn_users_job() -> None:
+    """매일 00:30 KST — deleted_at < (now - 30 days) 사용자 영구 삭제.
+
+    삭제 순서 (CASCADE 영역 + 명시 DELETE 조합):
+    1. credit_attempts (FK X — 명시 DELETE 필수)
+    2. clients (clients.user_id FK X → 명시 DELETE → conversations / messages / rfp /
+                 nuance_memories / references_lib / client_profiles / client_strengths /
+                 client_intel / rfp_aggregated 등 CASCADE 자동)
+    3. users (CASCADE → error_reports / admin_audit_log / trial_usage 자동)
+
+    사용자별 격리 처리 — 1명 실패해도 다른 사용자 영구 삭제 영역 계속 진행.
+    예외 발생 시 로그만 남기고 raise 안 함 (다음 날 다시 시도).
+    """
+    cutoff = (datetime.utcnow() - timedelta(days=30)).isoformat()
+
+    try:
+        with get_db() as db:
+            rows = db.execute(
+                "SELECT id, original_email FROM users "
+                "WHERE deleted_at IS NOT NULL AND deleted_at != '' AND deleted_at < ?",
+                (cutoff,),
+            ).fetchall()
+            uids = [(r["id"], r["original_email"] or "") for r in rows]
+
+        if not uids:
+            log.info("[permanent-delete] 영구 삭제 대상 0건")
+            return
+
+        log.info("[permanent-delete] 영구 삭제 대상: %d명", len(uids))
+
+        deleted_count = 0
+        for uid, original_email in uids:
+            try:
+                with get_db() as db:
+                    # 1. credit_attempts (FK X — 명시)
+                    db.execute("DELETE FROM credit_attempts WHERE user_id=?", (uid,))
+                    # 2. clients (CASCADE → conversations / messages / rfp / intel / etc 자동)
+                    db.execute("DELETE FROM clients WHERE user_id=?", (uid,))
+                    # 3. users (CASCADE → error_reports / admin_audit_log / trial_usage 자동)
+                    db.execute("DELETE FROM users WHERE id=?", (uid,))
+                deleted_count += 1
+                log.info("[permanent-delete] User permanently deleted: uid=%s, original_email=%s",
+                         uid, original_email)
+            except Exception as e:
+                log.exception("[permanent-delete] User %s 영구 삭제 실패: %s", uid, e)
+
+        log.info("[permanent-delete] 영구 삭제 완료: %d/%d", deleted_count, len(uids))
+
+    except Exception as e:
+        log.exception("[permanent-delete] 전체 실패: %s", e)
+
+
 def auto_reset_quota_job() -> None:
     """매일 00:00 KST 자동 실행 — 자격 사용자 감지 후 리셋.
 
@@ -7985,6 +8112,17 @@ def _init_quota_scheduler() -> None:
             max_instances=1,         # 동일 job 동시 실행 방지
             coalesce=True,           # 누락된 firing 합치기 (다운타임 후 1회만 실행)
             misfire_grace_time=3600, # 1시간 이내 누락은 만회 실행
+        )
+        # Spec D-Fix-9 (5/19) — 영구 삭제 영역 (매일 00:30 KST, quota 리셋 직후)
+        sched.add_job(
+            permanent_delete_withdrawn_users_job,
+            CronTrigger(hour=0, minute=30, timezone="Asia/Seoul"),
+            id="permanent_delete_withdrawn_daily",
+            name="Permanent delete withdrawn users (30+ days) at 00:30 KST",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600,
         )
         sched.start()
         _SCHEDULER = sched

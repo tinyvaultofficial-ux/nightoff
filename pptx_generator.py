@@ -1646,10 +1646,141 @@ def _add_image_placeholder(slide, x, y, w, h, hint="이미지 추가"):
     return box
 
 
+# ============================================================
+# Spec D-Fix-11a Stage A (5/19) — 신규 도형 헬퍼 5종
+# 시각화 다양성 영역 확장: chevron / pentagon / callout / block_arrow / star
+# ⚠ Stage A 만 적용 시 효과 0 — LLM 영역 신규 type 출력 X (시스템 프롬프트 무변경).
+# ⚠ Stage B 영역 (시스템 프롬프트 안내) 진입 전 안전 영역 확보 단계.
+# 패턴 정합: _add_rect (fill/stroke) + _add_image_placeholder (text_frame 영역).
+# ============================================================
+
+def _add_shape_with_text(slide, mso_shape_type, x, y, w, h, *,
+                          fill="#FFFFFF", stroke=None, stroke_width=None,
+                          text=None, text_color="#1A1A1A", text_size=12,
+                          text_weight=400, text_align="center"):
+    """내부 헬퍼 — 신규 도형 5종 영역 공통 본문 (DRY 영역).
+
+    fill / stroke 영역 = _add_rect 패턴 정확 정합.
+    텍스트 영역 = _add_image_placeholder 패턴 + _add_text 정렬 정합.
+    """
+    shape = slide.shapes.add_shape(
+        mso_shape_type, Inches(x), Inches(y), Inches(w), Inches(h),
+    )
+    # fill / stroke (_add_rect 패턴)
+    if fill:
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = _hex_to_rgb(fill)
+    else:
+        _set_no_fill(shape)
+    if stroke:
+        shape.line.color.rgb = _hex_to_rgb(stroke)
+        if stroke_width:
+            shape.line.width = Pt(float(stroke_width))
+    else:
+        _set_no_line(shape)
+    # 텍스트 영역 (옵션, _add_image_placeholder 패턴 + _add_text 정렬)
+    if text:
+        tf = shape.text_frame
+        tf.word_wrap = True
+        tf.margin_left = Inches(0.04)
+        tf.margin_right = Inches(0.04)
+        try:
+            tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        except Exception:
+            pass
+        p = tf.paragraphs[0]
+        align_map = {"left": PP_ALIGN.LEFT, "center": PP_ALIGN.CENTER, "right": PP_ALIGN.RIGHT}
+        try:
+            p.alignment = align_map.get(str(text_align).lower(), PP_ALIGN.CENTER)
+        except Exception:
+            pass
+        target_font = _resolve_font(None, text_weight) or DEFAULT_FONT_FAMILY
+        weight_norm = _normalize_weight(text_weight)
+        run = p.add_run()
+        run.text = str(text)
+        try:
+            run.font.size = Pt(float(text_size))
+        except Exception:
+            run.font.size = Pt(12)
+        run.font.bold = weight_norm >= 600
+        run.font.color.rgb = _hex_to_rgb(text_color)
+        try:
+            run.font.name = target_font
+        except Exception:
+            pass
+    return shape
+
+
+def _add_chevron(slide, x, y, w, h, *, fill="#FFFFFF", stroke=None, stroke_width=None,
+                 text=None, text_color="#1A1A1A", text_size=12, text_weight=400, text_align="center"):
+    """CHEVRON 도형 (프로세스 단계 영역). 텍스트는 도형 안 가운데 정렬."""
+    return _add_shape_with_text(
+        slide, MSO_SHAPE.CHEVRON, x, y, w, h,
+        fill=fill, stroke=stroke, stroke_width=stroke_width,
+        text=text, text_color=text_color, text_size=text_size,
+        text_weight=text_weight, text_align=text_align,
+    )
+
+
+def _add_pentagon(slide, x, y, w, h, *, fill="#FFFFFF", stroke=None, stroke_width=None,
+                  text=None, text_color="#1A1A1A", text_size=12, text_weight=400, text_align="center"):
+    """PENTAGON 도형 (Phase / 단계 영역). 텍스트는 도형 안 가운데 정렬."""
+    return _add_shape_with_text(
+        slide, MSO_SHAPE.PENTAGON, x, y, w, h,
+        fill=fill, stroke=stroke, stroke_width=stroke_width,
+        text=text, text_color=text_color, text_size=text_size,
+        text_weight=text_weight, text_align=text_align,
+    )
+
+
+def _add_callout(slide, x, y, w, h, *, fill="#FFFFFF", stroke="#1A1A1A", stroke_width=1.0,
+                 text=None, text_color="#1A1A1A", text_size=12, text_weight=400, text_align="center"):
+    """RECTANGULAR_CALLOUT 도형 (말풍선 / 핵심 메시지 강조).
+
+    기본 stroke = #1A1A1A — 말풍선 영역 본질 (테두리 있음).
+    """
+    return _add_shape_with_text(
+        slide, MSO_SHAPE.RECTANGULAR_CALLOUT, x, y, w, h,
+        fill=fill, stroke=stroke, stroke_width=stroke_width,
+        text=text, text_color=text_color, text_size=text_size,
+        text_weight=text_weight, text_align=text_align,
+    )
+
+
+def _add_block_arrow(slide, x, y, w, h, *, fill="#1A1A1A", stroke=None, stroke_width=None,
+                     text=None, text_color="#FFFFFF", text_size=12, text_weight=400, text_align="center"):
+    """RIGHT_ARROW 도형 (굵은 화살표 — line/arrow 영역 보다 시각 ↑).
+
+    기본 fill = #1A1A1A / text_color = #FFFFFF — 검은 화살표 + 흰 글자 본질.
+    """
+    return _add_shape_with_text(
+        slide, MSO_SHAPE.RIGHT_ARROW, x, y, w, h,
+        fill=fill, stroke=stroke, stroke_width=stroke_width,
+        text=text, text_color=text_color, text_size=text_size,
+        text_weight=text_weight, text_align=text_align,
+    )
+
+
+def _add_star(slide, x, y, w, h, *, fill="#1A1A1A", stroke=None, stroke_width=None,
+              text=None, text_color="#FFFFFF", text_size=14, text_weight=700, text_align="center"):
+    """STAR_5_POINT 도형 (차별화 / 강조 포인트).
+
+    기본 text_weight=700 / text_size=14 — 별 영역 강조 본질.
+    """
+    return _add_shape_with_text(
+        slide, MSO_SHAPE.STAR_5_POINT, x, y, w, h,
+        fill=fill, stroke=stroke, stroke_width=stroke_width,
+        text=text, text_color=text_color, text_size=text_size,
+        text_weight=text_weight, text_align=text_align,
+    )
+
+
 def render_shape_to_slide(slide, shape_def):
     """단일 도형 스펙(JSON) → 슬라이드에 그림.
 
-    지원 type: rect, text, line, arrow, circle/ellipse/oval, image/image_placeholder
+    지원 type:
+      [기존] rect, text, line, arrow, circle/ellipse/oval, image/image_placeholder
+      [Stage A (5/19) 신규] chevron, pentagon, callout, block_arrow, star
     실패 시 None 반환 (다른 도형 렌더링은 계속됨).
     """
     if not isinstance(shape_def, dict):
@@ -1711,6 +1842,78 @@ def render_shape_to_slide(slide, shape_def):
                 float(shape_def.get("x", 0)), float(shape_def.get("y", 0)),
                 float(shape_def.get("w", 4)), float(shape_def.get("h", 3)),
                 hint=str(shape_def.get("hint", "이미지 추가")),
+            )
+        # Spec D-Fix-11a Stage A (5/19) — 신규 도형 5종 분기
+        # ⚠ 효과 0 (의도된 안전 — LLM 영역 본 type 출력 X, Stage B 영역 안내 추가 후 활성).
+        if t in ("chevron", "process_step"):
+            return _add_chevron(
+                slide,
+                float(shape_def.get("x", 0)), float(shape_def.get("y", 0)),
+                float(shape_def.get("w", 1)), float(shape_def.get("h", 0.5)),
+                fill=shape_def.get("fill", "#FFFFFF"),
+                stroke=shape_def.get("stroke"),
+                stroke_width=shape_def.get("stroke_width"),
+                text=shape_def.get("text"),
+                text_color=str(shape_def.get("text_color", "#1A1A1A")),
+                text_size=float(shape_def.get("text_size", 12)),
+                text_weight=int(shape_def.get("text_weight", 400)),
+                text_align=str(shape_def.get("text_align", "center")),
+            )
+        if t in ("pentagon", "step"):
+            return _add_pentagon(
+                slide,
+                float(shape_def.get("x", 0)), float(shape_def.get("y", 0)),
+                float(shape_def.get("w", 1)), float(shape_def.get("h", 0.8)),
+                fill=shape_def.get("fill", "#FFFFFF"),
+                stroke=shape_def.get("stroke"),
+                stroke_width=shape_def.get("stroke_width"),
+                text=shape_def.get("text"),
+                text_color=str(shape_def.get("text_color", "#1A1A1A")),
+                text_size=float(shape_def.get("text_size", 12)),
+                text_weight=int(shape_def.get("text_weight", 400)),
+                text_align=str(shape_def.get("text_align", "center")),
+            )
+        if t in ("callout", "rect_callout"):
+            return _add_callout(
+                slide,
+                float(shape_def.get("x", 0)), float(shape_def.get("y", 0)),
+                float(shape_def.get("w", 3)), float(shape_def.get("h", 1)),
+                fill=shape_def.get("fill", "#FFFFFF"),
+                stroke=shape_def.get("stroke", "#1A1A1A"),
+                stroke_width=float(shape_def.get("stroke_width", 1.0)),
+                text=shape_def.get("text"),
+                text_color=str(shape_def.get("text_color", "#1A1A1A")),
+                text_size=float(shape_def.get("text_size", 12)),
+                text_weight=int(shape_def.get("text_weight", 400)),
+                text_align=str(shape_def.get("text_align", "center")),
+            )
+        if t in ("block_arrow", "right_arrow"):
+            return _add_block_arrow(
+                slide,
+                float(shape_def.get("x", 0)), float(shape_def.get("y", 0)),
+                float(shape_def.get("w", 2)), float(shape_def.get("h", 0.5)),
+                fill=shape_def.get("fill", "#1A1A1A"),
+                stroke=shape_def.get("stroke"),
+                stroke_width=shape_def.get("stroke_width"),
+                text=shape_def.get("text"),
+                text_color=str(shape_def.get("text_color", "#FFFFFF")),
+                text_size=float(shape_def.get("text_size", 12)),
+                text_weight=int(shape_def.get("text_weight", 400)),
+                text_align=str(shape_def.get("text_align", "center")),
+            )
+        if t in ("star", "star_5_point"):
+            return _add_star(
+                slide,
+                float(shape_def.get("x", 0)), float(shape_def.get("y", 0)),
+                float(shape_def.get("w", 1)), float(shape_def.get("h", 1)),
+                fill=shape_def.get("fill", "#1A1A1A"),
+                stroke=shape_def.get("stroke"),
+                stroke_width=shape_def.get("stroke_width"),
+                text=shape_def.get("text"),
+                text_color=str(shape_def.get("text_color", "#FFFFFF")),
+                text_size=float(shape_def.get("text_size", 14)),
+                text_weight=int(shape_def.get("text_weight", 700)),
+                text_align=str(shape_def.get("text_align", "center")),
             )
     except Exception as e:
         log.warning("도형 렌더링 실패 (type=%s): %s", t, e)

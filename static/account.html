@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>마이페이지 · NightOff</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+  <link rel="preload" as="font" href="/static/fonts/Paperlogy-7Bold.ttf" type="font/ttf" crossorigin />
+  <link rel="preload" as="font" href="/static/fonts/Paperlogy-4Regular.ttf" type="font/ttf" crossorigin />
+  <style>
+    /* Spec D-Fix-10 (5/19) — 일반 사용자 마이페이지 (이메일 + 회원 탈퇴 링크) */
+    body {
+      background: #FAFAFA;
+      font-family: 'Paperlogy', -apple-system, BlinkMacSystemFont, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      padding: 40px 20px;
+      color: #1F1147;
+    }
+    .account-page {
+      max-width: 480px;
+      margin: 40px auto;
+      padding: 40px 36px;
+      background: white;
+      border-radius: 14px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+    }
+    .account-page h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1F1147;
+      margin: 0 0 32px;
+      letter-spacing: -0.3px;
+    }
+    .account-info-box {
+      background: #FAFAFF;
+      border: 1px solid #EEE;
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin-bottom: 28px;
+    }
+    .account-info-label {
+      font-size: 13px;
+      color: #888;
+      font-weight: 600;
+      margin: 0 0 6px;
+    }
+    .account-info-value {
+      font-size: 15px;
+      color: #1F1147;
+      font-weight: 600;
+      margin: 0;
+      word-break: break-all;
+    }
+    .account-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding-top: 20px;
+      border-top: 1px solid #EEE;
+    }
+    .account-btn-back {
+      padding: 11px 20px;
+      background: #6E56CF;
+      color: white;
+      border: 0;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: opacity 0.15s ease;
+      font-family: inherit;
+    }
+    .account-btn-back:hover {
+      opacity: 0.9;
+    }
+    .account-withdraw-link {
+      font-size: 13px;
+      color: #999;
+      text-decoration: underline;
+      cursor: pointer;
+      transition: color 0.15s ease;
+    }
+    .account-withdraw-link:hover {
+      color: #E74C3C;
+    }
+  </style>
+</head>
+<body>
+  <div class="account-page">
+    <h1>👤 마이페이지</h1>
+
+    <div class="account-info-box">
+      <p class="account-info-label">이메일</p>
+      <p class="account-info-value" id="user-email">불러오는 중…</p>
+    </div>
+
+    <div class="account-actions">
+      <a href="/" class="account-btn-back">← 대시보드로</a>
+      <a href="/withdraw.html" class="account-withdraw-link">회원 탈퇴</a>
+    </div>
+  </div>
+
+  <script>
+    // Spec D-Fix-10 (5/19) — 사용자 정보 로드 (이메일 표시)
+    (async function loadUserInfo() {
+      const emailEl = document.getElementById("user-email");
+
+      // 1. 토큰 체크 — 없으면 로그인 페이지로
+      const token = localStorage.getItem("nightoff_jwt");
+      if (!token) {
+        window.location.href = "/login.html";
+        return;
+      }
+
+      // 2. /api/auth/me 호출
+      try {
+        const res = await fetch("/api/auth/me", {
+          headers: { "Authorization": `Bearer ${token}` },
+        });
+
+        if (res.status === 401) {
+          // 인증 실패 (만료 / 무효 / 탈퇴) → 로그인 페이지
+          localStorage.removeItem("nightoff_jwt");
+          window.location.href = "/login.html";
+          return;
+        }
+
+        if (res.ok) {
+          const data = await res.json();
+          emailEl.textContent = (data.user && data.user.email) || "(이메일 정보 없음)";
+        } else {
+          emailEl.textContent = "(불러오기 실패)";
+        }
+      } catch (err) {
+        emailEl.textContent = "(네트워크 오류)";
+        console.error("Failed to load user info:", err);
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -604,14 +604,32 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
           }, children);
         })(),
       ] : []),
-      h("button", {
-        class: "sidebar-footer-btn",
-        onclick: () => { if (typeof openSettings === "function") openSettings(); },
-        title: "설정",
-      }, [
-        h("span", { class: "sidebar-footer-btn-icon", html: iconHtml("settings", 16) }),
-        h("span", {}, "설정"),
-      ]),
+      // Spec D-Fix-10 (5/19) — 어드민/일반 분기:
+      //   어드민 (role==="admin") → 기존 설정 모달 (openSettings, settings-modal)
+      //   일반 사용자             → 마이페이지 링크 (/account.html, frontend role 첫 사용 사례)
+      // 본 fix 없으면 일반 사용자는 설정 버튼 클릭해도 /api/settings 403 → 모달 안 뜸 → 회원 탈퇴 진입 영역 막힘.
+      (function () {
+        const u = window.__nightoff_user || {};
+        const isAdmin = u.role === "admin";
+        if (isAdmin) {
+          return h("button", {
+            class: "sidebar-footer-btn",
+            onclick: () => { if (typeof openSettings === "function") openSettings(); },
+            title: "설정",
+          }, [
+            h("span", { class: "sidebar-footer-btn-icon", html: iconHtml("settings", 16) }),
+            h("span", {}, "설정"),
+          ]);
+        }
+        return h("a", {
+          class: "sidebar-footer-btn",
+          href: "/account.html",
+          title: "마이페이지",
+        }, [
+          h("span", { class: "sidebar-footer-btn-icon", html: iconHtml("user", 16) }),
+          h("span", {}, "마이페이지"),
+        ]);
+      })(),
       h("button", {
         class: "sidebar-footer-btn sidebar-footer-btn-logout",
         onclick: () => {

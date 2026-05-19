@@ -1860,6 +1860,16 @@ def withdraw_page():
     return FileResponse(str(p), media_type="text/html")
 
 
+# Spec D-Fix-10 (5/19) — 일반 사용자 마이페이지 (어드민/일반 분기 영역)
+# 어드민은 사이드바 "설정" → 기존 settings-modal / 일반 사용자는 "마이페이지" → 본 페이지.
+@app.get("/account.html")
+def account_page():
+    p = STATIC_DIR / "account.html"
+    if not p.exists():
+        raise HTTPException(404, "account page not found")
+    return FileResponse(str(p), media_type="text/html")
+
+
 # ---- 법률 문서 페이지 — 정적 HTML 파일 서빙 (인증 면제, 외부 영역 직접 접근 OK) ----
 @app.get("/terms")
 def terms_page():

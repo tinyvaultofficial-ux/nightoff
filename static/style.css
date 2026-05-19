@@ -4058,6 +4058,54 @@ input.locked-by-env::placeholder {
   .landing-hero-cta-group .landing-cta-btn { width: 100%; }
 }
 
+/* ── 비회원 둘러보기 상단 배너 (Spec D-Fix-22 Stage B) */
+.guest-banner {
+  position: sticky; top: 0; z-index: 100;
+  background: linear-gradient(90deg, var(--primary), color-mix(in oklab, var(--primary) 70%, #FF8E5C));
+  color: #fff;
+  box-shadow: 0 2px 8px -2px rgba(0,0,0,0.10);
+}
+.guest-banner-inner {
+  max-width: 1400px; margin: 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  gap: 14px; padding: 11px 24px;
+  font-size: 14px; font-weight: 500;
+}
+.guest-banner-icon { font-size: 18px; }
+.guest-banner-text { letter-spacing: -0.01em; }
+.guest-banner-cta {
+  background: #fff; color: var(--primary);
+  font-weight: 700; padding: 6px 14px;
+  border-radius: 8px; border: 0;
+  cursor: pointer; transition: background .15s;
+  font-size: 13px;
+}
+.guest-banner-cta:hover { background: var(--bg-2, #FAFAFA); }
+
+@media (max-width: 720px) {
+  .guest-banner-inner { gap: 10px; padding: 9px 16px; flex-wrap: wrap; }
+  .guest-banner-text { font-size: 12.5px; flex: 1; min-width: 0; }
+  .guest-banner-cta { font-size: 12px; padding: 5px 10px; }
+}
+
+/* ── 사이드바 footer 비회원 (Spec D-Fix-22 Stage B) */
+.sidebar-footer-guest-label {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 14px; margin-bottom: 10px;
+  background: var(--bg-2, #FAFAFA);
+  border-radius: 10px;
+  font-size: 13px; font-weight: 600; color: var(--fg-2);
+}
+.sidebar-footer-guest-emoji { font-size: 16px; }
+.sidebar-footer-guest-cta {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+}
+.sidebar-footer-guest-cta .btn { width: 100%; font-size: 13px; padding: 8px 10px; }
+
+@media (max-width: 720px) {
+  .sidebar-footer-guest-cta { grid-template-columns: 1fr; }
+}
+
 /* ============================================================
    섹션 헤더 — 메인 헤더가 주인공 (eyebrow / lead 는 보조)
    ============================================================ */

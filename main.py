@@ -7044,6 +7044,35 @@ def _get_proposal_json_for_conv(conversation_id: str) -> Optional[dict]:
     return None
 
 
+def _proposal_to_audit_text(proposal: dict) -> str:
+    """제안서 JSON → AUDIT 영역 텍스트 (좌표/사이즈/색상 제거).
+
+    Spec D-Fix-16: 기존 json.dumps(proposal)[:12000] truncation 이
+    30 페이지 제안서 (~250KB) 중 1-2 페이지만 LLM 에 전달하는 버그 fix.
+    좌표/사이즈/색상 영역 제거하고 본문 텍스트만 추출하면 ~30-50KB 영역 압축.
+
+    출력 형식:
+        제목: ...
+
+        === p1 표지 ===
+        텍스트1
+        텍스트2
+
+        === p2 목차 ===
+        ...
+    """
+    lines = [f"제목: {proposal.get('title', '')}"]
+    for s in proposal.get("slides", []):
+        page = s.get("page", "?")
+        section = s.get("section", "")
+        lines.append(f"\n=== p{page} {section} ===")
+        for sh in s.get("shapes", []):
+            text = (sh.get("text") or "").strip()
+            if text:
+                lines.append(text)
+    return "\n".join(lines)
+
+
 class AuditIn(BaseModel):
     conversation_id: str
 
@@ -7081,9 +7110,11 @@ def api_proposals_audit(body: AuditIn, user: dict = Depends(get_current_user)):
             "(검증은 RFP 요구사항을 기준으로 점검합니다)",
         )
 
-    # 3. 프롬프트 만들기 — 토큰 예산 관리
-    rfp_text = json.dumps(rfp_json, ensure_ascii=False)[:8000]
-    proposal_text = json.dumps(proposal, ensure_ascii=False)[:12000]
+    # 3. 프롬프트 만들기 — Spec D-Fix-16: truncation 확장 + 제안서는 텍스트로 압축
+    # 기존 [:12000] 영역 30 페이지 제안서 (~250KB) 중 1-2 페이지만 전달 버그 fix.
+    # 좌표/사이즈/색상 제거 + 60K 안전망 → Sonnet 4.5 context (200K) 적정 활용.
+    rfp_text = json.dumps(rfp_json, ensure_ascii=False)[:20000]
+    proposal_text = _proposal_to_audit_text(proposal)[:60000]
     prompt = (
         PROPOSAL_AUDIT_PROMPT
         .replace("{RFP_TEXT}", rfp_text)

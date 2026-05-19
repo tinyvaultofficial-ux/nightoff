@@ -765,53 +765,89 @@ function renderLanding() {
     ]),
   ]));
 
-  // ── 가격 (Spec D-Fix-20: 런칭 프로모션 + 정가)
-  const pricingPromo = [
-    { tier: "스타터", emoji: "🌱", price: "15만원", proposals: "2건" },
-    { tier: "프로", emoji: "🚀", price: "38만원", proposals: "5건" },
+  // ── 가격 (Spec D-Fix-21: 3 티어 비교 표)
+  const TIERS = [
+    { name: "스타터", en: "Starter", emoji: "🌱",
+      promo: "15만원", regular: "20만원", unit: "10만원",
+      proposals: "2건", best: false },
+    { name: "프로", en: "Pro", emoji: "🚀",
+      promo: "36만원", regular: "47.5만원", unit: "9.5만원",
+      proposals: "5건", best: true },
+    { name: "비즈니스", en: "Business", emoji: "💎",
+      promo: "70만원", regular: "90만원", unit: "9만원",
+      proposals: "10건", best: false },
   ];
-  const pricingRegular = [
-    { tier: "스타터", emoji: "🌱", price: "20만원", proposals: "2건" },
-    { tier: "프로", emoji: "🚀", price: "50만원", proposals: "5건" },
+  const FEATURES = [
+    { label: "RFP 분석" },
+    { label: "산출내역서" },
+    { label: "자체 검증" },
+    { label: "발주처 분석" },
   ];
+
   wrap.appendChild(h("section", { class: "landing-pricing" }, [
     h("div", { class: "landing-pricing-inner" }, [
       h("div", { class: "landing-section-eyebrow accent" }, "PRICING"),
       h("h2", { class: "landing-section-title" }, "가격"),
       h("p", { class: "landing-section-lead" }, "🔒 가입 시 1년 가격 락인"),
-      // 🎉 런칭 프로모션 (6개월)
-      h("div", { class: "landing-pricing-block landing-pricing-promo" }, [
-        h("h3", { class: "landing-pricing-block-title" }, "🎉 런칭 프로모션 (6개월)"),
-        h("div", { class: "landing-pricing-grid" }, pricingPromo.map((p) =>
-          h("div", { class: "landing-pricing-card" }, [
-            h("div", { class: "landing-pricing-emoji" }, p.emoji),
-            h("h4", { class: "landing-pricing-tier" }, p.tier),
-            h("div", { class: "landing-pricing-price" }, [
-              h("span", { class: "landing-pricing-amount" }, p.price),
-              h("span", { class: "landing-pricing-per" }, "/월"),
+
+      h("div", { class: "landing-pricing-table" }, [
+        // 헤더 행
+        h("div", { class: "pt-cell pt-row-label pt-header" }, ""),
+        ...TIERS.map(t => h("div", {
+          class: `pt-cell pt-header pt-plan ${t.best ? "pt-best" : ""}`,
+        }, [
+          t.best ? h("span", { class: "pt-best-badge" }, "BEST") : null,
+          h("div", { class: "pt-plan-emoji" }, t.emoji),
+          h("h3", { class: "pt-plan-name" }, [
+            h("span", { class: "pt-plan-name-ko" }, t.name),
+            h("span", { class: "pt-plan-name-en" }, t.en),
+          ]),
+        ])),
+
+        // 가격 행 (취소선 정가 + 런칭가)
+        h("div", { class: "pt-cell pt-row-label" }, "월 요금"),
+        ...TIERS.map(t => h("div", { class: `pt-cell ${t.best ? "pt-best" : ""}` }, [
+          h("div", { class: "pt-price-row" }, [
+            h("s", { class: "pt-price-regular" }, t.regular),
+            h("span", { class: "pt-price-promo" }, [
+              h("strong", { class: "pt-price-amount" }, t.promo),
+              h("span", { class: "pt-price-per" }, "/월"),
             ]),
-            h("p", { class: "landing-pricing-quota" }, `제안서 ${p.proposals}/월`),
-            h("button", {
-              class: "btn btn-primary landing-pricing-cta",
-              onclick: showSubscribeComingSoonModal,
-            }, "구독하기"),
-          ])
-        )),
-      ]),
-      // 💼 정가 (프로모션 종료 후)
-      h("div", { class: "landing-pricing-block landing-pricing-regular" }, [
-        h("h3", { class: "landing-pricing-block-title" }, "💼 정가 (프로모션 종료 후)"),
-        h("div", { class: "landing-pricing-grid" }, pricingRegular.map((p) =>
-          h("div", { class: "landing-pricing-card subtle" }, [
-            h("div", { class: "landing-pricing-emoji" }, p.emoji),
-            h("h4", { class: "landing-pricing-tier" }, p.tier),
-            h("div", { class: "landing-pricing-price" }, [
-              h("span", { class: "landing-pricing-amount" }, p.price),
-              h("span", { class: "landing-pricing-per" }, "/월"),
-            ]),
-            h("p", { class: "landing-pricing-quota" }, `제안서 ${p.proposals}/월`),
-          ])
-        )),
+          ]),
+        ])),
+
+        // 사용량 행
+        h("div", { class: "pt-cell pt-row-label" }, "월 제안서"),
+        ...TIERS.map(t => h("div", { class: `pt-cell ${t.best ? "pt-best" : ""}` }, [
+          h("span", { class: "pt-usage-amount" }, t.proposals),
+          h("span", { class: "pt-usage-meta" }, "(50매 기준)"),
+        ])),
+
+        // 단가 행
+        h("div", { class: "pt-cell pt-row-label" }, "제안서 단가"),
+        ...TIERS.map(t => h("div", { class: `pt-cell ${t.best ? "pt-best" : ""}` }, [
+          h("span", { class: "pt-unit-amount" }, `${t.unit}/건`),
+          h("span", { class: "pt-unit-meta" }, "(정가 기준)"),
+        ])),
+
+        // 기능 행 4개
+        ...FEATURES.flatMap(f => [
+          h("div", { class: "pt-cell pt-row-label pt-feature-label" }, f.label),
+          ...TIERS.map(t => h("div", {
+            class: `pt-cell pt-feature ${t.best ? "pt-best" : ""}`,
+          }, "✅")),
+        ]),
+
+        // CTA 행
+        h("div", { class: "pt-cell pt-row-label" }, ""),
+        ...TIERS.map(t => h("div", {
+          class: `pt-cell pt-cta-cell ${t.best ? "pt-best" : ""}`,
+        }, [
+          h("button", {
+            class: `btn ${t.best ? "btn-primary" : "btn-ghost"} pt-cta-btn`,
+            onclick: showSubscribeComingSoonModal,
+          }, "시작하기"),
+        ])),
       ]),
     ]),
   ]));

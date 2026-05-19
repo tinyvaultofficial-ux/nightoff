@@ -4223,67 +4223,94 @@ input.locked-by-env::placeholder {
   margin: 0 auto;
   text-align: center;
 }
-.landing-pricing-block { margin-top: 48px; }
-.landing-pricing-block-title {
-  font-size: 22px;
-  font-weight: 700;
-  margin: 0 0 24px;
-  color: var(--fg);
-  letter-spacing: -0.012em;
-}
-.landing-pricing-grid {
+/* ── 비교 표 (Spec D-Fix-21) */
+.landing-pricing-table {
+  margin-top: 32px;
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 22px;
-}
-.landing-pricing-card {
-  padding: 40px 30px 32px;
-  background: linear-gradient(180deg, #fff 0%, color-mix(in oklab, var(--primary) 3%, #fff) 100%);
-  border: 1px solid color-mix(in oklab, var(--primary) 14%, transparent);
-  border-radius: 20px;
-  box-shadow: 0 6px 20px -10px rgba(124,58,237,0.10);
-  text-align: center;
-}
-.landing-pricing-card.subtle {
+  grid-template-columns: 1.2fr 1fr 1fr 1fr;
   background: #fff;
-  opacity: 0.85;
-  box-shadow: 0 2px 8px -4px rgba(0,0,0,0.06);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 6px 20px -10px rgba(124,58,237,0.08);
 }
-.landing-pricing-emoji {
-  font-size: 40px;
-  margin-bottom: 16px;
-}
-.landing-pricing-tier {
-  font-size: 18px;
-  font-weight: 700;
-  margin: 0 0 12px;
-  color: var(--fg);
-}
-.landing-pricing-price {
-  display: flex;
-  align-items: baseline;
-  justify-content: center;
+.pt-cell {
+  padding: 18px 20px;
+  border-top: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center;
+  font-size: 14px; color: var(--fg);
   gap: 4px;
-  margin-bottom: 8px;
 }
-.landing-pricing-amount {
-  font-size: 36px;
-  font-weight: 800;
-  color: var(--primary);
-  letter-spacing: -0.02em;
-}
-.landing-pricing-per {
-  font-size: 14px;
+.pt-cell.pt-header { border-top: 0; padding: 32px 20px 24px; position: relative; }
+.pt-row-label {
+  font-weight: 600;
   color: var(--fg-2);
+  background: var(--bg-2, #FAFAFA);
+  align-items: flex-start; text-align: left;
+  font-size: 13.5px;
 }
-.landing-pricing-quota {
-  margin: 0 0 20px;
-  color: var(--fg-2);
-  font-size: 14px;
+
+/* BEST 컬럼 강조 */
+.pt-best {
+  background: color-mix(in oklab, var(--primary) 4%, #fff);
+  border-left: 2px solid var(--primary);
+  border-right: 2px solid var(--primary);
 }
-.landing-pricing-cta {
-  width: 100%;
+.pt-header.pt-best { border-top: 3px solid var(--primary); }
+.pt-best-badge {
+  position: absolute; top: 10px; right: 12px;
+  background: var(--primary); color: var(--primary-fg);
+  font-size: 11px; font-weight: 700;
+  padding: 3px 10px; border-radius: 999px;
+  letter-spacing: 0.04em;
 }
+
+/* 플랜 헤더 */
+.pt-plan-emoji { font-size: 32px; margin-bottom: 6px; }
+.pt-plan-name {
+  display: flex; flex-direction: column; gap: 2px;
+  margin: 0;
+}
+.pt-plan-name-ko { font-size: 17px; font-weight: 700; color: var(--fg); }
+.pt-plan-name-en {
+  font-size: 12px; font-weight: 500; color: var(--fg-2);
+  letter-spacing: 0.02em;
+}
+
+/* 가격 (취소선 + 런칭가) */
+.pt-price-row {
+  display: flex; flex-direction: column; gap: 4px;
+  align-items: center;
+}
+.pt-price-regular {
+  font-size: 13px; color: var(--fg-muted, #A89E91);
+  text-decoration: line-through;
+  text-decoration-color: var(--border-strong);
+}
+.pt-price-promo { display: flex; align-items: baseline; gap: 3px; }
+.pt-price-amount {
+  font-size: 26px; font-weight: 800;
+  color: var(--primary); letter-spacing: -0.02em;
+}
+.pt-price-per { font-size: 13px; color: var(--fg-2); font-weight: 500; }
+
+/* 사용량 / 단가 */
+.pt-usage-amount, .pt-unit-amount {
+  font-size: 15px; font-weight: 700; color: var(--fg);
+}
+.pt-usage-meta, .pt-unit-meta {
+  font-size: 11.5px; color: var(--fg-muted, #A89E91);
+}
+
+/* 기능 행 */
+.pt-feature-label { font-size: 13px; }
+.pt-feature { font-size: 18px; }
+
+/* CTA */
+.pt-cta-cell { padding: 22px 16px; }
+.pt-cta-btn { width: 100%; font-weight: 600; }
 
 /* Footer (Spec D-Fix-20: 사업자 정보 추가) */
 .landing-footer {
@@ -4319,9 +4346,36 @@ input.locked-by-env::placeholder {
   .landing-hero-sub { font-size: 15px; }
   .landing-trust-grid { grid-template-columns: 1fr; }
   .landing-features-grid { grid-template-columns: 1fr; }
-  .landing-pricing-grid { grid-template-columns: 1fr; }
+  /* 가격 비교 표 — 1 컬럼 + 셀 횡배치 (Spec D-Fix-21) */
   .landing-pricing { padding: 64px 20px; }
-  .landing-pricing-block { margin-top: 36px; }
+  .landing-pricing-table {
+    grid-template-columns: 1fr;
+    border-radius: 16px;
+  }
+  .pt-cell {
+    border-top: 1px solid var(--border);
+    padding: 14px 18px;
+    flex-direction: row; justify-content: space-between;
+    text-align: right;
+    gap: 8px;
+  }
+  .pt-row-label:not(.pt-header) {
+    background: var(--bg-2, #FAFAFA);
+    font-weight: 700; color: var(--fg);
+    font-size: 14px;
+    border-top: 8px solid var(--bg-2, #FAFAFA);
+    padding-top: 18px;
+  }
+  .pt-header.pt-row-label { display: none; }
+  .pt-header {
+    flex-direction: column; text-align: center;
+    padding: 28px 20px 18px;
+  }
+  .pt-best {
+    border-left: 2px solid var(--primary);
+    border-right: 2px solid var(--primary);
+  }
+  .pt-price-row { flex-direction: row; align-items: baseline; gap: 8px; }
   .landing-footer-row { font-size: 11.5px; }
   .landing-section-title { font-size: 36px; letter-spacing: -0.03em; }
   .landing-section-lead { font-size: 14.5px; margin-bottom: 32px; }

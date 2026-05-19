@@ -4213,11 +4213,103 @@ input.locked-by-env::placeholder {
   margin: 0 0 32px;
 }
 
-/* Footer */
-.landing-footer {
-  padding: 28px 24px 36px;
+/* ── 가격 섹션 (Spec D-Fix-20) ────────────────────────────── */
+.landing-pricing {
+  padding: 96px 24px;
+  background: var(--bg-2, #FAFAFA);
+}
+.landing-pricing-inner {
+  max-width: 1100px;
+  margin: 0 auto;
   text-align: center;
-  font-size: 13px; color: var(--fg-2);
+}
+.landing-pricing-block { margin-top: 48px; }
+.landing-pricing-block-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 24px;
+  color: var(--fg);
+  letter-spacing: -0.012em;
+}
+.landing-pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 22px;
+}
+.landing-pricing-card {
+  padding: 40px 30px 32px;
+  background: linear-gradient(180deg, #fff 0%, color-mix(in oklab, var(--primary) 3%, #fff) 100%);
+  border: 1px solid color-mix(in oklab, var(--primary) 14%, transparent);
+  border-radius: 20px;
+  box-shadow: 0 6px 20px -10px rgba(124,58,237,0.10);
+  text-align: center;
+}
+.landing-pricing-card.subtle {
+  background: #fff;
+  opacity: 0.85;
+  box-shadow: 0 2px 8px -4px rgba(0,0,0,0.06);
+}
+.landing-pricing-emoji {
+  font-size: 40px;
+  margin-bottom: 16px;
+}
+.landing-pricing-tier {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 12px;
+  color: var(--fg);
+}
+.landing-pricing-price {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.landing-pricing-amount {
+  font-size: 36px;
+  font-weight: 800;
+  color: var(--primary);
+  letter-spacing: -0.02em;
+}
+.landing-pricing-per {
+  font-size: 14px;
+  color: var(--fg-2);
+}
+.landing-pricing-quota {
+  margin: 0 0 20px;
+  color: var(--fg-2);
+  font-size: 14px;
+}
+.landing-pricing-cta {
+  width: 100%;
+}
+
+/* Footer (Spec D-Fix-20: 사업자 정보 추가) */
+.landing-footer {
+  padding: 36px 24px 48px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--fg-2);
+  border-top: 1px solid var(--border);
+}
+.landing-footer-row { margin: 6px 0; }
+.landing-footer-row a {
+  color: var(--fg-2);
+  text-decoration: none;
+}
+.landing-footer-row a:hover { color: var(--primary); }
+.landing-footer-info {
+  font-size: 12px;
+  opacity: 0.85;
+}
+.landing-footer-tag {
+  margin-top: 12px;
+  font-size: 13px;
+}
+.lf-sep {
+  margin: 0 6px;
+  color: var(--border-strong);
 }
 
 /* 반응형 */
@@ -4227,6 +4319,10 @@ input.locked-by-env::placeholder {
   .landing-hero-sub { font-size: 15px; }
   .landing-trust-grid { grid-template-columns: 1fr; }
   .landing-features-grid { grid-template-columns: 1fr; }
+  .landing-pricing-grid { grid-template-columns: 1fr; }
+  .landing-pricing { padding: 64px 20px; }
+  .landing-pricing-block { margin-top: 36px; }
+  .landing-footer-row { font-size: 11.5px; }
   .landing-section-title { font-size: 36px; letter-spacing: -0.03em; }
   .landing-section-lead { font-size: 14.5px; margin-bottom: 32px; }
 }

@@ -765,6 +765,57 @@ function renderLanding() {
     ]),
   ]));
 
+  // ── 가격 (Spec D-Fix-20: 런칭 프로모션 + 정가)
+  const pricingPromo = [
+    { tier: "스타터", emoji: "🌱", price: "15만원", proposals: "2건" },
+    { tier: "프로", emoji: "🚀", price: "38만원", proposals: "5건" },
+  ];
+  const pricingRegular = [
+    { tier: "스타터", emoji: "🌱", price: "20만원", proposals: "2건" },
+    { tier: "프로", emoji: "🚀", price: "50만원", proposals: "5건" },
+  ];
+  wrap.appendChild(h("section", { class: "landing-pricing" }, [
+    h("div", { class: "landing-pricing-inner" }, [
+      h("div", { class: "landing-section-eyebrow accent" }, "PRICING"),
+      h("h2", { class: "landing-section-title" }, "가격"),
+      h("p", { class: "landing-section-lead" }, "🔒 가입 시 1년 가격 락인"),
+      // 🎉 런칭 프로모션 (6개월)
+      h("div", { class: "landing-pricing-block landing-pricing-promo" }, [
+        h("h3", { class: "landing-pricing-block-title" }, "🎉 런칭 프로모션 (6개월)"),
+        h("div", { class: "landing-pricing-grid" }, pricingPromo.map((p) =>
+          h("div", { class: "landing-pricing-card" }, [
+            h("div", { class: "landing-pricing-emoji" }, p.emoji),
+            h("h4", { class: "landing-pricing-tier" }, p.tier),
+            h("div", { class: "landing-pricing-price" }, [
+              h("span", { class: "landing-pricing-amount" }, p.price),
+              h("span", { class: "landing-pricing-per" }, "/월"),
+            ]),
+            h("p", { class: "landing-pricing-quota" }, `제안서 ${p.proposals}/월`),
+            h("button", {
+              class: "btn btn-primary landing-pricing-cta",
+              onclick: showSubscribeComingSoonModal,
+            }, "구독하기"),
+          ])
+        )),
+      ]),
+      // 💼 정가 (프로모션 종료 후)
+      h("div", { class: "landing-pricing-block landing-pricing-regular" }, [
+        h("h3", { class: "landing-pricing-block-title" }, "💼 정가 (프로모션 종료 후)"),
+        h("div", { class: "landing-pricing-grid" }, pricingRegular.map((p) =>
+          h("div", { class: "landing-pricing-card subtle" }, [
+            h("div", { class: "landing-pricing-emoji" }, p.emoji),
+            h("h4", { class: "landing-pricing-tier" }, p.tier),
+            h("div", { class: "landing-pricing-price" }, [
+              h("span", { class: "landing-pricing-amount" }, p.price),
+              h("span", { class: "landing-pricing-per" }, "/월"),
+            ]),
+            h("p", { class: "landing-pricing-quota" }, `제안서 ${p.proposals}/월`),
+          ])
+        )),
+      ]),
+    ]),
+  ]));
+
   // ── 푸터 CTA
   wrap.appendChild(h("section", { class: "landing-bottom-cta" }, [
     h("h2", { class: "landing-bottom-title" }, "오늘은 정시 퇴근하실래요? ☕"),
@@ -784,9 +835,22 @@ function renderLanding() {
     }),
   ]));
 
-  // ── 푸터
-  wrap.appendChild(h("footer", { class: "landing-footer" },
-    "NightOff · 수주를 진심으로 기원합니다 🙏"));
+  // ── 푸터 (Spec D-Fix-20: 사업자 정보 추가)
+  wrap.appendChild(h("footer", { class: "landing-footer" }, [
+    h("div", { class: "landing-footer-row" }, [
+      h("a", { href: "/terms" }, "이용약관"),
+      h("span", { class: "lf-sep" }, "·"),
+      h("a", { href: "/privacy" }, "개인정보처리방침"),
+      h("span", { class: "lf-sep" }, "·"),
+      h("a", { href: "mailto:awc@creworth.com" }, "문의하기"),
+    ]),
+    h("div", { class: "landing-footer-row landing-footer-info" },
+      "NightOff by 크리워스 · 대표 이창원 · 사업자번호 806-10-03267"),
+    h("div", { class: "landing-footer-row landing-footer-info" },
+      "서울시 관악구 조원로33길 30, 400호 · 이메일 awc@creworth.com"),
+    h("div", { class: "landing-footer-row landing-footer-tag" },
+      "수주를 진심으로 기원합니다 🙏"),
+  ]));
 }
 
 // ── 채팅 첫 진입 안내 모달 ─────────────────────────────────────────────────
@@ -1371,6 +1435,38 @@ async function renderQualificationsSection(cid) {
   });
   card.appendChild(body);
   return card;
+}
+
+
+// ===== 🎉 구독하기 "곧 출시 예정" 모달 (Spec D-Fix-20) =====
+// 랜딩 가격 섹션 영역 "구독하기" 버튼 → 결제 시스템 통합 전 안내 모달.
+// 결제 시스템 통합 후 본 모달 → 실제 결제 흐름 교체 예정.
+function showSubscribeComingSoonModal() {
+  const backdrop = h("div", {
+    class: "modal-backdrop",
+    onclick: (e) => { if (e.target === backdrop) backdrop.remove(); },
+  });
+  const modal = h("div", { class: "modal" });
+  modal.appendChild(h("div", { class: "modal-header" }, [
+    h("h3", {}, "🎉 곧 출시 예정"),
+    h("button", {
+      class: "icon-btn",
+      "aria-label": "닫기",
+      onclick: () => backdrop.remove(),
+    }, "✕"),
+  ]));
+  modal.appendChild(h("div", { class: "modal-body" }, [
+    h("p", {}, "결제 시스템 준비 중입니다."),
+    h("p", { class: "muted small" }, "출시 시 가입하신 이메일로 안내드릴게요."),
+  ]));
+  modal.appendChild(h("div", { class: "modal-footer" }, [
+    h("button", {
+      class: "btn btn-primary",
+      onclick: () => backdrop.remove(),
+    }, "확인"),
+  ]));
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
 }
 
 

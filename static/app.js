@@ -4810,13 +4810,15 @@ function renderMarkdown(src) {
   html = html.replace(/^###\s+(.+)$/gm, '<h3 class="md-h3">$1</h3>');
   html = html.replace(/^##\s+(.+)$/gm, '<h2 class="md-h2">$1</h2>');
   html = html.replace(/^#\s+(.+)$/gm, '<h1 class="md-h1">$1</h1>');
-  // bullet 리스트 (- / * / •)
-  html = html.replace(/^(?:[-*•]\s+.+(?:\n|$))+?/gm, (block) => {
+  // bullet 리스트 (- / * / •) — Spec D-Fix-13: +? (lazy) → + (greedy) 본질 fix
+  // lazy 일 경우 줄마다 따로 매치되어 <ul> 가 줄 수만큼 분리됨 (불릿은 시각적 비가시).
+  html = html.replace(/^(?:[-*•]\s+.+(?:\n|$))+/gm, (block) => {
     const items = block.trim().split(/\n/).map((l) => l.replace(/^[-*•]\s+/, "")).map((t) => `<li>${t}</li>`).join("");
     return `<ul class="md-ul">${items}</ul>`;
   });
-  // 번호 리스트 (1. / 2.)
-  html = html.replace(/^(?:\d+\.\s+.+(?:\n|$))+?/gm, (block) => {
+  // 번호 리스트 (1. / 2.) — Spec D-Fix-13: +? (lazy) → + (greedy) 본질 fix
+  // lazy 영역으로 줄마다 따로 매치되어 <ol> 가 분리 → counter 매번 1 → "1. 1. 1." 버그.
+  html = html.replace(/^(?:\d+\.\s+.+(?:\n|$))+/gm, (block) => {
     const items = block.trim().split(/\n/).map((l) => l.replace(/^\d+\.\s+/, "")).map((t) => `<li>${t}</li>`).join("");
     return `<ol class="md-ol">${items}</ol>`;
   });
@@ -5299,28 +5301,51 @@ async function runMultiPassProposal({ convId, pages, asstEl, bubble, progress, b
     return m > 0 ? `약 ${m}분 ${s}초 남음` : `약 ${s}초 남음`;
   }
 
-  // ─ 슬라이드 list 마커 transition ─
-  function renderSlideList() {
-    const items = outlineList.map((o) => {
-      let mark = "·", cls = "mp-pending";
-      if (o.status === "doing") { mark = "🔄"; cls = "mp-doing"; }
-      else if (o.status === "ok") { mark = "✓"; cls = "mp-done"; }
-      else if (o.status === "fail") { mark = "✗"; cls = "mp-fail"; }
-      return `<div class="mp-slide-item ${cls}"><span class="mp-mark">${mark}</span> p${o.page}. ${escapeHtml(o.section)} <span class="muted small">· ${escapeHtml(o.governing || "")}</span></div>`;
-    }).join("");
-    return items;
-  }
-  function updateBubble(eta) {
+  // ─ 슬라이드 list 부분 갱신 (Spec D-Fix-13) ─
+  // 본질: bubble.innerHTML 통째 재구축 → 높이 감소 → scrollTop clamp → 위로 튕김.
+  // 해결: initBubble 1회 + data-page 기반 부분 갱신 (li / eta 만 변경).
+
+  // 1회만 호출 — bubble DOM 초기 구축 (header + outlineList 기반 pending li)
+  function initBubble() {
     const headerHtml =
       `<div class="mp-warning">⚠ 5~10분 소요. 작업 진행 중 페이지 이동·새로고침 시 진행 사라짐</div>` +
       `<div class="mp-progress-head">` +
-        `<div style="font-weight:600;">📑 슬라이드 ${okCount + failCount} / ${totalSlides} 작성 중</div>` +
-        (eta ? `<div class="mp-eta muted small">${escapeHtml(eta)}</div>` : "") +
+        `<div class="mp-count-text" style="font-weight:600;">📑 슬라이드 0 / ${totalSlides} 작성 중</div>` +
+        `<div class="mp-eta muted small"></div>` +
       `</div>`;
-    bubble.innerHTML =
-      headerHtml +
-      `<div class="mp-slide-list">${renderSlideList()}</div>`;
-    autoScroll();   // bubble height 변동 시 사용자가 최신 진행 영역 영역 영역 영역 영역 영역
+    const items = outlineList.map((o) => {
+      return `<div class="mp-slide-item mp-pending" data-page="${o.page}">` +
+        `<span class="mp-mark">·</span> p${o.page}. ${escapeHtml(o.section)} ` +
+        `<span class="muted small">· ${escapeHtml(o.governing || "")}</span>` +
+      `</div>`;
+    }).join("");
+    bubble.innerHTML = headerHtml + `<div class="mp-slide-list">${items}</div>`;
+    autoScroll();   // 1회만 — 이후 부분 갱신이라 reflow 거의 0
+  }
+
+  // 진행 카운트 + ETA 부분 갱신 — textContent 만 변경 (DOM 재구축 0)
+  function updateProgress(eta) {
+    const countEl = bubble.querySelector(".mp-count-text");
+    if (countEl) countEl.textContent = `📑 슬라이드 ${okCount + failCount} / ${totalSlides} 작성 중`;
+    const etaEl = bubble.querySelector(".mp-eta");
+    if (etaEl) etaEl.textContent = eta || "";
+    autoScroll();
+  }
+
+  // 특정 페이지 상태 변경 — data-page li 만 변경 (다른 li 무영향)
+  // status: "done" / "fail" / "doing" / "pending"
+  function updateSlideItem(page, status) {
+    const itemEl = bubble.querySelector(`.mp-slide-item[data-page="${page}"]`);
+    if (!itemEl) return;
+    itemEl.classList.remove("mp-pending", "mp-doing", "mp-done", "mp-fail");
+    itemEl.classList.add(`mp-${status}`);
+    const markEl = itemEl.querySelector(".mp-mark");
+    if (markEl) {
+      if (status === "done") markEl.textContent = "✓";
+      else if (status === "fail") markEl.textContent = "✗";
+      else if (status === "doing") markEl.textContent = "🔄";
+      else markEl.textContent = "·";
+    }
   }
 
   while (true) {
@@ -5356,7 +5381,7 @@ async function runMultiPassProposal({ convId, pages, asstEl, bubble, progress, b
         sectionEl.textContent = `목차 작성 완료 — 슬라이드 ${totalSlides}장 병렬 작성 시작`;
         countEl.textContent = `0 / ${totalSlides}`;
         fillEl.style.width = "5%";
-        updateBubble("");
+        initBubble();   // Spec D-Fix-13: 1회만 통째 구축. 이후 부분 갱신.
       } else if (ev.type === "slide_done") {
         if (ev.ok) okCount++;
         else { failCount++; console.warn(`slide ${ev.page} 실패: ${ev.error}`); }
@@ -5369,7 +5394,10 @@ async function runMultiPassProposal({ convId, pages, asstEl, bubble, progress, b
         fillEl.style.width = `${progressPct}%`;
         sectionEl.textContent = `슬라이드 작성 중 — ${ev.section}`;
         countEl.textContent = `${ev.progress} / ${ev.total}`;
-        updateBubble(calcEta(ev.progress, ev.total));
+        // Spec D-Fix-13: 부분 갱신 — 해당 page li + (옵션) 다음 pending → doing + eta
+        updateSlideItem(ev.page, ev.ok ? "done" : "fail");
+        if (nextPending) updateSlideItem(nextPending.page, "doing");
+        updateProgress(calcEta(ev.progress, ev.total));
       } else if (ev.type === "error") {
         stopOutlineTimer();
         progress.finish(false);

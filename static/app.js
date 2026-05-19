@@ -991,7 +991,7 @@ async function showDashboardIntroModal() {
         h("button", {
           class: "dashboard-intro-cta-btn",
           onclick: onDismiss,
-        }, "시작할게요"),
+        }, "하루 동안 안 보기"),
       ]),
     ]),
   ]);

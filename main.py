@@ -587,7 +587,11 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     ("users",         "chat_intro_dismissed", "INTEGER DEFAULT 0"),
     # Spec D-Fix-7 (5/18) — 대시보드 첫 진입 안내 모달 (NightOff 차별화 + 70% 솔직 안내).
     # 1회성 / 계정 단위 영구 dismissed. chat_intro_dismissed 패턴 정확 복제.
+    # Spec D-Fix-15 (5/19) — 영구 → 24h TTL 변경. _until 컬럼 신규 (ISO datetime).
+    # 기존 dashboard_intro_dismissed (INTEGER) 컬럼 vestigial 유지 (DROP X — SQLite 안전).
+    # 모든 사용자 _until='' 시작 → 다음 로그인 시 모달 1회 재노출 (D-Fix-14 새 안내 도달).
     ("users",         "dashboard_intro_dismissed", "INTEGER DEFAULT 0"),
+    ("users",         "dashboard_intro_dismissed_until", "TEXT DEFAULT ''"),
     # Spec D-Fix-8 (5/18) — 이메일 인증 (Resend SDK + UUID 토큰 + 24h 만료).
     # ⚠ DEFAULT 1 critical — 기존 가입 사용자 (대표님 + 베타) 영업 무중단 보장.
     # 신규 사용자만 register endpoint 본문 안 명시 INSERT 영역 email_verified=0 부여.
@@ -4728,9 +4732,14 @@ def api_me_dismiss_chat_intro(user: dict = Depends(get_current_user)):
 
 
 # Spec D-Fix-7 (5/18) — 대시보드 진입 모달 (chat-intro 패턴 정확 복제)
+# Spec D-Fix-15 (5/19) — 영구 dismissal → 24h TTL. _until 컬럼 (ISO datetime UTC).
 @app.get("/api/me/dashboard-intro-status")
 def api_me_dashboard_intro_status(user: dict = Depends(get_current_user)):
-    """대시보드 첫 진입 안내 모달 노출 여부. INTEGER 0/1 → bool 변환.
+    """대시보드 첫 진입 안내 모달 노출 여부.
+
+    Spec D-Fix-15: dashboard_intro_dismissed_until > now() 면 dismissed=True.
+    - 빈 문자열 / 만료 / 파싱 실패 영역 → dismissed=False (모달 노출)
+    - 응답 형식 (`{dismissed: bool}`) 영역 호환 유지 (프론트 변경 X)
 
     Graceful fallback: 마이그레이션 영역 사고 (컬럼 미존재) 시 dismissed=False 반환.
     → 사용자 영역 = 모달 노출 (안전, 첫 진입 케이스 동일 영역).
@@ -4738,11 +4747,19 @@ def api_me_dashboard_intro_status(user: dict = Depends(get_current_user)):
     try:
         with get_db() as db:
             row = db.execute(
-                "SELECT dashboard_intro_dismissed FROM users WHERE id=?",
+                "SELECT dashboard_intro_dismissed_until FROM users WHERE id=?",
                 (user["id"],),
             ).fetchone()
-        dismissed = bool(row and (row["dashboard_intro_dismissed"] or 0))
-        return {"dismissed": dismissed}
+        raw = (row and (row["dashboard_intro_dismissed_until"] or "")) or ""
+        if not raw:
+            return {"dismissed": False}
+        try:
+            expire_at = datetime.fromisoformat(raw)
+            if expire_at.tzinfo is None:
+                expire_at = expire_at.replace(tzinfo=timezone.utc)
+            return {"dismissed": expire_at > datetime.now(timezone.utc)}
+        except (ValueError, TypeError):
+            return {"dismissed": False}
     except Exception as e:
         log.warning("dashboard-intro-status SQL 사고 (마이그레이션 영역 의심): %s", e)
         return {"dismissed": False}
@@ -4750,17 +4767,23 @@ def api_me_dashboard_intro_status(user: dict = Depends(get_current_user)):
 
 @app.post("/api/me/dismiss-dashboard-intro")
 def api_me_dismiss_dashboard_intro(user: dict = Depends(get_current_user)):
-    """대시보드 첫 진입 안내 모달 '시작할게요' 저장 (계정 단위 영구).
+    """대시보드 첫 진입 안내 모달 '하루 동안 안 보기' 저장 (계정 단위 24h TTL).
+
+    Spec D-Fix-15: dashboard_intro_dismissed_until = now() + 24h (UTC ISO).
+    - 24h 안 모달 미노출 / 24h 후 자동 재노출
+    - 매일 새 안내 자동 도달 (D-Fix-14 / 향후 모달 본문 변경 영역 자동 반영)
 
     Graceful fallback: 마이그레이션 영역 사고 시 ok=true 반환 (DB 저장 X 다만 UX 흐름 유지).
     """
     try:
+        expire_at = datetime.now(timezone.utc) + timedelta(hours=24)
+        expire_at_iso = expire_at.isoformat()
         with get_db() as db:
             db.execute(
-                "UPDATE users SET dashboard_intro_dismissed=1 WHERE id=?",
-                (user["id"],),
+                "UPDATE users SET dashboard_intro_dismissed_until=? WHERE id=?",
+                (expire_at_iso, user["id"]),
             )
-        return {"ok": True}
+        return {"ok": True, "dismissed_until": expire_at_iso}
     except Exception as e:
         log.warning("dismiss-dashboard-intro SQL 사고 (마이그레이션 영역 의심): %s", e)
         return {"ok": True, "persisted": False}

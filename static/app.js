@@ -973,6 +973,7 @@ async function showDashboardIntroModal() {
           h("ul", { class: "dashboard-intro-honest-list" }, [
             h("li", {}, "디자인은 흑백 기반이고, 도형과 텍스트로 구성되어 있어요."),
             h("li", {}, "일부 페이지는 정렬이 아직 매끄럽지 않아 툭 튀어나가거나 겹쳐보일 수 있어요."),
+            h("li", {}, "오류 시 재시도해 주세요."),
           ]),
           h("p", { class: "dashboard-intro-honest-foot" },
             "기획적으로는 자신있지만, 남은 30%는 PPT 디자이너나 " +
@@ -980,6 +981,9 @@ async function showDashboardIntroModal() {
           h("p", { class: "dashboard-intro-honest-foot" },
             "기획에 쓰던 밤샘 시간을 줄이고, " +
             "디자인 다듬는 시간만 남기는 게 NightOff의 목표예요."),
+          h("p", { class: "dashboard-intro-honest-foot" },
+            "딥리서치 + 다중 검증 시스템 작동으로 RFP 분석부터 자체 검증까지 " +
+            "각 작업당 수 분이 소요됩니다. 정확성과 전문성을 위한 시간이에요."),
         ]),
       ]),
       // CTA

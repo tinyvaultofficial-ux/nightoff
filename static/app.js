@@ -183,10 +183,16 @@ async function _parseErrorResponse(r) {
 // ---------- Auth — JWT localStorage helpers (묶음 N Commit 5) ----------
 const AUTH_TOKEN_KEY = "nightoff_jwt";
 // 인증 면제 페이지 — 미가입 방문자가 접근 가능 (랜딩 노출용 / + /landing 포함)
-const AUTH_PUBLIC_PAGES = new Set(["/", "/landing", "/login.html", "/register.html"]);
+// Spec D-Fix-22 Stage A: "/preview" 추가 — 비회원 둘러보기 모드.
+const AUTH_PUBLIC_PAGES = new Set(["/", "/landing", "/login.html", "/register.html", "/preview"]);
 
 function getToken() { return localStorage.getItem(AUTH_TOKEN_KEY) || ""; }
 function clearToken() { localStorage.removeItem(AUTH_TOKEN_KEY); }
+
+// 비회원 둘러보기 모드 판별 (Spec D-Fix-22 Stage A)
+function isGuestMode() {
+  return location.pathname === "/preview" && !getToken();
+}
 
 function redirectToLogin(force = false) {
   // force=true: 명시적 로그아웃 등 — 공개 페이지 가드 우회. 디폴트=false (기존 호출처 동작 보존).
@@ -445,6 +451,16 @@ const LOADER_STEPS = {
 const routes = [
   { re: /^\/$/, handler: renderRootRoute },
   { re: /^\/landing$/, handler: renderLanding },
+  // Spec D-Fix-22 Stage A: 비회원 둘러보기 모드
+  { re: /^\/preview$/, handler: renderGuestDashboard },
+  { re: /^\/client\/guest-(\d+)$/, handler: async (m) => {
+    // 가짜 과업 클릭 — URL 을 /preview 로 복귀 후 견본 모달 노출
+    const idx = parseInt(m[1], 10) - 1;
+    history.replaceState({}, "", "/preview");
+    await renderGuestDashboard();
+    const sample = (typeof SAMPLE_POOL !== "undefined" && SAMPLE_POOL[idx]) ? SAMPLE_POOL[idx] : null;
+    if (sample && typeof openSampleModal === "function") openSampleModal(sample);
+  }},
   { re: /^\/dashboard$/, handler: renderDashboard },
   { re: /^\/client\/new$/, handler: () => renderClientForm("create") },
   { re: /^\/client\/([^/]+)\/edit$/, handler: (m) => renderClientForm("edit", m[1]) },
@@ -705,20 +721,27 @@ function renderLanding() {
       h("h1", { class: "landing-hero-title" }, "밤새지 말자고 만들었습니다"),
       h("p", { class: "landing-hero-sub" },
         "기획자가 만든, 기획자만을 위한 제안서 AI"),
-      h("button", {
-        class: "btn btn-primary landing-cta-btn",
-        onclick: () => {
-          // 미인증: 가입 페이지 / 인증: 대시보드
-          if (getToken()) {
-            localStorage.setItem("nightoff.landing_seen", "1");
-            root.classList.remove("landing-active");
-            navigate("/dashboard");
-          } else {
-            location.href = "/register.html";
-          }
-        },
-        html: `<span>지금 시작하기 ✨</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left:6px;"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`,
-      }),
+      // Spec D-Fix-22 Stage A: Hero CTA 그룹 — "시작하기" + "둘러보기" 두 버튼
+      h("div", { class: "landing-hero-cta-group" }, [
+        h("button", {
+          class: "btn btn-primary landing-cta-btn",
+          onclick: () => {
+            // 미인증: 가입 페이지 / 인증: 대시보드
+            if (getToken()) {
+              localStorage.setItem("nightoff.landing_seen", "1");
+              root.classList.remove("landing-active");
+              navigate("/dashboard");
+            } else {
+              location.href = "/register.html";
+            }
+          },
+          html: `<span>지금 시작하기 ✨</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left:6px;"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`,
+        }),
+        h("button", {
+          class: "btn btn-ghost landing-cta-btn landing-cta-btn-secondary",
+          onclick: () => navigate("/preview"),
+        }, "👀 둘러보기"),
+      ]),
     ]),
   ]));
 
@@ -2483,6 +2506,105 @@ async function renderDashboard() {
 
   // Spec D-Fix-7 (5/18) — 대시보드 첫 진입 안내 모달 (1회성, dismissed 영구 저장)
   setTimeout(() => showDashboardIntroModal(), 500);
+}
+
+
+// ─── 비회원 둘러보기 대시보드 (Spec D-Fix-22 Stage A) ────────────────────
+// 가짜 데이터로 회원 대시보드 화면을 그대로 미러링.
+// API 호출 0 — 모든 데이터는 정적 상수에서 가져옴.
+// 진입 모달 호출 X (회원 전용).
+// 사용자 행동 분기 (새 과업·채팅·업로드 등) 는 Stage B 에서 추가 예정.
+
+// 가짜 사이드바 과업 — id "guest-N" 클릭 시 라우터가 견본 모달로 매핑.
+const GUEST_CLIENTS = [
+  { id: "guest-1", name: "2026 강남구 청년 축제", deadline: "" },
+  { id: "guest-2", name: "서울시 신년 문화행사", deadline: "" },
+];
+// 가짜 사이드바 통계 (renderSidebar 가 읽는 필드 정합).
+const GUEST_STATS = {
+  total_clients: 2,
+  total_proposals: 2,
+  month_activity: 1,
+  wins: 1,
+  losses: 0,
+  win_rate: 100,
+};
+// 가짜 마감 임박 (custom 위젯 — 실제 closing-notices API 우회).
+const GUEST_DEADLINES = [
+  { title: "2026 종로구 시민 페스티벌", agency: "종로구청", dDay: 3 },
+  { title: "강북구 청소년 행사", agency: "강북구청", dDay: 7 },
+];
+
+async function renderGuestDashboard() {
+  const root = $("#app-root");
+  if (!root) return;
+  root.innerHTML = "";
+  document.body.classList.remove("landing-fullscreen");
+
+  // 사이드바 — preloaded 가짜 데이터 전달 (API 호출 0)
+  root.appendChild(await renderSidebar("clients", null, GUEST_CLIENTS, GUEST_STATS));
+
+  const main = h("main", { class: "main" });
+  root.appendChild(main);
+
+  // 헤더 — 시간대별 인사 그대로
+  main.appendChild(h("header", { class: "main-header" }, [
+    h("div", {}, [
+      h("h1", {}, getTimeBasedGreeting()),
+    ]),
+  ]));
+
+  const content = h("div", { class: "main-content" });
+  main.appendChild(content);
+
+  // 히어로 배너 5 슬라이드 (정적)
+  content.appendChild(renderHero5Slides());
+
+  // 핵심 기능 5 카드 (정적)
+  content.appendChild(renderCoreFeatures5());
+
+  // 뉴스 위젯은 API 호출 의존 — 비회원에서는 생략 (Stage B 에서 검토).
+
+  // 하단: 좌 (마감 임박 가짜) / 우 (견본 위젯 — 정적)
+  const twoCol = h("div", { class: "dashboard-two-col" });
+  content.appendChild(twoCol);
+
+  // [좌] 마감 임박 — GUEST_DEADLINES 로 간단 카드 리스트.
+  const leftCol = h("section");
+  leftCol.appendChild(renderGuestClosingNotices());
+  twoCol.appendChild(leftCol);
+
+  // [우] 견본 위젯 — 그대로 (정적 PDF)
+  const rightCol = h("aside", { class: "dashboard-side-col" });
+  const sampleWidget = renderSampleWidget();
+  if (sampleWidget) rightCol.appendChild(sampleWidget);
+  twoCol.appendChild(rightCol);
+
+  // 비회원 진입 모달 호출 X (Spec D-Fix-7 회원 전용 — Stage B 명시 분기는 별도)
+}
+
+// 비회원 전용 마감 임박 카드 (Spec D-Fix-22 Stage A) — 실제 위젯과 디자인 정합.
+function renderGuestClosingNotices() {
+  const wrap = h("div", { class: "card closing-widget" });
+  wrap.appendChild(h("div", { class: "closing-widget-head" }, [
+    h("span", { class: "closing-widget-icon" }, "🚨"),
+    h("h2", { class: "closing-widget-title" }, "D-7 마감임박 공고, NightOff로 도전하세요!"),
+  ]));
+  const body = h("div", { class: "closing-widget-body" });
+  wrap.appendChild(body);
+  const list = h("div", { class: "closing-card-list" });
+  GUEST_DEADLINES.forEach((n) => {
+    const card = h("div", { class: "closing-card" }, [
+      h("div", { class: "closing-card-head" }, [
+        h("span", { class: "closing-card-dday" }, `D-${n.dDay}`),
+        h("span", { class: "closing-card-agency" }, n.agency),
+      ]),
+      h("p", { class: "closing-card-title" }, n.title),
+    ]);
+    list.appendChild(card);
+  });
+  body.appendChild(list);
+  return wrap;
 }
 
 // 시간대별 인사 (item 11-C)

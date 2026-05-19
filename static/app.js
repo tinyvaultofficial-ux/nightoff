@@ -562,11 +562,17 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
     h("div", { class: "sidebar-logo", role: "button", tabindex: "0", title: "메인으로", onclick: () => navigate("/"), onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } } }, [
       h("img", { class: "sidebar-logo-img", src: "/static/logo.png", alt: "NightOff" }),
     ]),
-    // 상단 액션 — "+ 새 과업" (항상 노출)
+    // 상단 액션 — "+ 새 과업" (항상 노출, Spec D-Fix-22 Stage B 비회원 분기)
     h("div", { class: "sidebar-top-actions" }, [
       h("button", {
         class: "sidebar-new-task-btn",
-        onclick: () => navigate("/client/new"),
+        onclick: () => {
+          if (isGuestMode()) {
+            showSignupRequiredModal({ message: "새 과업은 회원가입 후 만들 수 있어요." });
+            return;
+          }
+          navigate("/client/new");
+        },
         html: `${iconHtml("plus", 16)}<span>새 과업</span>`,
       }),
     ]),
@@ -580,7 +586,23 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
     // 본문 — 과업 목록 (스크롤)
     h("nav", { class: "sidebar-nav" }, [tasksListEl]),
     // 하단 — 사용자 정보 / 설정 / 로그아웃
-    h("div", { class: "sidebar-footer" }, [
+    // Spec D-Fix-22 Stage B: 비회원이면 둘러보기 라벨 + 로그인/회원가입 버튼만 노출.
+    h("div", { class: "sidebar-footer" }, isGuestMode() ? [
+      h("div", { class: "sidebar-footer-guest-label" }, [
+        h("span", { class: "sidebar-footer-guest-emoji" }, "👀"),
+        h("span", {}, "둘러보기 모드"),
+      ]),
+      h("div", { class: "sidebar-footer-guest-cta" }, [
+        h("button", {
+          class: "btn btn-ghost btn-sm",
+          onclick: () => location.href = "/login.html",
+        }, "로그인"),
+        h("button", {
+          class: "btn btn-primary btn-sm",
+          onclick: () => location.href = "/register.html",
+        }, "회원가입"),
+      ]),
+    ] : [
       // 사용자 정보 한 줄 — 정적 (클릭/hover X). __nightoff_user 미캐시 시 숨김 (방어적).
       ...((window.__nightoff_user && window.__nightoff_user.email) ? [
         h("div", {
@@ -637,10 +659,17 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
             h("span", {}, "설정"),
           ]);
         }
-        return h("a", {
+        // Spec D-Fix-22 Stage B: 비회원이면 회원가입 유도 모달 (a → button 변경).
+        return h("button", {
           class: "sidebar-footer-btn",
-          href: "/account.html",
           title: "마이페이지",
+          onclick: () => {
+            if (isGuestMode()) {
+              showSignupRequiredModal({ message: "마이페이지는 회원가입 후 사용할 수 있어요." });
+              return;
+            }
+            location.href = "/account.html";
+          },
         }, [
           h("span", { class: "sidebar-footer-btn-icon", html: iconHtml("user", 16) }),
           h("span", {}, "마이페이지"),
@@ -1523,6 +1552,42 @@ function showSubscribeComingSoonModal() {
       class: "btn btn-primary",
       onclick: () => backdrop.remove(),
     }, "확인"),
+  ]));
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
+}
+
+
+// ===== 🌙 비회원 회원가입 유도 모달 (Spec D-Fix-22 Stage B) =====
+// 비회원이 회원 전용 기능 (새 과업·마이페이지·견본 CTA 등) 클릭 시 노출.
+// opts.message 로 진입점마다 안내 문구 커스터마이즈 가능.
+function showSignupRequiredModal(opts = {}) {
+  const backdrop = h("div", {
+    class: "modal-backdrop",
+    onclick: (e) => { if (e.target === backdrop) backdrop.remove(); },
+  });
+  const modal = h("div", { class: "modal modal-signup-required" });
+  modal.appendChild(h("div", { class: "modal-header" }, [
+    h("h3", {}, "🌙 회원가입 후 사용 가능"),
+    h("button", {
+      class: "icon-btn",
+      "aria-label": "닫기",
+      onclick: () => backdrop.remove(),
+    }, "✕"),
+  ]));
+  modal.appendChild(h("div", { class: "modal-body" }, [
+    h("p", {}, opts.message || "이 기능은 회원가입 후 사용할 수 있어요."),
+    h("p", { class: "muted small" }, "5초 만에 시작하기 ✨"),
+  ]));
+  modal.appendChild(h("div", { class: "modal-footer" }, [
+    h("button", {
+      class: "btn btn-ghost",
+      onclick: () => backdrop.remove(),
+    }, "다음에"),
+    h("button", {
+      class: "btn btn-primary",
+      onclick: () => location.href = "/register.html",
+    }, "지금 가입하기"),
   ]));
   backdrop.appendChild(modal);
   document.body.appendChild(backdrop);
@@ -2505,7 +2570,11 @@ async function renderDashboard() {
   // 푸터는 글로벌 푸터(#global-footer)로 일원화 — 대시보드 자체 푸터 제거
 
   // Spec D-Fix-7 (5/18) — 대시보드 첫 진입 안내 모달 (1회성, dismissed 영구 저장)
-  setTimeout(() => showDashboardIntroModal(), 500);
+  // Spec D-Fix-22 Stage B: 비회원이면 호출 X (안전망 — 함수 자체도 401 catch 로 자연 차단).
+  setTimeout(() => {
+    if (isGuestMode()) return;
+    showDashboardIntroModal();
+  }, 500);
 }
 
 
@@ -2535,11 +2604,29 @@ const GUEST_DEADLINES = [
   { title: "강북구 청소년 행사", agency: "강북구청", dDay: 7 },
 ];
 
+// 비회원 상단 배너 (Spec D-Fix-22 Stage B) — sticky / 그라데이션 / 회원가입 CTA
+function renderGuestBanner() {
+  return h("div", { class: "guest-banner" }, [
+    h("div", { class: "guest-banner-inner" }, [
+      h("span", { class: "guest-banner-icon" }, "👀"),
+      h("span", { class: "guest-banner-text" },
+        "둘러보기 모드 · 회원가입하면 직접 사용 가능"),
+      h("button", {
+        class: "guest-banner-cta",
+        onclick: () => location.href = "/register.html",
+      }, "지금 가입하기"),
+    ]),
+  ]);
+}
+
 async function renderGuestDashboard() {
   const root = $("#app-root");
   if (!root) return;
   root.innerHTML = "";
   document.body.classList.remove("landing-fullscreen");
+
+  // 상단 배너 (Spec D-Fix-22 Stage B)
+  root.appendChild(renderGuestBanner());
 
   // 사이드바 — preloaded 가짜 데이터 전달 (API 호출 0)
   root.appendChild(await renderSidebar("clients", null, GUEST_CLIENTS, GUEST_STATS));
@@ -3192,7 +3279,15 @@ function openSampleModal(sample) {
         "이런 제안서, 직접 만들어보세요"),
       h("button", {
         class: "sample-modal-cta-btn",
-        onclick: () => { close(); navigate("/client/new"); },
+        // Spec D-Fix-22 Stage B: 비회원이면 회원가입 유도 모달.
+        onclick: () => {
+          close();
+          if (isGuestMode()) {
+            showSignupRequiredModal({ message: "새 과업은 회원가입 후 만들 수 있어요." });
+            return;
+          }
+          navigate("/client/new");
+        },
       }, "새 과업 시작 →"),
     ]),
   ]);

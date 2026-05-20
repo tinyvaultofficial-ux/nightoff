@@ -750,26 +750,83 @@ function renderLanding() {
       h("h1", { class: "landing-hero-title" }, "밤새지 말자고 만들었습니다"),
       h("p", { class: "landing-hero-sub" },
         "기획자가 만든, 기획자만을 위한 제안서 AI"),
-      // Spec D-Fix-22 Stage A: Hero CTA 그룹 — "시작하기" + "둘러보기" 두 버튼
+      // Spec D-Fix-27 Stage A: Hero [지금 시작하기 ✨] 제거 — 사용자 강제 스크롤
+      // → 비교 섹션 인지 유도 + sticky CTA Stage B 에서 즉시 가입 진입로 보완
+      // [둘러보기] 유지 — 부담 낮은 진입로 (D-Fix-22 Stage A)
       h("div", { class: "landing-hero-cta-group" }, [
-        h("button", {
-          class: "btn btn-primary landing-cta-btn",
-          onclick: () => {
-            // 미인증: 가입 페이지 / 인증: 대시보드
-            if (getToken()) {
-              localStorage.setItem("nightoff.landing_seen", "1");
-              root.classList.remove("landing-active");
-              navigate("/dashboard");
-            } else {
-              location.href = "/register.html";
-            }
-          },
-          html: `<span>지금 시작하기 ✨</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left:6px;"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`,
-        }),
         h("button", {
           class: "btn btn-ghost landing-cta-btn landing-cta-btn-secondary",
           onclick: () => navigate("/preview"),
         }, "👀 둘러보기"),
+      ]),
+    ]),
+  ]));
+
+  // ── 비교 섹션 (Spec D-Fix-27 Stage A)
+  // 다른 LLM 과의 차이점을 랜딩 전면에 박기. "어 같은 RFP 인데 진짜 다르네" 인지 유도.
+  const COMPARE_HEADERS = ["챗지피티", "클로드", "젠스파크", "NightOff"];
+  const COMPARE_ROWS = [
+    { item: "풀 컬러 디자인", values: ["⚠️", "❌", "✅", "❌"],
+      nightoffNote: "흑백 초안 (70%)" },
+    { item: "구체적 표현", values: ["❌", "❌", "❌", "✅"] },
+    { item: "편집 가능한 PPTX", values: ["❌", "❌", "💰", "✅"] },
+    { item: "RFP 심층 분석", values: ["❌", "❌", "⚠️", "✅"] },
+    { item: "국내 제안서 표준 형식", values: ["❌", "❌", "❌", "✅"] },
+    { item: "맞춤형 산출내역서", values: ["❌", "❌", "❌", "✅"] },
+    { item: "제안서 자체 검증", values: ["❌", "❌", "❌", "✅"] },
+  ];
+
+  wrap.appendChild(h("section", { class: "landing-compare" }, [
+    h("div", { class: "landing-compare-inner" }, [
+      h("h2", { class: "landing-compare-title" },
+        "제안요청서(RFP)를 넣고, 실제 제안서를 뽑아봤어요."),
+      h("p", { class: "landing-compare-lead" },
+        "AI는 텍스트·구조에 집중하고, 디자이너가 컬러·이미지로 마무리해요."),
+
+      // 캡처 갤러리 — 좌 3 (다른 LLM 모자이크) + 우 1 (NightOff 큰)
+      h("div", { class: "landing-compare-gallery" }, [
+        h("div", { class: "landing-compare-others" }, [
+          h("div", { class: "lc-capture lc-capture-small" }, [
+            h("div", { class: "lc-capture-label" }, "챗지피티"),
+            h("div", { class: "lc-capture-placeholder" }, "결과물 캡처 (준비 중)"),
+          ]),
+          h("div", { class: "lc-capture lc-capture-small" }, [
+            h("div", { class: "lc-capture-label" }, "클로드"),
+            h("div", { class: "lc-capture-placeholder" }, "결과물 캡처 (준비 중)"),
+          ]),
+          h("div", { class: "lc-capture lc-capture-small" }, [
+            h("div", { class: "lc-capture-label" }, "젠스파크"),
+            h("div", { class: "lc-capture-placeholder" }, "결과물 캡처 (준비 중)"),
+          ]),
+        ]),
+        h("div", { class: "landing-compare-nightoff" }, [
+          h("div", { class: "lc-capture lc-capture-large" }, [
+            h("div", { class: "lc-capture-label lc-capture-label-strong" }, "NightOff"),
+            h("div", { class: "lc-capture-placeholder lc-capture-placeholder-strong" },
+              "결과물 캡처 (준비 중)"),
+          ]),
+        ]),
+      ]),
+
+      // 비교 표 — 7 행 × 5 컬럼 (D-Fix-21 가격 표 패턴 정합)
+      h("div", { class: "compare-table" }, [
+        // 헤더 행
+        h("div", { class: "ct-cell ct-header ct-row-label" }, ""),
+        ...COMPARE_HEADERS.map((header, i) => h("div", {
+          class: `ct-cell ct-header ${i === 3 ? "ct-nightoff ct-nightoff-header" : ""}`,
+        }, header)),
+        // 본문 행들
+        ...COMPARE_ROWS.flatMap(row => [
+          h("div", { class: "ct-cell ct-row-label" }, row.item),
+          ...row.values.map((v, i) => h("div", {
+            class: `ct-cell ${i === 3 ? "ct-nightoff" : ""}`,
+          }, [
+            h("span", { class: "ct-mark" }, v),
+            (i === 3 && row.nightoffNote)
+              ? h("span", { class: "ct-note" }, row.nightoffNote)
+              : null,
+          ].filter(Boolean))),
+        ]),
       ]),
     ]),
   ]));

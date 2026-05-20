@@ -4382,6 +4382,142 @@ input.locked-by-env::placeholder {
 .pt-cta-cell { padding: 22px 16px; }
 .pt-cta-btn { width: 100%; font-weight: 600; }
 
+/* ── 비교 섹션 (Spec D-Fix-27 Stage A) ────────────────────────────── */
+.landing-compare {
+  padding: 96px 24px;
+  background: var(--bg-2, #FAFAFA);
+}
+.landing-compare-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  text-align: center;
+}
+.landing-compare-title {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--fg, #1A1A1A);
+  margin: 0 0 12px 0;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+.landing-compare-lead {
+  font-size: 16px;
+  color: var(--fg-2, #666);
+  margin: 0 0 40px 0;
+  line-height: 1.6;
+}
+
+/* 캡처 갤러리 — 좌 3 + 우 1 비대칭 */
+.landing-compare-gallery {
+  margin-top: 40px;
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 24px;
+  align-items: center;
+}
+.landing-compare-others {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.lc-capture {
+  background: #1F1F1F;
+  border-radius: 12px;
+  overflow: hidden;
+  aspect-ratio: 4/3;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.lc-capture-large {
+  border: 3px solid #1A1A1A;
+  box-shadow: 0 12px 32px -8px rgba(0,0,0,0.20);
+}
+.lc-capture-label {
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+}
+.lc-capture-label-strong {
+  background: var(--primary, #6B46E5);
+  font-size: 14px;
+}
+.lc-capture-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #888;
+  font-size: 12px;
+}
+.lc-capture-placeholder-strong {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* 비교 표 — D-Fix-21 가격 표 패턴 정합 (5 컬럼) */
+.compare-table {
+  margin-top: 48px;
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr;
+  background: #fff;
+  border: 1px solid var(--border, #DDD);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 6px 20px -10px rgba(0,0,0,0.06);
+  text-align: left;
+}
+.ct-cell {
+  padding: 16px 18px;
+  border-top: 1px solid var(--border, #DDD);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: var(--fg, #1A1A1A);
+  gap: 4px;
+  text-align: center;
+}
+.ct-cell.ct-header {
+  border-top: 0;
+  padding: 22px 18px;
+  font-weight: 700;
+  font-size: 15px;
+}
+.ct-row-label {
+  background: var(--bg-2, #FAFAFA);
+  align-items: flex-start;
+  text-align: left;
+  font-weight: 600;
+}
+.ct-nightoff {
+  background: #FAFAFA;
+  border-left: 2px solid #1A1A1A;
+  border-right: 2px solid #1A1A1A;
+  font-weight: 700;
+}
+.ct-nightoff-header {
+  background: #1A1A1A;
+  color: #FFFFFF;
+  border-top: 3px solid #1A1A1A;
+}
+.ct-mark {
+  font-size: 18px;
+}
+.ct-note {
+  font-size: 11px;
+  color: var(--fg-2, #666);
+  font-weight: 500;
+}
+
 /* Footer (Spec D-Fix-20: 사업자 정보 추가) */
 .landing-footer {
   padding: 36px 24px 48px;
@@ -4416,6 +4552,54 @@ input.locked-by-env::placeholder {
   .landing-hero-sub { font-size: 15px; }
   .landing-trust-grid { grid-template-columns: 1fr; }
   .landing-features-grid { grid-template-columns: 1fr; }
+
+  /* 비교 섹션 모바일 (Spec D-Fix-27 Stage A) */
+  .landing-compare { padding: 64px 16px; }
+  .landing-compare-title { font-size: 24px; }
+  .landing-compare-lead { font-size: 14px; margin-bottom: 28px; }
+  .landing-compare-gallery {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .landing-compare-others {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  /* 비교 표 모바일 — 1 컬럼 세로 카드 (D-Fix-21 패턴 정합) */
+  .compare-table {
+    grid-template-columns: 1fr;
+    border-radius: 12px;
+  }
+  .ct-cell {
+    padding: 12px 14px;
+    font-size: 13px;
+    flex-direction: row;
+    justify-content: space-between;
+    text-align: right;
+    gap: 8px;
+  }
+  .ct-cell.ct-header {
+    padding: 16px 16px;
+    font-size: 14px;
+    flex-direction: column;
+    text-align: center;
+  }
+  .ct-row-label:not(.ct-header) {
+    background: #1A1A1A;
+    color: #FFFFFF;
+    font-weight: 700;
+    font-size: 14px;
+    text-align: center;
+    padding: 14px 16px;
+    border-top: 8px solid #1A1A1A;
+  }
+  .ct-cell.ct-header.ct-row-label { display: none; }
+  .ct-nightoff {
+    border-left: 0;
+    border-right: 0;
+    border-top: 2px solid #1A1A1A;
+  }
+
   /* 가격 비교 표 — 1 컬럼 + 셀 횡배치 (Spec D-Fix-21) */
   .landing-pricing { padding: 64px 20px; }
   .landing-pricing-table {

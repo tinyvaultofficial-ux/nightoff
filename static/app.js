@@ -3618,7 +3618,8 @@ async function renderClientDetail(cid) {
     icon("arrowL", 14), document.createTextNode("과업 목록으로"),
   ]));
 
-  const stack = h("div", { class: "row-gap-18" });
+  // Spec D-Fix-43: client-detail-stack prefix 추가 (다른 화면 영향 0 / 전역 .card-* 무변경)
+  const stack = h("div", { class: "row-gap-18 client-detail-stack" });
   content.appendChild(stack);
 
   // 화면 순서:
@@ -3670,23 +3671,8 @@ async function renderTaskActionsSection(cid) {
         onclick: startConv,
         html: `<span class="ta-emoji">✨</span><div class="ta-text"><div class="ta-title">대화 시작하기</div><div class="ta-sub">AI 와 함께 제안서 초안을 만들어요</div></div>`,
       }),
-      // 5️⃣ PT 연습 — 제안서 완성 후 활성화 (큐시트 + Q&A 모달)
-      h("button", {
-        class: "btn btn-outline task-action-cta task-action-secondary" + (hasProposal ? "" : " disabled-soft"),
-        disabled: !hasProposal,
-        title: hasProposal ? "PT 발표 연습을 시작합니다" : "제안서를 먼저 완성하면 활성화돼요",
-        onclick: async () => {
-          if (!hasProposal) { toast("제안서를 먼저 완성해 주세요 🙂", ""); return; }
-          // 가장 최신 대화 ID 가져와서 PT 모달 오픈
-          try {
-            const convs = await api.get(`/api/clients/${cid}/conversations`);
-            const target = (Array.isArray(convs) ? convs : []).find((c) => (c.msg_count ?? 0) > 1);
-            if (!target) { toast("작성된 제안서를 찾지 못했어요", "error"); return; }
-            openPtPracticeModal(target.id);
-          } catch (e) { toast("대화를 불러올 수 없어요", "error"); }
-        },
-        html: `<span class="ta-emoji">🎤</span><div class="ta-text"><div class="ta-title">PT 연습하기</div><div class="ta-sub">${hasProposal ? "발표 큐시트 · 예상 Q&A" : "제안서 완성 후 활성화"}</div></div>`,
-      }),
+      // Spec D-Fix-43: PT 연습 자리 제거 (다음 버전 기능 / 현재 비활성)
+      // openPtPracticeModal 함수 보존 (dead code 정책 / 향후 복귀 가능)
       // 6️⃣ 자체 검증 — 제안서 완성 후 활성화 (Compliance + Red Team 모달)
       // NightOff 핵심 차별화 영역. AI 가 평가위원처럼 RFP 매핑 + 예상 점수 분석.
       h("button", {

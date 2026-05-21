@@ -5084,6 +5084,22 @@ input.locked-by-env::placeholder {
   background: #fff; border: 1px solid var(--border);
   border-radius: 12px; padding: 18px;
 }
+
+/* Spec D-Fix-43: 클라이언트 자리 한정 (전역 .card-* 무변경) */
+.client-detail-stack .card-title { font-size: 20px; }
+.client-detail-stack .card-subtitle { font-size: 15px; }
+.client-detail-stack .rfp-radar-title { font-size: 16px; }
+
+/* Spec D-Fix-43: RFP 자식 자리 카드 분리 (시각 구분 ↑) */
+.client-detail-stack .rfp-radar-wrap,
+.client-detail-stack .rfp-checklist-wrap,
+.client-detail-stack .rfp-risks {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 16px;
+}
 .rfp-checklist {
   list-style: none; margin: 0; padding: 0;
   display: flex; flex-direction: column; gap: 8px;

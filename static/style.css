@@ -4382,7 +4382,7 @@ input.locked-by-env::placeholder {
 .pt-cta-cell { padding: 22px 16px; }
 .pt-cta-btn { width: 100%; font-weight: 600; }
 
-/* ── 비교 섹션 (Spec D-Fix-27 Stage A) ────────────────────────────── */
+/* ── 비교 섹션 (Spec D-Fix-27 Stage A / D-Fix-30 폰트 ↑) ──────────── */
 .landing-compare {
   padding: 96px 24px;
   background: var(--bg-2, #FAFAFA);
@@ -4393,7 +4393,7 @@ input.locked-by-env::placeholder {
   text-align: center;
 }
 .landing-compare-title {
-  font-size: 32px;
+  font-size: 36px;
   font-weight: 800;
   color: var(--fg, #1A1A1A);
   margin: 0 0 12px 0;
@@ -4401,7 +4401,7 @@ input.locked-by-env::placeholder {
   letter-spacing: -0.02em;
 }
 .landing-compare-lead {
-  font-size: 16px;
+  font-size: 17px;
   color: var(--fg-2, #666);
   margin: 0 0 40px 0;
   line-height: 1.6;
@@ -4446,7 +4446,7 @@ input.locked-by-env::placeholder {
   background: rgba(0,0,0,0.6);
   color: #fff;
   padding: 6px 10px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   position: absolute;
   top: 0;
@@ -4455,7 +4455,7 @@ input.locked-by-env::placeholder {
 }
 .lc-capture-label-strong {
   background: var(--primary, #6B46E5);
-  font-size: 14px;
+  font-size: 15px;
 }
 .lc-capture-placeholder {
   flex: 1;
@@ -4490,7 +4490,7 @@ input.locked-by-env::placeholder {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--fg, #1A1A1A);
   gap: 4px;
   text-align: center;
@@ -4499,7 +4499,7 @@ input.locked-by-env::placeholder {
   border-top: 0;
   padding: 22px 18px;
   font-weight: 700;
-  font-size: 15px;
+  font-size: 16px;
 }
 .ct-row-label {
   background: var(--bg-2, #FAFAFA);
@@ -4519,10 +4519,10 @@ input.locked-by-env::placeholder {
   border-top: 3px solid #1A1A1A;
 }
 .ct-mark {
-  font-size: 18px;
+  font-size: 20px;
 }
 .ct-note {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--fg-2, #666);
   font-weight: 500;
 }
@@ -4615,10 +4615,10 @@ input.locked-by-env::placeholder {
   .landing-trust-grid { grid-template-columns: 1fr; }
   .landing-features-grid { grid-template-columns: 1fr; }
 
-  /* 비교 섹션 모바일 (Spec D-Fix-27 Stage A / D-Fix-29 Stage A 갱신) */
+  /* 비교 섹션 모바일 (Spec D-Fix-27 Stage A / D-Fix-29 Stage A / D-Fix-30 폰트 ↑) */
   .landing-compare { padding: 64px 16px; }
-  .landing-compare-title { font-size: 24px; }
-  .landing-compare-lead { font-size: 14px; margin-bottom: 28px; }
+  .landing-compare-title { font-size: 27px; }
+  .landing-compare-lead { font-size: 15px; margin-bottom: 28px; }
   .landing-compare-gallery {
     grid-template-columns: 1fr;
     gap: 16px;
@@ -4632,7 +4632,7 @@ input.locked-by-env::placeholder {
   }
   .ct-cell {
     padding: 12px 14px;
-    font-size: 13px;
+    font-size: 14px;
     flex-direction: row;
     justify-content: space-between;
     text-align: right;
@@ -4640,7 +4640,7 @@ input.locked-by-env::placeholder {
   }
   .ct-cell.ct-header {
     padding: 16px 16px;
-    font-size: 14px;
+    font-size: 15px;
     flex-direction: column;
     text-align: center;
   }
@@ -4648,7 +4648,7 @@ input.locked-by-env::placeholder {
     background: #1A1A1A;
     color: #FFFFFF;
     font-weight: 700;
-    font-size: 14px;
+    font-size: 15px;
     text-align: center;
     padding: 14px 16px;
     border-top: 8px solid #1A1A1A;

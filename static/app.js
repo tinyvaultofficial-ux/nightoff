@@ -784,48 +784,45 @@ function renderLanding() {
       h("p", { class: "landing-compare-lead" },
         "AI는 텍스트·구조에 집중하고, 디자이너가 컬러·이미지로 마무리해요."),
 
-      // 캡처 갤러리 — 좌 3 (다른 LLM 모자이크) + 우 1 (NightOff 큰)
-      // Stage B: placeholder → 실제 캡처 4장 (도구 이름 마스킹).
+      // 캡처 갤러리 — 4장 균등 그리드 (Spec D-Fix-29 Stage A)
+      // 변경: 1fr:1.4fr 비대칭 → 4열 균등 / NightOff 강조 = 보더 보라 + 보라 그림자.
+      // wrapper (.landing-compare-others / -nightoff) 제거 → 4장 평면 grid 자식.
       h("div", { class: "landing-compare-gallery" }, [
-        h("div", { class: "landing-compare-others" }, [
-          h("div", { class: "lc-capture lc-capture-small" }, [
-            h("div", { class: "lc-capture-label" }, "젠OOO"),
-            h("img", {
-              src: "/static/img/compare/genspark.png",
-              alt: "젠OOO 결과물",
-              class: "lc-capture-img",
-              loading: "lazy",
-            }),
-          ]),
-          h("div", { class: "lc-capture lc-capture-small" }, [
-            h("div", { class: "lc-capture-label" }, "챗OOO"),
-            h("img", {
-              src: "/static/img/compare/chatgpt.png",
-              alt: "챗OOO 결과물",
-              class: "lc-capture-img",
-              loading: "lazy",
-            }),
-          ]),
-          h("div", { class: "lc-capture lc-capture-small" }, [
-            h("div", { class: "lc-capture-label" }, "감OO"),
-            h("img", {
-              src: "/static/img/compare/gamma.png",
-              alt: "감OO 결과물",
-              class: "lc-capture-img",
-              loading: "lazy",
-            }),
-          ]),
+        h("div", { class: "lc-capture" }, [
+          h("div", { class: "lc-capture-label" }, "젠OOO"),
+          h("img", {
+            src: "/static/img/compare/genspark.png",
+            alt: "젠OOO 결과 캡처",
+            class: "lc-capture-img",
+            loading: "lazy",
+          }),
         ]),
-        h("div", { class: "landing-compare-nightoff" }, [
-          h("div", { class: "lc-capture lc-capture-large" }, [
-            h("div", { class: "lc-capture-label lc-capture-label-strong" }, "NightOff"),
-            h("img", {
-              src: "/static/img/compare/nightoff.png",
-              alt: "NightOff 결과물",
-              class: "lc-capture-img",
-              loading: "lazy",
-            }),
-          ]),
+        h("div", { class: "lc-capture" }, [
+          h("div", { class: "lc-capture-label" }, "챗OOO"),
+          h("img", {
+            src: "/static/img/compare/chatgpt.png",
+            alt: "챗OOO 결과 캡처",
+            class: "lc-capture-img",
+            loading: "lazy",
+          }),
+        ]),
+        h("div", { class: "lc-capture" }, [
+          h("div", { class: "lc-capture-label" }, "감OO"),
+          h("img", {
+            src: "/static/img/compare/gamma.png",
+            alt: "감OO 결과 캡처",
+            class: "lc-capture-img",
+            loading: "lazy",
+          }),
+        ]),
+        h("div", { class: "lc-capture lc-capture-nightoff" }, [
+          h("div", { class: "lc-capture-label lc-capture-label-strong" }, "NightOff"),
+          h("img", {
+            src: "/static/img/compare/nightoff.png",
+            alt: "NightOff 결과 캡처",
+            class: "lc-capture-img",
+            loading: "lazy",
+          }),
         ]),
       ]),
 

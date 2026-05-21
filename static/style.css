@@ -4119,7 +4119,7 @@ input.locked-by-env::placeholder {
 .landing-hero-bubble-tl { top: 15%; left: -120px; }   /* ③ 새 과업 버튼 */
 .landing-hero-bubble-tr { top: 41%; right: -120px; }  /* ② 뉴스 줄 우측 끝 */
 .landing-hero-bubble-bl { top: 46%; left: -120px; }   /* ① D-7 카드 (★ 마스킹 회피) */
-.landing-hero-bubble-br { top: 47%; right: -120px; }  /* ④ 샘플 카드 */
+.landing-hero-bubble-br { top: 58%; right: -120px; }  /* ④ 샘플 카드 (Spec D-Fix-34c: 47 → 58 / 카드 본체 가운데) */
 
 /* 화살표 (CSS triangle + line) — Spec D-Fix-34b: 자리별 길이 분기 */
 .landing-hero-bubble::before {

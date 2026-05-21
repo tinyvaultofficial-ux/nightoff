@@ -921,10 +921,11 @@ function renderLanding() {
   ]));
 
   // ── 핵심 기능 3가지
+  // Spec D-Fix-39: 이모지 폐기 / 자료 재설계 (사실 검증 완료)
   const features = [
-    { emoji: "👀", title: "발주처 들여다보기", desc: "RFP를 넣으면 발주처 정보와 과업 내용을 자동으로 파악해요" },
-    { emoji: "📚", title: "고품질 제안서 학습", desc: "수많은 과거 제안서로 학습한 글투·시각화 패턴이 자동 반영돼요" },
-    { emoji: "📊", title: "입찰 활동 히스토리", desc: "수주/탈락 결과를 기록하면 나의 입찰 활동을 한눈에 볼 수 있어요" },
+    { title: "초안 자동 생성", desc: "RFP 한 장만 넣으면 진짜 제안서 초안 완성" },
+    { title: "분석부터 점검까지", desc: "배점 / 발주처 / 산출내역서 / 자체 점검 한 번에" },
+    { title: "전략 파트너 AI", desc: "기획자 시각 특화 AI와 사고 흐름 진짜 논의" },
   ];
   wrap.appendChild(h("section", { class: "landing-features" }, [
     h("div", { class: "landing-features-inner" }, [
@@ -934,7 +935,6 @@ function renderLanding() {
       h("div", { class: "landing-features-grid" },
         features.map((f, i) => h("div", { class: "landing-feature-card" }, [
           h("div", { class: "landing-feature-num" }, String(i + 1).padStart(2, "0")),
-          h("div", { class: "landing-feature-emoji" }, f.emoji),
           h("h3", { class: "landing-feature-title" }, f.title),
           h("p", { class: "landing-feature-desc" }, f.desc),
         ]))

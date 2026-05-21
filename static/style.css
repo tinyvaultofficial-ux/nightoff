@@ -4344,7 +4344,7 @@ input.locked-by-env::placeholder {
 }
 .landing-feature-card {
   position: relative;
-  padding: 40px 30px 32px;
+  padding: 32px 30px 32px;   /* Spec D-Fix-39: top 40 → 32 (이모지 폐기 / 자료 자리 적정) */
   background: linear-gradient(180deg, #fff 0%,
     color-mix(in oklab, var(--primary) 3%, #fff) 100%);
   border: 1px solid color-mix(in oklab, var(--primary) 14%, transparent);
@@ -4369,26 +4369,22 @@ input.locked-by-env::placeholder {
 .landing-feature-num {
   position: absolute;
   top: 18px; right: 22px;
-  font-size: 28px;
+  font-size: 36px;   /* Spec D-Fix-39: 28 → 36 (이모지 폐기 / 자료 강조) */
   font-weight: 800;
-  color: color-mix(in oklab, var(--primary) 18%, transparent);
+  color: color-mix(in oklab, var(--primary) 25%, transparent);   /* 18% → 25% */
   letter-spacing: -0.02em;
   font-feature-settings: "tnum";
 }
-.landing-feature-emoji {
-  font-size: 40px;
-  margin-bottom: 20px;
-  filter: saturate(1.25);
-}
 .landing-feature-title {
-  font-size: 21px; font-weight: 700;
-  margin: 0 0 10px;
+  font-size: 32px;   /* Spec D-Fix-39: 21 → 32 (라벨 임팩트 ↑) */
+  font-weight: 700;
+  margin: 0 0 12px;   /* 10 → 12 */
   letter-spacing: -0.012em;
   color: var(--fg);
 }
 .landing-feature-desc {
   margin: 0;
-  font-size: 14.5px;
+  font-size: 16px;   /* Spec D-Fix-39: 14.5 → 16 (가독성 ↑) */
   line-height: 1.65;
   color: var(--fg-2);
 }

@@ -804,8 +804,8 @@ function renderLanding() {
 
   // ── 비교 섹션 (Spec D-Fix-27 Stage A + Stage B)
   // 다른 LLM 과의 차이점을 랜딩 전면에 박기. "어 같은 RFP 인데 진짜 다르네" 인지 유도.
-  // Stage B: 도구 이름 마스킹 처리 + 클로드 → 감마AI 교체 (실제 캡처 매칭).
-  const COMPARE_HEADERS = ["젠OOO", "챗OOO", "감OO", "NightOff"];
+  // Stage B: 도구 이름 마스킹 처리 + 클로드 → 감마AI 교체 (D-Fix-27) / 캔O 라벨 갱신 (D-Fix-36).
+  const COMPARE_HEADERS = ["젠스OO", "챗GOO", "캔O", "NightOff"];
   const COMPARE_ROWS = [
     { item: "풀 컬러 디자인", values: ["✅", "⚠️", "✅", "❌"],
       nightoffNote: "흑백 초안 (70%)" },
@@ -831,28 +831,28 @@ function renderLanding() {
       // wrapper (.landing-compare-others / -nightoff) 제거 → 4장 평면 grid 자식.
       h("div", { class: "landing-compare-gallery" }, [
         h("div", { class: "lc-capture" }, [
-          h("div", { class: "lc-capture-label" }, "젠OOO"),
+          h("div", { class: "lc-capture-label" }, "젠스OO"),
           h("img", {
             src: "/static/img/compare/genspark.png",
-            alt: "젠OOO 결과 캡처",
+            alt: "젠스OO 결과 캡처",
             class: "lc-capture-img",
             loading: "lazy",
           }),
         ]),
         h("div", { class: "lc-capture" }, [
-          h("div", { class: "lc-capture-label" }, "챗OOO"),
+          h("div", { class: "lc-capture-label" }, "챗GOO"),
           h("img", {
             src: "/static/img/compare/chatgpt.png",
-            alt: "챗OOO 결과 캡처",
+            alt: "챗GOO 결과 캡처",
             class: "lc-capture-img",
             loading: "lazy",
           }),
         ]),
         h("div", { class: "lc-capture" }, [
-          h("div", { class: "lc-capture-label" }, "감OO"),
+          h("div", { class: "lc-capture-label" }, "캔O"),
           h("img", {
             src: "/static/img/compare/gamma.png",
-            alt: "감OO 결과 캡처",
+            alt: "캔O 결과 캡처",
             class: "lc-capture-img",
             loading: "lazy",
           }),

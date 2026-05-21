@@ -4407,18 +4407,14 @@ input.locked-by-env::placeholder {
   line-height: 1.6;
 }
 
-/* 캡처 갤러리 — 좌 3 + 우 1 비대칭 */
+/* 캡처 갤러리 — 4열 균등 그리드 (Spec D-Fix-29 Stage A)
+   변경: 1fr:1.4fr 비대칭 → 4열 균등 / NightOff 강조 = 보더+그림자 보라 톤. */
 .landing-compare-gallery {
   margin-top: 40px;
   display: grid;
-  grid-template-columns: 1fr 1.4fr;
-  gap: 24px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
   align-items: center;
-}
-.landing-compare-others {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
 }
 .lc-capture {
   background: #1F1F1F;
@@ -4428,10 +4424,11 @@ input.locked-by-env::placeholder {
   position: relative;
   display: flex;
   flex-direction: column;
+  transition: transform .2s, box-shadow .2s;   /* Stage B 호버 준비 */
 }
-.lc-capture-large {
-  border: 3px solid #1A1A1A;
-  box-shadow: 0 12px 32px -8px rgba(0,0,0,0.20);
+.lc-capture-nightoff {
+  border: 3px solid var(--primary);
+  box-shadow: 0 12px 32px -8px rgba(107, 70, 229, 0.30);
 }
 .lc-capture-label {
   background: rgba(0,0,0,0.6);
@@ -4526,6 +4523,14 @@ input.locked-by-env::placeholder {
   display: block;
 }
 
+/* 태블릿 — 2열 중간 break point (Spec D-Fix-29 Stage A) */
+@media (min-width: 721px) and (max-width: 959px) {
+  .landing-compare-gallery {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+}
+
 /* sticky CTA — FAB pill (Spec D-Fix-27 Stage B / D-Fix-28 색감 / D-Fix-28b FAB 전환) */
 .landing-sticky-cta {
   position: fixed;
@@ -4598,17 +4603,15 @@ input.locked-by-env::placeholder {
   .landing-trust-grid { grid-template-columns: 1fr; }
   .landing-features-grid { grid-template-columns: 1fr; }
 
-  /* 비교 섹션 모바일 (Spec D-Fix-27 Stage A) */
+  /* 비교 섹션 모바일 (Spec D-Fix-27 Stage A / D-Fix-29 Stage A 갱신) */
   .landing-compare { padding: 64px 16px; }
   .landing-compare-title { font-size: 24px; }
   .landing-compare-lead { font-size: 14px; margin-bottom: 28px; }
   .landing-compare-gallery {
     grid-template-columns: 1fr;
     gap: 16px;
-  }
-  .landing-compare-others {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
+    max-width: 400px;
+    margin: 40px auto 0;
   }
   /* 비교 표 모바일 — 1 컬럼 세로 카드 (D-Fix-21 패턴 정합) */
   .compare-table {

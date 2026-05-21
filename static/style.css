@@ -4505,6 +4505,57 @@ input.locked-by-env::placeholder {
 .pt-cta-cell { padding: 22px 16px; }
 .pt-cta-btn { width: 100%; font-weight: 600; }
 
+/* Spec D-Fix-40: 상단 띠 (lead 자리 대체 / 프로모션 자료 강조) */
+.landing-pricing-promo {
+  margin: 24px auto 0;
+  max-width: 720px;
+  padding: 14px 24px;
+  background: color-mix(in oklab, var(--primary) 8%, #fff);
+  border: 1px solid color-mix(in oklab, var(--primary) 25%, transparent);
+  border-radius: 12px;
+  text-align: center;
+}
+.landing-pricing-promo-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 4px;
+}
+.landing-pricing-promo-sub {
+  font-size: 13.5px;
+  color: var(--fg-2);
+}
+
+/* Spec D-Fix-40: 정가 + 할인 라벨 인라인 정렬 */
+.pt-price-regular-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Spec D-Fix-40: 할인 라벨 (정가 옆 인라인 / 보라) */
+.pt-price-discount {
+  display: inline-block;
+  padding: 1px 6px;
+  background: color-mix(in oklab, var(--primary) 15%, transparent);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 4px;
+  vertical-align: middle;
+  letter-spacing: -0.01em;
+}
+
+/* Spec D-Fix-40: 하단 부가 자료 (보험사 약관 톤) */
+.landing-pricing-note {
+  margin: 16px auto 0;
+  padding: 0 24px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--fg-muted, #A89E91);
+  line-height: 1.5;
+}
+
 /* ── 비교 섹션 (Spec D-Fix-27 Stage A / D-Fix-30 폰트 ↑) ──────────── */
 .landing-compare {
   padding: 96px 24px;
@@ -4814,6 +4865,18 @@ input.locked-by-env::placeholder {
   .landing-pricing-table {
     grid-template-columns: 1fr;
     border-radius: 16px;
+  }
+  /* Spec D-Fix-40: 상단 띠 / 하단 부가 자료 모바일 */
+  .landing-pricing-promo {
+    margin-top: 20px;
+    padding: 12px 18px;
+  }
+  .landing-pricing-promo-title { font-size: 14px; }
+  .landing-pricing-promo-sub { font-size: 12.5px; }
+  .landing-pricing-note {
+    margin-top: 12px;
+    padding: 0 20px;
+    font-size: 11.5px;
   }
   .pt-cell {
     border-top: 1px solid var(--border);

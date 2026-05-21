@@ -945,13 +945,13 @@ function renderLanding() {
   // ── 가격 (Spec D-Fix-21: 3 티어 비교 표)
   const TIERS = [
     { name: "스타터", en: "Starter", emoji: "🌱",
-      promo: "15만원", regular: "20만원", unit: "10만원",
+      promo: "15만원", regular: "20만원", discount: "-25%", unit: "10만원",
       proposals: "2건", best: false },
     { name: "프로", en: "Pro", emoji: "🚀",
-      promo: "36만원", regular: "47.5만원", unit: "9.5만원",
+      promo: "36만원", regular: "47.5만원", discount: "-24%", unit: "9.5만원",
       proposals: "5건", best: true },
     { name: "비즈니스", en: "Business", emoji: "💎",
-      promo: "70만원", regular: "90만원", unit: "9만원",
+      promo: "70만원", regular: "90만원", discount: "-22%", unit: "9만원",
       proposals: "10건", best: false },
   ];
   const FEATURES = [
@@ -964,8 +964,12 @@ function renderLanding() {
   wrap.appendChild(h("section", { class: "landing-pricing" }, [
     h("div", { class: "landing-pricing-inner" }, [
       h("div", { class: "landing-section-eyebrow accent" }, "PRICING"),
-      h("h2", { class: "landing-section-title" }, "가격"),
-      h("p", { class: "landing-section-lead" }, "🔒 가입 시 1년 가격 락인"),
+      h("h2", { class: "landing-section-title" }, "요금제(plans)"),
+      // Spec D-Fix-40: lead 자리 → 상단 띠 대체 (프로모션 자료 강조)
+      h("div", { class: "landing-pricing-promo" }, [
+        h("div", { class: "landing-pricing-promo-title" }, "🎉 공식 런칭 기념 / 첫 6개월 한정 특가"),
+        h("div", { class: "landing-pricing-promo-sub" }, "지금 가입하면 정가 대비 최대 25% 절약"),
+      ]),
 
       h("div", { class: "landing-pricing-table" }, [
         // 헤더 행
@@ -985,7 +989,11 @@ function renderLanding() {
         h("div", { class: "pt-cell pt-row-label" }, "월 요금"),
         ...TIERS.map(t => h("div", { class: `pt-cell ${t.best ? "pt-best" : ""}` }, [
           h("div", { class: "pt-price-row" }, [
-            h("s", { class: "pt-price-regular" }, t.regular),
+            // Spec D-Fix-40: 정가 + 할인 라벨 wrapper (인라인 정렬)
+            h("div", { class: "pt-price-regular-wrap" }, [
+              h("s", { class: "pt-price-regular" }, t.regular),
+              h("span", { class: "pt-price-discount" }, t.discount),
+            ]),
             h("span", { class: "pt-price-promo" }, [
               h("strong", { class: "pt-price-amount" }, t.promo),
               h("span", { class: "pt-price-per" }, "/월"),
@@ -1026,6 +1034,9 @@ function renderLanding() {
           }, "시작하기"),
         ])),
       ]),
+      // Spec D-Fix-40: 하단 부가 자료 (보험사 약관 톤 / 작게)
+      h("p", { class: "landing-pricing-note" },
+        "* 프로모션 종료 후 정가 전환 / 정기 할인 이벤트 진행 예정"),
     ]),
   ]));
 

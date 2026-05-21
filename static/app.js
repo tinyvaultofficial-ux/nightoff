@@ -743,13 +743,19 @@ function renderLanding() {
     ]),
   ]));
 
-  // ── Hero
+  // ── Hero (Spec D-Fix-33: eyebrow + 부가 문구 + 대시보드 미리보기 보강)
   wrap.appendChild(h("section", { class: "landing-hero" }, [
     h("div", { class: "landing-hero-inner" }, [
       h("img", { class: "landing-hero-logo", src: "/static/logo.png", alt: "NightOff" }),
+      // eyebrow (Spec D-Fix-33: 타이틀 위 / 보라 작은 문구)
+      h("p", { class: "landing-hero-eyebrow" },
+        "B2G·B2B 행사기획 / 홍보마케팅 제안서 자동화 AI"),
       h("h1", { class: "landing-hero-title" }, "밤새지 말자고 만들었습니다"),
       h("p", { class: "landing-hero-sub" },
         "기획자가 만든, 기획자만을 위한 제안서 AI"),
+      // 부가 문구 (Spec D-Fix-33: 사용자 실측 자료 / 약속)
+      h("p", { class: "landing-hero-promise" },
+        "RFP 한 장이면 10분만에 초안"),
       // Spec D-Fix-27 Stage A: Hero [지금 시작하기 ✨] 제거 — 사용자 강제 스크롤
       // → 비교 섹션 인지 유도 + sticky CTA Stage B 에서 즉시 가입 진입로 보완
       // [둘러보기] 유지 — 부담 낮은 진입로 (D-Fix-22 Stage A)
@@ -758,6 +764,22 @@ function renderLanding() {
           class: "btn btn-ghost landing-cta-btn landing-cta-btn-secondary",
           onclick: () => navigate("/preview"),
         }, "👀 둘러보기"),
+      ]),
+      // 대시보드 미리보기 (Spec D-Fix-33: 브라우저 frame + Mac 스타일 3 dots)
+      h("div", { class: "landing-hero-preview" }, [
+        h("div", { class: "landing-hero-preview-frame" }, [
+          h("div", { class: "landing-hero-preview-bar" }, [
+            h("span", { class: "landing-hero-preview-dot" }),
+            h("span", { class: "landing-hero-preview-dot" }),
+            h("span", { class: "landing-hero-preview-dot" }),
+          ]),
+          h("img", {
+            class: "landing-hero-preview-img",
+            src: "/static/img/hero/hero-dashboard.png",
+            alt: "NightOff 대시보드 미리보기",
+            loading: "lazy",
+          }),
+        ]),
       ]),
     ]),
   ]));

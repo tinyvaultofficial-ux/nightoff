@@ -4251,7 +4251,7 @@ input.locked-by-env::placeholder {
 .landing-trust-inner,
 .landing-features-inner { text-align: center; }
 
-/* 메인 헤더 — 그라데이션 텍스트 + 굵게 + 크게 (가장 두드러지게) */
+/* 메인 헤더 — 검정 통일 (Spec D-Fix-37: 보라 그라데이션 → Hero/비교 섹션과 톤 정합) */
 .landing-section-title {
   font-size: 48px;
   font-weight: 900;
@@ -4259,17 +4259,7 @@ input.locked-by-env::placeholder {
   margin: 0 0 14px;
   text-align: center;
   line-height: 1.15;
-  /* purple → orange 그라데이션 텍스트 */
-  background: linear-gradient(135deg,
-    var(--primary) 0%,
-    color-mix(in oklab, var(--primary) 60%, var(--accent, #FF8E5C)) 55%,
-    var(--accent, #FF8E5C) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-  /* 그라데이션 텍스트 가독성 보강 — 살짝 그림자 */
-  filter: drop-shadow(0 2px 8px color-mix(in oklab, var(--primary) 18%, transparent));
+  color: var(--fg, #1A1A1A);
 }
 .landing-section-lead {
   font-size: 16px;

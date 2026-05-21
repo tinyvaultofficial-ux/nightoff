@@ -766,7 +766,25 @@ function renderLanding() {
         }, "👀 둘러보기"),
       ]),
       // 대시보드 미리보기 (Spec D-Fix-33: 브라우저 frame + Mac 스타일 3 dots)
+      // Spec D-Fix-34: 캡처 좌우 말풍선 4개 (Annotated Screenshot 패턴 / 1280px 이상만 표시)
       h("div", { class: "landing-hero-preview" }, [
+        // 말풍선 4개 (좌상 ③ / 우상 ② / 좌하 ① / 우하 ④)
+        h("div", { class: "landing-hero-bubble landing-hero-bubble-tl" }, [
+          h("div", { class: "landing-hero-bubble-label" }, "제안서 생성 및 분석"),
+          h("div", { class: "landing-hero-bubble-sub" }, "RFP 한 장으로 시작"),
+        ]),
+        h("div", { class: "landing-hero-bubble landing-hero-bubble-tr" }, [
+          h("div", { class: "landing-hero-bubble-label" }, "업계 최신 뉴스 자동 수집"),
+          h("div", { class: "landing-hero-bubble-sub" }, "관련 뉴스 매일 자동 업데이트"),
+        ]),
+        h("div", { class: "landing-hero-bubble landing-hero-bubble-bl" }, [
+          h("div", { class: "landing-hero-bubble-label" }, "나라장터 D-7 자동 매칭"),
+          h("div", { class: "landing-hero-bubble-sub" }, "임박 공고 놓치지 마세요"),
+        ]),
+        h("div", { class: "landing-hero-bubble landing-hero-bubble-br" }, [
+          h("div", { class: "landing-hero-bubble-label" }, "실제 NightOff 결과물 미리보기"),
+          h("div", { class: "landing-hero-bubble-sub" }, "RFP 넣으면 이렇게 나와요"),
+        ]),
         h("div", { class: "landing-hero-preview-frame" }, [
           h("div", { class: "landing-hero-preview-bar" }, [
             h("span", { class: "landing-hero-preview-dot" }),

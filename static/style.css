@@ -4289,27 +4289,44 @@ input.locked-by-env::placeholder {
   max-width: 880px; margin: 0 auto;
   text-align: left;
 }
+/* Why NightOff 카드 보강 (Spec D-Fix-38: 배경 그라데이션 + radius/padding 키움 + 라벨/부가 흐름) */
 .landing-trust-item {
   display: flex; align-items: center; gap: 14px;
-  padding: 20px 24px;
-  background: #fff;
+  padding: 24px 28px;
+  background: linear-gradient(180deg, #fff 0%,
+    color-mix(in oklab, var(--primary) 3%, #fff) 100%);
   border: 1px solid color-mix(in oklab, var(--primary) 14%, transparent);
-  border-radius: 16px;
+  border-radius: 18px;
   font-size: 15px; font-weight: 500; color: var(--fg);
   letter-spacing: -0.005em;
-  box-shadow: 0 2px 8px -4px rgba(124,58,237,0.08);
+  box-shadow: 0 6px 20px -10px rgba(124,58,237,0.10);
   transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
 }
 .landing-trust-item:hover {
   border-color: color-mix(in oklab, var(--primary) 35%, transparent);
-  box-shadow: 0 12px 24px -10px rgba(124,58,237,0.18);
-  transform: translateY(-2px);
+  box-shadow: 0 18px 32px -12px rgba(124,58,237,0.18);
+  transform: translateY(-3px);
 }
 .landing-trust-emoji {
-  font-size: 22px; flex-shrink: 0;
+  font-size: 28px; flex-shrink: 0;
   filter: saturate(1.2);
 }
-.landing-trust-text { line-height: 1.55; }
+.landing-trust-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.landing-trust-label {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--fg);
+  line-height: 1.4;
+}
+.landing-trust-sub {
+  font-size: 13.5px;
+  color: var(--fg-2);
+  line-height: 1.5;
+}
 
 /* ============================================================
    Features 섹션 — 번호 라벨 + 강조 카드

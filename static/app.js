@@ -892,11 +892,16 @@ function renderLanding() {
   ]));
 
   // ── 신뢰 배지 섹션
+  // Spec D-Fix-38: 이모지 4종 + 라벨/부가 분리 (카드 자료 풍성 / 핵심 기능과 시각 차별화)
   const trustItems = [
-    { emoji: "✅", text: "기획자가 만든, 기획자를 위한 도구예요" },
-    { emoji: "✅", text: "수백 건의 실제 수주 제안서를 학습했어요" },
-    { emoji: "✅", text: "경쟁입찰 제안의 언어를 알아요" },
-    { emoji: "✅", text: "RFP 넣으면 바로 시작해요" },
+    { emoji: "🛠️", label: "기획자가 만든, 기획자를 위한 도구예요",
+      sub: "MICE · 홍보마케팅 베테랑이 직접 설계" },
+    { emoji: "🎓", label: "수백 건의 실제 수주 제안서를 학습했어요",
+      sub: "고품질 제안서의 패턴을 학습" },
+    { emoji: "💬", label: "경쟁입찰 제안의 언어를 알아요",
+      sub: "기획자가 쓰는 표현 그대로" },
+    { emoji: "⚡", label: "RFP 넣으면 바로 시작해요",
+      sub: "10분 안에 초안 완성" },
   ];
   wrap.appendChild(h("section", { class: "landing-trust" }, [
     h("div", { class: "landing-trust-inner" }, [
@@ -906,7 +911,10 @@ function renderLanding() {
       h("div", { class: "landing-trust-grid" },
         trustItems.map((t) => h("div", { class: "landing-trust-item" }, [
           h("span", { class: "landing-trust-emoji" }, t.emoji),
-          h("span", { class: "landing-trust-text" }, t.text),
+          h("div", { class: "landing-trust-text" }, [
+            h("div", { class: "landing-trust-label" }, t.label),
+            h("div", { class: "landing-trust-sub" }, t.sub),
+          ]),
         ]))
       ),
     ]),

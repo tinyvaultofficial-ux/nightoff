@@ -924,7 +924,7 @@ function renderLanding() {
   // Spec D-Fix-39: 이모지 폐기 / 자료 재설계 (사실 검증 완료)
   const features = [
     { title: "초안 자동 생성", desc: "RFP 한 장만 넣으면 진짜 제안서 초안 완성" },
-    { title: "분석부터 점검까지", desc: "배점 / 발주처 / 산출내역서 / 자체 점검 한 번에" },
+    { title: "분석부터 검증까지", desc: "배점 / 발주처 / 산출내역서 / 자체 검증 한 번에" },
     { title: "전략 파트너 AI", desc: "기획자 시각 특화 AI와 사고 흐름 진짜 논의" },
   ];
   wrap.appendChild(h("section", { class: "landing-features" }, [
@@ -1757,7 +1757,7 @@ async function openAuditModal(convId) {
     h("div", {}, [
       h("h3", {}, "🔍 자체 검증"),
       h("p", { class: "small muted", style: "margin: 4px 0 0;" },
-        "RFP 요구사항 누락·평가위원 시각의 예상 점수를 동시에 점검"),
+        "RFP 요구사항 누락·평가위원 시각의 예상 점수를 동시에 검증"),
     ]),
     h("button", { class: "icon-btn", onclick: () => backdrop.remove(), html: iconHtml("x", 18) }),
   ]));
@@ -3692,7 +3692,7 @@ async function renderTaskActionsSection(cid) {
       h("button", {
         class: "btn btn-outline task-action-cta task-action-secondary" + (hasProposal ? "" : " disabled-soft"),
         disabled: !hasProposal,
-        title: hasProposal ? "AI 가 평가위원처럼 점검합니다 (30~60초)" : "제안서를 먼저 완성하면 활성화돼요",
+        title: hasProposal ? "AI 가 평가위원처럼 검증합니다 (30~60초)" : "제안서를 먼저 완성하면 활성화돼요",
         onclick: async () => {
           if (!hasProposal) { toast("제안서를 먼저 완성해 주세요 🙂", ""); return; }
           try {
@@ -3702,7 +3702,7 @@ async function renderTaskActionsSection(cid) {
             openAuditModal(target.id);
           } catch (e) { toast("대화를 불러올 수 없어요", "error"); }
         },
-        html: `<span class="ta-emoji">🔍</span><div class="ta-text"><div class="ta-title">자체 검증</div><div class="ta-sub">${hasProposal ? "Compliance + Red Team 점검" : "제안서 완성 후 활성화"}</div></div>`,
+        html: `<span class="ta-emoji">🔍</span><div class="ta-text"><div class="ta-title">자체 검증</div><div class="ta-sub">${hasProposal ? "Compliance + Red Team 검증" : "제안서 완성 후 활성화"}</div></div>`,
       }),
     ]),
   ]);
@@ -5058,7 +5058,7 @@ async function renderChat(cid, convId) {
           id: "header-audit-btn",
           class: "btn btn-outline",
           style: "text-decoration:none;" + (hasPptx ? "" : " display:none;"),
-          title: "AI 가 평가위원처럼 점검합니다 (30~60초) — Compliance + Red Team",
+          title: "AI 가 평가위원처럼 검증합니다 (30~60초) — Compliance + Red Team",
           html: `<span style="margin-right:4px;">🔍</span><span>자체 검증</span>`,
           onclick: () => {
             openAuditModal(convId);

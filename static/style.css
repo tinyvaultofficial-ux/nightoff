@@ -4566,6 +4566,7 @@ input.locked-by-env::placeholder {
     transform-origin: right center;
   }
 }
+/* 캡처 라벨 자리 (Spec D-Fix-35: 좌상단 → 우상단 / 거버닝 자료 보존) */
 .lc-capture-label {
   background: rgba(0,0,0,0.6);
   color: #fff;
@@ -4574,7 +4575,7 @@ input.locked-by-env::placeholder {
   font-weight: 600;
   position: absolute;
   top: 0;
-  left: 0;
+  right: 0;
   z-index: 1;
 }
 .lc-capture-label-strong {

@@ -4526,40 +4526,41 @@ input.locked-by-env::placeholder {
   display: block;
 }
 
-/* sticky CTA — 하단 가로 바 (Spec D-Fix-27 Stage B / D-Fix-28 색감 정합) */
+/* sticky CTA — FAB pill (Spec D-Fix-27 Stage B / D-Fix-28 색감 / D-Fix-28b FAB 전환) */
 .landing-sticky-cta {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
   z-index: 90;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
-  color: #FFFFFF;
-  padding: 14px 24px;
+  background: transparent;
+  padding: 0 24px 24px;
   text-align: center;
-  border-top: 1px solid var(--primary-hover);
-  box-shadow: 0 -4px 12px -2px rgba(107, 70, 229, 0.25);
+  pointer-events: none;
 }
 .landing-sticky-cta-btn {
-  background: #FFFFFF;
-  color: var(--primary);
-  padding: 12px 32px;
-  border-radius: 12px;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+  color: #FFFFFF;
+  padding: 16px 36px;
+  border-radius: 9999px;
   font-size: 16px;
   font-weight: 700;
   border: 0;
   cursor: pointer;
-  transition: background .15s, transform .15s;
+  pointer-events: auto;
+  box-shadow: 0 8px 24px -4px rgba(107, 70, 229, 0.45);
+  transition: background .15s, transform .15s, box-shadow .15s;
 }
 .landing-sticky-cta-btn:hover {
-  background: var(--bg-2, #FAFAFA);
-  transform: translateY(-1px);
+  background: linear-gradient(135deg, var(--primary-hover) 0%, var(--primary) 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px -4px rgba(107, 70, 229, 0.55);
 }
 .landing-sticky-cta-btn:active {
   transform: translateY(0);
 }
 .landing-sticky-cta-spacer {
-  height: 80px;
+  height: 40px;
 }
 
 /* Footer (Spec D-Fix-20: 사업자 정보 추가) */
@@ -4644,15 +4645,14 @@ input.locked-by-env::placeholder {
     border-top: 2px solid #1A1A1A;
   }
 
-  /* sticky CTA 모바일 (Spec D-Fix-27 Stage B) */
-  .landing-sticky-cta { padding: 10px 16px; }
+  /* sticky CTA 모바일 (Spec D-Fix-27 Stage B / D-Fix-28b FAB) */
+  .landing-sticky-cta { padding: 0 16px 16px; }
   .landing-sticky-cta-btn {
-    padding: 10px 24px;
+    padding: 14px 28px;
     font-size: 14px;
-    width: 100%;
     max-width: 320px;
   }
-  .landing-sticky-cta-spacer { height: 70px; }
+  .landing-sticky-cta-spacer { height: 36px; }
 
   /* 가격 비교 표 — 1 컬럼 + 셀 횡배치 (Spec D-Fix-21) */
   .landing-pricing { padding: 64px 20px; }

@@ -4511,12 +4511,16 @@ input.locked-by-env::placeholder {
   text-align: left;
   font-weight: 600;
 }
-/* NightOff 컬럼 — 보라 통일 (Spec D-Fix-31: 검정 → var(--primary)) */
+/* NightOff 컬럼 — 보라 통일 (Spec D-Fix-31 / D-Fix-31c 하단 닫기) */
 .ct-nightoff {
   background: #FAFAFA;
   border-left: 2px solid var(--primary);
   border-right: 2px solid var(--primary);
   font-weight: 700;
+}
+/* 마지막 행 NightOff 셀 하단 보더 (Spec D-Fix-31c) — 구조 변경 시 재검토 */
+.ct-nightoff:last-child {
+  border-bottom: 2px solid var(--primary);
 }
 .ct-nightoff-header {
   background: var(--primary);
@@ -4663,6 +4667,7 @@ input.locked-by-env::placeholder {
     border-left: 0;
     border-right: 0;
     border-top: 2px solid var(--primary);
+    border-bottom: 0;   /* :last-child 보라 선 무력화 (Spec D-Fix-31c) */
   }
 
   /* sticky CTA 모바일 (Spec D-Fix-27 Stage B / D-Fix-28b FAB) */

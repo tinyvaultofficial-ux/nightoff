@@ -780,9 +780,9 @@ function renderLanding() {
   wrap.appendChild(h("section", { class: "landing-compare" }, [
     h("div", { class: "landing-compare-inner" }, [
       h("h2", { class: "landing-compare-title" },
-        "제안요청서(RFP)를 넣고, 실제 제안서를 뽑아봤어요."),
+        "동일한 제안요청서(RFP)를 넣고, 실제 제안서를 뽑아봤어요."),
       h("p", { class: "landing-compare-lead" },
-        "AI는 텍스트·구조에 집중하고, 디자이너가 컬러·이미지로 마무리해요."),
+        "RFP — 포항 호미반도 국수맛기행 행사 대행 용역"),
 
       // 캡처 갤러리 — 4장 균등 그리드 (Spec D-Fix-29 Stage A)
       // 변경: 1fr:1.4fr 비대칭 → 4열 균등 / NightOff 강조 = 보더 보라 + 보라 그림자.

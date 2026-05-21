@@ -762,15 +762,16 @@ function renderLanding() {
     ]),
   ]));
 
-  // ── 비교 섹션 (Spec D-Fix-27 Stage A)
+  // ── 비교 섹션 (Spec D-Fix-27 Stage A + Stage B)
   // 다른 LLM 과의 차이점을 랜딩 전면에 박기. "어 같은 RFP 인데 진짜 다르네" 인지 유도.
-  const COMPARE_HEADERS = ["챗지피티", "클로드", "젠스파크", "NightOff"];
+  // Stage B: 도구 이름 마스킹 처리 + 클로드 → 감마AI 교체 (실제 캡처 매칭).
+  const COMPARE_HEADERS = ["젠OOO", "챗OOO", "감OO", "NightOff"];
   const COMPARE_ROWS = [
-    { item: "풀 컬러 디자인", values: ["⚠️", "❌", "✅", "❌"],
+    { item: "풀 컬러 디자인", values: ["✅", "⚠️", "✅", "❌"],
       nightoffNote: "흑백 초안 (70%)" },
     { item: "구체적 표현", values: ["❌", "❌", "❌", "✅"] },
-    { item: "편집 가능한 PPTX", values: ["❌", "❌", "💰", "✅"] },
-    { item: "RFP 심층 분석", values: ["❌", "❌", "⚠️", "✅"] },
+    { item: "편집 가능한 PPTX", values: ["💰", "❌", "✅", "✅"] },
+    { item: "RFP 심층 분석", values: ["⚠️", "❌", "❌", "✅"] },
     { item: "국내 제안서 표준 형식", values: ["❌", "❌", "❌", "✅"] },
     { item: "맞춤형 산출내역서", values: ["❌", "❌", "❌", "✅"] },
     { item: "제안서 자체 검증", values: ["❌", "❌", "❌", "✅"] },
@@ -784,26 +785,46 @@ function renderLanding() {
         "AI는 텍스트·구조에 집중하고, 디자이너가 컬러·이미지로 마무리해요."),
 
       // 캡처 갤러리 — 좌 3 (다른 LLM 모자이크) + 우 1 (NightOff 큰)
+      // Stage B: placeholder → 실제 캡처 4장 (도구 이름 마스킹).
       h("div", { class: "landing-compare-gallery" }, [
         h("div", { class: "landing-compare-others" }, [
           h("div", { class: "lc-capture lc-capture-small" }, [
-            h("div", { class: "lc-capture-label" }, "챗지피티"),
-            h("div", { class: "lc-capture-placeholder" }, "결과물 캡처 (준비 중)"),
+            h("div", { class: "lc-capture-label" }, "젠OOO"),
+            h("img", {
+              src: "/static/img/compare/genspark.png",
+              alt: "젠OOO 결과물",
+              class: "lc-capture-img",
+              loading: "lazy",
+            }),
           ]),
           h("div", { class: "lc-capture lc-capture-small" }, [
-            h("div", { class: "lc-capture-label" }, "클로드"),
-            h("div", { class: "lc-capture-placeholder" }, "결과물 캡처 (준비 중)"),
+            h("div", { class: "lc-capture-label" }, "챗OOO"),
+            h("img", {
+              src: "/static/img/compare/chatgpt.png",
+              alt: "챗OOO 결과물",
+              class: "lc-capture-img",
+              loading: "lazy",
+            }),
           ]),
           h("div", { class: "lc-capture lc-capture-small" }, [
-            h("div", { class: "lc-capture-label" }, "젠스파크"),
-            h("div", { class: "lc-capture-placeholder" }, "결과물 캡처 (준비 중)"),
+            h("div", { class: "lc-capture-label" }, "감OO"),
+            h("img", {
+              src: "/static/img/compare/gamma.png",
+              alt: "감OO 결과물",
+              class: "lc-capture-img",
+              loading: "lazy",
+            }),
           ]),
         ]),
         h("div", { class: "landing-compare-nightoff" }, [
           h("div", { class: "lc-capture lc-capture-large" }, [
             h("div", { class: "lc-capture-label lc-capture-label-strong" }, "NightOff"),
-            h("div", { class: "lc-capture-placeholder lc-capture-placeholder-strong" },
-              "결과물 캡처 (준비 중)"),
+            h("img", {
+              src: "/static/img/compare/nightoff.png",
+              alt: "NightOff 결과물",
+              class: "lc-capture-img",
+              loading: "lazy",
+            }),
           ]),
         ]),
       ]),
@@ -995,6 +1016,25 @@ function renderLanding() {
       "서울시 관악구 조원로33길 30, 400호 · 이메일 awc@creworth.com"),
     h("div", { class: "landing-footer-row landing-footer-tag" },
       "수주를 진심으로 기원합니다 🙏"),
+  ]));
+
+  // ── sticky CTA (Spec D-Fix-27 Stage B)
+  // Hero [지금 시작하기 ✨] 제거 (Stage A) 보완 — 하단 가로 바로 즉시 가입 진입로.
+  wrap.appendChild(h("div", { class: "landing-sticky-cta-spacer" }));   // 푸터 가림 안전망
+  wrap.appendChild(h("div", { class: "landing-sticky-cta" }, [
+    h("button", {
+      class: "landing-sticky-cta-btn",
+      onclick: () => {
+        if (getToken()) {
+          localStorage.setItem("nightoff.landing_seen", "1");
+          root.classList.remove("landing-active");
+          navigate("/dashboard");
+        } else {
+          location.href = "/register.html";
+        }
+      },
+      html: `<span>지금 시작하기 ✨</span>`,
+    }),
   ]));
 }
 

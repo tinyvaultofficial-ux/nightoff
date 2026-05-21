@@ -4518,6 +4518,50 @@ input.locked-by-env::placeholder {
   font-weight: 500;
 }
 
+/* 캡처 이미지 (Spec D-Fix-27 Stage B) — placeholder 자리 차지 */
+.lc-capture-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* sticky CTA — 하단 가로 바 (Spec D-Fix-27 Stage B) */
+.landing-sticky-cta {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 90;
+  background: #1A1A1A;
+  color: #FFFFFF;
+  padding: 14px 24px;
+  text-align: center;
+  border-top: 1px solid #1A1A1A;
+  box-shadow: 0 -4px 12px -2px rgba(0,0,0,0.10);
+}
+.landing-sticky-cta-btn {
+  background: var(--primary, #6B46E5);
+  color: #FFFFFF;
+  padding: 12px 32px;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  border: 0;
+  cursor: pointer;
+  transition: background .15s, transform .15s;
+}
+.landing-sticky-cta-btn:hover {
+  background: var(--primary-hover, #5A38D1);
+  transform: translateY(-1px);
+}
+.landing-sticky-cta-btn:active {
+  transform: translateY(0);
+}
+.landing-sticky-cta-spacer {
+  height: 80px;
+}
+
 /* Footer (Spec D-Fix-20: 사업자 정보 추가) */
 .landing-footer {
   padding: 36px 24px 48px;
@@ -4599,6 +4643,16 @@ input.locked-by-env::placeholder {
     border-right: 0;
     border-top: 2px solid #1A1A1A;
   }
+
+  /* sticky CTA 모바일 (Spec D-Fix-27 Stage B) */
+  .landing-sticky-cta { padding: 10px 16px; }
+  .landing-sticky-cta-btn {
+    padding: 10px 24px;
+    font-size: 14px;
+    width: 100%;
+    max-width: 320px;
+  }
+  .landing-sticky-cta-spacer { height: 70px; }
 
   /* 가격 비교 표 — 1 컬럼 + 셀 횡배치 (Spec D-Fix-21) */
   .landing-pricing { padding: 64px 20px; }

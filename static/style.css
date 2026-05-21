@@ -4407,12 +4407,12 @@ input.locked-by-env::placeholder {
   line-height: 1.6;
 }
 
-/* 캡처 갤러리 — 4열 균등 그리드 (Spec D-Fix-29 Stage A)
-   변경: 1fr:1.4fr 비대칭 → 4열 균등 / NightOff 강조 = 보더+그림자 보라 톤. */
+/* 캡처 갤러리 — 4열 grid (Spec D-Fix-29 Stage A 균등 → D-Fix-31 +15% 비대칭)
+   일반 3장 ~275px / NightOff ~316px / 41px 차이 — "아주 조금" 두각. */
 .landing-compare-gallery {
   margin-top: 40px;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: 1fr 1fr 1fr 1.15fr;
   gap: 20px;
   align-items: center;
 }
@@ -4431,7 +4431,8 @@ input.locked-by-env::placeholder {
   box-shadow: 0 12px 32px -8px rgba(107, 70, 229, 0.30);
 }
 
-/* PC 호버 scale (Spec D-Fix-29 Stage B) — 터치 디바이스 sticky hover 방지 */
+/* PC 호버 scale (Spec D-Fix-29 Stage B) — 터치 디바이스 sticky hover 방지
+   Spec D-Fix-31: 4번 NightOff 호버 시 우측 origin 분기 (페이지 밖 침범 안전망). */
 @media (hover: hover) and (pointer: fine) {
   .lc-capture:hover {
     transform: scale(1.6);
@@ -4440,6 +4441,9 @@ input.locked-by-env::placeholder {
   }
   .lc-capture-nightoff:hover {
     box-shadow: 0 20px 48px -12px rgba(107, 70, 229, 0.45);
+  }
+  .landing-compare-gallery .lc-capture:nth-child(4):hover {
+    transform-origin: right center;
   }
 }
 .lc-capture-label {
@@ -4507,16 +4511,17 @@ input.locked-by-env::placeholder {
   text-align: left;
   font-weight: 600;
 }
+/* NightOff 컬럼 — 보라 통일 (Spec D-Fix-31: 검정 → var(--primary)) */
 .ct-nightoff {
   background: #FAFAFA;
-  border-left: 2px solid #1A1A1A;
-  border-right: 2px solid #1A1A1A;
+  border-left: 2px solid var(--primary);
+  border-right: 2px solid var(--primary);
   font-weight: 700;
 }
 .ct-nightoff-header {
-  background: #1A1A1A;
+  background: var(--primary);
   color: #FFFFFF;
-  border-top: 3px solid #1A1A1A;
+  border-top: 3px solid var(--primary);
 }
 .ct-mark {
   font-size: 20px;
@@ -4657,7 +4662,7 @@ input.locked-by-env::placeholder {
   .ct-nightoff {
     border-left: 0;
     border-right: 0;
-    border-top: 2px solid #1A1A1A;
+    border-top: 2px solid var(--primary);
   }
 
   /* sticky CTA 모바일 (Spec D-Fix-27 Stage B / D-Fix-28b FAB) */

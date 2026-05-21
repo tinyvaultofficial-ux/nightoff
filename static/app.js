@@ -769,6 +769,8 @@ function renderLanding() {
   const COMPARE_ROWS = [
     { item: "풀 컬러 디자인", values: ["✅", "⚠️", "✅", "❌"],
       nightoffNote: "흑백 초안 (70%)" },
+    { item: "정렬 (행과 열)", values: ["❌", "❌", "❌", "⚠️"],
+      nightoffNote: "조정 필요" },
     { item: "구체적 표현", values: ["❌", "❌", "❌", "✅"] },
     { item: "편집 가능한 PPTX", values: ["💰", "❌", "✅", "✅"] },
     { item: "RFP 심층 분석", values: ["⚠️", "❌", "❌", "✅"] },
@@ -826,7 +828,7 @@ function renderLanding() {
         ]),
       ]),
 
-      // 비교 표 — 7 행 × 5 컬럼 (D-Fix-21 가격 표 패턴 정합)
+      // 비교 표 — 8 행 × 5 컬럼 (Spec D-Fix-32: 정렬 행 신규 / D-Fix-21 패턴 정합)
       h("div", { class: "compare-table" }, [
         // 헤더 행
         h("div", { class: "ct-cell ct-header ct-row-label" }, ""),

@@ -4115,21 +4115,21 @@ input.locked-by-env::placeholder {
   color: var(--fg-2);
   line-height: 1.4;
 }
-/* 4개 위치 (좌 2 / 우 2) */
-.landing-hero-bubble-tl { top: 8%;  left: -120px; }
-.landing-hero-bubble-tr { top: 8%;  right: -120px; }
-.landing-hero-bubble-bl { top: 50%; left: -120px; }
-.landing-hero-bubble-br { top: 50%; right: -120px; }
+/* 4개 위치 (좌 2 / 우 2) — Spec D-Fix-34b: 캡처 안 자리 정합 갱신 */
+.landing-hero-bubble-tl { top: 15%; left: -120px; }   /* ③ 새 과업 버튼 */
+.landing-hero-bubble-tr { top: 41%; right: -120px; }  /* ② 뉴스 줄 우측 끝 */
+.landing-hero-bubble-bl { top: 46%; left: -120px; }   /* ① D-7 카드 (★ 마스킹 회피) */
+.landing-hero-bubble-br { top: 47%; right: -120px; }  /* ④ 샘플 카드 */
 
-/* 화살표 (CSS triangle + line) */
+/* 화살표 (CSS triangle + line) — Spec D-Fix-34b: 자리별 길이 분기 */
 .landing-hero-bubble::before {
   content: "";
   position: absolute;
-  width: 30px;
   height: 2px;
   background: var(--primary);
   top: 50%;
   transform: translateY(-50%);
+  /* width / 위치 = 자리별 분기 */
 }
 .landing-hero-bubble::after {
   content: "";
@@ -4140,16 +4140,22 @@ input.locked-by-env::placeholder {
   top: 50%;
   transform: translateY(-50%);
 }
-/* 좌측 말풍선 (tl / bl): 화살표 우측 향함 */
-.landing-hero-bubble-tl::before,
-.landing-hero-bubble-bl::before { right: -30px; }
+/* 좌측 말풍선 (tl / bl) ::after 화살촉 색 — 우측 향함 */
 .landing-hero-bubble-tl::after,
-.landing-hero-bubble-bl::after  { right: -42px; border-left-color: var(--primary); }
-/* 우측 말풍선 (tr / br): 화살표 좌측 향함 */
-.landing-hero-bubble-tr::before,
-.landing-hero-bubble-br::before { left: -30px; }
+.landing-hero-bubble-bl::after { border-left-color: var(--primary); }
+/* 우측 말풍선 (tr / br) ::after 화살촉 색 — 좌측 향함 */
 .landing-hero-bubble-tr::after,
-.landing-hero-bubble-br::after  { left: -42px; border-right-color: var(--primary); }
+.landing-hero-bubble-br::after { border-right-color: var(--primary); }
+
+/* 자리별 화살표 길이 4종 분기 (Spec D-Fix-34b) */
+.landing-hero-bubble-tl::before { width: 75px;  right: -75px; }
+.landing-hero-bubble-tl::after  { right: -87px; }
+.landing-hero-bubble-bl::before { width: 200px; right: -200px; }
+.landing-hero-bubble-bl::after  { right: -212px; }
+.landing-hero-bubble-tr::before { width: 220px; left: -220px; }
+.landing-hero-bubble-tr::after  { left: -232px; }
+.landing-hero-bubble-br::before { width: 220px; left: -220px; }
+.landing-hero-bubble-br::after  { left: -232px; }
 
 /* 1279px 미만 (모바일 / 태블릿) — 말풍선 숨김 (PC 우선 정합) */
 @media (max-width: 1279px) {

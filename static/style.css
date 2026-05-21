@@ -4041,6 +4041,54 @@ input.locked-by-env::placeholder {
   display: flex; gap: 12px; justify-content: center;
   flex-wrap: wrap; align-items: center;
 }
+
+/* Hero 보강 (Spec D-Fix-33) — eyebrow + 부가 문구 + 대시보드 미리보기 */
+.landing-hero-eyebrow {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--primary);
+  letter-spacing: 0.02em;
+  margin: 0 0 16px;
+}
+.landing-hero-promise {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--fg);
+  margin: -32px 0 40px;
+  line-height: 1.5;
+}
+.landing-hero-preview {
+  margin: 60px auto 0;
+  max-width: 1100px;
+}
+.landing-hero-preview-frame {
+  background: #FFFFFF;
+  border: 1px solid var(--border, #E5E5E5);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 24px 60px -12px rgba(107, 70, 229, 0.20);
+}
+.landing-hero-preview-bar {
+  background: #F5F5F7;
+  padding: 12px 16px;
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--border, #E5E5E5);
+}
+.landing-hero-preview-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #D5D5D7;
+}
+.landing-hero-preview-dot:nth-child(1) { background: #FF5F57; }
+.landing-hero-preview-dot:nth-child(2) { background: #FEBC2E; }
+.landing-hero-preview-dot:nth-child(3) { background: #28C840; }
+.landing-hero-preview-img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
 .landing-cta-btn-secondary {
   background: #fff;
   border: 1px solid var(--border-strong);
@@ -4621,6 +4669,12 @@ input.locked-by-env::placeholder {
   .landing-hero-logo { height: 80px; margin-bottom: 28px; }
   .landing-hero-title { font-size: 38px; }
   .landing-hero-sub { font-size: 15px; }
+  /* Hero 보강 모바일 (Spec D-Fix-33) */
+  .landing-hero-eyebrow { font-size: 12px; margin-bottom: 12px; }
+  .landing-hero-promise { font-size: 14px; margin: -20px 0 28px; }
+  .landing-hero-preview { margin-top: 40px; max-width: calc(100% - 32px); }
+  .landing-hero-preview-bar { padding: 8px 12px; }
+  .landing-hero-preview-dot { width: 8px; height: 8px; }
   .landing-trust-grid { grid-template-columns: 1fr; }
   .landing-features-grid { grid-template-columns: 1fr; }
 

@@ -5937,11 +5937,11 @@ async function runMultiPassProposal({ convId, pages, asstEl, bubble, progress, b
     const pptxResp = await api.post("/api/proposals/pptx", { conversation_id: convId }, { timeoutMs: 180000 });
     // Phase 5 Phase 2 Step 2 — anchor → button (인증 헤더 부착 위해 helper 경유).
     // innerHTML 로 button 렌더링 후 querySelector + addEventListener 로 onclick 부착.
+    // Spec D-Fix-45: "우측 미리보기에서 확인하세요" 안내 제거 (폐기 기능 자료)
     bubble.innerHTML =
       `<div style="line-height:1.6;">` +
         `<div style="font-weight:600;">✅ 제안서 ${totalSlides}장 + PPTX 변환 완료</div>` +
-        `<div class="muted small" style="margin-top:6px;">우측 미리보기에서 확인하세요 😊</div>` +
-        `<button class="pptx-dl-inline" style="display:inline-block; margin-top:8px; padding:8px 14px; background:#1A1A1A; color:#fff; border:none; border-radius:8px; font-weight:600; cursor:pointer; font-family:inherit; font-size:inherit;">⬇ PPTX 다운로드</button>` +
+        `<button class="pptx-dl-inline" style="display:inline-block; margin-top:12px; padding:8px 14px; background:#1A1A1A; color:#fff; border:none; border-radius:8px; font-weight:600; cursor:pointer; font-family:inherit; font-size:inherit;">⬇ PPTX 다운로드</button>` +
       `</div>`;
     const _dlBtn = bubble.querySelector(".pptx-dl-inline");
     if (_dlBtn) {

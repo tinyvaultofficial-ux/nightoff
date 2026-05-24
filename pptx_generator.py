@@ -1437,7 +1437,7 @@ def find_master_template(domain: Optional[str] = None) -> Optional[Path]:
 ################################################################################
 
 from pptx.enum.shapes import MSO_SHAPE, MSO_CONNECTOR
-from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+from pptx.enum.text import PP_ALIGN, MSO_ANCHOR, MSO_AUTO_SIZE
 from pptx.oxml.ns import qn
 
 
@@ -1500,6 +1500,10 @@ def _add_text(slide, x, y, w, h, text, *,
     box = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
     tf = box.text_frame
     tf.word_wrap = True
+    try:
+        tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_SHAPE_FIT  # D-Fix-AutoSize: 텍스트가 박스 넘치면 폰트 자동 축소 (넘침 방지)
+    except Exception:
+        pass
     tf.margin_left = Inches(0.04)
     tf.margin_right = Inches(0.04)
     tf.margin_top = Inches(0.04)     # Phase 4 — 본문 시각 여백 ↑ (옵션 1)

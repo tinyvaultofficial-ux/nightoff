@@ -1475,6 +1475,7 @@ orientation 엄격 규칙:
   "submission_format": "제출 형식 설명",
   "key_requirements": ["핵심 요구사항 5-8개 (과업 + 제안 요구사항 통합)"],
   "evaluation_criteria": [{"item": "평가항목", "weight": "배점"}],
+  "proposal_outline_items": ["RFP에 제안서 작성 항목/목차가 명시된 경우 그 항목명을 순서대로. 없으면 빈 배열 [] (Spec D-Fix-Weight)"],
   "deliverables": ["산출물 목록"],
   "pt_schedule": "PT/심사 일정 텍스트",
   "risk_points": ["리스크/주의사항 3-5개"],

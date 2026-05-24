@@ -1924,6 +1924,66 @@ def render_shape_to_slide(slide, shape_def):
     return None
 
 
+def _build_preset_quantitative_emphasis(slide_data: dict) -> list:
+    """Spec D-Fix-Preset1 — 정량 강조(큰 숫자) 레이아웃 프리셋.
+
+    slide_data["metrics"] = [{"value": "50억", "label": "총 예산"}, ...] (1~3개).
+    반환 = render_shape_to_slide 가 처리하는 JSON 도형 리스트 (type/x/y/w/h/text/...).
+    형식 오류 / 데이터 없음 시 빈 리스트 (호출부 try/except 와 별개 안전망).
+
+    좌표 설계 (A4 가로 11.69 × 8.27 인치):
+      · 상단 분리선 y=2.5 (강조)
+      · 큰 숫자 1~3개: y=2.8~5.0, size 90~120pt, 중앙·균등 배치
+      · 라벨: 숫자 바로 아래 y=5.1, 18pt, 회색
+    """
+    metrics = slide_data.get("metrics") or []
+    if not isinstance(metrics, list) or not metrics:
+        return []
+    valid: list = []
+    for m in metrics:
+        if not isinstance(m, dict):
+            continue
+        v = str(m.get("value", "")).strip()
+        lab = str(m.get("label", "")).strip()
+        if v:
+            valid.append((v, lab))
+        if len(valid) >= 3:
+            break
+    if not valid:
+        return []
+
+    n = len(valid)
+    if n == 1:
+        positions = [(4.0, 3.7, 120)]
+    elif n == 2:
+        positions = [(1.3, 4.4, 100), (6.0, 4.4, 100)]
+    else:  # 3
+        positions = [(0.9, 3.3, 90), (4.2, 3.3, 90), (7.5, 3.3, 90)]
+
+    shapes: list = [{
+        "type": "line",
+        "x1": 0.9, "y1": 2.5, "x2": 10.8, "y2": 2.5,
+        "color": "#1A1A1A", "width": 1.5,
+    }]
+    for (x, w, size), (val, lab) in zip(positions, valid):
+        shapes.append({
+            "type": "text",
+            "x": x, "y": 2.8, "w": w, "h": 2.2,
+            "text": val,
+            "size": size, "weight": 900, "color": "#1A1A1A",
+            "align": "center", "valign": "middle",
+        })
+        if lab:
+            shapes.append({
+                "type": "text",
+                "x": x, "y": 5.1, "w": w, "h": 0.6,
+                "text": lab,
+                "size": 18, "weight": 500, "color": "#666",
+                "align": "center", "valign": "top",
+            })
+    return shapes
+
+
 def generate_from_shape_json(json_data, output_path):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -1970,7 +2030,16 @@ def generate_from_shape_json(json_data, output_path):
             prs.slides.add_slide(blank_layout)
             continue
         slide = prs.slides.add_slide(blank_layout)
-        shapes = slide_data.get("shapes", [])
+        # Spec D-Fix-Preset1 — 옵트인 레이아웃 프리셋 (preset 키 없으면 현행 / 실패 시 AI 좌표 fallback)
+        preset_name = slide_data.get("preset")
+        if preset_name == "quantitative":
+            try:
+                preset_shapes = _build_preset_quantitative_emphasis(slide_data)
+                shapes = preset_shapes + (slide_data.get("shapes") or [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        else:
+            shapes = slide_data.get("shapes", [])
         if not isinstance(shapes, list):
             errors_total.append("slide" + str(slide_idx) + ": shapes not list")
             continue

@@ -1984,6 +1984,71 @@ def _build_preset_quantitative_emphasis(slide_data: dict) -> list:
     return shapes
 
 
+def _build_preset_horizontal_process(slide_data: dict) -> list:
+    """Spec D-Fix-Preset2 — 가로 프로세스(추진 절차/운영 흐름) 레이아웃 프리셋.
+
+    slide_data["steps"] = [{"label": "분석", "desc": "현황 진단" (선택)}, ...] (3~7개).
+    반환 = render_shape_to_slide 가 처리하는 JSON 도형 리스트 (chevron + 선택 desc text).
+    형식 오류 / 데이터 없음 / 단계 수 3~7 밖 → 빈 리스트 (호출부 try/except 와 별개 안전망).
+
+    좌표 설계 (A4 가로 11.69 × 8.27 / 좌우 여백 0.9 / 본문 폭 9.89):
+      · chevron 가로 균등 배치 (단계 수에 따라 box_w 자동 계산)
+      · gap = 0.1 (n<=5) / 0.05 (n=6~7)
+      · box_y = 3.5 / box_h = 1.2
+      · 통일 흰 fill + 검정 stroke 1.5pt + label 14pt 700weight
+      · desc 있으면 chevron 아래 11pt 회색 (y=4.9, h=1.3)
+
+    ⚠ chevron 은 auto_size 미적용 (텍스트 박스 전용) — label 짧게 강제 권장
+       (3단계 5~10자 / 5단계 4~6자 / 7단계 2~4자).
+    """
+    steps = slide_data.get("steps") or []
+    if not isinstance(steps, list):
+        return []
+    valid: list = []
+    for s in steps:
+        if not isinstance(s, dict):
+            continue
+        label = str(s.get("label", "")).strip()
+        desc = str(s.get("desc", "")).strip()
+        if label:
+            valid.append((label, desc))
+    n = len(valid)
+    if n < 3 or n > 7:
+        return []
+
+    margin = 0.9
+    gap = 0.1 if n <= 5 else 0.05
+    inner_w = 11.69 - 2 * margin
+    box_w = (inner_w - gap * (n - 1)) / n
+    box_h = 1.2
+    box_y = 3.5
+
+    shapes: list = []
+    for i, (label, desc) in enumerate(valid):
+        x = margin + i * (box_w + gap)
+        shapes.append({
+            "type": "chevron",
+            "x": x, "y": box_y, "w": box_w, "h": box_h,
+            "fill": "#FFFFFF",
+            "stroke": "#1A1A1A",
+            "stroke_width": 1.5,
+            "text": label,
+            "text_color": "#1A1A1A",
+            "text_size": 14,
+            "text_weight": 700,
+            "text_align": "center",
+        })
+        if desc:
+            shapes.append({
+                "type": "text",
+                "x": x, "y": 4.9, "w": box_w, "h": 1.3,
+                "text": desc,
+                "size": 11, "weight": 400, "color": "#666",
+                "align": "center", "valign": "top",
+            })
+    return shapes
+
+
 def generate_from_shape_json(json_data, output_path):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -2035,6 +2100,12 @@ def generate_from_shape_json(json_data, output_path):
         if preset_name == "quantitative":
             try:
                 preset_shapes = _build_preset_quantitative_emphasis(slide_data)
+                shapes = preset_shapes + (slide_data.get("shapes") or [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "process":
+            try:
+                preset_shapes = _build_preset_horizontal_process(slide_data)
                 shapes = preset_shapes + (slide_data.get("shapes") or [])
             except Exception:
                 shapes = slide_data.get("shapes", [])

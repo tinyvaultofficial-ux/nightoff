@@ -1266,6 +1266,8 @@ callout 박스 | callout      | 2~3.5 × 1~1.5인치      | stroke #1A1A1A
 1) AS-IS / TO-BE 비교 — 좌우 2 단 + 가운데 화살표. 적용: 문제→해결, 변화 전후
 2) 3-4 카드 동등 비교 — 가로 등분, 카드 = 헤더 + 본문 + 결론. 적용: 차별점, 평행 분류
 3) 단계별 프로세스 (가로 흐름) — 단계 5-7 개, 박스 + 화살표. 적용: 추진 절차, 운영 흐름
+   ★ 프리셋 옵션 (Spec D-Fix-Preset2): 본 패턴은 slide_data 출력 시 preset='process' + steps=[{label, desc(선택)}] (3~7개) 형식 사용 가능 — 코드가 chevron 을 가로 균등 정렬 (옵트인 / preset 미지정 시 기존 자율 그대로). 예: {"preset": "process", "steps": [{"label": "분석", "desc": "현황 진단"}, {"label": "기획", "desc": "전략 수립"}, {"label": "실행", "desc": "단계별 추진"}]}
+   ⚠ chevron label은 짧게 (3단계 5~10자 / 5단계 4~6자 / 7단계 2~4자) — 길면 잘림 (chevron auto_size 미적용).
 4) 수직 타임라인 — 좌측 시간/단계 + 우측 상세, 단계 4-6 개. 적용: 일정, 마일스톤
 5) 2x2 매트릭스 / 사분면 — 2 축 분류, 사분면별 텍스트. 적용: SWOT, 포지셔닝
 6) Before / After 점층 카드 — 카드 안 Before → After. 적용: 도입 효과, 개선 사례

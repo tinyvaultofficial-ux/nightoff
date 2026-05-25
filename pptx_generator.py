@@ -2140,6 +2140,72 @@ def _build_preset_two_column(slide_data: dict) -> list:
     return shapes
 
 
+def _build_preset_narrative(slide_data: dict) -> list:
+    """Spec D-Fix-Preset4 — 내러티브 흐름형(시장분석·인사이트·논리 전개) 레이아웃 프리셋.
+
+    도식 없이 텍스트 위계로 흐름을 보여주는 단순 3슬롯 구조.
+    slide_data["quote"]      = "큰 인용 문구"               (필수)
+    slide_data["flow"]       = ["흐름 설명1", "흐름 설명2", ...] (선택 / 1~3개)
+    slide_data["conclusion"] = "결론 강조 문구"             (선택)
+    반환 = render_shape_to_slide 가 처리하는 JSON 도형 리스트
+           (인용 text + 흐름 text 1~3 + 결론 rect + 결론 text).
+    quote 없음 / 모든 슬롯 빈 값 → 빈 리스트 (호출부 try/except 와 별개 안전망).
+
+    좌표 설계 (A4 가로 11.69 × 8.27 / 좌우 여백 0.9 / 본문 폭 9.89):
+      · 인용 (필수)   : x=0.9 y=1.8 w=9.89 h=1.6 / 30pt 700w 검정 center
+      · 흐름 (1~3개) : x=0.9 w=9.89 h=0.7 / 15pt 400w #555 center
+                       y = 3.8, 4.7, 5.6 (각 0.9 간격)
+      · 결론 (선택)  : rect x=2.4 y=6.5 w=6.89 h=0.9 흰 fill 검정 stroke 1.5pt
+                       + text 같은 자리 19pt 700w center
+      · 모든 텍스트 _add_text 거침 → auto_size 자동 적용 (넘침 방지).
+    """
+    quote = str(slide_data.get("quote", "")).strip()
+    flow_raw = slide_data.get("flow") or []
+    if not isinstance(flow_raw, list):
+        flow_raw = []
+    flow = [str(f).strip() for f in flow_raw if str(f).strip()][:3]
+    conclusion = str(slide_data.get("conclusion", "")).strip()
+
+    if not quote:
+        return []
+
+    shapes: list = []
+    # 큰 인용 (필수)
+    shapes.append({
+        "type": "text",
+        "x": 0.9, "y": 1.8, "w": 9.89, "h": 1.6,
+        "text": quote,
+        "size": 30, "weight": 700, "color": "#1A1A1A",
+        "align": "center", "valign": "middle",
+    })
+    # 흐름 설명 (선택 / 최대 3개)
+    for i, line in enumerate(flow):
+        shapes.append({
+            "type": "text",
+            "x": 0.9, "y": 3.8 + i * 0.9, "w": 9.89, "h": 0.7,
+            "text": line,
+            "size": 15, "weight": 400, "color": "#555555",
+            "align": "center", "valign": "middle",
+        })
+    # 결론 강조 박스 (선택)
+    if conclusion:
+        shapes.append({
+            "type": "rect",
+            "x": 2.4, "y": 6.5, "w": 6.89, "h": 0.9,
+            "fill": "#FFFFFF",
+            "stroke": "#1A1A1A",
+            "stroke_width": 1.5,
+        })
+        shapes.append({
+            "type": "text",
+            "x": 2.4, "y": 6.5, "w": 6.89, "h": 0.9,
+            "text": conclusion,
+            "size": 19, "weight": 700, "color": "#1A1A1A",
+            "align": "center", "valign": "middle",
+        })
+    return shapes
+
+
 def generate_from_shape_json(json_data, output_path):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -2203,6 +2269,12 @@ def generate_from_shape_json(json_data, output_path):
         elif preset_name == "two_column":
             try:
                 preset_shapes = _build_preset_two_column(slide_data)
+                shapes = preset_shapes + (slide_data.get("shapes") or [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "narrative":
+            try:
+                preset_shapes = _build_preset_narrative(slide_data)
                 shapes = preset_shapes + (slide_data.get("shapes") or [])
             except Exception:
                 shapes = slide_data.get("shapes", [])

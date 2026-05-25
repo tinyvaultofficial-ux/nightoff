@@ -1264,6 +1264,7 @@ callout 박스 | callout      | 2~3.5 × 1~1.5인치      | stroke #1A1A1A
 콘텐츠 본질에 맞는 구조를 선택하라. 단순 박스 나열을 모든 슬라이드에 반복하지 마라.
 
 1) AS-IS / TO-BE 비교 — 좌우 2 단 + 가운데 화살표. 적용: 문제→해결, 변화 전후
+   ★ 프리셋 옵션 (Spec D-Fix-Preset3): 본 패턴은 slide_data 출력 시 preset='two_column' + columns=[{title, items[]}, {title, items[]}] (정확히 2개 / 좌=AS-IS / 우=TO-BE) 형식 사용 가능 — 코드가 좌우 패널 + 중앙 화살표를 안정 배치 (옵트인 / preset 미지정 시 기존 자율 그대로). 예: {"preset": "two_column", "columns": [{"title": "AS-IS", "items": ["일방 전달", "단기 이벤트"]}, {"title": "TO-BE", "items": ["양방향 참여", "지속 거버넌스"]}]}
 2) 3-4 카드 동등 비교 — 가로 등분, 카드 = 헤더 + 본문 + 결론. 적용: 차별점, 평행 분류
 3) 단계별 프로세스 (가로 흐름) — 단계 5-7 개, 박스 + 화살표. 적용: 추진 절차, 운영 흐름
    ★ 프리셋 옵션 (Spec D-Fix-Preset2): 본 패턴은 slide_data 출력 시 preset='process' + steps=[{label, desc(선택)}] (3~7개) 형식 사용 가능 — 코드가 chevron 을 가로 균등 정렬 (옵트인 / preset 미지정 시 기존 자율 그대로). 예: {"preset": "process", "steps": [{"label": "분석", "desc": "현황 진단"}, {"label": "기획", "desc": "전략 수립"}, {"label": "실행", "desc": "단계별 추진"}]}
@@ -1276,6 +1277,7 @@ callout 박스 | callout      | 2~3.5 × 1~1.5인치      | stroke #1A1A1A
 9) 정량 데이터 강조 — 큰 숫자 (Black 80pt+) + 라벨. 적용: 통계, 성과, KPI
    ★ 프리셋 옵션 (Spec D-Fix-Preset1): 본 패턴은 slide_data 출력 시 preset='quantitative' + metrics=[{value, label}] (1~3개) 형식 사용 가능 — 코드가 큰 숫자 좌표를 안정 배치 (옵트인 / preset 미지정 시 기존 자율 그대로). 예: {"preset": "quantitative", "metrics": [{"value": "50억", "label": "총 예산"}, {"value": "5만 명", "label": "예상 참여"}]}
 10) 핵심 메시지 단일 — 슬라이드 중앙 짧은 메시지, 충분한 여백. 적용: 챕터 마지막, 강조 선언
+   ★ 프리셋 옵션 (Spec D-Fix-Preset4 / 내러티브 흐름형): 시장분석·인사이트·논리 전개(도식 없이 텍스트 위계로 흐름) 페이지는 slide_data 출력 시 preset='narrative' + quote(큰 인용 / 필수) + flow(흐름 설명 1~3개 / 선택) + conclusion(결론 / 선택) 형식 사용 가능 — 코드가 인용·흐름·결론을 세로 위계로 안정 배치 (옵트인 / preset 미지정 시 기존 자율 그대로). 예: {"preset": "narrative", "quote": "한국이 여행 보낼 만한 곳인가", "flow": ["글로벌 관광객 인식 변화", "K-콘텐츠 영향력 확대"], "conclusion": "지금이 도시 브랜딩의 기회"}
 11) 컨셉 슬로건 페이지 — 거대 슬로건 + 부제 1~2줄, 도형 3~5 (슬로건·부제·메타·페이지번호만 / 시각 강조 도형 추가 X, D-Fix-Hero2). 적용: 컨셉 페이지 첫 장.
     ★ 슬로건 폰트 size 동적 매핑 (슬라이드 가로 11.69 인치 초과 절대 방지):
       · 한글 슬로건 (콘셉트 슬로건은 한글만 — 영문 병기 금지, Spec D-Fix-Hero):

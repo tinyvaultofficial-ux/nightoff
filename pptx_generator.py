@@ -2049,6 +2049,163 @@ def _build_preset_horizontal_process(slide_data: dict) -> list:
     return shapes
 
 
+def _build_preset_two_column(slide_data: dict) -> list:
+    """Spec D-Fix-Preset3 — 2분할(AS-IS/TO-BE / 현재→개선 / 문제→해결) 레이아웃 프리셋.
+
+    slide_data["columns"] = [
+      {"title": "AS-IS", "items": ["현재 상태 1", "현재 상태 2", ...]},
+      {"title": "TO-BE", "items": ["개선 결과 1", "개선 결과 2", ...]}
+    ] (정확히 2개 / 좌=AS-IS / 우=TO-BE).
+    반환 = render_shape_to_slide 가 처리하는 JSON 도형 리스트
+           (좌우 rect + 제목 text + 항목 text + 중앙 block_arrow).
+    형식 오류 / columns 2개 아님 / 빈 데이터 → 빈 리스트 (호출부 try/except 와 별개 안전망).
+
+    좌표 설계 (A4 가로 11.69 × 8.27 / 좌우 여백 0.9 / 본문 폭 9.89):
+      · 중앙 화살표 자리 1.0 / panel_w = (9.89 - 1.0) / 2 = 4.445
+      · 좌 패널 x=0.9 / 우 패널 x=6.345 / panel_y=2.8 / panel_h=4.0
+      · 좌 = 흰 fill + 회색 stroke (#999) / 우 = 흰 fill + 검정 stroke (#1A1A1A 강조)
+      · 제목 18pt 700w / 항목 13pt 400w (auto_size 적용 — 넘침 방지)
+      · 중앙 block_arrow (x=5.35 y=4.4 w=1.0 h=0.8 / 검정 fill + 흰 글자 "→")
+    """
+    columns = slide_data.get("columns") or []
+    if not isinstance(columns, list) or len(columns) != 2:
+        return []
+    parsed: list = []
+    for c in columns:
+        if not isinstance(c, dict):
+            return []
+        title = str(c.get("title", "")).strip()
+        items_raw = c.get("items") or []
+        if not isinstance(items_raw, list):
+            items_raw = []
+        items = [str(i).strip() for i in items_raw if str(i).strip()]
+        parsed.append((title, items))
+    if not any(t or its for t, its in parsed):
+        return []
+
+    margin = 0.9
+    center_gap = 1.0
+    panel_w = (11.69 - 2 * margin - center_gap) / 2
+    panel_h = 4.0
+    panel_y = 2.8
+    left_x = margin
+    right_x = margin + panel_w + center_gap
+
+    shapes: list = []
+    panel_styles = [
+        {"x": left_x,  "stroke": "#999999", "stroke_width": 1.0},
+        {"x": right_x, "stroke": "#1A1A1A", "stroke_width": 1.5},
+    ]
+    for (title, items), style in zip(parsed, panel_styles):
+        x = style["x"]
+        # 패널 사각형
+        shapes.append({
+            "type": "rect",
+            "x": x, "y": panel_y, "w": panel_w, "h": panel_h,
+            "fill": "#FFFFFF",
+            "stroke": style["stroke"],
+            "stroke_width": style["stroke_width"],
+        })
+        # 제목
+        if title:
+            shapes.append({
+                "type": "text",
+                "x": x + 0.2, "y": panel_y + 0.15, "w": panel_w - 0.4, "h": 0.5,
+                "text": title,
+                "size": 18, "weight": 700, "color": "#1A1A1A",
+                "align": "left", "valign": "top",
+            })
+        # 항목 리스트 (한 텍스트 박스에 줄바꿈 — auto_size 자동 적용)
+        if items:
+            body = "\n".join("· " + it for it in items)
+            shapes.append({
+                "type": "text",
+                "x": x + 0.2, "y": panel_y + 0.85, "w": panel_w - 0.4, "h": panel_h - 1.05,
+                "text": body,
+                "size": 13, "weight": 400, "color": "#1A1A1A",
+                "align": "left", "valign": "top",
+            })
+
+    # 중앙 block_arrow (좌 → 우 전환)
+    shapes.append({
+        "type": "block_arrow",
+        "x": left_x + panel_w + 0.05, "y": panel_y + (panel_h - 0.8) / 2,
+        "w": center_gap - 0.1, "h": 0.8,
+        "fill": "#1A1A1A",
+        "text": "→",
+        "text_color": "#FFFFFF",
+        "text_size": 20,
+        "text_weight": 700,
+    })
+    return shapes
+
+
+def _build_preset_narrative(slide_data: dict) -> list:
+    """Spec D-Fix-Preset4 — 내러티브 흐름형(시장분석·인사이트·논리 전개) 레이아웃 프리셋.
+
+    도식 없이 텍스트 위계로 흐름을 보여주는 단순 3슬롯 구조.
+    slide_data["quote"]      = "큰 인용 문구"               (필수)
+    slide_data["flow"]       = ["흐름 설명1", "흐름 설명2", ...] (선택 / 1~3개)
+    slide_data["conclusion"] = "결론 강조 문구"             (선택)
+    반환 = render_shape_to_slide 가 처리하는 JSON 도형 리스트
+           (인용 text + 흐름 text 1~3 + 결론 rect + 결론 text).
+    quote 없음 / 모든 슬롯 빈 값 → 빈 리스트 (호출부 try/except 와 별개 안전망).
+
+    좌표 설계 (A4 가로 11.69 × 8.27 / 좌우 여백 0.9 / 본문 폭 9.89):
+      · 인용 (필수)   : x=0.9 y=1.8 w=9.89 h=1.6 / 30pt 700w 검정 center
+      · 흐름 (1~3개) : x=0.9 w=9.89 h=0.7 / 15pt 400w #555 center
+                       y = 3.8, 4.7, 5.6 (각 0.9 간격)
+      · 결론 (선택)  : rect x=2.4 y=6.5 w=6.89 h=0.9 흰 fill 검정 stroke 1.5pt
+                       + text 같은 자리 19pt 700w center
+      · 모든 텍스트 _add_text 거침 → auto_size 자동 적용 (넘침 방지).
+    """
+    quote = str(slide_data.get("quote", "")).strip()
+    flow_raw = slide_data.get("flow") or []
+    if not isinstance(flow_raw, list):
+        flow_raw = []
+    flow = [str(f).strip() for f in flow_raw if str(f).strip()][:3]
+    conclusion = str(slide_data.get("conclusion", "")).strip()
+
+    if not quote:
+        return []
+
+    shapes: list = []
+    # 큰 인용 (필수)
+    shapes.append({
+        "type": "text",
+        "x": 0.9, "y": 1.8, "w": 9.89, "h": 1.6,
+        "text": quote,
+        "size": 30, "weight": 700, "color": "#1A1A1A",
+        "align": "center", "valign": "middle",
+    })
+    # 흐름 설명 (선택 / 최대 3개)
+    for i, line in enumerate(flow):
+        shapes.append({
+            "type": "text",
+            "x": 0.9, "y": 3.8 + i * 0.9, "w": 9.89, "h": 0.7,
+            "text": line,
+            "size": 15, "weight": 400, "color": "#555555",
+            "align": "center", "valign": "middle",
+        })
+    # 결론 강조 박스 (선택)
+    if conclusion:
+        shapes.append({
+            "type": "rect",
+            "x": 2.4, "y": 6.5, "w": 6.89, "h": 0.9,
+            "fill": "#FFFFFF",
+            "stroke": "#1A1A1A",
+            "stroke_width": 1.5,
+        })
+        shapes.append({
+            "type": "text",
+            "x": 2.4, "y": 6.5, "w": 6.89, "h": 0.9,
+            "text": conclusion,
+            "size": 19, "weight": 700, "color": "#1A1A1A",
+            "align": "center", "valign": "middle",
+        })
+    return shapes
+
+
 def generate_from_shape_json(json_data, output_path):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -2106,6 +2263,18 @@ def generate_from_shape_json(json_data, output_path):
         elif preset_name == "process":
             try:
                 preset_shapes = _build_preset_horizontal_process(slide_data)
+                shapes = preset_shapes + (slide_data.get("shapes") or [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "two_column":
+            try:
+                preset_shapes = _build_preset_two_column(slide_data)
+                shapes = preset_shapes + (slide_data.get("shapes") or [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "narrative":
+            try:
+                preset_shapes = _build_preset_narrative(slide_data)
                 shapes = preset_shapes + (slide_data.get("shapes") or [])
             except Exception:
                 shapes = slide_data.get("shapes", [])

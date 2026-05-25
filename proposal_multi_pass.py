@@ -1264,6 +1264,7 @@ callout 박스 | callout      | 2~3.5 × 1~1.5인치      | stroke #1A1A1A
 콘텐츠 본질에 맞는 구조를 선택하라. 단순 박스 나열을 모든 슬라이드에 반복하지 마라.
 
 1) AS-IS / TO-BE 비교 — 좌우 2 단 + 가운데 화살표. 적용: 문제→해결, 변화 전후
+   ★ 프리셋 옵션 (Spec D-Fix-Preset3): 본 패턴은 slide_data 출력 시 preset='two_column' + columns=[{title, items[]}, {title, items[]}] (정확히 2개 / 좌=AS-IS / 우=TO-BE) 형식 사용 가능 — 코드가 좌우 패널 + 중앙 화살표를 안정 배치 (옵트인 / preset 미지정 시 기존 자율 그대로). 예: {"preset": "two_column", "columns": [{"title": "AS-IS", "items": ["일방 전달", "단기 이벤트"]}, {"title": "TO-BE", "items": ["양방향 참여", "지속 거버넌스"]}]}
 2) 3-4 카드 동등 비교 — 가로 등분, 카드 = 헤더 + 본문 + 결론. 적용: 차별점, 평행 분류
 3) 단계별 프로세스 (가로 흐름) — 단계 5-7 개, 박스 + 화살표. 적용: 추진 절차, 운영 흐름
    ★ 프리셋 옵션 (Spec D-Fix-Preset2): 본 패턴은 slide_data 출력 시 preset='process' + steps=[{label, desc(선택)}] (3~7개) 형식 사용 가능 — 코드가 chevron 을 가로 균등 정렬 (옵트인 / preset 미지정 시 기존 자율 그대로). 예: {"preset": "process", "steps": [{"label": "분석", "desc": "현황 진단"}, {"label": "기획", "desc": "전략 수립"}, {"label": "실행", "desc": "단계별 추진"}]}

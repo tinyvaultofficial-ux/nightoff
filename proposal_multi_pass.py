@@ -1286,6 +1286,13 @@ callout 박스 | callout      | 2~3.5 × 1~1.5인치      | stroke #1A1A1A
    ★ 프리셋 옵션 (Spec D-Fix-Preset1): 본 패턴은 slide_data 출력 시 preset='quantitative' + metrics=[{value, label}] (1~3개) 형식 사용 가능 — 코드가 큰 숫자 좌표를 안정 배치 (옵트인 / preset 미지정 시 기존 자율 그대로). 예: {"preset": "quantitative", "metrics": [{"value": "50억", "label": "총 예산"}, {"value": "5만 명", "label": "예상 참여"}]}
 10) 핵심 메시지 단일 — 슬라이드 중앙 짧은 메시지, 충분한 여백. 적용: 챕터 마지막, 강조 선언
    ★ 프리셋 옵션 (Spec D-Fix-Preset4 / 내러티브 흐름형): 시장분석·인사이트·논리 전개(도식 없이 텍스트 위계로 흐름) 페이지는 slide_data 출력 시 preset='narrative' + quote(큰 인용 / 필수) + flow(흐름 설명 1~3개 / 선택) + conclusion(결론 / 선택) 형식 사용 가능 — 코드가 인용·흐름·결론을 세로 위계로 안정 배치 (옵트인 / preset 미지정 시 기존 자율 그대로). 예: {"preset": "narrative", "quote": "한국이 여행 보낼 만한 곳인가", "flow": ["글로벌 관광객 인식 변화", "K-콘텐츠 영향력 확대"], "conclusion": "지금이 도시 브랜딩의 기회"}
+   ★ narrative style 5종 (Spec D-Fix-Preset5 / 도식 없이 텍스트 위계로 입체감):
+      · style:'quote' (기본 / 생략 가능) — 인용 + 흐름 + 결론 (시장분석·인사이트)
+      · style:'declaration' — 큰 선언 + 근거 2~3개 (핵심 전략 선언) / 키: declaration, grounds[]
+      · style:'qa' — 질문 + 답변 1~3개 (논리 전개·설득) / 키: question, answers[]
+      · style:'emphasis' — 소제목 + 본문 + 핵심 강조 (배경·맥락 설명) / 키: subtitle, body, highlight
+      · style:'contrast' — "A가 아니라 B" 대비 (컨셉·차별점 강조) / 키: not_this, but_this
+      ⚠ 한 제안서에 텍스트 위계 페이지가 과하면 단조로움 — 도식 프리셋(정량/프로세스/2분할)과 섞을 것.
 11) 컨셉 슬로건 페이지 — 거대 슬로건 + 부제 1~2줄, 도형 3~5 (슬로건·부제·메타·페이지번호만 / 시각 강조 도형 추가 X, D-Fix-Hero2). 적용: 컨셉 페이지 첫 장.
     ★ 슬로건 폰트 size 동적 매핑 (슬라이드 가로 11.69 인치 초과 절대 방지):
       · 한글 슬로건 (콘셉트 슬로건은 한글만 — 영문 병기 금지, Spec D-Fix-Hero):

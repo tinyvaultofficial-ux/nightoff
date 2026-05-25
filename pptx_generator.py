@@ -2158,7 +2158,24 @@ def _build_preset_narrative(slide_data: dict) -> list:
       · 결론 (선택)  : rect x=2.4 y=6.5 w=6.89 h=0.9 흰 fill 검정 stroke 1.5pt
                        + text 같은 자리 19pt 700w center
       · 모든 텍스트 _add_text 거침 → auto_size 자동 적용 (넘침 방지).
+
+    Spec D-Fix-Preset5 — style 분기 추가:
+      · "quote" (기본) → 인용 + 흐름 + 결론 (아래 로직 / D-Fix-Preset4 보존)
+      · "declaration" → 큰 선언 + 근거 2~3개
+      · "qa"          → 질문 + 답변 1~3
+      · "emphasis"    → 소제목 + 본문 + 핵심 강조
+      · "contrast"    → "A가 아니라 B" 대비
     """
+    style = str(slide_data.get("style", "quote")).strip().lower()
+    if style == "declaration":
+        return _narrative_declaration(slide_data)
+    if style == "qa":
+        return _narrative_qa(slide_data)
+    if style == "emphasis":
+        return _narrative_emphasis(slide_data)
+    if style == "contrast":
+        return _narrative_contrast(slide_data)
+    # style == "quote" 또는 미지정 → 기존 로직 그대로 (D-Fix-Preset4 보존)
     quote = str(slide_data.get("quote", "")).strip()
     flow_raw = slide_data.get("flow") or []
     if not isinstance(flow_raw, list):
@@ -2203,6 +2220,120 @@ def _build_preset_narrative(slide_data: dict) -> list:
             "size": 19, "weight": 700, "color": "#1A1A1A",
             "align": "center", "valign": "middle",
         })
+    return shapes
+
+
+def _narrative_declaration(slide_data: dict) -> list:
+    """D-Fix-Preset5 narrative style=declaration — 큰 선언 + 근거 2~3개."""
+    declaration = str(slide_data.get("declaration", "")).strip()
+    grounds_raw = slide_data.get("grounds") or []
+    if not isinstance(grounds_raw, list):
+        grounds_raw = []
+    grounds = [str(g).strip() for g in grounds_raw if str(g).strip()][:3]
+    if not declaration:
+        return []
+    shapes: list = [{
+        "type": "text",
+        "x": 0.9, "y": 2.0, "w": 9.89, "h": 1.8,
+        "text": declaration,
+        "size": 32, "weight": 700, "color": "#1A1A1A",
+        "align": "center", "valign": "middle",
+    }]
+    for i, g in enumerate(grounds):
+        shapes.append({
+            "type": "text",
+            "x": 0.9, "y": 4.4 + i * 1.0, "w": 9.89, "h": 0.8,
+            "text": g,
+            "size": 16, "weight": 400, "color": "#444444",
+            "align": "center", "valign": "middle",
+        })
+    return shapes
+
+
+def _narrative_qa(slide_data: dict) -> list:
+    """D-Fix-Preset5 narrative style=qa — 질문 + 답변 1~3."""
+    question = str(slide_data.get("question", "")).strip()
+    answers_raw = slide_data.get("answers") or []
+    if not isinstance(answers_raw, list):
+        answers_raw = []
+    answers = [str(a).strip() for a in answers_raw if str(a).strip()][:3]
+    if not question:
+        return []
+    shapes: list = [{
+        "type": "text",
+        "x": 0.9, "y": 2.0, "w": 9.89, "h": 1.4,
+        "text": "Q. " + question,
+        "size": 28, "weight": 700, "color": "#1A1A1A",
+        "align": "center", "valign": "middle",
+    }]
+    for i, a in enumerate(answers):
+        shapes.append({
+            "type": "text",
+            "x": 0.9, "y": 4.0 + i * 0.9, "w": 9.89, "h": 0.8,
+            "text": a,
+            "size": 16, "weight": 400, "color": "#444444",
+            "align": "center", "valign": "middle",
+        })
+    return shapes
+
+
+def _narrative_emphasis(slide_data: dict) -> list:
+    """D-Fix-Preset5 narrative style=emphasis — 소제목 + 본문 + 핵심 강조."""
+    subtitle = str(slide_data.get("subtitle", "")).strip()
+    body = str(slide_data.get("body", "")).strip()
+    highlight = str(slide_data.get("highlight", "")).strip()
+    if not (subtitle or body or highlight):
+        return []
+    shapes: list = []
+    if subtitle:
+        shapes.append({
+            "type": "text",
+            "x": 0.9, "y": 1.6, "w": 9.89, "h": 0.8,
+            "text": subtitle,
+            "size": 18, "weight": 700, "color": "#666666",
+            "align": "center", "valign": "middle",
+        })
+    if body:
+        shapes.append({
+            "type": "text",
+            "x": 0.9, "y": 2.6, "w": 9.89, "h": 2.5,
+            "text": body,
+            "size": 15, "weight": 400, "color": "#333333",
+            "align": "center", "valign": "top",
+        })
+    if highlight:
+        shapes.append({
+            "type": "text",
+            "x": 0.9, "y": 5.5, "w": 9.89, "h": 1.0,
+            "text": highlight,
+            "size": 24, "weight": 700, "color": "#1A1A1A",
+            "align": "center", "valign": "middle",
+        })
+    return shapes
+
+
+def _narrative_contrast(slide_data: dict) -> list:
+    """D-Fix-Preset5 narrative style=contrast — 'A가 아니라 B' 대비."""
+    not_this = str(slide_data.get("not_this", "")).strip()
+    but_this = str(slide_data.get("but_this", "")).strip()
+    if not but_this:
+        return []
+    shapes: list = []
+    if not_this:
+        shapes.append({
+            "type": "text",
+            "x": 0.9, "y": 2.8, "w": 9.89, "h": 1.0,
+            "text": not_this,
+            "size": 22, "weight": 400, "color": "#999999",
+            "align": "center", "valign": "middle",
+        })
+    shapes.append({
+        "type": "text",
+        "x": 0.9, "y": 4.2, "w": 9.89, "h": 1.6,
+        "text": but_this,
+        "size": 34, "weight": 700, "color": "#1A1A1A",
+        "align": "center", "valign": "middle",
+    })
     return shapes
 
 

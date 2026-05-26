@@ -3525,19 +3525,24 @@ async def api_proposals_generate_multipass(
         _verify_conv_owned_by_user(db, conv_id, user["id"])
         conv = db.execute("SELECT * FROM conversations WHERE id=?", (conv_id,)).fetchone()
         client_id = conv["client_id"]
-        # Phase 3 단계 3 — quota 검증 (제안서 생성 전).
-        # quota <= 0 이면 403 + QUOTA_EXCEEDED. 차감 영역 final_payload 영역 후 (성공 시만).
+        # Spec D-Fix-GenGuard — 사전 크레딧 검증:
+        # 기존 `prop_q <= 0` 은 "양수면 통과" 라 400 크레딧으로 50p(5000 필요) 생성되는 출혈 발생.
+        # 변경: 필요 크레딧(= pages × CREDITS_PER_PAGE) 이상이어야 통과.
+        # pages None (사용자 미선택) 시 보수 30p 로 계산 (OUTLINE 후 추가 검증은 별도 / 큰 구멍은 막힘).
         quota_row = db.execute(
             "SELECT monthly_proposal_quota FROM users WHERE id=?", (user["id"],)
         ).fetchone()
         prop_q = int(quota_row["monthly_proposal_quota"] or 0) if quota_row else 0
-        if prop_q <= 0:
+        required_pages = int(pages_override) if (isinstance(pages_override, int) and pages_override > 0) else 30
+        required = required_pages * CREDITS_PER_PAGE
+        if prop_q < required:
             raise HTTPException(
-                status_code=403,
+                status_code=402,
                 detail={
-                    "error": "이달 제안서 할당량 소진",
+                    "error": f"제안서 생성 크레딧이 부족해요 ({required} 크레딧 필요 / 현재 {prop_q}). 결제 후 다시 시도해 주세요.",
                     "code": "QUOTA_EXCEEDED",
-                    "quota_remaining": 0,
+                    "quota_remaining": prop_q,
+                    "required": required,
                 },
             )
     # company_name inject 제거 (한국 공공입찰 청렴제 — 본문 회사명 등장 비정상)
@@ -3545,6 +3550,15 @@ async def api_proposals_generate_multipass(
     # RFP 분석 결과만 추출 — multi-pass orchestrator 가 자체 OUTLINE/SLIDE 프롬프트 사용
     # multi-pass orchestrator 가 자체 OUTLINE/SLIDE 프롬프트 사용 — 별도 system_full 빌드 불필요
     rfp_analysis = _get_rfp_aggregated(client_id)
+    # Spec D-Fix-GenGuard — RFP 존재 가드 (None 또는 error 만 막음 / 빈 dict 는 통과 = 회귀 방지)
+    if rfp_analysis is None or (isinstance(rfp_analysis, dict) and rfp_analysis.get("error")):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "RFP 분석 결과가 없어요. RFP 를 먼저 업로드·분석한 뒤 제안서 생성을 시도해 주세요.",
+                "code": "RFP_NOT_FOUND",
+            },
+        )
 
     # RAG global 블록 (Phase 1 outline 호출용)
     rag_block_global = ""

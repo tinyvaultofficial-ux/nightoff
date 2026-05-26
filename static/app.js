@@ -5073,8 +5073,22 @@ async function renderChat(cid, convId) {
         signal: aborter.signal,
       });
       if (resp.status === 401) { clearToken(); redirectToLogin(); throw new Error("인증이 만료됐어요."); }
-      // Phase 4 (Step 3) — 대화는 무제한 → quota 403 / 차감 코드 모두 제거.
-      if (!resp.ok) throw new Error(await resp.text());
+      // D-Fix-ChatErr: 채팅 fetch 응답 에러 시 FastAPI HTTPException detail 객체에서 메시지 추출.
+      //   raw JSON 노출 방지 — GenGuard 패턴 + body.error.error 중첩 깊이 안전망 + 최종 fallback.
+      //   (CreditExt 채팅 20 크레딧 차감은 정상 작동 / 표시만 친근하게.)
+      if (!resp.ok) {
+        const text = await resp.text();
+        let body = null;
+        try { body = JSON.parse(text); } catch {}
+        const errMsg =
+          (body?.detail && typeof body.detail === "object" ? body.detail.error : null)
+          || (body?.error && typeof body.error === "object" ? body.error.error : null)
+          || (typeof body?.detail === "string" ? body.detail : null)
+          || (typeof body?.error === "string" ? body.error : null)
+          || text
+          || "잠시 문제가 생겼어요. 다시 시도해 주세요.";
+        throw new Error(typeof errMsg === "string" ? errMsg : "잠시 문제가 생겼어요. 다시 시도해 주세요.");
+      }
 
       const reader = resp.body.getReader();
       const dec = new TextDecoder();

@@ -4892,6 +4892,9 @@ async function renderChat(cid, convId) {
             asstEl.querySelector(".msg-body").insertBefore(progress.el, bubble);
             const body = msgs.parentElement || document.body;
             (async () => {
+              // D-Fix-UnloadWarn: 생성 중 이탈 시 브라우저 네이티브 경고 (실수 새로고침/이동 방어)
+              const _warnBeforeUnload = (e) => { e.preventDefault(); e.returnValue = ""; };
+              window.addEventListener("beforeunload", _warnBeforeUnload);
               try {
                 await runMultiPassProposal({ convId, pages: selectedPages, asstEl, bubble, progress, body, msgs });
               } catch (e) {
@@ -4909,6 +4912,9 @@ async function renderChat(cid, convId) {
                   else toast("✨ 버튼을 다시 눌러주세요", "error");
                 });
                 progress.finish(false);
+              } finally {
+                // D-Fix-UnloadWarn: 생성 종료(완료/에러/중단) 시 경고 해제
+                window.removeEventListener("beforeunload", _warnBeforeUnload);
               }
             })();
           }, pageLimit);

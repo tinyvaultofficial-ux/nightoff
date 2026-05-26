@@ -5873,20 +5873,36 @@ async def api_proposals_download(conv_id: str, user: dict = Depends(get_current_
             detail={"error": "잘못된 요청입니다", "code": "INVALID_PATH"},
         )
 
-    # 실제 파일 존재 확인
+    # 다운로드 파일명 — api_proposals_pptx 패턴 일관 ("{발주처}_제안서.pptx")
+    safe_client = _safe_filename(row["client_name"] or "제안서")
+    download_name = f"{safe_client}_제안서.pptx"
+
+    # 실제 파일 존재 확인 — 디스크 없으면 R2 영구 저장에서 스트림 (D-Fix-PptxR2)
     if not disk_path.is_file():
+        buf = None
+        try:
+            import r2_storage
+            buf = r2_storage.download_to_buffer(f"pptx/{conv_id[:8]}/{fname}")
+        except Exception as _e:
+            log.warning("R2 fallback 실패 (무시): %s", _e)
+            buf = None
+        if buf is not None:
+            from urllib.parse import quote
+            cd_name = quote(download_name)
+            log.info("PPTX download — R2 stream fallback: user=%s conv=%s", user["id"], conv_id)
+            return StreamingResponse(
+                buf,
+                media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                headers={"Content-Disposition": f"attachment; filename*=UTF-8''{cd_name}"},
+            )
         log.warning(
-            "PPTX download — 파일 미존재: user=%s conv=%s disk_path=%s",
+            "PPTX download — 파일 미존재 (디스크+R2): user=%s conv=%s disk_path=%s",
             user["id"], conv_id, disk_path,
         )
         raise HTTPException(
             status_code=404,
             detail={"error": "제안서 파일을 찾을 수 없습니다", "code": "PPTX_FILE_MISSING"},
         )
-
-    # 다운로드 파일명 — api_proposals_pptx 패턴 일관 ("{발주처}_제안서.pptx")
-    safe_client = _safe_filename(row["client_name"] or "제안서")
-    download_name = f"{safe_client}_제안서.pptx"
 
     return FileResponse(
         path=str(disk_path),
@@ -6564,6 +6580,12 @@ def api_proposals_pptx(body: PptxExportIn, user: dict = Depends(get_current_user
             import pptx_generator
             shape_result = pptx_generator.generate_from_shape_json(proposal_json, out_path)
             slide_count = shape_result.get("slide_count", 0)
+            # D-Fix-PptxR2: PPTX 를 R2 에 영구 업로드 (로컬도 보존 = 이중 안전망 / R2 실패해도 생성 안 깨짐)
+            try:
+                import r2_storage
+                r2_storage.upload_one(Path(out_path), f"pptx/{body.conversation_id[:8]}/{Path(out_path).name}")
+            except Exception as _e:
+                log.warning("R2 업로드 실패 (도형 모드 / 무시): %s", _e)
             errors = shape_result.get("errors") or []
             if errors:
                 log.warning("도형 모드 렌더 경고 %d 건: %s", len(errors), errors[:3])
@@ -6662,6 +6684,13 @@ def api_proposals_pptx(body: PptxExportIn, user: dict = Depends(get_current_user
     if not used_master:
         log.info("PPTX 생성: 폴백 모드")
         slide_count = _build_pptx_from_pages(pages, title_for_cover, out_path)
+
+    # D-Fix-PptxR2: PPTX 를 R2 에 영구 업로드 (마스터+폴백 공통 / 로컬 보존 / R2 실패해도 생성 안 깨짐)
+    try:
+        import r2_storage
+        r2_storage.upload_one(Path(out_path), f"pptx/{body.conversation_id[:8]}/{Path(out_path).name}")
+    except Exception as _e:
+        log.warning("R2 업로드 실패 (마스터/폴백 모드 / 무시): %s", _e)
 
     # 3. conversations 에 PPTX 경로 기록 — Phase 5 Step 3: 새 인증 endpoint URL 형식
     try:

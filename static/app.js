@@ -1071,7 +1071,7 @@ function renderLanding() {
     h("div", { class: "landing-footer-row landing-footer-info" },
       "NightOff by 크리워스 · 대표 이창원 · 사업자번호 806-10-03267"),
     h("div", { class: "landing-footer-row landing-footer-info" },
-      "서울시 관악구 조원로33길 30, 400호 · 이메일 awc@creworth.com"),
+      "서울시 관악구 조원로33길 30, 400호 · 이메일 awc@creworth.com · 전화 010-3169-9949"),
     h("div", { class: "landing-footer-row landing-footer-tag" },
       "수주를 진심으로 기원합니다 🙏"),
   ]));

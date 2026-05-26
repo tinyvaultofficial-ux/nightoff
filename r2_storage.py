@@ -296,6 +296,57 @@ def sync_rag_db() -> dict:
     return result
 
 
+def upload_one(local_path: Path, key: str) -> bool:
+    """Spec D-Fix-PptxR2 — 단일 파일을 R2 에 업로드.
+
+    Args:
+      local_path: 로컬 디스크 파일 경로 (Path).
+      key       : R2 객체 키 (예: "pptx/{conv8}/{name}.pptx").
+    Returns:
+      성공 True / 실패·미설정 False (예외 전파 X — 호출측이 try/except 한 번 더 감싸도 안전).
+    """
+    if not _is_configured() or not _BOTO3_AVAILABLE:
+        return False
+    if not local_path.is_file():
+        log.warning("R2 upload skip — 로컬 파일 없음: %s", local_path)
+        return False
+    bucket = os.environ["R2_BUCKET_NAME"]
+    try:
+        client = _client()
+        client.upload_file(str(local_path), bucket, key)
+        log.info("R2 업로드 · %s → s3://%s/%s (size=%s)",
+                 local_path.name, bucket, key, local_path.stat().st_size)
+        return True
+    except (BotoCoreError, ClientError, Exception) as e:
+        log.warning("R2 upload 실패 (%s): %s", key, e)
+        return False
+
+
+def download_to_buffer(key: str):
+    """Spec D-Fix-PptxR2 — 단일 객체를 메모리 버퍼(BytesIO)로 다운로드.
+
+    반환:
+      io.BytesIO (성공) / None (실패·미설정·미존재).
+    호출측은 StreamingResponse 등으로 클라이언트에 흘려보낼 수 있다.
+    """
+    if not _is_configured() or not _BOTO3_AVAILABLE:
+        return None
+    bucket = os.environ["R2_BUCKET_NAME"]
+    try:
+        import io
+        client = _client()
+        resp = client.get_object(Bucket=bucket, Key=key)
+        body = resp.get("Body")
+        if body is None:
+            return None
+        buf = io.BytesIO(body.read())
+        buf.seek(0)
+        return buf
+    except (BotoCoreError, ClientError, Exception) as e:
+        log.warning("R2 download_to_buffer 실패 (%s): %s", key, e)
+        return None
+
+
 def status() -> dict:
     """진단용 — 현재 R2 설정 / 캐시 상태."""
     cache = _local_cache_dir()

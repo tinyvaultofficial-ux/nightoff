@@ -5906,7 +5906,7 @@ async def api_proposals_download(conv_id: str, user: dict = Depends(get_current_
     if not row or not (row["pptx_path"] or "").strip():
         raise HTTPException(
             status_code=404,
-            detail={"error": "제안서가 아직 생성되지 않았습니다", "code": "PPTX_NOT_GENERATED"},
+            detail={"error": "제안서가 아직 생성되지 않았어요", "code": "PPTX_NOT_GENERATED"},
         )
 
     # 파일명 재계산 — DB pptx_path 값 형식에 의존하지 않음.
@@ -5932,7 +5932,7 @@ async def api_proposals_download(conv_id: str, user: dict = Depends(get_current_
             )
             raise HTTPException(
                 status_code=400,
-                detail={"error": "잘못된 요청입니다", "code": "INVALID_PATH"},
+                detail={"error": "잘못된 요청이에요", "code": "INVALID_PATH"},
             )
     except HTTPException:
         raise
@@ -5940,7 +5940,7 @@ async def api_proposals_download(conv_id: str, user: dict = Depends(get_current_
         log.warning("PPTX download — path resolve 실패: %s", e)
         raise HTTPException(
             status_code=400,
-            detail={"error": "잘못된 요청입니다", "code": "INVALID_PATH"},
+            detail={"error": "잘못된 요청이에요", "code": "INVALID_PATH"},
         )
 
     # 다운로드 파일명 — api_proposals_pptx 패턴 일관 ("{발주처}_제안서.pptx")
@@ -5971,7 +5971,7 @@ async def api_proposals_download(conv_id: str, user: dict = Depends(get_current_
         )
         raise HTTPException(
             status_code=404,
-            detail={"error": "제안서 파일을 찾을 수 없습니다", "code": "PPTX_FILE_MISSING"},
+            detail={"error": "제안서 파일을 찾지 못했어요", "code": "PPTX_FILE_MISSING"},
         )
 
     return FileResponse(
@@ -6834,7 +6834,7 @@ async def api_proposals_regenerate_page(
             raise HTTPException(
                 status_code=402,
                 detail={
-                    "error": "크레딧 부족 (1페이지 재생성에 100 크레딧 필요)",
+                    "error": "크레딧이 부족해요 (1페이지 재생성 = 100 크레딧). 결제 후 다시 시도해 주세요.",
                     "code": "QUOTA_EXCEEDED",
                     "quota_remaining": prop_q,
                     "required": CREDITS_PER_PAGE,

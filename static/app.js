@@ -2227,9 +2227,9 @@ async function downloadPptxAuthenticated(url, fallbackFilename = "proposal.pptx"
       let code = null;
       try { const j = await r.json(); code = j && j.detail && j.detail.code; } catch {}
       if (r.status === 404) {
-        if (code === "PPTX_NOT_GENERATED") toast("제안서가 아직 생성되지 않았어요. 먼저 생성해 주세요.", "error");
-        else if (code === "PPTX_FILE_MISSING") toast("저장된 제안서 파일을 찾지 못했어요. 다시 생성해 주세요.", "error");
-        else toast("제안서를 찾을 수 없어요.", "error");
+        if (code === "PPTX_NOT_GENERATED") toast("제안서가 아직 생성되지 않았어요. ✨ 제안서 생성으로 먼저 만들어 주세요.", "error");
+        else if (code === "PPTX_FILE_MISSING") toast("제안서 파일이 정리되어 다시 받을 수 없어요. ✨ 제안서 생성으로 다시 만들어 주세요.", "error");
+        else toast("제안서 파일이 정리되었어요. ✨ 제안서 생성으로 다시 만들어 주세요.", "error");
       } else if (r.status === 400) {
         toast("잘못된 다운로드 요청입니다.", "error");
       } else {

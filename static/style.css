@@ -5194,14 +5194,21 @@ input.locked-by-env::placeholder {
   background: var(--bg);
 }
 .chat-split-wrap.split-active {
-  /* 채팅이 살짝 더 넓게 (1.1 : 1) — 입력/대화가 답답하지 않게 */
-  grid-template-columns: minmax(480px, 1.1fr) minmax(520px, 1fr);
+  /* Spec D-Fix-HeaderClean: 대화 우선 / 패널 360px 고정 */
+  grid-template-columns: 1fr 360px;
 }
 @media (max-width: 1400px) {
   .chat-split-wrap.split-active {
-    grid-template-columns: minmax(440px, 1fr) minmax(480px, 1fr);
+    grid-template-columns: 1fr 360px;
   }
 }
+
+/* Spec D-Fix-HeaderClean — 헤더 중복 버튼 4개 숨김 (오른쪽 패널이 100% 대체)
+   함수·이벤트는 보존(패널 카드가 같은 함수 호출). 표시만 차단. */
+.chat-header #header-pptx-download-btn,
+.chat-header #header-regen-page-btn,
+.chat-header #header-audit-btn,
+.chat-header .budget-btn { display: none !important; }
 @media (max-width: 1100px) {
   /* 좁아지면 미리보기 자동 숨김 — 우측 토글로 다시 열기 */
   .chat-split-wrap.split-active {

@@ -477,6 +477,23 @@ function route() {
   // 우측 패널 (right-panel-off) 토글은 Spec 5 (5/16) 폐기 — 우측 사이드바 자체 제거됨.
   // 랜딩 페이지 이전 상태도 초기화 (랜딩 진입 시 다시 추가됨)
   document.body.classList.remove("landing-fullscreen");
+
+  // D-Fix-Transition: 화면 전환 공통 처리 (모든 navigate / popstate 경유)
+  //   ① 스크롤 맨 위 리셋 — window + documentElement + #app-root (채팅 안 컨테이너는 별개 / 무관)
+  //   ② 페이드 200ms 재트리거 — @keyframes fadeIn 재활용 (CSS 추가 0). 이전 animation 제거 + reflow 트리거.
+  //   handler 가 innerHTML 을 갈아끼워도 #app-root 요소 자체에 걸린 animation 은 그대로 작동.
+  try {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    const _appRoot = document.getElementById("app-root");
+    if (_appRoot) {
+      _appRoot.scrollTop = 0;
+      _appRoot.style.animation = "none";
+      void _appRoot.offsetWidth;
+      _appRoot.style.animation = "fadeIn 200ms ease";
+    }
+  } catch (_e) { /* 전환 안전 — 효과 실패해도 라우팅은 계속 */ }
+
   for (const r of routes) {
     const m = path.match(r.re);
     if (m) {

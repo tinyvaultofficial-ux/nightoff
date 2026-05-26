@@ -4208,8 +4208,13 @@ async function renderRfpSection(cid) {
       });
       if (r.status === 401) { clearToken(); redirectToLogin(); throw new Error("인증이 만료됐어요."); }
       if (!r.ok) {
+        // D-Fix-GenGuard: FastAPI HTTPException detail 객체 안 error 우선 추출 ([object Object] 방지)
         const err = await r.json().catch(() => ({ error: r.statusText }));
-        throw new Error(err.error || "업로드 실패");
+        const msg = (err?.detail && typeof err.detail === "object" ? err.detail.error : null)
+                    || (typeof err?.detail === "string" ? err.detail : null)
+                    || err?.error
+                    || "업로드 실패";
+        throw new Error(typeof msg === "string" ? msg : "업로드 실패");
       }
       const result = await r.json();
       if (result?.analysis?.error) {
@@ -5607,7 +5612,19 @@ async function runMultiPassProposal({ convId, pages, asstEl, bubble, progress, b
     redirectToLogin();
     throw new Error("인증이 만료됐어요.");
   }
-  if (!resp.ok) { stopOutlineTimer(); throw new Error(await resp.text()); }
+  if (!resp.ok) {
+    stopOutlineTimer();
+    // D-Fix-GenGuard: FastAPI HTTPException detail 객체에서 error 우선 추출 ([object Object] 방지)
+    const text = await resp.text();
+    let body = null;
+    try { body = JSON.parse(text); } catch {}
+    const errMsg = (body?.detail && typeof body.detail === "object" ? body.detail.error : null)
+                   || (typeof body?.detail === "string" ? body.detail : null)
+                   || body?.error
+                   || text
+                   || "생성 실패";
+    throw new Error(typeof errMsg === "string" ? errMsg : "생성 실패");
+  }
 
   const reader = resp.body.getReader();
   const dec = new TextDecoder();

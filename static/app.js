@@ -4794,6 +4794,92 @@ async function renderChat(cid, convId) {
   // 글로벌 노출 — 채팅 스트리밍 핸들러가 호출
   shell._setSidePanelPng = setSidePanelPng;
 
+  // ─────────────────────────────────────────────────────────────────
+  // [Spec D-Fix-RightPanel] 생성 완료 후 기능 패널
+  //  proposal-side-panel 컨테이너 재활용 + 기존 모달 함수 4개 호출만 (재사용).
+  //  슬라이드쇼 dead code(activateSidePanel / setSidePanelPng) 는 별개 — 안 건드림.
+  //  표시 조건: data.conversation.pptx_path 존재 시 패널 자동 등장.
+  // ─────────────────────────────────────────────────────────────────
+  function renderActionPanel() {
+    const conv = data.conversation || {};
+    const hasPptx = !!(conv.pptx_path);
+    if (!hasPptx) {
+      sidePanel.classList.add("hidden");
+      splitWrap.classList.remove("split-active");
+      return;
+    }
+    const convId = conv.id;
+    const title = conv.title || "제안서";
+    const pages = (typeof conv.last_proposal_pages === "number" && conv.last_proposal_pages > 0)
+      ? conv.last_proposal_pages
+      : (Array.isArray(data.proposal_outline) ? data.proposal_outline.length : 0);
+    sidePanel.innerHTML = "";
+    sidePanel.appendChild(h("div", { class: "action-panel" }, [
+      h("div", { class: "ap-header" }, [
+        h("div", { class: "ap-badge" }, "🟢 제안서가 완성됐어요"),
+        h("p", { class: "ap-subtitle" },
+          `${title}${pages ? ` · ${pages}페이지` : ""}`),
+      ]),
+      h("button", {
+        class: "ap-download-btn",
+        onclick: () => {
+          downloadPptxAuthenticated(conv.pptx_path,
+            `${(title || "proposal").replace(/\s+/g, "_")}.pptx`);
+        },
+      }, [
+        h("span", { class: "ap-dl-icon" }, "⬇"),
+        h("span", { class: "ap-dl-label" }, "PPTX 다운로드"),
+      ]),
+      h("p", { class: "ap-dl-hint" }, "바로 편집·제출할 수 있는 .pptx"),
+      h("div", { class: "ap-divider" },
+        h("span", {}, "이 제안서로 더 할 수 있어요")),
+      h("div", { class: "ap-cards" }, [
+        h("button", {
+          class: "ap-card",
+          onclick: () => openAuditModal(convId),
+        }, [
+          h("div", { class: "ap-card-head" }, [
+            h("span", { class: "ap-card-emoji" }, "🔍"),
+            h("span", { class: "ap-card-title" }, "자체 검증"),
+            h("span", { class: "ap-card-tag" }, "점수"),
+          ]),
+          h("p", { class: "ap-card-desc" }, "평가위원 시각 예상 점수 + 빠진 요구사항"),
+        ]),
+        h("button", {
+          class: "ap-card",
+          onclick: () => openBudgetModal(convId),
+        }, [
+          h("div", { class: "ap-card-head" }, [
+            h("span", { class: "ap-card-emoji" }, "💰"),
+            h("span", { class: "ap-card-title" }, "산출내역서"),
+          ]),
+          h("p", { class: "ap-card-desc" }, "업계 시세 견적 + 투찰율 + 엑셀"),
+        ]),
+        h("button", {
+          class: "ap-card",
+          onclick: () => openRegeneratePageModal(
+            convId,
+            pages || 0,
+            Array.isArray(data.proposal_outline) ? data.proposal_outline : null
+          ),
+        }, [
+          h("div", { class: "ap-card-head" }, [
+            h("span", { class: "ap-card-emoji" }, "📄"),
+            h("span", { class: "ap-card-title" }, "페이지 재생성"),
+          ]),
+          h("p", { class: "ap-card-desc" }, "마음에 안 드는 페이지만 다시"),
+        ]),
+      ]),
+      h("p", { class: "ap-footer" }, "필요할 때 눌러보세요 · 언제든 다시 올 수 있어요"),
+    ]));
+    sidePanel.classList.remove("hidden");
+    splitWrap.classList.add("split-active");
+  }
+  // 초기 진입 — 이미 완료된 conv 면 즉시 표시
+  try { renderActionPanel(); } catch (e) { console.warn("renderActionPanel 초기 호출 실패:", e); }
+  // 글로벌 노출 — enableProposalButtons (완료 hook) 가 호출
+  shell._renderActionPanel = renderActionPanel;
+
   // Detect context injection flags
   // Spec 1 (5/16) 폐기: memory inject 제거 → injected.memory + 호출 제거
   const injected = {
@@ -4995,6 +5081,8 @@ async function renderChat(cid, convId) {
             const el = document.getElementById(id);
             if (el) el.style.display = "";
           });
+          // D-Fix-RightPanel: 완료 시점에 기능 패널 렌더 (초기 진입과 동일 함수)
+          try { renderActionPanel(); } catch (e) { console.warn("renderActionPanel(완료 hook) 실패:", e); }
         };
 
         // multi-pass 완료 시 동적 enable — window 영역 hook 통해 외부에서 호출 가능.

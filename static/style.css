@@ -5222,6 +5222,95 @@ input.locked-by-env::placeholder {
   animation: sidePanelIn .3s ease-out;
 }
 .proposal-side-panel.hidden { display: none; }
+
+/* ───────────────────────────────────────────────────────────
+   Spec D-Fix-RightPanel — 생성 완료 후 기능 패널 (proposal-side-panel 안 .action-panel)
+   슬라이드쇼 dead code 의 .side-panel-* / .png-* CSS 와 별개 영역.
+   ─────────────────────────────────────────────────────────── */
+.action-panel {
+  display: flex; flex-direction: column;
+  padding: 24px 22px; gap: 14px;
+  height: 100%; overflow-y: auto;
+}
+.action-panel .ap-header { margin-bottom: 4px; }
+.action-panel .ap-badge {
+  display: inline-block;
+  font-size: 15px; font-weight: 700;
+  color: #1A1A1A;
+  margin-bottom: 4px;
+}
+.action-panel .ap-subtitle {
+  font-size: 12px; color: var(--muted);
+  margin: 0;
+}
+.action-panel .ap-download-btn {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, #6E56CF 0%, #9D8AE6 100%);
+  color: #fff;
+  border: none; border-radius: 12px;
+  font-size: 15px; font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(110, 86, 207, .25);
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.action-panel .ap-download-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(110, 86, 207, .35);
+}
+.action-panel .ap-dl-icon { font-size: 18px; }
+.action-panel .ap-dl-hint {
+  font-size: 12px; color: var(--muted);
+  text-align: center; margin: -4px 0 4px 0;
+}
+.action-panel .ap-divider {
+  display: flex; align-items: center; gap: 10px;
+  margin: 8px 0 4px;
+  font-size: 12px; color: var(--muted);
+}
+.action-panel .ap-divider::before,
+.action-panel .ap-divider::after {
+  content: ""; flex: 1; height: 1px; background: var(--border);
+}
+.action-panel .ap-cards {
+  display: flex; flex-direction: column; gap: 10px;
+}
+.action-panel .ap-card {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid var(--border); border-radius: 12px;
+  cursor: pointer; text-align: left;
+  font-family: inherit;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.action-panel .ap-card:hover {
+  transform: translateY(-1px);
+  border-color: #9D8AE6;
+  box-shadow: 0 4px 14px rgba(110, 86, 207, .12);
+}
+.action-panel .ap-card-head {
+  display: flex; align-items: center; gap: 8px;
+}
+.action-panel .ap-card-emoji { font-size: 18px; }
+.action-panel .ap-card-title {
+  font-size: 14px; font-weight: 700; color: #1A1A1A;
+  flex: 1;
+}
+.action-panel .ap-card-tag {
+  font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 999px;
+  background: #F3EFFE; color: #6E56CF;
+}
+.action-panel .ap-card-desc {
+  font-size: 12px; color: var(--muted);
+  margin: 0; line-height: 1.5;
+}
+.action-panel .ap-footer {
+  font-size: 11px; color: var(--muted);
+  text-align: center; margin-top: 6px;
+}
 @keyframes sidePanelIn {
   from { opacity: 0; transform: translateX(20px); }
   to   { opacity: 1; transform: translateX(0); }

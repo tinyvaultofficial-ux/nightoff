@@ -4555,123 +4555,9 @@ async function renderChat(cid, convId) {
   //   기존 자리: activateSidePanel + slideIdx/totalSlides/liveFollow + 키보드 ← → + shell._activateSidePanel.
   //   모드 B(setSidePanelPng) 와 CSS(.slideshow-stage / .sp-* 등) 는 다음 단계 (-2 / -3).
 
-  // ────────────────────────────────────────────────────────────
-  // [Phase 3-D + B7] PNG 모드 사이드패널 — JSON 흐름의 우측 미리보기
-  // state: 'preparing' | 'building' | 'rendering' | 'ready' | 'error'
-  // ────────────────────────────────────────────────────────────
-  let pngSlideIdx = 0;
-  function setSidePanelPng(state, payload = {}) {
-    splitWrap.classList.add("split-active");
-    sidePanel.classList.remove("hidden");
-    sidePanel.innerHTML = "";
-
-    const stateLabels = {
-      preparing: { emoji: "✨", text: "제안서 구조를 설계하고 있어요…" },
-      building:  { emoji: "🔨", text: "PPTX 로 변환하고 있어요…" },
-      rendering: { emoji: "🖼", text: "슬라이드 미리보기를 만들고 있어요…" },
-      ready:     { emoji: "✅", text: "제안서가 완성됐어요" },
-      error:     { emoji: "⚠️", text: payload.error || "미리보기를 만들지 못했어요" },
-    };
-    const label = stateLabels[state] || stateLabels.preparing;
-    const isReady = state === "ready" && Array.isArray(payload.slides) && payload.slides.length > 0;
-
-    // 헤더
-    sidePanel.appendChild(h("div", { class: "side-panel-head" }, [
-      h("div", { class: "sp-head-left" }, [
-        h("p", { class: "side-panel-label" }, `${label.emoji} ${isReady ? "미리보기" : "작성 중"}`),
-        h("p", { class: "side-panel-title" },
-          isReady ? `${payload.slides.length} 장의 슬라이드` : label.text),
-      ]),
-      h("div", { class: "sp-head-right" }, [
-        isReady ? h("span", { class: "sp-page-indicator" },
-          `${pngSlideIdx + 1} / ${payload.slides.length}`) : null,
-        h("button", {
-          class: "icon-btn",
-          title: "사이드 패널 닫기",
-          html: iconHtml("x", 18),
-          onclick: () => {
-            splitWrap.classList.remove("split-active");
-            sidePanel.classList.add("hidden");
-          },
-        }),
-      ]),
-    ]));
-
-    // 본문 — state 별로 다른 UI
-    const stage = h("div", { class: "side-panel-stage png-stage" });
-    if (isReady) {
-      // 큰 슬라이드 PNG
-      if (pngSlideIdx >= payload.slides.length) pngSlideIdx = payload.slides.length - 1;
-      if (pngSlideIdx < 0) pngSlideIdx = 0;
-      const cur = payload.slides[pngSlideIdx];
-      stage.appendChild(h("div", { class: "png-slide-frame" }, [
-        h("img", { class: "png-slide-img", src: cur.url + "?t=" + Date.now(), alt: `슬라이드 ${pngSlideIdx + 1}` }),
-      ]));
-    } else if (state === "error") {
-      stage.appendChild(h("div", { class: "png-stage-error" }, [
-        h("div", { class: "png-stage-emoji" }, "⚠️"),
-        h("p", {}, label.text),
-      ]));
-    } else {
-      // 작업 중 — 큰 placeholder + 단계 표시
-      stage.appendChild(h("div", { class: "png-stage-placeholder" }, [
-        h("div", { class: "png-placeholder-emoji" }, label.emoji),
-        h("div", { class: "png-placeholder-spinner" }),
-        h("p", { class: "png-placeholder-text" }, label.text),
-        // 단계 progress
-        h("div", { class: "png-stage-steps" }, [
-          h("span", { class: "step" + (state === "preparing" ? " active" : (["building","rendering","ready"].includes(state) ? " done" : "")) }, "1. 설계"),
-          h("span", { class: "step-arrow" }, "→"),
-          h("span", { class: "step" + (state === "building" ? " active" : (["rendering","ready"].includes(state) ? " done" : "")) }, "2. 변환"),
-          h("span", { class: "step-arrow" }, "→"),
-          h("span", { class: "step" + (state === "rendering" ? " active" : (state === "ready" ? " done" : "")) }, "3. 미리보기"),
-        ]),
-      ]));
-    }
-    sidePanel.appendChild(stage);
-
-    // 컨트롤 — ready 일 때만
-    if (isReady) {
-      const slides = payload.slides;
-      const goTo = (i) => {
-        pngSlideIdx = Math.max(0, Math.min(slides.length - 1, i));
-        setSidePanelPng("ready", payload);
-      };
-      const prevBtn = h("button", {
-        class: "sp-nav-btn", disabled: pngSlideIdx === 0,
-        title: "이전 (←)", onclick: () => goTo(pngSlideIdx - 1),
-        html: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`,
-      });
-      const nextBtn = h("button", {
-        class: "sp-nav-btn", disabled: pngSlideIdx === slides.length - 1,
-        title: "다음 (→)", onclick: () => goTo(pngSlideIdx + 1),
-        html: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`,
-      });
-      // 썸네일 스트립
-      const strip = h("div", { class: "png-thumb-strip" },
-        slides.map((s, i) => h("img", {
-          class: "png-thumb" + (i === pngSlideIdx ? " active" : ""),
-          src: s.url + "?t=" + Date.now(),
-          title: `슬라이드 ${i + 1}`,
-          onclick: () => goTo(i),
-        }))
-      );
-      // 다운로드 버튼
-      const dlBtn = payload.pptxUrl ? h("a", {
-        class: "btn btn-primary sp-download-btn",
-        href: payload.pptxUrl,
-        download: "",
-        html: `<span>⬇ PPTX 다운로드</span>`,
-      }) : null;
-
-      sidePanel.appendChild(h("div", { class: "side-panel-controls png-controls" }, [
-        prevBtn, strip, nextBtn,
-      ]));
-      if (dlBtn) sidePanel.appendChild(h("div", { class: "sp-download-row" }, [dlBtn]));
-    }
-  }
-  // 글로벌 노출 — 채팅 스트리밍 핸들러가 호출
-  shell._setSidePanelPng = setSidePanelPng;
+  // [Spec D-Fix-RemoveSlideshow-2] 모드 B (PNG 미리보기 setSidePanelPng) 삭제 — dead.
+  //   ★ window.shellSetSidePanelPng 정의 부재로 호출 2건도 원래 no-op (이름 불일치).
+  //   슬라이드쇼 전용 CSS(.png-* / .slideshow-stage / .sp-* 등) 는 다음 단계 (-3).
 
   // ─────────────────────────────────────────────────────────────────
   // [Spec D-Fix-RightPanel] 생성 완료 후 기능 패널
@@ -5686,9 +5572,6 @@ async function runMultiPassProposal({ convId, pages, asstEl, bubble, progress, b
       '<span class="mp-substep muted">RFP 분석 중...</span>' +
     '</div>';
 
-  // 우측 미리보기 패널 preparing 모드
-  try { window.shellSetSidePanelPng && window.shellSetSidePanelPng("preparing"); } catch {}
-
   // ─ outline phase sub-step heuristic (시간 기반) ─
   const outlineStart = Date.now();
   const OUTLINE_SUBSTEPS = [
@@ -5923,8 +5806,6 @@ async function runMultiPassProposal({ convId, pages, asstEl, bubble, progress, b
       });
     }
     autoScroll();
-    // 우측 미리보기 패널 갱신 — 기존 함수 활용
-    try { window.shellSetSidePanelPng && window.shellSetSidePanelPng(pptxResp.url); } catch {}
     // 산출내역서 버튼 활성화 — PPTX 변환 성공 = 활성화 조건 도달 (멱등 함수, 안전).
     // hotfix: runMultiPassProposal 영역 enable 호출 누락 영역 영역 (이전 Fix 1A-1 영역 SSE 흐름 영역만 적용).
     if (pptxResp && pptxResp.url) {

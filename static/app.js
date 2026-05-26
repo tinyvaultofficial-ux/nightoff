@@ -679,7 +679,7 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
         class: "sidebar-footer-btn sidebar-footer-btn-logout",
         onclick: () => {
           clearToken();
-          toast("로그아웃 되었습니다", "ok", 1500);
+          toast("로그아웃했어요", "ok", 1500);
           setTimeout(() => redirectToLogin(true), 400);
         },
         title: "로그아웃",
@@ -2231,9 +2231,9 @@ async function downloadPptxAuthenticated(url, fallbackFilename = "proposal.pptx"
         else if (code === "PPTX_FILE_MISSING") toast("제안서 파일이 정리되어 다시 받을 수 없어요. ✨ 제안서 생성으로 다시 만들어 주세요.", "error");
         else toast("제안서 파일이 정리되었어요. ✨ 제안서 생성으로 다시 만들어 주세요.", "error");
       } else if (r.status === 400) {
-        toast("잘못된 다운로드 요청입니다.", "error");
+        toast("잘못된 다운로드 요청이에요.", "error");
       } else {
-        toast(`다운로드 실패 (HTTP ${r.status})`, "error");
+        toast(`다운로드를 못했어요 (HTTP ${r.status}). 잠시 후 다시 시도해 주세요`, "error");
       }
       return false;
     }
@@ -3493,7 +3493,7 @@ async function renderClientForm(mode, id = null) {
 
   let data = { name: "", industry: "", manager: "", memo: "" };
   if (mode === "edit" && id) {
-    try { data = await api.get(`/api/clients/${id}`); } catch (e) { toast("과업을 불러올 수 없습니다", "error"); return; }
+    try { data = await api.get(`/api/clients/${id}`); } catch (e) { toast("과업을 불러오지 못했어요", "error"); return; }
   }
 
   const form = h("form", {}, [
@@ -3534,16 +3534,16 @@ async function renderClientForm(mode, id = null) {
               manager: $("#fld-manager").value.trim(),
               memo: $("#fld-memo").value.trim(),
             };
-            if (!body.name) { toast("과업명을 입력하세요", "error"); return; }
-            if (!body.industry) { toast("업종을 선택하세요", "error"); return; }
+            if (!body.name) { toast("과업명을 입력해 주세요", "error"); return; }
+            if (!body.industry) { toast("업종을 골라 주세요", "error"); return; }
             try {
               if (mode === "create") {
                 const r = await api.post("/api/clients", body);
-                toast("과업이 추가되었습니다", "success");
+                toast("과업을 추가했어요", "success");
                 navigate(`/client/${r.id}`);
               } else {
                 await api.patch(`/api/clients/${id}`, body);
-                toast("수정되었습니다", "success");
+                toast("수정했어요", "success");
                 navigate(`/client/${id}`);
               }
             } catch (e) { toast(String(e.message || e), "error"); }
@@ -3574,7 +3574,7 @@ async function renderClientDetail(cid) {
     // 진짜 404 만 "찾을 수 없음" → 홈으로 이동.
     // 그 외 (5xx, timeout, 네트워크) 는 일시적일 수 있어 인플레이스 재시도 UI 제공.
     if (e?.status === 404) {
-      toast("과업을 찾을 수 없습니다", "error");
+      toast("과업을 찾지 못했어요", "error");
       navigate("/");
       return;
     }
@@ -3604,7 +3604,7 @@ async function renderClientDetail(cid) {
         onclick: async () => {
           if (!confirm(`${client.name}을(를) 삭제하시겠습니까?\n모든 대화, RFP, 레퍼런스가 함께 삭제됩니다.`)) return;
           await api.del(`/api/clients/${cid}`);
-          toast("삭제되었습니다", "success");
+          toast("삭제했어요", "success");
           navigate("/");
         },
       }),
@@ -3916,7 +3916,7 @@ async function renderConvHistorySection(cid) {
         e.stopPropagation();
         if (!confirm("이 대화를 삭제하시겠습니까?")) return;
         await api.del(`/api/conversations/${cv.id}`);
-        toast("삭제되었습니다", "success");
+        toast("삭제했어요", "success");
         renderClientDetail(cid);
       },
     }));
@@ -4213,8 +4213,8 @@ async function renderRfpSection(cid) {
         const msg = (err?.detail && typeof err.detail === "object" ? err.detail.error : null)
                     || (typeof err?.detail === "string" ? err.detail : null)
                     || err?.error
-                    || "업로드 실패";
-        throw new Error(typeof msg === "string" ? msg : "업로드 실패");
+                    || "업로드를 못했어요. 잠시 후 다시 시도해 주세요";
+        throw new Error(typeof msg === "string" ? msg : "업로드를 못했어요. 잠시 후 다시 시도해 주세요");
       }
       const result = await r.json();
       if (result?.analysis?.error) {
@@ -4228,7 +4228,7 @@ async function renderRfpSection(cid) {
       setTimeout(() => renderClientDetail(cid), 1100);
     } catch (e) {
       loader.stop();
-      toast(e.message || "업로드 실패", "error");
+      toast(e.message || "업로드를 못했어요. 잠시 후 다시 시도해 주세요", "error");
     }
   }
 
@@ -4336,7 +4336,7 @@ async function renderRfpSection(cid) {
           onclick: async () => {
             if (!confirm("업로드된 모든 RFP 파일을 삭제하시겠습니까?")) return;
             await api.del(`/api/clients/${cid}/rfp`);
-            toast("삭제되었습니다", "success");
+            toast("삭제했어요", "success");
             renderClientDetail(cid);
           },
         }),
@@ -4533,7 +4533,7 @@ async function renderChat(cid, convId) {
     data = await api.get(`/api/conversations/${convId}`);
   } catch (e) {
     if (e?.status === 404) {
-      toast("대화를 찾을 수 없습니다", "error");
+      toast("대화를 찾지 못했어요", "error");
     } else {
       toast(`대화 로드 실패: ${e?.message || e}`, "error");
       console.error("[renderChat] api/conversations/:id failed:", e);
@@ -4975,7 +4975,7 @@ async function renderChat(cid, convId) {
   let streaming = false;
   let aborter = null;
   stopBtn.addEventListener("click", () => {
-    if (aborter) { aborter.abort(); toast("생성을 중단했습니다", ""); }
+    if (aborter) { aborter.abort(); toast("생성을 멈췄어요", ""); }
   });
 
   sendBtn.addEventListener("click", async () => {
@@ -5966,7 +5966,7 @@ $("#save-settings")?.addEventListener("click", async () => {
     if (k && envActive) {
       toast("환경변수가 우선이라 키는 저장하지 않았어요 (모델만 저장됨)", "");
     } else {
-      toast("설정이 저장되었습니다", "success");
+      toast("설정을 저장했어요", "success");
     }
     closeSettings();
   } catch (e) { toast(String(e.message || e), "error"); }

@@ -1802,6 +1802,16 @@ def render_shape_to_slide(slide, shape_def):
                 radius=shape_def.get("radius"),
             )
         if t == "text":
+            # D-Fix-GovColorPptx: 거버닝(상단 두꺼운 한 줄) 짙은 파랑 강제 휴리스틱.
+            #   size 28~49 + weight>=700 + y<=2.5 → #1E40AF.
+            #   표지·콘셉트 슬로건(60+) / 챕터 번호(200+) / 챕터명(50~70) / 부제·메타(<28) = 검정 유지.
+            #   프롬프트 무변경 (role 태그 없는 구조에서 후처리만으로 거버닝 식별).
+            _color_gov = str(shape_def.get("color", "#1A1A1A"))
+            _size_gov = float(shape_def.get("size", 14))
+            _weight_gov = int(shape_def.get("weight", 400))
+            _y_gov = float(shape_def.get("y", 0))
+            if 28 <= _size_gov <= 49 and _weight_gov >= 700 and _y_gov <= 2.5:
+                _color_gov = "#1E40AF"
             return _add_text(
                 slide,
                 float(shape_def.get("x", 0)), float(shape_def.get("y", 0)),
@@ -1809,7 +1819,7 @@ def render_shape_to_slide(slide, shape_def):
                 str(shape_def.get("text", "")),
                 size=float(shape_def.get("size", 14)),
                 weight=int(shape_def.get("weight", 400)),
-                color=str(shape_def.get("color", "#1A1A1A")),
+                color=_color_gov,
                 align=str(shape_def.get("align", "left")),
                 valign=str(shape_def.get("valign", "top")),
                 font_family=shape_def.get("font_family"),

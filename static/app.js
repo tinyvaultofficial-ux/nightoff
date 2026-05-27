@@ -5489,14 +5489,16 @@ function buildPageOptions(pageLimit) {
       { pages: 30,  credits: 30 * C,  label: "30페이지",  desc: "간단 분량" },
     ];
   }
-  // 한도 기반 동적 — 정석 (-5p 안전 마진) + 중간 (한도/2) + 최소 (30p)
+  // Spec D-Fix-PageLabel — 의미 기반 재구성 (모든 pageLimit 에 일관):
+  //   표준 = RFP 요구 그대로 / 정석 = 요구 -5 (권장) / 간단 = 요구 -10.
+  //   하한 max(10, ...) 으로 작은 RFP 에서도 음수·과소 방지. 중복은 아래 seen 으로 제거.
+  const standard    = pageLimit;
   const recommended = Math.max(10, pageLimit - 5);
-  const middle = Math.max(20, Math.round(pageLimit / 2));
-  const minimum = 30;
+  const compact     = Math.max(10, pageLimit - 10);
   const candidates = [
+    { pages: standard,    label: `${standard}페이지`,    desc: "표준 분량 (RFP 요구 그대로)" },
     { pages: recommended, label: `${recommended}페이지`, desc: "정석 (RFP 한도 -5p)" },
-    { pages: middle,      label: `${middle}페이지`,      desc: "표준 분량" },
-    { pages: minimum,     label: "30페이지",             desc: "간단 분량" },
+    { pages: compact,     label: `${compact}페이지`,     desc: "간단 분량" },
   ];
   // 중복 제거 (예: 한도 35 → recommended=30 + middle=18→20 + minimum=30 → 30 중복) + credits 계산
   const seen = new Set();
@@ -5531,12 +5533,9 @@ function showProposalPageSelectionModal(onConfirm, pageLimit = null) {
   if (effectiveLimit === null) {
     recommendedPages = 50;
   } else {
-    const eligible = OPTIONS.filter((o) => o.pages <= effectiveLimit);
-    if (eligible.length > 0) {
-      recommendedPages = Math.max.apply(null, eligible.map((o) => o.pages));
-    } else {
-      recommendedPages = Math.min.apply(null, OPTIONS.map((o) => o.pages));
-    }
+    // Spec D-Fix-PageLabel — 권장 배지 = 정석(요구-5)에 고정 (buildPageOptions 의 recommended 와 같은 식).
+    //   기존 max(한도이하) 휴리스틱은 의미·라벨 불일치 사고 발생 → 정석 고정으로 일관.
+    recommendedPages = Math.max(10, effectiveLimit - 5);
   }
 
   const close = () => {

@@ -2973,21 +2973,37 @@ body, .msg-bubble, .card, .strengths-intro,
   }
 }
 
-/* ===== 📰 업계 뉴스 한 줄 위젯 (네이버 검색창 영역 패턴) =====
-   한 줄 영역 (높이 ~44px), 한 번에 1개 뉴스 노출 + 6초 fade 전환.
+/* ===== 📰 업계 뉴스 3줄 위젯 (D-Fix-NewsBar3) =====
+   3행 동시 노출 — 행마다 아이콘+제목+매체/날짜. 6초마다 다음 3건 묶음으로 fade 전환.
    배경 = 연한 회색 (#F5F5F5) — 다른 카드 (흰 배경) 와 시각 차별화.
    흑백 6색 정합 — 회색 = 정체성 영역 OK. */
 .news-widget {
   margin-bottom: 24px;
-  padding: 0 14px;
-  height: 44px;
+  padding: 10px 14px;
   background: #F5F5F5;
-  border-radius: 22px;
+  border-radius: 18px;
   display: flex; align-items: center; gap: 10px;
   overflow: hidden;
 }
+/* 3행 세로 컨테이너 — fade 전환은 본 컨테이너에 .fading 적용 (3행 동시) */
+.news-widget-rows {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; gap: 4px;
+  opacity: 1;
+  transition: opacity 350ms ease;
+}
+.news-widget-rows.fading { opacity: 0; }
+.news-widget-row {
+  height: 28px;
+  display: flex; align-items: center; gap: 10px;
+  min-width: 0;
+}
+/* 빈 자리 — 자리는 유지 (visibility:hidden) → 위젯 높이 안정 */
+.news-widget-row.news-widget-row-hidden {
+  visibility: hidden;
+}
 .news-widget-icon {
-  font-size: 15px;
+  font-size: 14px;
   flex-shrink: 0;
   display: inline-flex; align-items: center;
 }
@@ -2998,10 +3014,8 @@ body, .msg-bubble, .card, .strengths-intro,
   color: var(--fg);
   text-decoration: none;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  opacity: 1;
-  transition: opacity 350ms ease, color .15s ease;
+  transition: color .15s ease;
 }
-.news-widget-link.fading { opacity: 0; }
 .news-widget-link.disabled { cursor: default; color: var(--fg-2); }
 .news-widget-link:hover:not(.disabled) { color: var(--primary); }
 .news-widget-text-title {
@@ -3029,22 +3043,25 @@ body, .msg-bubble, .card, .strengths-intro,
   cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
   flex-shrink: 0;
+  align-self: center;   /* 3행 컨테이너 옆에서 세로 가운데 정렬 */
   transition: background .15s ease, color .15s ease;
   padding: 0;
 }
 .news-widget-arrow:hover { background: rgba(0,0,0,0.06); color: var(--fg); }
 
-/* 빈 / 에러 영역 — 화살표 숨김, 단순 한 줄 */
+/* 빈 / 에러 영역 — 화살표 숨김, 첫 행만 메시지 */
 .news-widget.news-widget-static .news-widget-link {
   color: var(--fg-2);
   font-style: normal;
 }
 
-/* 모바일 (≤768px) — 한 줄 영역 그대로, 매체명만 축소 */
+/* 모바일 (≤768px) — 3행 유지, 행 높이·폰트만 살짝 축소. 매체명/날짜는 기존대로 숨김 */
 @media (max-width: 768px) {
-  .news-widget { height: 40px; padding: 0 12px; gap: 8px; }
+  .news-widget { padding: 8px 12px; gap: 8px; border-radius: 14px; }
+  .news-widget-rows { gap: 3px; }
+  .news-widget-row { height: 24px; }
   .news-widget-link { font-size: 12.5px; }
-  .news-widget-text-meta { display: none; }   /* 한 줄 가독성 영역 — 매체명/날짜 모바일 X */
+  .news-widget-text-meta { display: none; }   /* 가독성 — 매체명/날짜 모바일 X */
   .news-widget-text-sep { display: none; }
 }
 

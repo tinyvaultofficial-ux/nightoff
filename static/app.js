@@ -368,8 +368,12 @@ function showFullscreenLoader(steps, opts = {}) {
   // backdrop = 클릭/스크롤 차단용 투명 레이어. 어두운 필터 X.
   const backdrop = h("div", { class: "fs-loader-backdrop fs-loader-clear" });
   const messageEl = h("div", { class: "fs-message-text" }, `${safeSteps[0].emoji} ${safeSteps[0].text}`);
+  // D-Fix-TimerDesign: 스피너 wrapper — 링(회전) + 숫자(정지) 분리.
+  //   showTimer 미지정(예: 회사 DNA reference) 시 timer 없이 spinner만 / 정상 동작.
+  const spinnerEl = h("div", { class: "fs-spinner" });
+  const spinnerWrap = h("div", { class: "fs-spinner-wrap" }, [spinnerEl]);
   const content = h("div", { class: "fs-loader-content fs-loader-card" }, [
-    h("div", { class: "fs-spinner" }),
+    spinnerWrap,
     messageEl,
   ]);
   backdrop.appendChild(content);
@@ -387,7 +391,7 @@ function showFullscreenLoader(steps, opts = {}) {
   let countTimer = null;
   if (opts && opts.showTimer) {
     const timerEl = h("div", { class: "fs-timer" }, "00");
-    content.appendChild(timerEl);
+    spinnerWrap.appendChild(timerEl);   // D-Fix-TimerDesign: 스피너 안 가운데 (회전 X)
     const startedAt = Date.now();
     countTimer = setInterval(() => {
       const sec = Math.floor((Date.now() - startedAt) / 1000);

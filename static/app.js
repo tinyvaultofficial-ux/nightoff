@@ -2934,24 +2934,18 @@ function ddayBadge(diff) {
   return h("span", { class: `dday-badge ${cls}`, title: `마감까지 ${diff}일` }, label);
 }
 
-// ---------- 📰 업계 뉴스 한 줄 롤링 위젯 (네이버 검색창 영역 패턴) ----------
+// ---------- 📰 업계 뉴스 3줄 롤링 위젯 (D-Fix-NewsBar3) ----------
 // 데이터 source: GET /api/dashboard/news (백엔드 캐시 1시간, 구글 뉴스 RSS 통합)
-// 표시 영역: 한 줄 (높이 ~44px), 한 번에 1개 뉴스 노출 + fade 전환
-// 인터랙션: 6초마다 다음 뉴스로 fade-cross, 좌우 화살표 (수동), hover 시 자동 롤링 정지,
-//          카드 클릭 = 새 탭 (target="_blank" + rel="noopener noreferrer")
+// 표시: 3행 동시 노출 — 행마다 아이콘+제목+매체/날짜. 6초마다 다음 3건 묶음으로 fade 전환.
+// 인터랙션: 6초 자동 롤링 (3건씩 시프트), 좌우 화살표 (수동 / 3건씩), hover 시 자동 롤링 정지,
+//          링크 클릭 = 새 탭 (target="_blank" + rel="noopener noreferrer"), 끝나면 wrap-around.
 function renderNewsWidget() {
   const ROLL_MS = 6000;        // 5~7 초 영역 안 (사용자 명시)
   const FADE_MS = 350;         // 300~500ms 영역 안 (사용자 명시)
+  const ROWS    = 3;           // D-Fix-NewsBar3: 한 묶음 = 3 건
 
   const wrap = h("section", { class: "news-widget" });
-  const icon = h("span", { class: "news-widget-icon" }, "📰");
-  const linkEl = h("a", {
-    class: "news-widget-link",
-    href: "#",
-    target: "_blank",
-    rel: "noopener noreferrer",
-  }, "뉴스를 불러오는 중…");
-  // 좌우 화살표 — 수동 전환 (자동 롤링 reset)
+  // 좌우 화살표 — 수동 전환 (자동 롤링 reset). 3행 세로 가운데 정렬은 CSS 가 처리.
   const prevBtn = h("button", {
     class: "news-widget-arrow",
     "aria-label": "이전",
@@ -2963,46 +2957,92 @@ function renderNewsWidget() {
     type: "button",
   }, "›");
 
-  wrap.appendChild(icon);
-  wrap.appendChild(linkEl);
+  // 3행 컨테이너 — flex-direction:column. 각 행 = icon + link.
+  const rowsWrap = h("div", { class: "news-widget-rows" });
+  const rowEls = [];   // [{ row, icon, link }] × ROWS
+  for (let i = 0; i < ROWS; i++) {
+    const row = h("div", { class: "news-widget-row" });
+    const rIcon = h("span", { class: "news-widget-icon" }, "📰");
+    const rLink = h("a", {
+      class: "news-widget-link",
+      href: "#",
+      target: "_blank",
+      rel: "noopener noreferrer",
+    }, i === 0 ? "뉴스를 불러오는 중…" : "");
+    row.appendChild(rIcon);
+    row.appendChild(rLink);
+    rowsWrap.appendChild(row);
+    rowEls.push({ row, icon: rIcon, link: rLink });
+    // url 없으면 클릭 무력화 (보안 + UX) — 행별로 등록
+    rLink.addEventListener("click", (e) => {
+      if (rLink.classList.contains("disabled")) e.preventDefault();
+    });
+  }
+
   wrap.appendChild(prevBtn);
+  wrap.appendChild(rowsWrap);
   wrap.appendChild(nextBtn);
 
   let news = [];
-  let idx = 0;
+  let idx = 0;            // 페이지 시작 인덱스 (0, 3, 6, ...)
   let rollTimer = null;
   let hovered = false;
-  let busy = false;  // fade 영역 중복 트리거 방지
+  let busy = false;       // fade 중복 트리거 방지
 
-  function applyItem(n) {
+  // 단일 행 채우기 — 기존 applyItem 의 행별 버전.
+  function fillRow(link, n) {
     if (n && n.url) {
-      linkEl.setAttribute("href", n.url);
-      linkEl.classList.remove("disabled");
+      link.setAttribute("href", n.url);
+      link.classList.remove("disabled");
     } else {
-      linkEl.setAttribute("href", "#");
-      linkEl.classList.add("disabled");
+      link.setAttribute("href", "#");
+      link.classList.add("disabled");
     }
-    linkEl.title = n ? n.title || "" : "";
-    linkEl.innerHTML = "";
-    linkEl.appendChild(h("span", { class: "news-widget-text-title" }, (n && n.title) || ""));
+    link.title = n ? n.title || "" : "";
+    link.innerHTML = "";
+    link.appendChild(h("span", { class: "news-widget-text-title" }, (n && n.title) || ""));
     if (n && (n.source || n.pub_date)) {
-      linkEl.appendChild(h("span", { class: "news-widget-text-sep" }, "·"));
-      linkEl.appendChild(h("span", { class: "news-widget-text-meta" },
+      link.appendChild(h("span", { class: "news-widget-text-sep" }, "·"));
+      link.appendChild(h("span", { class: "news-widget-text-meta" },
         [n.source, n.pub_date].filter(Boolean).join(" · ")));
     }
   }
 
-  function fadeTo(nextIdx) {
+  // 페이지 단위 채우기 — startIdx 부터 ROWS 개 분배. 남은 게 모자라면 빈 행은 hidden.
+  function applyPage(startIdx) {
+    for (let i = 0; i < ROWS; i++) {
+      const slot = startIdx + i;
+      const n = (slot < news.length) ? news[slot] : null;
+      if (n) {
+        rowEls[i].row.classList.remove("news-widget-row-hidden");
+        fillRow(rowEls[i].link, n);
+      } else {
+        // 빈 행 — visibility:hidden (자리 유지) 으로 높이 들쭉날쭉 방지
+        rowEls[i].row.classList.add("news-widget-row-hidden");
+        fillRow(rowEls[i].link, null);
+      }
+    }
+  }
+
+  // 3건 묶음 단위로 fade 전환. nextIdx 는 페이지 시작 인덱스.
+  function fadeToPage(nextIdx) {
     if (busy || !news.length) return;
-    if (nextIdx === idx) return;
+    // wrap-around 보정
+    const total = news.length;
+    let target = nextIdx;
+    if (target >= total) target = 0;
+    if (target < 0) {
+      // 마지막 묶음 시작 = floor((total-1)/ROWS)*ROWS
+      target = Math.floor((total - 1) / ROWS) * ROWS;
+    }
+    if (target === idx) return;
     busy = true;
-    linkEl.classList.add("fading");
+    rowsWrap.classList.add("fading");
     setTimeout(() => {
-      idx = ((nextIdx % news.length) + news.length) % news.length;
-      applyItem(news[idx]);
-      // 다음 frame 에서 fade-in
+      idx = target;
+      applyPage(idx);
       requestAnimationFrame(() => {
-        linkEl.classList.remove("fading");
+        rowsWrap.classList.remove("fading");
         busy = false;
       });
     }, FADE_MS);
@@ -3010,10 +3050,10 @@ function renderNewsWidget() {
 
   function startRoll() {
     if (rollTimer) clearInterval(rollTimer);
-    if (news.length <= 1) return;
+    if (news.length <= ROWS) return;   // 3 건 이하면 롤링 의미 X
     rollTimer = setInterval(() => {
       if (hovered) return;
-      fadeTo(idx + 1);
+      fadeToPage(idx + ROWS);
     }, ROLL_MS);
   }
   function resetRoll() {
@@ -3023,51 +3063,47 @@ function renderNewsWidget() {
 
   prevBtn.addEventListener("click", (e) => {
     e.preventDefault();
-    fadeTo(idx - 1);
+    fadeToPage(idx - ROWS);
     resetRoll();
   });
   nextBtn.addEventListener("click", (e) => {
     e.preventDefault();
-    fadeTo(idx + 1);
+    fadeToPage(idx + ROWS);
     resetRoll();
-  });
-  // url 없으면 클릭 무력화 (보안 + UX)
-  linkEl.addEventListener("click", (e) => {
-    if (linkEl.classList.contains("disabled")) e.preventDefault();
   });
 
   // hover 정지 (자연스러운 UX)
   wrap.addEventListener("mouseenter", () => { hovered = true; });
   wrap.addEventListener("mouseleave", () => { hovered = false; });
 
-  function showEmpty() {
+  // 빈/에러 상태 — 첫 행만 메시지, 나머지 숨김, 화살표 숨김.
+  function showStatic(msg) {
     wrap.classList.add("news-widget-static");
-    icon.textContent = "📰";
-    linkEl.removeAttribute("href");
-    linkEl.classList.add("disabled");
-    linkEl.innerHTML = "";
-    linkEl.appendChild(h("span", { class: "news-widget-text-title" }, "새 뉴스가 없어요"));
+    for (let i = 0; i < ROWS; i++) {
+      rowEls[i].link.removeAttribute("href");
+      rowEls[i].link.classList.add("disabled");
+      rowEls[i].link.innerHTML = "";
+      if (i === 0) {
+        rowEls[i].row.classList.remove("news-widget-row-hidden");
+        rowEls[i].link.appendChild(h("span", { class: "news-widget-text-title" }, msg));
+      } else {
+        rowEls[i].row.classList.add("news-widget-row-hidden");
+      }
+    }
     prevBtn.style.display = "none";
     nextBtn.style.display = "none";
   }
-  function showError() {
-    wrap.classList.add("news-widget-static");
-    icon.textContent = "📰";
-    linkEl.removeAttribute("href");
-    linkEl.classList.add("disabled");
-    linkEl.innerHTML = "";
-    linkEl.appendChild(h("span", { class: "news-widget-text-title" }, "뉴스를 불러올 수 없어요"));
-    prevBtn.style.display = "none";
-    nextBtn.style.display = "none";
-  }
+  const showEmpty = () => showStatic("새 뉴스가 없어요");
+  const showError = () => showStatic("뉴스를 불러올 수 없어요");
 
   api.get("/api/dashboard/news").then((res) => {
     if (!res || res.error) { showError(); return; }
     news = Array.isArray(res.news) ? res.news : [];
     if (news.length === 0) { showEmpty(); return; }
     idx = 0;
-    applyItem(news[0]);
-    if (news.length <= 1) {
+    applyPage(idx);
+    if (news.length <= ROWS) {
+      // 3 건 이하 = 한 화면에 다 들어감 = 화살표 의미 X
       prevBtn.style.display = "none";
       nextBtn.style.display = "none";
     }

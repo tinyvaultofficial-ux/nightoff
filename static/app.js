@@ -361,7 +361,7 @@ const WITTY_LINES = [
 ];
 
 // 로딩 오버레이 — 중앙 카드 + 배경 투명(클릭만 차단) + 실무 단계만 회전 (위트문구 삭제)
-function showFullscreenLoader(steps) {
+function showFullscreenLoader(steps, opts = {}) {
   document.querySelectorAll(".fs-loader-backdrop").forEach((el) => el.remove());
 
   const safeSteps = (steps && steps.length) ? steps : [{ emoji: "✨", text: "잠시만요…" }];
@@ -380,6 +380,20 @@ function showFullscreenLoader(steps) {
   backdrop.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
   document.body.appendChild(backdrop);
   document.body.classList.add("fs-loader-active");
+
+  // D-Fix-LoadTimer: opts.showTimer 면 경과 초 카운터(01, 02, 03 ... 99, 100 ...) 추가.
+  //   RFP 분석 흐름(다중 업로드 / 역할 변경 / 재분석) 3자리만 켬 / 회사 DNA 재학습은 그대로.
+  //   finish·stop 에서 짝지어 clearInterval (누수 0).
+  let countTimer = null;
+  if (opts && opts.showTimer) {
+    const timerEl = h("div", { class: "fs-timer" }, "00");
+    content.appendChild(timerEl);
+    const startedAt = Date.now();
+    countTimer = setInterval(() => {
+      const sec = Math.floor((Date.now() - startedAt) / 1000);
+      timerEl.textContent = String(sec).padStart(2, "0");
+    }, 1000);
+  }
 
   // 실무 단계만 회전 (위트 문구 제거 — 신뢰감 우선)
   let stepIdx = 0;
@@ -406,6 +420,7 @@ function showFullscreenLoader(steps) {
     finish(emoji = "✅", text = "완료!", delayMs = 700) {
       if (closed) return;
       clearInterval(timer);
+      if (countTimer) clearInterval(countTimer);
       messageEl.classList.remove("fade-out");
       messageEl.textContent = `${emoji} ${text}`;
       setTimeout(() => handle.stop(), delayMs);
@@ -414,6 +429,7 @@ function showFullscreenLoader(steps) {
       if (closed) return;
       closed = true;
       clearInterval(timer);
+      if (countTimer) clearInterval(countTimer);
       backdrop.classList.add("closing");
       setTimeout(() => {
         backdrop.remove();
@@ -4213,7 +4229,7 @@ async function renderRfpSection(cid) {
   }
 
   async function doMultiUpload(files, roles) {
-    const loader = showFullscreenLoader(LOADER_STEPS.rfp);
+    const loader = showFullscreenLoader(LOADER_STEPS.rfp, { showTimer: true });
     try {
       const fd = new FormData();
       for (const f of files) fd.append("files", f);
@@ -4262,7 +4278,7 @@ async function renderRfpSection(cid) {
         ROLE_LABELS.map((r) => h("option", { value: r, ...(r === f.role ? { selected: "" } : {}) }, r))
       );
       roleSel.addEventListener("change", async () => {
-        const loader = showFullscreenLoader(LOADER_STEPS.rfp);
+        const loader = showFullscreenLoader(LOADER_STEPS.rfp, { showTimer: true });
         try {
           await api.patch(`/api/clients/${cid}/rfp/files/${f.id}`, { role: roleSel.value });
           loader.finish("✅", "재분석 완료!", 600);
@@ -4319,7 +4335,7 @@ async function renderRfpSection(cid) {
             class: "btn btn-outline",
             style: "flex-shrink: 0;",
             onclick: async () => {
-              const loader = showFullscreenLoader(LOADER_STEPS.rfp);
+              const loader = showFullscreenLoader(LOADER_STEPS.rfp, { showTimer: true });
               try {
                 const firstFile = rfp.files[0];
                 await api.patch(`/api/clients/${cid}/rfp/files/${firstFile.id}`, { role: firstFile.role });

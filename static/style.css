@@ -5230,6 +5230,9 @@ input.locked-by-env::placeholder {
 }
 .proposal-side-panel.hidden { display: none; }
 
+/* D-Fix-LoadTimer: 풀스크린 로더 경과 초 카운터 (RFP 분석 흐름 전용) */
+.fs-timer { margin-top: 8px; font-size: 14px; color: var(--muted, #888); font-variant-numeric: tabular-nums; }
+
 /* ───────────────────────────────────────────────────────────
    Spec D-Fix-RightPanel — 생성 완료 후 기능 패널 (proposal-side-panel 안 .action-panel)
    슬라이드쇼 dead code 의 .side-panel-* / .png-* CSS 와 별개 영역.

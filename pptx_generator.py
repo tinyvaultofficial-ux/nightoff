@@ -1810,7 +1810,7 @@ def render_shape_to_slide(slide, shape_def):
             _size_gov = float(shape_def.get("size", 14))
             _weight_gov = int(shape_def.get("weight", 400))
             _y_gov = float(shape_def.get("y", 0))
-            if 28 <= _size_gov <= 49 and _weight_gov >= 700 and _y_gov <= 2.5:
+            if 26 <= _size_gov <= 49 and _weight_gov >= 700 and _y_gov <= 2.5:
                 _color_gov = "#1E40AF"
             return _add_text(
                 slide,

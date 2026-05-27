@@ -5230,8 +5230,24 @@ input.locked-by-env::placeholder {
 }
 .proposal-side-panel.hidden { display: none; }
 
-/* D-Fix-LoadTimer: 풀스크린 로더 경과 초 카운터 (RFP 분석 흐름 전용) */
-.fs-timer { margin-top: 8px; font-size: 14px; color: var(--muted, #888); font-variant-numeric: tabular-nums; }
+/* D-Fix-LoadTimer + D-Fix-TimerDesign: 풀스크린 로더 경과 초 카운터 (RFP 분석 전용)
+   wrapper 분리 — 링은 회전 / 숫자는 정지 (가운데 보라). FC온라인 st. */
+.fs-spinner-wrap {
+  position: relative;
+  width: 72px; height: 72px;
+  display: grid; place-items: center;
+}
+/* 스피너 크기 키움 — 두 자리 숫자 들어갈 공간 (기존 48 → 72) */
+.fs-spinner-wrap > .fs-spinner { width: 72px; height: 72px; border-width: 4px; }
+/* 카운터 = 링 가운데 보라 두꺼운 숫자 (정지 / 회전 안 함) */
+.fs-timer {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  font-size: 22px; font-weight: 700;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
 
 /* ───────────────────────────────────────────────────────────
    Spec D-Fix-RightPanel — 생성 완료 후 기능 패널 (proposal-side-panel 안 .action-panel)

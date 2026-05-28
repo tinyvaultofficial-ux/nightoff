@@ -3498,7 +3498,7 @@ function openSampleModal(sample) {
     h("div", { class: "sample-modal-body" }, [
       h("iframe", {
         class: "sample-modal-pdf",
-        src: `${sample.pdfUrl}#toolbar=0&navpanes=0&scrollbar=1`,
+        src: `${sample.pdfUrl}#toolbar=0&navpanes=0&scrollbar=0&view=Fit`,
         title: sample.title,
       }),
     ]),

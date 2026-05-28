@@ -594,7 +594,8 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
       "governing_sub": ["사용자 슬로건 (대화 명시 시) 또는 발주처명"],
       "key_msgs": ["핵심 메시지 1", "핵심 메시지 2", "핵심 메시지 3"],
       "viz_hint": "표지 - 큰 헤드라인(RFP 공식 용역명) + 부제(슬로건 또는 발주처) + 날짜",
-      "viz_pattern": ""
+      "viz_pattern": "",
+      "role": ""
     },
     {
       "page": 2,
@@ -604,7 +605,8 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
       "governing_sub": [],
       "key_msgs": ["Ⅰ. 제안 개요", "Ⅱ. 일반 부문", ...],
       "viz_hint": "목차 - 번호 매긴 큰 텍스트 5부",
-      "viz_pattern": ""
+      "viz_pattern": "",
+      "role": ""
     },
     {
       "page": 3,
@@ -614,7 +616,8 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
       "governing_sub": [],
       "key_msgs": ["챕터 한 줄 요약"],
       "viz_hint": "거대 챕터 번호 200pt + 챕터명만. 하단 미리보기 박스 X (본문 중복 회피)",
-      "viz_pattern": ""
+      "viz_pattern": "",
+      "role": ""
     },
     {
       "page": 4,
@@ -624,7 +627,8 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
       "governing_sub": ["행사기간: 2026.10.17 ~ 18 (2일)", "참여 규모: 5만 명"],
       "key_msgs": ["RFP 에서 도출한 배경 1", "배경 2", "배경 3"],
       "viz_hint": "★ 제안서 초반 — 박스당 1~3줄 권장 (낮은 밀도). stat (KPI 3~4개) + comparison(AS-IS/TO-BE). 키워드 중심 첫 인상, 후반부 기대감 형성. 장황한 설명 X.",
-      "viz_pattern": "before_after"
+      "viz_pattern": "before_after",
+      "role": "body"
     },
     {
       "page": 5,
@@ -634,7 +638,8 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
       "governing_sub": [],
       "key_msgs": ["접근 방향 1 (추상)", "접근 방향 2 (추상)", "접근 방향 3 (추상)"],
       "viz_hint": "★ 제안서 초반 — 박스당 1~3줄 권장 (낮은 밀도). 추상 메시지 + 접근 방향 3~4개 박스 (정성). ⚠ 정량 수치·자사 실적·회사명 절대 금지 (마스터 원칙 영역 2). 메인 거버닝 = 단순 나열 X, 페이지의 주장/선언.",
-      "viz_pattern": "cards3"
+      "viz_pattern": "cards3",
+      "role": "body"
     },
     {
       "page": "...",
@@ -644,7 +649,8 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
       "governing_sub": ["메인 무대 8시간 / 5장르", "관객 동선 4개 zone 분리"],
       "key_msgs": ["프로그램 1 상세", "프로그램 2 상세", "프로그램 3 상세"],
       "viz_hint": "★ 제안서 메인 — 박스당 5~10줄 권장 (높은 밀도). 초반 키워드의 구현 방법, 구체적·깊게. Ⅲ + Ⅳ 가 평가 점수 핵심.",
-      "viz_pattern": "process"
+      "viz_pattern": "process",
+      "role": "body"
     },
     ...
   ]
@@ -674,6 +680,35 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
 ③ 페이지 내용이 특정 패턴에 자연스러우면 그것을 우선 선택하되, 다양성을 우선 — 억지로 맞추지 말고 자연스러운 후보 2~3개 중 직전과 다른 것 선택.
 ④ 위험 4종(벤다이어그램 / 2x2 매트릭스 / 수직 타임라인 / 다이어그램+표) 절대 X — 안전 6종 키 밖 값은 코드가 자동 ""로 강등시킴 (배정 무효).
 ⑤ 특수 페이지(표지·목차·챕터 divider 5장·마무리)는 "" (배정 안 함).
+
+[role 식별 기준 — Spec D-Fix-BodyRole-1]
+각 outline 항목에 "role" 필드를 포함. 값 = "body" / "support" / "" 중 하나.
+
+식별 기준 (★ 라벨 아닌 페이지 내용(key_msgs / governing_main) 기반 판단):
+- body (본론): 이 페이지가 "무엇을 어떻게 할 것인가"의 구체적 수행 방법론·실행방안·전략·차별화 접근을 다루면 body.
+  예: 컨셉 전개 / 프로그램 구성 / 운영 방안 / 무대·공간 계획 / 홍보 전략 / 참여 유도 메커니즘 / 차별화 접근 등.
+- support (보조): 정형화된 항목을 갖춰 보여주는 페이지. 다음 내용을 다루면 support:
+  · 회사소개 / 조직 구성 / 인력 배치 / 유사 실적
+  · 예산 / 정산 / 가격 / 산출내역
+  · 일정 / 추진 일정 / 마일스톤 / 추진체계
+  · 보고체계 / 보고 절차 / 결과 보고
+  · 리스크관리 / 위기관리 / 비상 대응
+  · 사후관리 / 모니터링 / 점검 / 사후 평가
+  · 품질관리 / 품질 보증 / 검수
+  · 산출물 / 결과물 / 납품물
+  · 청렴 / 보안 / 개인정보 보호 / 법적 준수
+  · 안전대책 / 안전관리 / 사고 예방 (정형 매뉴얼 영역)
+  · 일반관리 / 일반 행정 / 사업관리
+- "" (특수): 표지 / 목차 / 챕터 divider / 마무리(감사) — 본론·보조 분류 무의미.
+
+★ 라벨 함정 회피 (가장 중요):
+- 섹션 라벨이 "수행계획 / 운영계획" 같은 본론성 단어를 포함해도, 그 페이지의 실제 내용(key_msgs)이 예산·보고·일정·리스크 등 정형 관리면 반드시 support로 분류.
+- 한 부(Ⅳ 등) 안에 본론성·보조성 페이지가 섞여 있으면 페이지 단위로 각각 다른 role 부여 (부 단위 뭉뚱그리지 X).
+
+★ 본 spec 범위 (D-Fix-BodyRole-1):
+- role 은 식별·검증용 딱지. 분량·비율 강제 X (이번 spec 범위 밖).
+- role 값과 분량(본론 60~70%·보조 30~40%) 규칙(L301-308)은 별개로 작동.
+- 잘못 출력 / 임의 값은 코드가 ""로 강등 (식별 누락 → 무영향 fallback).
 """
 
 
@@ -1505,6 +1540,10 @@ class OutlineItem:
     # 값 = 2col / cards3 / process / before_after / quant / cards_grid 중 하나, 또는 ""(특수 페이지).
     # 위험 4종(벤다이어그램 / 2x2 매트릭스 / 수직 타임라인 / 다이어그램+표) 절대 배정 X (D-Fix-Layout L1321).
     viz_pattern: str = ""
+    # Spec D-Fix-BodyRole-1 — 본론/보조 식별 딱지 (식별·검증용 / 분량 강제 X).
+    # 값 = "body" (구체적 수행 방법론) / "support" (정형 관리 항목) / "" (특수 페이지).
+    # 라벨 아닌 페이지 내용(key_msgs) 기반 분류. 분량·비율 강제는 본 spec 범위 밖.
+    role: str = ""
 
 
 @dataclass
@@ -1641,6 +1680,11 @@ async def generate_outline(
         _VIZ_PATTERN_SAFE = {"2col", "cards3", "process", "before_after", "quant", "cards_grid"}
         viz_pattern_raw = str(it.get("viz_pattern", "")).strip().lower()
         viz_pattern = viz_pattern_raw if viz_pattern_raw in _VIZ_PATTERN_SAFE else ""
+        # Spec D-Fix-BodyRole-1 — role 화이트리스트 (body/support/"" 만 허용).
+        # outline AI 가 임의 값을 박으면 ""로 강등 (식별 누락 → 무영향 fallback).
+        _ROLE_SAFE = {"body", "support", ""}
+        role_raw = str(it.get("role", "")).strip().lower()
+        role = role_raw if role_raw in _ROLE_SAFE else ""
         items.append(OutlineItem(
             page=int(it.get("page", len(items) + 1)),
             section=str(it.get("section", "")).strip(),
@@ -1649,6 +1693,7 @@ async def generate_outline(
             key_msgs=[str(m).strip() for m in (it.get("key_msgs") or []) if m],
             viz_hint=str(it.get("viz_hint", "")).strip(),
             viz_pattern=viz_pattern,
+            role=role,
         ))
 
     # 정량 lock 영역 — RFP 분석 결과에 quantitative_locks 가 있으면 outline 결과에 보존.
@@ -1674,6 +1719,16 @@ async def generate_outline(
     total_slides = min(MAX_SLIDES_HARD, total_slides_raw)
     if total_slides_raw > MAX_SLIDES_HARD:
         log.warning("total_slides %d → %d 로 클램프 (MAX_SLIDES_HARD)", total_slides_raw, MAX_SLIDES_HARD)
+
+    # Spec D-Fix-BodyRole-1 — role 분포 관찰 로그 (강제·폐기 X / 식별 정확도 모니터링용).
+    _body = sum(1 for it in items if it.role == "body")
+    _support = sum(1 for it in items if it.role == "support")
+    _blank = sum(1 for it in items if not it.role)
+    _ratio = (_body / len(items) * 100) if items else 0
+    log.info(
+        "outline role 분포: body=%d / support=%d / blank=%d / total=%d (body=%.0f%%)",
+        _body, _support, _blank, len(items), _ratio,
+    )
 
     return OutlineResult(
         title=str(parsed.get("title", "")).strip(),
@@ -2010,6 +2065,7 @@ async def orchestrate(
                 "key_msgs": it.key_msgs,
                 "viz_hint": it.viz_hint,  # 잠재 버그 fix (D-6-0) — 부분 재생성 시 viz_hint 컨텍스트 보존
                 "viz_pattern": it.viz_pattern,  # Spec D-Fix-LayoutVariety-1 — partial-regen 보존
+                "role": it.role,  # Spec D-Fix-BodyRole-1 — partial-regen 보존 (식별 딱지)
             }
             for it in outline.outline
         ],

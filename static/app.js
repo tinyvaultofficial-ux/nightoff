@@ -3438,7 +3438,7 @@ function renderSampleWidget() {
       : null,
     h("div", { class: "sample-widget-footer" }, [
       h("p", { class: "sample-widget-footer-hint" },
-        "실제 수주 제안서로 NightOff 품질을 확인하세요"),
+        "실제 생성된 제안서로 NightOff 품질을 확인하세요"),
     ]),
   ].filter(Boolean));
 

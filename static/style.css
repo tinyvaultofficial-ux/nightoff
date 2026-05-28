@@ -3319,8 +3319,10 @@ body, .msg-bubble, .card, .strengths-intro,
    대시보드 우측 35% 영역. PDF 자산 대기 placeholder 데이터.
    ============================================ */
 .sample-widget {
-  background: var(--card);
-  border: 0.5px solid var(--border);
+  /* Spec D-Fix-SampleCard-1: 옆 공고 카드(흰 배경)와 차별화 — 은은한 라벤더 배경.
+     과하지 않게 #F7F4FF (브랜드 보라 계열 가장 옅은 톤). */
+  background: #F7F4FF;
+  border: 0.5px solid #E8E0F5;
   border-radius: var(--radius-lg);
   padding: 22px 24px;
   display: flex;
@@ -3376,6 +3378,13 @@ body, .msg-bubble, .card, .strengths-intro,
   padding: 16px;
   text-align: center;
   overflow: hidden;
+  /* Spec D-Fix-SampleCard-1: 부드러운 그림자로 떠 있는 느낌 (과하지 않게). */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+/* Spec D-Fix-SampleCard-1: 이미지 있을 때만 padding 0 → 보라 액자 사라지고 이미지 꽉 채움.
+   텍스트 fallback (이미지 없음) 케이스는 위 padding 16px 그대로 유지 (가독성). */
+.sample-card-thumbnail:has(img) {
+  padding: 0;
 }
 .sample-card-thumbnail img {
   width: 100%;

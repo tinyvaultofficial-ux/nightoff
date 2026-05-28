@@ -3553,6 +3553,9 @@ body, .msg-bubble, .card, .strengths-intro,
   overflow: hidden;
   display: flex;
   background: var(--bg-2);
+  /* Spec D-Fix-SampleModal-1: PDF iframe 둘레에 회색 매트 여백 — 문서가 모달 가장자리까지 꽉 차서 답답한 것 해소.
+     box-sizing: border-box(글로벌 L173)라 aspect-ratio 외곽 크기·비율 그대로, iframe 만 비례 축소. */
+  padding: 24px;
 }
 .sample-modal-pdf {
   width: 100%;
@@ -3595,6 +3598,8 @@ body, .msg-bubble, .card, .strengths-intro,
     max-height: 100vh;
     border-radius: 0;
   }
+  /* Spec D-Fix-SampleModal-1: 좁은 화면에서 문서가 너무 작아지지 않게 PC 24 → 모바일 12 */
+  .sample-modal-body { padding: 12px; }
   .sample-modal-cta-bar {
     flex-direction: column;
     gap: 8px;

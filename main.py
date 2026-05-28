@@ -6431,7 +6431,7 @@ def _reconstruct_outline_item_from_payload(payload: dict, page: int):
 
     부분 재생성 시 proposal_multi_pass.generate_one_slide() 의 item 인자로 사용.
     payload.outline 배열에서 page 일치하는 항목 검색 → OutlineItem dataclass 인스턴스 빌드.
-    OutlineItem 필드: page, section, governing_main, governing_sub, key_msgs, viz_hint.
+    OutlineItem 필드: page, section, governing_main, governing_sub, key_msgs, viz_hint, viz_pattern.
     실패 (해당 page 없음 / dataclass 구성 실패) 시 None 반환.
     """
     from proposal_multi_pass import OutlineItem
@@ -6449,6 +6449,8 @@ def _reconstruct_outline_item_from_payload(payload: dict, page: int):
                     governing_sub=item_dict.get("governing_sub", []) or [],
                     key_msgs=item_dict.get("key_msgs", []) or [],
                     viz_hint=item_dict.get("viz_hint", ""),
+                    # Spec D-Fix-LayoutVariety-1 — partial-regen 시 사전 배정 패턴 보존
+                    viz_pattern=item_dict.get("viz_pattern", ""),
                 )
             except Exception:
                 return None

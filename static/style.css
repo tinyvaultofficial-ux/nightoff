@@ -3324,6 +3324,7 @@ body, .msg-bubble, .card, .strengths-intro,
   background: #F7F4FF;
   border: 0.5px solid #E8E0F5;
   border-radius: var(--radius-lg);
+  /* Spec D-Fix-SampleReplace-1: padding 원복(22px 24px) — 옆 closing-widget 카드와 끝선 정합 유지 */
   padding: 22px 24px;
   display: flex;
   flex-direction: column;
@@ -3408,18 +3409,21 @@ body, .msg-bubble, .card, .strengths-intro,
 .sample-card-info {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  /* Spec D-Fix-SampleReplace-1: 카드 높이 유지(옆 공고 카드 끝선 정합) — gap 으로 빈 공간 메움 */
+  gap: 8px;
 }
 .sample-card-title-text {
-  font-size: 13px;
-  font-weight: 500;
+  /* Spec D-Fix-SampleReplace-1: description 빠진 분량을 제목으로 흡수 — 13 → 17pt / weight 500 → 700 */
+  font-size: 17px;
+  font-weight: 700;
   color: var(--fg-strong);
   margin: 0;
-  letter-spacing: -0.2px;
-  line-height: 1.4;
+  letter-spacing: -0.3px;
+  line-height: 1.35;
 }
 .sample-card-meta {
-  font-size: 11px;
+  /* Spec D-Fix-SampleReplace-1: 11 → 13 (발주처 가독성 강화) */
+  font-size: 13px;
   color: var(--fg-2);
   margin: 0;
   display: flex;
@@ -3429,7 +3433,8 @@ body, .msg-bubble, .card, .strengths-intro,
 }
 .sample-card-meta .sep { color: var(--fg-soft); }
 .sample-card-cta {
-  font-size: 12px;
+  /* Spec D-Fix-SampleReplace-1: 12 → 13 (가독성) */
+  font-size: 13px;
   color: var(--primary);
   font-weight: 600;
   margin-top: 4px;
@@ -3471,7 +3476,8 @@ body, .msg-bubble, .card, .strengths-intro,
   padding-top: 12px;
 }
 .sample-widget-footer-hint {
-  font-size: 10px;
+  /* Spec D-Fix-SampleReplace-1: 10 → 11.5 (가독성) */
+  font-size: 11.5px;
   color: var(--fg-soft);
   margin: 0;
   text-align: center;

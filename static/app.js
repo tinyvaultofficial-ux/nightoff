@@ -3426,7 +3426,7 @@ function renderSampleWidget() {
     h("div", { class: "sample-widget-head" }, [
       h("span", { class: "sample-widget-icon" }, "📑"),
       h("div", { class: "sample-widget-title-wrap" }, [
-        h("h2", { class: "sample-widget-title" }, "제안서 샘플"),
+        h("h2", { class: "sample-widget-title" }, "10분 만에 나온 실제 제안서"),
       ]),
       h("span", { class: "sample-widget-badge" }, "FREE"),
     ]),

@@ -591,7 +591,8 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
       "governing_main": "RFP 공식 사업명 / 용역명 (RFP 영역 영역 영역 영역 그대로 — 절대 변경 X)",
       "governing_sub": ["사용자 슬로건 (대화 명시 시) 또는 발주처명"],
       "key_msgs": ["핵심 메시지 1", "핵심 메시지 2", "핵심 메시지 3"],
-      "viz_hint": "표지 - 큰 헤드라인(RFP 공식 용역명) + 부제(슬로건 또는 발주처) + 날짜"
+      "viz_hint": "표지 - 큰 헤드라인(RFP 공식 용역명) + 부제(슬로건 또는 발주처) + 날짜",
+      "viz_pattern": ""
     },
     {
       "page": 2,
@@ -600,7 +601,8 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
       "governing_main": "CONTENTS",
       "governing_sub": [],
       "key_msgs": ["Ⅰ. 제안 개요", "Ⅱ. 일반 부문", ...],
-      "viz_hint": "목차 - 번호 매긴 큰 텍스트 5부"
+      "viz_hint": "목차 - 번호 매긴 큰 텍스트 5부",
+      "viz_pattern": ""
     },
     {
       "page": 3,
@@ -609,7 +611,8 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
       "governing_main": "Ⅰ. 제안 개요",
       "governing_sub": [],
       "key_msgs": ["챕터 한 줄 요약"],
-      "viz_hint": "거대 챕터 번호 200pt + 챕터명만. 하단 미리보기 박스 X (본문 중복 회피)"
+      "viz_hint": "거대 챕터 번호 200pt + 챕터명만. 하단 미리보기 박스 X (본문 중복 회피)",
+      "viz_pattern": ""
     },
     {
       "page": 4,
@@ -618,7 +621,8 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
       "governing_main": "페이지의 주장 (예: '시민의 일상에 뿌리내리는 축제로의 전환')",
       "governing_sub": ["행사기간: 2026.10.17 ~ 18 (2일)", "참여 규모: 5만 명"],
       "key_msgs": ["RFP 에서 도출한 배경 1", "배경 2", "배경 3"],
-      "viz_hint": "★ 제안서 초반 — 박스당 1~3줄 권장 (낮은 밀도). stat (KPI 3~4개) + comparison(AS-IS/TO-BE). 키워드 중심 첫 인상, 후반부 기대감 형성. 장황한 설명 X."
+      "viz_hint": "★ 제안서 초반 — 박스당 1~3줄 권장 (낮은 밀도). stat (KPI 3~4개) + comparison(AS-IS/TO-BE). 키워드 중심 첫 인상, 후반부 기대감 형성. 장황한 설명 X.",
+      "viz_pattern": "before_after"
     },
     {
       "page": 5,
@@ -627,7 +631,8 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
       "governing_main": "페이지의 주장 (예: '관객과의 양방향 소통을 강화하는 체험 구조')",
       "governing_sub": [],
       "key_msgs": ["접근 방향 1 (추상)", "접근 방향 2 (추상)", "접근 방향 3 (추상)"],
-      "viz_hint": "★ 제안서 초반 — 박스당 1~3줄 권장 (낮은 밀도). 추상 메시지 + 접근 방향 3~4개 박스 (정성). ⚠ 정량 수치·자사 실적·회사명 절대 금지 (마스터 원칙 영역 2). 메인 거버닝 = 단순 나열 X, 페이지의 주장/선언."
+      "viz_hint": "★ 제안서 초반 — 박스당 1~3줄 권장 (낮은 밀도). 추상 메시지 + 접근 방향 3~4개 박스 (정성). ⚠ 정량 수치·자사 실적·회사명 절대 금지 (마스터 원칙 영역 2). 메인 거버닝 = 단순 나열 X, 페이지의 주장/선언.",
+      "viz_pattern": "cards3"
     },
     {
       "page": "...",
@@ -636,7 +641,8 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
       "governing_main": "페이지의 주장 (예: '라인업 흐름으로 페스티벌 몰입을 끊김 없이 잇는다')",
       "governing_sub": ["메인 무대 8시간 / 5장르", "관객 동선 4개 zone 분리"],
       "key_msgs": ["프로그램 1 상세", "프로그램 2 상세", "프로그램 3 상세"],
-      "viz_hint": "★ 제안서 메인 — 박스당 5~10줄 권장 (높은 밀도). 초반 키워드의 구현 방법, 구체적·깊게. Ⅲ + Ⅳ 가 평가 점수 핵심."
+      "viz_hint": "★ 제안서 메인 — 박스당 5~10줄 권장 (높은 밀도). 초반 키워드의 구현 방법, 구체적·깊게. Ⅲ + Ⅳ 가 평가 점수 핵심.",
+      "viz_pattern": "process"
     },
     ...
   ]
@@ -648,6 +654,24 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
 - key_msgs 는 슬라이드별 핵심 메시지 3~5개 (아직 본문 풀어 쓰지 말고 짧게)
 - viz_hint 는 다음 단계에서 도형 JSON 그릴 때의 힌트 (간단히)
 - 표지 / 목차 / 챕터 divider 5장 / 마무리 1장은 반드시 포함
+
+[viz_pattern 사전 배정 규칙 — Spec D-Fix-LayoutVariety-1]
+모든 outline 항목에 "viz_pattern" 필드를 포함. 본문 페이지(slide_type=text_box / 일부 hero)는 아래 6종 중 하나의 키를 배정. 특수 페이지(표지 / 목차 / 챕터 divider / 감사 / 마무리)는 "" 빈 문자열.
+
+안전 6종 풀 (이 외 값 배정 금지 — 위험 4종은 절대 풀에 X):
+  · 2col          — 좌우 2분할 (현재/개선·문제/해결·전후)
+  · cards3        — 3카드 등분 비교 (평행 분류·차별점)
+  · process       — 가로 단계 흐름 (절차·추진 단계·일정 흐름)
+  · before_after  — Before/After 점층 카드 (도입 효과·개선 사례)
+  · quant         — 정량 강조 (큰 숫자 + 라벨, KPI·예산·규모)
+  · cards_grid    — 카드 그리드 2x3 / 2x4 (팀원·사례·zone 분리)
+
+분배 규칙 (★ 매핑형 절대 금지 — "이 내용엔 반드시 이 패턴"식 X):
+① 본문 페이지 전체에 6종이 골고루 분포하게. 특정 1~2종 편중 금지.
+② 직전 본문 페이지와 같은 viz_pattern 을 연속 배정 X (반드시 다른 키).
+③ 페이지 내용이 특정 패턴에 자연스러우면 그것을 우선 선택하되, 다양성을 우선 — 억지로 맞추지 말고 자연스러운 후보 2~3개 중 직전과 다른 것 선택.
+④ 위험 4종(벤다이어그램 / 2x2 매트릭스 / 수직 타임라인 / 다이어그램+표) 절대 X — 안전 6종 키 밖 값은 코드가 자동 ""로 강등시킴 (배정 무효).
+⑤ 특수 페이지(표지·목차·챕터 divider 5장·마무리)는 "" (배정 안 함).
 """
 
 
@@ -1476,6 +1500,10 @@ class OutlineItem:
     governing_sub: list[str] = field(default_factory=list)  # 정량: 메인 근거 (각 25자 이내, 0~2개)
     key_msgs: list[str] = field(default_factory=list)
     viz_hint: str = ""
+    # Spec D-Fix-LayoutVariety-1 — outline 단계 사전 배정 레이아웃 패턴 (안전 6종 키만 허용).
+    # 값 = 2col / cards3 / process / before_after / quant / cards_grid 중 하나, 또는 ""(특수 페이지).
+    # 위험 4종(벤다이어그램 / 2x2 매트릭스 / 수직 타임라인 / 다이어그램+표) 절대 배정 X (D-Fix-Layout L1321).
+    viz_pattern: str = ""
 
 
 @dataclass
@@ -1607,6 +1635,11 @@ async def generate_outline(
         if not isinstance(gov_sub_raw, list):
             gov_sub_raw = []
         gov_sub = [str(s).strip() for s in gov_sub_raw if s and str(s).strip()]
+        # Spec D-Fix-LayoutVariety-1 — viz_pattern 안전 6종 키 화이트리스트 검증.
+        # outline AI 가 위험 4종 또는 임의 값을 박더라도 안전 풀 밖이면 ""로 fallback.
+        _VIZ_PATTERN_SAFE = {"2col", "cards3", "process", "before_after", "quant", "cards_grid"}
+        viz_pattern_raw = str(it.get("viz_pattern", "")).strip().lower()
+        viz_pattern = viz_pattern_raw if viz_pattern_raw in _VIZ_PATTERN_SAFE else ""
         items.append(OutlineItem(
             page=int(it.get("page", len(items) + 1)),
             section=str(it.get("section", "")).strip(),
@@ -1614,6 +1647,7 @@ async def generate_outline(
             governing_sub=gov_sub,
             key_msgs=[str(m).strip() for m in (it.get("key_msgs") or []) if m],
             viz_hint=str(it.get("viz_hint", "")).strip(),
+            viz_pattern=viz_pattern,
         ))
 
     # 정량 lock 영역 — RFP 분석 결과에 quantitative_locks 가 있으면 outline 결과에 보존.
@@ -1721,6 +1755,17 @@ def _build_slide_user_prompt(
     parts.extend([
         f"[핵심 메시지 (함축해서 핵심만 — 디자이너가 시각 요소로 풀어냄)] {' / '.join(item.key_msgs)}",
         f"[시각화 힌트] {item.viz_hint}",
+    ])
+    # Spec D-Fix-LayoutVariety-1 — outline 단계에서 사전 배정된 레이아웃 패턴 inject.
+    # 본문 페이지만 값 있음. 특수 페이지(표지/목차/챕터/마무리)는 "" → inject X.
+    if item.viz_pattern:
+        parts.append(
+            f"[배정된 레이아웃 패턴] {item.viz_pattern} — 본 페이지는 이 패턴으로 구성하라. "
+            "안전 6종(2col / cards3 / process / before_after / quant / cards_grid) 범위 안에서만, "
+            "위험 4종(벤다이어그램·2x2 매트릭스·수직 타임라인·다이어그램+표)으로 벗어나지 말 것. "
+            "겹침 좌표 주의."
+        )
+    parts.extend([
         "",
         # 도메인 톤 매트릭스 inline (LAYER 2 발췌) — outline.domain 값에 따라 동적
         _format_domain_tone(domain),
@@ -1963,6 +2008,7 @@ async def orchestrate(
                 "governing_sub": it.governing_sub,
                 "key_msgs": it.key_msgs,
                 "viz_hint": it.viz_hint,  # 잠재 버그 fix (D-6-0) — 부분 재생성 시 viz_hint 컨텍스트 보존
+                "viz_pattern": it.viz_pattern,  # Spec D-Fix-LayoutVariety-1 — partial-regen 보존
             }
             for it in outline.outline
         ],

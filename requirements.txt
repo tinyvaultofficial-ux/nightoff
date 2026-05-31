@@ -23,3 +23,7 @@ apscheduler==3.10.4
 # RAG (옵셔널) — 두 패키지 설치 실패해도 NightOff 자체는 정상 동작 (rag_retriever 가 graceful skip).
 # Railway nixpacks 의 phases.install 에서 best-effort 로 설치하도록 분리.
 # 로컬 개발 시: pip install -r requirements-rag.txt
+# Spec D-Build-HTMLOutput — HTML → PPTX 변환 (Playwright 헤드리스 chromium 렌더)
+# admin 전용 토글 (policy_settings.output_mode_enabled='Y') 활성 시에만 사용. OFF 시 미사용.
+# 설치 후: playwright install chromium
+playwright==1.60.0

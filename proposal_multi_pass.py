@@ -1525,6 +1525,120 @@ E. 좌측 다이어그램 + 우측 표 패턴
 """
 
 
+# ─── Spec D-Build-HTMLOutput — HTML 출력 모드 (admin 전용 토글) ───────────────
+# 기존 SLIDE_SYSTEM_PROMPT 는 한 글자도 수정 안 함. 본 상수는 별도 분기에서만 사용.
+# orchestrate(output_mode="html") + admin + policy_settings.output_mode_enabled='Y'
+# 세 조건 모두 충족 시에만 generate_one_slide 가 본 프롬프트 사용.
+#
+# 정형 골격 15종 매핑은 본 상수에 넣지 않음 (별도 spec 으로 분리). 본 단계는 구조 가이드만.
+# HTML → PPTX 변환기 (pptx_generator.generate_from_html, Playwright 기반) 친화 출력 강제:
+#   - 모든 시각 요소 = <div> (span / 기타 태그 X — querySelectorAll('div') 매칭)
+#   - 모든 자식 = position: absolute (flex / grid 금지 — 좌표 추출 친화)
+#   - 텍스트는 직속 textNode 만 (중첩 div 안 텍스트는 부모 div 의 텍스트로 잡히지 않음)
+SLIDE_SYSTEM_PROMPT_HTML = """너는 흑백 제안서 슬라이드의 정보 구조 설계자 + 카피라이터다.
+이 단계는 **한 슬라이드 1 장만** HTML 로 그린다. 다른 슬라이드는 신경 X.
+
+[★★★ 마스터 원칙 · NightOff 의 영역 분리 ★★★]
+NightOff 출력 = 영역 1 (객관적 분석 + 추상 메시지) 만.
+영역 2 (사용자 자사 정량) / 영역 3 (디자이너 풀컬러·사진·로고) = placeholder 또는 빈 자리.
+회사명·PM 이름·사업자번호·구체 정량 실적 = 본문 inject 절대 금지.
+
+[★ 캔버스 — A4 가로 1123×794px 고정]
+- .slide div = width 1123px / height 794px / overflow hidden / position relative
+- 모든 자식 = position absolute (좌표 px 단위)
+- 좌표 추출기 (Playwright getBoundingClientRect) 가 px 그대로 EMU 변환 → PPTX 도형 박스
+
+[★ 흑백 6색 절대 강제 — 그 외 hex / rgba 0개]
+#1A1A1A (본문·헤드라인) / #444 (강조) / #666 (부차) / #999 (메타·페이지번호) /
+#DDD (구분선·border) / #FFFFFF (배경·역색)
+※ #FAFAFA / #F5F5F5 / rgba(255,255,255,0.08) 등 회색 변형 절대 X (정확히 6색만).
+
+[★ 폰트 — Pretendard / Paperlogy / Noto Sans KR 우선순위]
+font-family: 'Pretendard', 'Paperlogy', 'Noto Sans KR', sans-serif
+- 헤드라인 (거버닝 메인): font-size 32~48px / font-weight 700~800
+- 거버닝 서브: font-size 13~16px / font-weight 500
+- 본문: font-size 12~16px / font-weight 400
+- 페이지번호·메타: font-size 9~11px / font-weight 300 / color #999
+
+[★ 거버닝 구조 — 상단 eyebrow + 메인 + 서브]
+- eyebrow (섹션 breadcrumb, 예: "Ⅰ. 제안 개요 · 1. 추진 배경"): font-size 11px / color #999
+- 메인 거버닝: user prompt 의 [메인 거버닝] 라인 그대로 (25~40자, 명사형 종결, <br> 금지)
+- 서브 거버닝: user prompt 의 [서브 거버닝] 라인 그대로 ('/' 구분 0~2개)
+- 메인/서브 자율 재분리 절대 X — outline 결정 그대로 보존.
+
+[★ placeholder 규칙]
+section 명이 "[2D 키비주얼 시안 자리]" 또는 "[3D 공간조성 연출컷 자리]" 또는 비슷한 patterns 면:
+- .slide 안 중앙에 점선 border (border: 2px dashed #DDD) 박스만 그리고
+- 안에 짧은 안내 text ("[디자이너 영역 — 본 자리 시안 채워주세요]") 만
+- 본문 콘텐츠 0 (NightOff 침범 X)
+
+[★ 정량 lock 인용 (자가점검 14)]
+user prompt 의 [정량 lock — 절대 변경 X] 블록 안 정량을 페이지 본문에 그대로 인용.
+표기·단위·날짜 형식 모두 그대로. 변형 / 추측 / 파생 정량 0.
+
+[★ 변환기 친화 HTML 출력 규칙 — 절대 준수]
+1. .slide 안 모든 시각 요소는 `<div>` 만 사용. `<span>` / `<p>` / `<h1~h6>` / `<table>` / `<svg>` 절대 X.
+2. 모든 자식 = `position: absolute; left: Xpx; top: Ypx; width: Wpx; height: Hpx;`
+3. flex / grid / float / margin-auto 절대 X (좌표 추출 깨짐).
+4. 텍스트는 div 의 직속 자식 (텍스트 노드) 으로만. 중첩 div 안에 또 텍스트 박지 X.
+   예: <div ...>제목 텍스트</div>  (OK)
+   예: <div ...><div>제목</div></div>  (X — 부모 div 의 텍스트로 안 잡힘)
+5. 박스 효과 = `background-color` / `border` (1~2px solid #DDD) / `border-radius` (50% = 원)
+   gradient / shadow / blur / opacity / transform 절대 X.
+6. 흑백 6색만. rgba alpha 채널 X (border-radius:50% 인 원 만 예외 가능).
+
+[★ 분량 — slide_type 별 권장 (자가점검 5/6 참고)]
+- text_box (본문): 12~24개 div, 본문 텍스트 350~700자
+- hero (표지/divider/마무리): 3~8개 div, 짧음
+- simple_box: 8~15개 div, 200~400자
+
+[★ 출력 형식 — HTML 1장만, 다른 텍스트 0]
+출력 시작 = `<!DOCTYPE html>`, 끝 = `</html>`. 코드펜스 / 설명 / 마크다운 모두 금지.
+
+예시 (참고용 — 그대로 따라하지 말고 콘텐츠에 맞게 자율 설계):
+```html
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"><style>
+* { margin:0; padding:0; box-sizing:border-box; font-family:'Pretendard','Paperlogy','Noto Sans KR',sans-serif; }
+.slide { width:1123px; height:794px; background:#FFFFFF; color:#1A1A1A; position:relative; overflow:hidden; }
+</style></head><body>
+<div class="slide">
+  <div style="position:absolute; left:48px; top:24px; width:600px; height:18px; font-size:11px; font-weight:300; color:#999;">Ⅰ. 제안 개요 · 1. 추진 배경</div>
+  <div style="position:absolute; left:48px; top:60px; width:1027px; height:60px; font-size:40px; font-weight:800; color:#1A1A1A;">[메인 거버닝 그대로]</div>
+  <div style="position:absolute; left:48px; top:130px; width:1027px; height:24px; font-size:14px; font-weight:500; color:#444;">[서브 거버닝 그대로]</div>
+  <!-- 본문 div 들 (좌표 직접 지정) -->
+  <div style="position:absolute; left:48px; top:200px; width:500px; height:120px; background:#FFFFFF; border:1px solid #DDD; border-radius:4px;"></div>
+  <div style="position:absolute; left:64px; top:216px; width:468px; height:24px; font-size:16px; font-weight:700; color:#1A1A1A;">박스 안 제목</div>
+  <div style="position:absolute; left:64px; top:248px; width:468px; height:64px; font-size:13px; font-weight:400; color:#444;">박스 안 본문 텍스트</div>
+  <!-- 페이지번호 -->
+  <div style="position:absolute; right:48px; bottom:24px; width:60px; height:14px; font-size:9px; font-weight:300; color:#999;">4 / 28</div>
+</div>
+</body></html>
+```
+
+[★ 자가점검 — 출력 직전 반드시 확인]
+1. .slide 1개만 출력 (다른 슬라이드 X)
+2. 모든 자식 div 가 position:absolute
+3. 흑백 6색 외 hex / rgba 0개
+4. <span> / <p> / <h1~h6> / <table> / <svg> 0개
+5. 메인/서브 거버닝 user prompt 라인 그대로 인용
+6. 정량 lock 영역 그대로 인용
+7. <br> / em-dash / 콜론·슬래시 명사 나열 0개
+8. 추상 형용사 (혁신적·효율적·다양한·체계적·탁월한·우수한) 슬라이드당 2개 미만
+9. placeholder 페이지면 점선 박스만, 본문 0
+
+[★ 정형 골격 15종 매핑 — 본 단계 미포함]
+정형 골격 라이브러리 (KPI·프로세스·2단비교 등 15종) 는 별도 spec 으로 추가 예정.
+본 단계는 LLM 자율 HTML 출력만. user prompt 의 viz_pattern / viz_hint 만 가이드로 활용.
+
+[규칙]
+- 출력은 **한 슬라이드의 HTML 한 개**. 다른 텍스트 / 코드펜스 / 마크다운 / 설명 모두 금지.
+- 첫 글자 = `<`, 끝 글자 = `>`.
+- 변환기가 .slide div 안 자식 div 들의 getBoundingClientRect 좌표를 직접 추출 → PPTX 도형 매핑.
+- 좌표 추출 깨지면 PPTX 빈 슬라이드가 됨. position:absolute 절대 준수.
+"""
+
+
 # ─── 타입 ────────────────────────────────────────────────────────────────────
 @dataclass
 class OutlineItem:
@@ -1566,6 +1680,9 @@ class SlideResult:
     section: str
     shapes: list[dict] = field(default_factory=list)
     error: str = ""
+    # Spec D-Build-HTMLOutput — html 모드 결과 (output_mode='html' 시에만 채워짐).
+    # shapes 모드 (기본) = "" 빈 문자열 그대로. 기존 호출자 영향 0 (필드 default 있음).
+    html: str = ""
 
 
 # ─── 유틸 ─────────────────────────────────────────────────────────────────────
@@ -1588,6 +1705,29 @@ def _parse_json_safely(s: str) -> Optional[dict]:
             return json.loads(m.group(0))
         except Exception:
             return None
+
+
+def _extract_html_safely(s: str) -> str:
+    """Spec D-Build-HTMLOutput — raw 응답에서 HTML 골격 추출.
+
+    LLM 이 ```html ... ``` 코드펜스로 감싸거나, 앞뒤 설명 텍스트를 박을 수 있음.
+    <!DOCTYPE html> ~ </html> 사이만 추출. 못 찾으면 빈 문자열 반환.
+    """
+    if not s:
+        return ""
+    txt = s.strip()
+    # 코드펜스 제거 (```html / ``` / ~~~html / ~~~)
+    txt = re.sub(r"^```(?:html|HTML)?\s*", "", txt)
+    txt = re.sub(r"\s*```$", "", txt)
+    # <!DOCTYPE html> ~ </html> 추출
+    m = re.search(r"<!DOCTYPE\s+html[\s\S]*?</html>", txt, re.IGNORECASE)
+    if m:
+        return m.group(0)
+    # fallback — <html> ~ </html> (DOCTYPE 누락 케이스)
+    m2 = re.search(r"<html[\s\S]*?</html>", txt, re.IGNORECASE)
+    if m2:
+        return m2.group(0)
+    return ""
 
 
 def _call_anthropic_sync(client, system: str, user: str, max_tokens: int = 8000, model: str = "") -> str:
@@ -1848,12 +1988,17 @@ async def generate_one_slide(
     model: str = "",
     domain: str = "other",
     quantitative_locks: dict | None = None,
+    output_mode: str = "shapes",  # Spec D-Build-HTMLOutput — "shapes"|"html"
 ) -> SlideResult:
     user = _build_slide_user_prompt(
         item, outline_summary, rag_per_slide_block, canvas, total_slides,
         domain=domain,
         quantitative_locks=quantitative_locks,
     )
+    # Spec D-Build-HTMLOutput — output_mode 분기 (기본 'shapes' = 기존 동작 그대로).
+    # 'html' 모드 = admin + 토글 'Y' 조건 충족 시에만 진입.
+    is_html_mode = (output_mode == "html")
+    system_prompt = SLIDE_SYSTEM_PROMPT_HTML if is_html_mode else SLIDE_SYSTEM_PROMPT
     # 재시도 로직 — 최대 4회 시도 (rate limit / 일시 LLM 오류 회피 강화).
     # exponential backoff (1초 → 2초 → 4초) + jitter (0~0.5초) → 동시 호출 분산.
     # 비용 영향: 실패 슬라이드만 재호출 (~1-2장 평균) → 전체 비용 ~1.1x 미미.
@@ -1863,9 +2008,35 @@ async def generate_one_slide(
     for attempt in range(MAX_ATTEMPTS):
         try:
             raw = await asyncio.to_thread(
-                _call_anthropic_sync, client, SLIDE_SYSTEM_PROMPT, user, 16000, model,
+                _call_anthropic_sync, client, system_prompt, user, 16000, model,
             )
             last_raw = raw
+            if is_html_mode:
+                # HTML 모드 = raw 안 <!DOCTYPE html> ~ </html> 추출 (코드펜스 / 설명 모두 제거).
+                # 파싱 성공 = HTML 골격 문자열 1개 보유.
+                html_text = _extract_html_safely(raw)
+                if not html_text:
+                    last_err = f"HTML 파싱 실패. raw 앞 200자: {(raw or '')[:200]}"
+                    if attempt < MAX_ATTEMPTS - 1:
+                        backoff = (2 ** attempt) + random.uniform(0, 0.5)
+                        log.warning(
+                            "slide gen HTML 파싱 실패 p%d attempt=%d/%d 재시도 (backoff=%.2fs)",
+                            item.page, attempt + 1, MAX_ATTEMPTS, backoff,
+                        )
+                        await asyncio.sleep(backoff)
+                        continue
+                    log.error("slide gen 최종 HTML 파싱 실패 p%d 총 %d회 시도", item.page, MAX_ATTEMPTS)
+                    return SlideResult(
+                        page=item.page, section=item.section,
+                        error=f"{last_err} (재시도 {MAX_ATTEMPTS}회 모두 실패)",
+                    )
+                return SlideResult(
+                    page=item.page,
+                    section=item.section,
+                    shapes=[],
+                    html=html_text,
+                )
+            # 기존 도형 JSON 경로 (output_mode='shapes', 기본값) — 한 글자도 안 바뀜.
             parsed = _parse_json_safely(raw)
             if not parsed or not isinstance(parsed.get("shapes"), list):
                 last_err = f"파싱 실패. raw 앞 200자: {(raw or '')[:200]}"
@@ -1916,8 +2087,13 @@ async def generate_slides_parallel(
     rag_for_slide,  # callable: (item) -> str (RAG block)
     concurrency: int = 5,
     model: str = "",
+    output_mode: str = "shapes",  # Spec D-Build-HTMLOutput — "shapes"|"html"
 ) -> AsyncIterator[SlideResult]:
-    """슬라이드들을 동시 N 개씩 병렬 호출하면서, 끝나는 대로 yield."""
+    """슬라이드들을 동시 N 개씩 병렬 호출하면서, 끝나는 대로 yield.
+
+    output_mode 기본 'shapes' = 기존 동작 그대로 (도형 JSON).
+    'html' = SLIDE_SYSTEM_PROMPT_HTML 사용 (admin + 토글 'Y' 조건 충족 시만).
+    """
     # outline_summary = breadcrumb 영역 — 메인 거버닝만 사용 (서브는 페이지 본질 영역).
     outline_summary = "\n".join(
         f"  p{it.page}. {it.section}: {it.governing_main}" for it in outline.outline
@@ -1938,6 +2114,7 @@ async def generate_slides_parallel(
                 outline.total_slides, model,
                 domain=outline.domain,
                 quantitative_locks=outline.quantitative_locks,
+                output_mode=output_mode,
             )
 
     tasks = [asyncio.create_task(_bound(it)) for it in outline.outline]
@@ -1958,6 +2135,7 @@ async def orchestrate(
     concurrency: int = 5,
     model: str = "",
     pages_override: Optional[int] = None,
+    output_mode: str = "shapes",  # Spec D-Build-HTMLOutput — "shapes"|"html"
 ) -> AsyncIterator[dict]:
     """전체 파이프라인 실행. dict 이벤트 stream 으로 yield.
 
@@ -2015,6 +2193,7 @@ async def orchestrate(
     done_count = 0
     async for sr in generate_slides_parallel(
         client, outline, rag_for_slide, concurrency, model,
+        output_mode=output_mode,
     ):
         slides[sr.page] = sr
         done_count += 1
@@ -2029,24 +2208,72 @@ async def orchestrate(
             "total": outline.total_slides,
         }
 
-    yield {"type": "phase", "phase": "merge", "message": "도형 JSON 병합 중..."}
+    # Spec D-Build-HTMLOutput — output_mode 별 병합 결.
+    # shapes 모드 (기본) = 도형 JSON 병합 (기존 그대로).
+    # html 모드 = 슬라이드별 HTML 문자열을 하나로 이어붙임 (PPTX 변환기는 .slide 단위로 처리).
+    is_html_mode = (output_mode == "html")
+    yield {"type": "phase", "phase": "merge",
+           "message": "HTML 병합 중..." if is_html_mode else "도형 JSON 병합 중..."}
 
     # 페이지 순서대로 정렬
     ordered = sorted(slides.values(), key=lambda s: s.page)
     final_slides = []
+    final_html_parts = []  # html 모드 전용
     for sr in ordered:
-        if sr.error or not sr.shapes:
-            # 빈 슬라이드 placeholder (전체 실패 막기)
-            final_slides.append({
-                "section": sr.section,
-                "shapes": [
-                    {"type": "text", "x": 1, "y": 3, "w": 11, "h": 1,
-                     "text": f"[페이지 {sr.page} 일시 생성 오류 — 제안서를 다시 만들어주세요]",
-                     "size": 18, "color": "#999"},
-                ],
-            })
+        if is_html_mode:
+            # HTML 모드 — 페이지별 HTML 문자열 추출. 실패 시 .slide placeholder div.
+            if sr.error or not sr.html:
+                final_html_parts.append(
+                    f'<div class="slide" style="width:1123px;height:794px;'
+                    f'background:#FFFFFF;color:#999;position:relative;'
+                    f'display:flex;align-items:center;justify-content:center;'
+                    f'font-family:Pretendard,sans-serif;font-size:18px;">'
+                    f'[페이지 {sr.page} 일시 생성 오류 — 제안서를 다시 만들어주세요]</div>'
+                )
+            else:
+                # _extract_html_safely 로 추출한 raw HTML 안에서 .slide div 만 뽑아 이어붙임.
+                m = re.search(r'<div\s+class="slide"[\s\S]*?</div>\s*</body>',
+                              sr.html, re.IGNORECASE)
+                slide_html = ""
+                if m:
+                    # </body> 직전까지의 .slide ... </div> (마지막 닫는 div 만 보존)
+                    inner = m.group(0)
+                    inner = re.sub(r"\s*</body>$", "", inner)
+                    slide_html = inner
+                else:
+                    # fallback — <body> ~ </body> 사이 그대로
+                    m2 = re.search(r"<body[^>]*>([\s\S]*?)</body>", sr.html, re.IGNORECASE)
+                    slide_html = m2.group(1).strip() if m2 else sr.html
+                final_html_parts.append(slide_html)
+            # html 모드도 final_slides 에 section 메타만 보존 (audit / regen 호환)
+            final_slides.append({"section": sr.section, "shapes": [], "html_only": True})
         else:
-            final_slides.append({"section": sr.section, "shapes": sr.shapes})
+            # 기존 shapes 모드 — 한 글자도 변경 없음.
+            if sr.error or not sr.shapes:
+                # 빈 슬라이드 placeholder (전체 실패 막기)
+                final_slides.append({
+                    "section": sr.section,
+                    "shapes": [
+                        {"type": "text", "x": 1, "y": 3, "w": 11, "h": 1,
+                         "text": f"[페이지 {sr.page} 일시 생성 오류 — 제안서를 다시 만들어주세요]",
+                         "size": 18, "color": "#999"},
+                    ],
+                })
+            else:
+                final_slides.append({"section": sr.section, "shapes": sr.shapes})
+
+    # html 모드 전용 — final_payload 에 html 통합 문자열 추가 (.slide × N).
+    html_full = ""
+    if is_html_mode and final_html_parts:
+        body_inner = "\n".join(final_html_parts)
+        html_full = (
+            '<!DOCTYPE html>\n<html lang="ko"><head><meta charset="UTF-8"><style>\n'
+            '* { margin:0; padding:0; box-sizing:border-box; '
+            "font-family:'Pretendard','Paperlogy','Noto Sans KR',sans-serif; }\n"
+            '.slide { width:1123px; height:794px; overflow:hidden; '
+            'position:relative; background:#FFFFFF; color:#1A1A1A; }\n'
+            '</style></head><body>\n' + body_inner + '\n</body></html>'
+        )
 
     payload = {
         "title": outline.title,
@@ -2054,6 +2281,9 @@ async def orchestrate(
         "slide_width": outline.slide_width,
         "slide_height": outline.slide_height,
         "slides": final_slides,
+        # Spec D-Build-HTMLOutput — html 모드 전용 키 (shapes 모드는 빈 문자열, 무시 가능).
+        "html": html_full,
+        "output_mode": output_mode,
         # 산출내역서 영역 활용 — outline 평문 변환 helper (main.py:_outline_to_text) 가 사용.
         # PPTX 생성 (pptx_generator.generate_from_shape_json) 영역 영역 영역 X (slides 영역 영역).
         "outline": [

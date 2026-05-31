@@ -535,7 +535,11 @@ def init_db() -> None:
             INSERT OR IGNORE INTO policy_settings(key, value) VALUES
                 ('package_price', '380000'),
                 ('monthly_proposals', '0'),
-                ('monthly_conversations', '999999');
+                ('monthly_conversations', '999999'),
+                -- Spec D-Build-HTMLOutput — HTML 출력 모드 admin 전용 토글.
+                -- 'Y' + user.role='admin' 두 조건 모두 충족 시에만 SLIDE pass 가 HTML 출력.
+                -- 일반 사용자는 'Y' 여도 기존 도형 JSON 경로 그대로 (영향 0).
+                ('output_mode_enabled', 'N');
 
             -- ───────── Phase 1-A-3 — 무료체험 정책 시드 ─────────
             -- trial_enabled: kill-switch (Y/N) — 어드민이 운영 중 전체 비활성화 가능
@@ -781,6 +785,25 @@ def set_setting(key: str, value: str) -> None:
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (key, value),
         )
+
+
+def _get_policy(key: str, default: str = "") -> str:
+    """policy_settings 단일 키 조회 helper (Spec D-Build-HTMLOutput).
+
+    get_setting (settings 테이블 = API 키·모델) 와 별도 — policy_settings 는
+    가격·정책·기능 토글 영역. admin patch endpoint (main.py:7803) 가 audit_log 자동 기록.
+
+    조회 실패 / 키 누락 시 default 반환 (fail-open, get_setting 동일 패턴).
+    """
+    try:
+        with get_db() as db:
+            row = db.execute(
+                "SELECT value FROM policy_settings WHERE key=?", (key,)
+            ).fetchone()
+            return row["value"] if row else default
+    except Exception as e:
+        log.warning("_get_policy fallback (조회 실패 key=%s): %s", key, e)
+        return default
 
 
 # ─── Phase 3 — quota 초기값 helper ──────────────────────────────────────────
@@ -3639,6 +3662,14 @@ async def api_proposals_generate_multipass(
 
     model = get_setting("model", MODEL_DEFAULT)
 
+    # Spec D-Build-HTMLOutput — output_mode 결정.
+    # 기본 'shapes' (기존 동작). admin role + policy_settings.output_mode_enabled='Y' 두 조건 모두 충족 시만 'html'.
+    # 일반 사용자는 토글 'Y' 여도 shapes 경로 (영향 0).
+    output_mode = "shapes"
+    if user.get("role") == "admin" and _get_policy("output_mode_enabled", "N") == "Y":
+        output_mode = "html"
+        log.info("D-Build-HTMLOutput: output_mode=html (admin=%s)", user.get("email", "?"))
+
     async def stream():
         assistant_id = uuid.uuid4().hex[:12]
         yield f"data: {json.dumps({'type':'start','message_id':assistant_id})}\n\n"
@@ -3655,6 +3686,7 @@ async def api_proposals_generate_multipass(
                 concurrency=5,
                 model=model,
                 pages_override=pages_override,   # Step 2 — 사용자가 모달에서 선택한 페이지 수
+                output_mode=output_mode,         # Spec D-Build-HTMLOutput — admin 전용 토글 분기
             ):
                 if ev.get("type") == "done":
                     final_payload = ev.get("payload")
@@ -6612,6 +6644,57 @@ def api_proposals_pptx(body: PptxExportIn, user: dict = Depends(get_current_user
     download_name = f"{safe_client}_제안서.pptx"
     disk_fname = f"{safe_client}_{body.conversation_id[:8]}.pptx"
     out_path = out_dir / disk_fname
+
+    # Spec D-Build-HTMLOutput — is_html_mode 분기 (admin 전용 토글 결과).
+    # proposal_json 에 "html" 통합 문자열 + "output_mode"="html" 있을 때 진입.
+    # 기존 is_shape_mode 블록은 그대로 둠 (조건 미충족 시 fallthrough → 도형 JSON 경로).
+    is_html_mode = False
+    if proposal_json is not None:
+        if proposal_json.get("output_mode") == "html" and proposal_json.get("html"):
+            is_html_mode = True
+
+    if is_html_mode:
+        log.info("PPTX 생성: HTML 모드 (D-Build-HTMLOutput, html_len=%d)",
+                 len(proposal_json.get("html", "")))
+        try:
+            import pptx_generator
+            html_result = pptx_generator.generate_from_html(
+                proposal_json["html"], out_path,
+            )
+            slide_count = html_result.get("slide_count", 0)
+            # R2 업로드 (기존 도형 모드 패턴 그대로, 실패해도 생성 안 깨짐)
+            try:
+                import r2_storage
+                r2_storage.upload_one(
+                    Path(out_path),
+                    f"pptx/{body.conversation_id[:8]}/{Path(out_path).name}",
+                )
+            except Exception as _e:
+                log.warning("R2 업로드 실패 (HTML 모드 / 무시): %s", _e)
+            errors = html_result.get("errors") or []
+            if errors:
+                log.warning("HTML 모드 렌더 경고 %d 건: %s", len(errors), errors[:3])
+            # conversations.pptx_path 기록 — 도형 모드와 동일 패턴
+            try:
+                with get_db() as db:
+                    db.execute(
+                        "UPDATE conversations SET pptx_path=?, "
+                        "pptx_updated_at=datetime('now','localtime') WHERE id=?",
+                        (f"/api/proposals/{body.conversation_id}/download",
+                         body.conversation_id),
+                    )
+            except Exception as e:
+                log.warning("conversations.pptx_path 기록 실패 (HTML 모드 / 무시): %s", e)
+            return {
+                "url": f"/api/proposals/{body.conversation_id}/download",
+                "filename": download_name,
+                "page_count": slide_count,
+                "mode": "html",
+                "render_errors": errors[:5],
+            }
+        except Exception as e:
+            log.exception("HTML 모드 실패 — 도형 모드로 fallthrough: %s", e)
+            # fallthrough → 아래 is_shape_mode 또는 마스터 / 폴백 경로 시도
 
     # 슬라이드 데이터 준비 — JSON 우선, HTML fallback
     if proposal_json is not None:

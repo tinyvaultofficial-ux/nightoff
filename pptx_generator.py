@@ -2441,3 +2441,216 @@ def generate_from_shape_json(json_data, output_path):
         "output_path": str(output_path),
         "size_mb": round(output_path.stat().st_size / 1024 / 1024, 2),
     }
+
+
+# ─── Spec D-Build-HTMLOutput — HTML → 편집가능 PPTX 변환기 (admin 전용) ───────
+# 원본: html_to_pptx_for_ops.py (사용자 제공 코드 전문 이식, 2026-05-31).
+# 운영 연결점: main.py:api_proposals_pptx 의 is_html_mode 분기에서 호출.
+# 흐름: messages.content HTML 문자열 → Playwright 헤드리스 chromium 렌더
+#       → getBoundingClientRect 좌표 추출 (IR JSON)
+#       → python-pptx 도형 1:1 매핑 (rect / oval / textbox + 한글 ea 폰트)
+# 의존성: playwright (requirements.txt) + chromium (playwright install chromium)
+# 토글 OFF 시 본 함수 미호출 — generate_from_shape_json 경로 그대로 (영향 0).
+
+_PX_TO_EMU = 9525  # 1px = 9525 EMU
+
+
+def _px(v):
+    return Emu(int(round(v * _PX_TO_EMU)))
+
+
+def _html_css_rgb(s):
+    """CSS rgb()/rgba() → RGBColor. alpha 채널 무시 (PPTX 도형은 alpha 미지원)."""
+    nums = s.replace("rgba", "").replace("rgb", "").strip("() ").split(",")
+    return RGBColor(int(float(nums[0])), int(float(nums[1])), int(float(nums[2])))
+
+
+def _html_is_transparent(s):
+    return "rgba(0, 0, 0, 0)" in s or s == "transparent"
+
+
+def _html_set_ea_font(run, font_name):
+    """한글 폰트 ea (East Asian) 속성 강제 주입.
+    이 속성 없으면 PPT 에서 한글 깨짐 (영문 폰트로 fallback)."""
+    rPr = run._r.get_or_add_rPr()
+    for tag in ("a:latin", "a:ea", "a:cs"):
+        e = rPr.find(qn(tag))
+        if e is None:
+            e = rPr.makeelement(qn(tag), {})
+            rPr.append(e)
+        e.set("typeface", font_name)
+
+
+def _html_pick_font(family):
+    """font-family CSS 값 (콤마 구분) → 첫 폰트명 추출."""
+    return family.split(",")[0].strip().strip("'\"")
+
+
+def _html_extract_all_slides(html_string):
+    """HTML 문자열 안의 모든 .slide 를 슬라이드별 IR 배열로 반환.
+    Playwright 헤드리스 chromium 으로 렌더 후 getBoundingClientRect 좌표 추출."""
+    import os as _os
+    import tempfile
+    from playwright.sync_api import sync_playwright
+
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".html", delete=False, encoding="utf-8"
+    ) as f:
+        f.write(html_string)
+        tmp_path = f.name
+
+    try:
+        with sync_playwright() as p:
+            # Playwright default launch 가 chrome-headless-shell 을 찾는 케이스 회피.
+            # executable_path 명시 = 환경별로 sync API 가 verified 한 chrome.exe / chrome 사용.
+            b = p.chromium.launch(
+                headless=True,
+                executable_path=p.chromium.executable_path,
+            )
+            pg = b.new_page(viewport={"width": 1123, "height": 794})
+            pg.goto(f"file://{tmp_path}")
+            pg.wait_for_timeout(400)  # 폰트 / 레이아웃 안정 대기
+
+            n = pg.evaluate("document.querySelectorAll('.slide').length")
+            slides_ir = []
+            for i in range(n):
+                ir = pg.evaluate("""
+                (idx) => {
+                  const slide = document.querySelectorAll('.slide')[idx];
+                  const sb = slide.getBoundingClientRect();
+                  const out = [];
+                  slide.querySelectorAll('div').forEach(el => {
+                    const r = el.getBoundingClientRect();
+                    const cs = getComputedStyle(el);
+                    const text = Array.from(el.childNodes)
+                      .filter(nn => nn.nodeType === 3)
+                      .map(nn => nn.textContent.trim())
+                      .join(' ').trim();
+                    out.push({
+                      x: r.left - sb.left, y: r.top - sb.top,
+                      w: r.width, h: r.height, text: text,
+                      fontSize: parseFloat(cs.fontSize),
+                      fontFamily: cs.fontFamily, fontWeight: cs.fontWeight,
+                      color: cs.color, bg: cs.backgroundColor,
+                      borderTop: cs.borderTopWidth, borderColor: cs.borderTopColor,
+                      borderRadius: cs.borderTopLeftRadius, textAlign: cs.textAlign,
+                    });
+                  });
+                  return { sw: sb.width, sh: sb.height, els: out };
+                }
+                """, i)
+                slides_ir.append(ir)
+            b.close()
+            return slides_ir
+    finally:
+        try:
+            _os.unlink(tmp_path)
+        except OSError:
+            pass
+
+
+def generate_from_html(html_string, out_path):
+    """운영 진입점 (Spec D-Build-HTMLOutput).
+    messages.content 의 HTML 문자열 → 편집가능 PPTX.
+    여러 .slide div 가 있으면 각각 PPTX 슬라이드로 추가.
+
+    반환: dict (slide_count / output_path / size_mb / errors).
+    포맷은 generate_from_shape_json 과 호환 (main.py 호출부 같은 응답 처리 가능).
+    """
+    slides_ir = _html_extract_all_slides(html_string)
+    if not slides_ir:
+        raise ValueError("변환할 .slide 요소가 HTML에 없음")
+
+    prs = Presentation()
+    prs.slide_width = _px(slides_ir[0]["sw"])
+    prs.slide_height = _px(slides_ir[0]["sh"])
+
+    rendered_total = 0
+    errors = []
+
+    for ir in slides_ir:
+        slide = prs.slides.add_slide(prs.slide_layouts[6])  # blank
+        for el in ir["els"]:
+            try:
+                has_text = bool(el["text"])
+                has_bg = not _html_is_transparent(el["bg"])
+                has_border = float(
+                    (el["borderTop"] or "0").replace("px", "") or 0
+                ) > 0
+                is_circle = "50%" in el["borderRadius"]
+
+                if (has_bg or has_border) and not is_circle:
+                    shp = slide.shapes.add_shape(
+                        MSO_SHAPE.RECTANGLE, _px(el["x"]), _px(el["y"]),
+                        _px(max(el["w"], 1)), _px(max(el["h"], 1)),
+                    )
+                    if has_bg:
+                        shp.fill.solid()
+                        shp.fill.fore_color.rgb = _html_css_rgb(el["bg"])
+                    else:
+                        shp.fill.background()
+                    if has_border:
+                        shp.line.color.rgb = _html_css_rgb(el["borderColor"])
+                        shp.line.width = Pt(1)
+                    else:
+                        shp.line.fill.background()
+                    shp.shadow.inherit = False
+                    rendered_total += 1
+
+                if is_circle:
+                    shp = slide.shapes.add_shape(
+                        MSO_SHAPE.OVAL, _px(el["x"]), _px(el["y"]),
+                        _px(el["w"]), _px(el["h"]),
+                    )
+                    if has_bg:
+                        shp.fill.solid()
+                        shp.fill.fore_color.rgb = _html_css_rgb(el["bg"])
+                    else:
+                        shp.fill.background()
+                    if has_border:
+                        shp.line.color.rgb = _html_css_rgb(el["borderColor"])
+                        shp.line.width = Pt(1.5)
+                    else:
+                        shp.line.fill.background()
+                    shp.shadow.inherit = False
+                    rendered_total += 1
+
+                if has_text:
+                    tb = slide.shapes.add_textbox(
+                        _px(el["x"]), _px(el["y"]), _px(el["w"]), _px(el["h"]),
+                    )
+                    tf = tb.text_frame
+                    tf.word_wrap = True
+                    tf.margin_left = 0
+                    tf.margin_right = 0
+                    tf.margin_top = 0
+                    tf.margin_bottom = 0
+                    p = tf.paragraphs[0]
+                    run = p.add_run()
+                    run.text = el["text"]
+                    f = run.font
+                    f.size = Pt(el["fontSize"] * 0.75)  # px → pt
+                    f.color.rgb = _html_css_rgb(el["color"])
+                    fw = el["fontWeight"]
+                    f.bold = (fw == "bold" or (fw.isdigit() and int(fw) >= 600))
+                    fname = _html_pick_font(el["fontFamily"])
+                    f.name = fname
+                    _html_set_ea_font(run, fname)
+                    rendered_total += 1
+            except Exception as e:
+                errors.append(f"el@({el.get('x',0):.0f},{el.get('y',0):.0f}): {type(e).__name__}: {e}")
+
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    prs.save(str(out_path))
+
+    log.info("HTML 모드 (D-Build-HTMLOutput) · 슬라이드 %d / 도형 %d 렌더 / 에러 %d",
+             len(slides_ir), rendered_total, len(errors))
+
+    return {
+        "slide_count": len(slides_ir),
+        "rendered_total": rendered_total,
+        "errors": errors[:10],
+        "output_path": str(out_path),
+        "size_mb": round(out_path.stat().st_size / 1024 / 1024, 2),
+    }

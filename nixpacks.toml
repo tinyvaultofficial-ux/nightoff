@@ -17,6 +17,16 @@ cmds = [
   "cp -f static/fonts/Paperlogy-*.ttf /usr/share/fonts/truetype/paperlogy/ 2>/dev/null || echo 'paperlogy ttf copy skipped'",
   # 폰트 캐시 강제 빌드 — LibreOffice 가 새 폰트를 즉시 인식하게
   "fc-cache -f 2>&1 | tail -3 || echo 'fc-cache skipped'",
+  # Spec D-Fix-ChromiumInstall — Playwright chromium 본체 다운로드 (admin HTML 토글 ON 시에만 사용).
+  # 두 명령 모두 graceful (|| echo) — 실패해도 빌드 통과:
+  #   · 토글 OFF (policy_settings.output_mode_enabled='N', 기본값) 가 default
+  #   · OFF 상태에서 generate_from_html 미호출 → chromium 없어도 서버 기동·기존 동작 영향 0
+  #   · 토글 ON 시점에 chromium 미설치 = launch 에러 → main.py:6700 except 로 fallthrough
+  # ~/.cache/ms-playwright/chromium-XXXX/chrome-linux/chrome 위치에 다운로드.
+  ". /opt/venv/bin/activate && playwright install chromium 2>&1 | tail -5 || echo 'playwright install chromium failed — HTML 모드 비활성 (토글 OFF 면 영향 0)'",
+  # Linux system deps (libnss3 / libatk / libxkbcommon / libxshmfence 등) 자동 설치.
+  # Nixpacks 가 Debian/Ubuntu 베이스면 apt-get 사용 — Nix store 기반이면 실패 (이때 nixPkgs 추가 spec 별도).
+  ". /opt/venv/bin/activate && playwright install-deps chromium 2>&1 | tail -5 || echo 'playwright install-deps chromium failed — system deps 수동 추가 필요 가능성'",
 ]
 
 [phases.build]

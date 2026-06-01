@@ -1696,10 +1696,157 @@ LLM 출력의 <style> 은 변환기가 무시 — .slide div 와 그 안 class /
 11. ★ inline style 에 font-weight 0개 (클래스가 처리). font-size 도 원칙적으로 0개
     (글자수 많은 거대 거버닝의 미세조정 예외만).
 12. ★ font-weight 키워드 (bold / normal / lighter / bolder) 0개 — 사용 시 fail.
+13. ★ 레이아웃 패턴 다양성 (Spec D-Fix-LayoutDiversity, 도형 모드 자가점검 #12 이식):
+    - 30 슬라이드 중 최소 8가지 패턴 활용 (단일 패턴 편중 X)
+    - 박스 그리드 연속 2장 금지 (cards_grid / cards3 가 연속 X)
+    - "그냥 사각 박스 6~12개 균등 배치" 안일한 회귀 금지
+    - 본 페이지가 user prompt 의 [배정된 레이아웃 패턴] 키와 정합하는가
+    - 아래 [패턴 카탈로그] 정의에 맞게 div 좌표·클래스 조합을 짰는가
 
-[★ 정형 골격 15종 매핑 — 본 단계 미포함]
-정형 골격 라이브러리 (KPI·프로세스·2단비교 등 15종) 는 별도 spec 으로 추가 예정.
-본 단계는 LLM 자율 HTML 출력만. user prompt 의 viz_pattern / viz_hint 만 가이드로 활용.
+[★ 레이아웃 패턴 카탈로그 (Spec D-Fix-LayoutDiversity)]
+도형 모드 L1336 의 검증된 패턴 카탈로그를 HTML 좌표·클래스 조합으로 이식.
+"발명 X, 이식만" — 도형 모드에서 동작했던 구조를 HTML 로 1:1 옮긴다.
+
+★ 위험 4종 절대 금지 (도형 모드 L1381 원칙 유지):
+   벤다이어그램 (원 겹침) / 2x2 매트릭스 (축 정렬) / 수직 타임라인 / 좌측 다이어그램+우측 표
+   → 좌표 정밀도 높아 헤드리스 chromium 측정 깨짐. 보류 (별도 spec 으로 해금 예정).
+
+─── viz_pattern 안전 6종 (outline 이 사전 배정 — user prompt [배정된 레이아웃 패턴] 키) ───
+
+A. viz_pattern = "2col" — 좌우 2분할 (AS-IS / TO-BE · 문제/해결 · 현재/개선)
+   div 배치 (캔버스 1123×794):
+   · eyebrow             — left:48, top:24, w:1027, h:18  / class="caption" color:#999
+   · 메인 거버닝          — left:48, top:60, w:1027, h:48  / class="gov-main"
+   · 서브 거버닝          — left:48, top:118, w:1027, h:28 / class="gov-sub" color:#444
+   · 좌 column 박스 (rect) — left:48, top:200, w:495, h:520 / border:1px solid #DDD
+   · 좌 column 헤더       — left:64, top:216, w:463, h:32  / class="box-title"
+   · 좌 column 본문 영역  — left:64, top:260, w:463, h:444 / class="body-text" color:#444
+   · 가운데 화살표 텍스트 — left:548, top:440, w:30, h:40 / class="box-title" text="→"
+   · 우 column 박스/헤더/본문 — left:580, top:200 (좌측 column 미러)
+   · page-num            — right:48, bottom:24 / class="page-num" color:#999
+
+B. viz_pattern = "cards3" — 3 카드 동등 비교 (차별점 · 평행 분류)
+   · eyebrow / 메인 / 서브 거버닝 — 2col 과 동일 (상단 영역)
+   · 카드 1 박스 — left:48, top:200, w:340, h:520 / border:1px solid #DDD
+   · 카드 1 헤더 — left:64, top:216, w:308, h:32 / class="box-title"
+   · 카드 1 본문 — left:64, top:260, w:308, h:444 / class="body-text" color:#444
+   · 카드 2 — left:392, top:200 (좌측 카드 미러 / 폭 동일 340)
+   · 카드 3 — left:736, top:200 (좌측 카드 미러)
+   · page-num — right:48, bottom:24
+
+C. viz_pattern = "process" — 가로 단계 흐름 (절차 · 추진 단계 · 일정)
+   · eyebrow / 거버닝 상단 동일
+   · 단계 5개 가로: 단계 폭 ≈ (1027 - 화살표 4×24) ÷ 5 ≈ 187
+   · 단계 1 박스 — left:48, top:240, w:187, h:120 / border:1px solid #DDD
+   · 단계 1 번호/라벨 — left:48, top:256, w:187, h:32 / class="box-title" text-align:center
+   · 단계 1 설명 — left:48, top:296, w:187, h:60 / class="body-text" color:#444
+   · 화살표 — left:235, top:280, w:24, h:40 / class="box-title" text="→"
+   · 단계 2~5 — left 가 +211씩 증가 (단계 폭 187 + 화살표 24)
+   · 하단 본문 보조 영역 (선택) — left:48, top:400, w:1027, h:300 / class="body-text"
+   · page-num
+
+D. viz_pattern = "before_after" — Before/After 점층 카드 (도입 효과 · 개선 사례)
+   · eyebrow / 거버닝 상단 동일
+   · Before 박스 — left:48, top:200, w:480, h:240 / border:1px solid #DDD
+   · Before 라벨 — left:64, top:216, w:448, h:24 / class="caption" text="BEFORE" color:#999
+   · Before 핵심 — left:64, top:250, w:448, h:48 / class="box-title"
+   · Before 본문 — left:64, top:310, w:448, h:120 / class="body-text" color:#444
+   · 화살표 — left:540, top:300, w:43, h:40 / class="box-title" text="→"
+   · After 박스 — left:595, top:200, w:480, h:240 / 동일 구조 (LABEL="AFTER")
+   · 하단 효과 정량 — left:48, top:480, w:1027, h:240 / class="body-text"
+   · page-num
+
+E. viz_pattern = "quant" — 정량 강조 (큰 숫자 + 라벨 / KPI · 예산 · 규모)
+   · eyebrow / 거버닝 상단 동일
+   · KPI 1 거대 숫자 — left:64, top:240, w:330, h:160 / class="chapter-num" font-size:120px (inline 미세조정 OK)
+   · KPI 1 단위 — left:64, top:410, w:330, h:32 / class="box-title" color:#444
+   · KPI 1 라벨  — left:64, top:450, w:330, h:60 / class="body-text" color:#666
+   · KPI 2 — left:412, top:240 (좌측 KPI 미러 / 폭 동일 330)
+   · KPI 3 — left:760, top:240 (좌측 KPI 미러)
+   · 하단 보조 설명 — left:48, top:560, w:1027, h:160 / class="body-text"
+   · page-num
+
+F. viz_pattern = "cards_grid" — 카드 그리드 2×3 / 2×4 (팀원 · 사례 · zone 분리)
+   · eyebrow / 거버닝 상단 동일
+   · 2×3 그리드 (카드 6개): 카드 폭 ≈ (1027 - 간격 2×20) ÷ 3 ≈ 329, 카드 높이 ≈ 250
+   · 카드 1 박스 — left:48, top:200, w:329, h:250 / border:1px solid #DDD
+   · 카드 1 헤더 — left:64, top:216, w:297, h:32 / class="box-title"
+   · 카드 1 본문 — left:64, top:260, w:297, h:174 / class="body-text" color:#444
+   · 카드 2 — left:397, top:200 (열 폭 +349)
+   · 카드 3 — left:746, top:200
+   · 카드 4~6 — top:470 (행 +270)
+   · page-num
+   ⚠ cards_grid 는 연속 2장 금지 (자가점검 #13 강제).
+
+─── 도형 없이 텍스트 위계만으로 입체감 (도형 모드 narrative 5종 이식, L1354-1361) ───
+도식 없이 클래스 위계 (gov-main / box-title / body-text 의 크기·굵기 격차) 만으로
+인용·논리·선언을 표현. 시장분석·인사이트·핵심 전략 선언·논리 전개에 적합.
+연속 2장 이상 사용 X (텍스트 위계만 반복하면 단조로움).
+
+G. narrative style:'quote' — 큰 인용 + 흐름 1~3개 + 결론
+   · eyebrow / 거버닝 상단 동일
+   · 큰 인용 — left:64, top:240, w:995, h:120 / class="key-msg" color:#1A1A1A
+   · 흐름 박스 1 — left:64, top:400, w:995, h:48 / class="body-text" color:#444
+     (· 점 + 흐름 문장 / 좌측 #DDD 1px border-left padding-left:16)
+   · 흐름 박스 2 — left:64, top:460
+   · 흐름 박스 3 — left:64, top:520
+   · 결론 — left:64, top:620, w:995, h:80 / class="box-title" color:#1A1A1A
+   · page-num
+
+H. narrative style:'declaration' — 큰 선언 + 근거 2~3개
+   · eyebrow / 거버닝 상단 동일
+   · 선언 — left:64, top:240, w:995, h:160 / class="key-msg"
+   · 근거 1 — left:64, top:440, w:995, h:64 / class="box-title" + body-text 보조
+     (좌측 #1A1A1A 3px border-left padding-left:20 — 굵은 좌측 강조선)
+   · 근거 2 — left:64, top:520
+   · 근거 3 — left:64, top:600
+   · page-num
+
+I. narrative style:'qa' — 질문 + 답변 1~3개 (논리 전개·설득)
+   · eyebrow / 거버닝 상단 동일
+   · 질문 라벨 — left:64, top:240, w:60, h:32 / class="box-title" text="Q." color:#999
+   · 질문 본문 — left:140, top:240, w:919, h:80 / class="key-msg"
+   · 답변 라벨 1 — left:64, top:380, w:60, h:32 / class="box-title" text="A." color:#1A1A1A
+   · 답변 본문 1 — left:140, top:380, w:919, h:120 / class="body-text"
+   · 답변 2~3 — top +160 씩 증가
+   · page-num
+
+J. narrative style:'emphasis' — 소제목 + 본문 + 핵심 강조 (배경·맥락 설명)
+   · eyebrow / 거버닝 상단 동일
+   · 소제목 — left:64, top:240, w:995, h:48 / class="box-title" color:#444
+   · 본문 — left:64, top:300, w:995, h:220 / class="body-text" color:#444
+   · 핵심 강조 박스 — left:64, top:540, w:995, h:140 / background:#1A1A1A color:#FFF
+     (역색 박스 — 안에 class="box-title" color:#FFF inline override)
+   · page-num
+
+K. narrative style:'contrast' — "A가 아니라 B" 대비 (컨셉·차별점)
+   · eyebrow / 거버닝 상단 동일
+   · NOT 라벨 — left:64, top:240, w:80, h:32 / class="caption" text="NOT" color:#999
+   · NOT 문장 — left:160, top:240, w:899, h:80 / class="box-title" color:#666
+     (취소선 또는 #999 옅은 색으로 표현)
+   · BUT 라벨 — left:64, top:400, w:80, h:32 / class="caption" text="BUT" color:#1A1A1A
+   · BUT 문장 — left:160, top:400, w:899, h:160 / class="key-msg" color:#1A1A1A
+   · page-num
+
+─── viz_hint 해석 가이드 (자연어 → 카탈로그 키 매핑) ───
+outline AI 가 viz_hint 에 자연어 힌트를 박는다. 카탈로그 키로 매핑하는 법:
+- "stat / KPI 3~4개 / 큰 숫자 / 정량 강조"        → quant (E)
+- "comparison / AS-IS / TO-BE / 전후 비교"        → 2col (A)
+- "before / after / 도입 효과 / 개선 사례"         → before_after (D)
+- "process / 절차 / 추진 단계 / 일정 흐름"         → process (C)
+- "cards 3 / 차별점 / 평행 분류 / 3 항목"          → cards3 (B)
+- "cards 6 / cards_grid / 팀원 / 사례 나열"        → cards_grid (F)
+- "인용 / 흐름 / 시장 변화 / 인사이트"             → narrative quote (G)
+- "선언 / 핵심 전략 / 근거 N개"                    → narrative declaration (H)
+- "질문 답변 / 설득 / 논리 전개"                   → narrative qa (I)
+- "배경 / 맥락 / 핵심 강조"                        → narrative emphasis (J)
+- "차별점 / 컨셉 대비 / A 아닌 B"                  → narrative contrast (K)
+
+★ user prompt 의 [배정된 레이아웃 패턴] 키가 있으면 그것을 우선 따른다.
+   키가 없거나 "" (특수 페이지) 면 viz_hint 단어 → 위 매핑으로 패턴 선택.
+★ 위 좌표는 권장값. 글자수·내용에 맞게 ±20px 미세조정 OK. 단 캔버스 1123×794 초과 X.
+★ 본문 페이지 내 같은 카탈로그 키 (특히 cards_grid / cards3) 를 직전 페이지와
+   같이 쓰지 말 것 (다양성 자가점검 #13).
 
 [규칙]
 - 출력은 **한 슬라이드의 HTML 한 개**. 다른 텍스트 / 코드펜스 / 마크다운 / 설명 모두 금지.

@@ -1929,6 +1929,7 @@ def _build_slide_user_prompt(
     total_slides: int,
     domain: str = "other",
     quantitative_locks: dict | None = None,
+    output_mode: str = "shapes",  # Spec D-Fix-HTMLPromptConflict — "shapes"|"html"
 ) -> str:
     # 본인 회사명 inject 제거 (한국 공공입찰 청렴제 — 회사명 본문 등장 비정상)
     parts = [
@@ -1973,8 +1974,20 @@ def _build_slide_user_prompt(
         parts.append("")
         parts.append(rag_per_slide_block)
     parts.append("")
-    parts.append("위 정보를 바탕으로 이 한 슬라이드의 도형 JSON 을 출력해라.")
-    parts.append(f"출력 = {{ \"section\": \"{item.section}\", \"shapes\": [...] }}")
+    # Spec D-Fix-HTMLPromptConflict — output_mode 별 마지막 명령 분기.
+    # shapes 모드 (기본) = 기존 도형 JSON 출력 지시 그대로 (한 글자도 변경 X).
+    # html 모드 = HTML 출력 지시 (SLIDE_SYSTEM_PROMPT_HTML 의 출력 형식과 정합).
+    if output_mode == "html":
+        parts.append("위 정보를 바탕으로 이 한 슬라이드의 HTML 을 출력해라.")
+        parts.append(
+            "출력 시작 = <!DOCTYPE html>, 끝 = </html>. "
+            "본문에 반드시 <div class=\"slide\" ...> 정확 1개 포함 "
+            "(이 클래스명으로 변환기가 슬라이드 단위를 인식한다). "
+            "코드펜스 / 도형 JSON / 'shapes' 키 / 다른 텍스트 절대 금지."
+        )
+    else:
+        parts.append("위 정보를 바탕으로 이 한 슬라이드의 도형 JSON 을 출력해라.")
+        parts.append(f"출력 = {{ \"section\": \"{item.section}\", \"shapes\": [...] }}")
     return "\n".join(parts)
 
 
@@ -1994,6 +2007,7 @@ async def generate_one_slide(
         item, outline_summary, rag_per_slide_block, canvas, total_slides,
         domain=domain,
         quantitative_locks=quantitative_locks,
+        output_mode=output_mode,  # Spec D-Fix-HTMLPromptConflict — user 마지막 명령도 모드 분기
     )
     # Spec D-Build-HTMLOutput — output_mode 분기 (기본 'shapes' = 기존 동작 그대로).
     # 'html' 모드 = admin + 토글 'Y' 조건 충족 시에만 진입.

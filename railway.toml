@@ -6,8 +6,13 @@
 builder = "DOCKERFILE"
 
 [deploy]
-# venv 의 절대경로 python — PATH 가 컨테이너 startCommand 환경에 안 잡혀있어도 안전
-startCommand = "/opt/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"
+# Spec D-Fix-StartCommandPort — startCommand 를 sh -c wrapper 로 명시.
+#   이전 (shell 문자열): Railway 가 exec 직접 실행 시 ${PORT:-8000} 치환 X →
+#     "Invalid value for '--port': '${PORT:-8000}' is not a valid integer" 에러.
+#   현재 (sh -c wrapper): /bin/sh 가 명시적으로 shell 처리 → ${PORT} 치환 보장.
+#   Dockerfile CMD 와 동일 패턴 (양쪽 정합 — Railway 가 어느 쪽 쓰든 안전).
+# venv 의 절대경로 python — PATH 가 컨테이너 startCommand 환경에 안 잡혀있어도 안전.
+startCommand = "/bin/sh -c '/opt/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}'"
 healthcheckPath = "/healthz"
 healthcheckTimeout = 90
 restartPolicyType = "ON_FAILURE"

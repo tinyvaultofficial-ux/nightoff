@@ -2,8 +2,49 @@
 # libreoffice — PPTX → PDF → PNG 미리보기 (Phase 3-C)
 # noto-fonts-cjk-sans / nanum — 한글 폰트 (LibreOffice 가 PDF 변환 시 한글 렌더에 사용)
 #   없으면 한글이 □ tofu 박스로 출력됨
+#
+# Spec D-Fix-ChromiumSharedLibs (D-Build-HTMLOutput 의 admin HTML 토글 ON 시 사용) —
+# Railway 운영 로그 확정 에러:
+#   "chrome: error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file"
+# 원인: Nixpacks 가 Nix 환경 → 'playwright install-deps' (apt 기반) 미동작.
+# 해결: chromium headless 구동에 필요한 시스템 라이브러리를 nixPkgs 에 직접 명시.
+# 재배포 반복 회피용 = 흔히 누락되는 부수 라이브러리 (Xrender / Xtst / Xi / Xcursor /
+#   libXScrnSaver / libxshmfence / libGL / gtk3 / gdk-pixbuf) 까지 한번에 일괄 추가.
 nixPkgs = ["python312", "gcc", "libreoffice", "fontconfig",
-           "noto-fonts-cjk-sans", "nanum", "coreutils"]
+           "noto-fonts-cjk-sans", "nanum", "coreutils",
+           # ── chromium core deps ───────────────────────────────
+           "glib",                # libglib-2.0.so.0 (확정 누락 — 운영 로그 에러)
+           "nss", "nspr",         # libnss3 / libnspr4
+           "atk",                 # libatk-1.0
+           "at-spi2-atk",         # libatk-bridge-2.0
+           "at-spi2-core",        # libatspi
+           "cups",                # libcups2 (인쇄 API — headless 도 동적 링킹)
+           "dbus",                # libdbus-1
+           "expat",               # libexpat
+           "libdrm",              # libdrm (GPU 추상)
+           "libxkbcommon",        # 키보드 입력
+           "mesa",                # libgbm (GBM = headless 필수) + libGL/libEGL 포함
+           "alsa-lib",            # libasound2 (오디오)
+           "pango", "cairo",      # 텍스트 / 벡터 그래픽
+           "freetype",            # 폰트 래스터
+           # ── X11 libs (headless 도 동적 링킹 됨) ───────────────
+           "xorg.libxcb",
+           "xorg.libX11",
+           "xorg.libXcomposite",
+           "xorg.libXdamage",
+           "xorg.libXext",
+           "xorg.libXfixes",
+           "xorg.libXrandr",
+           "xorg.libXrender",
+           "xorg.libXtst",
+           "xorg.libXi",
+           "xorg.libXcursor",
+           "xorg.libXScrnSaver",  # ScreenSaver (대문자 S, Nix attr name 표준)
+           "libxshmfence",        # GPU 동기화 (xorg 외 단독 attr)
+           "libGL",               # OpenGL (mesa 와 별도 명시 — 일부 환경 누락 방어)
+           # ── GTK / 그래픽 stack ───────────────────────────────
+           "gtk3",                # GTK3 (Linux 기본 UI toolkit, chrome 동적 링킹)
+           "gdk-pixbuf"]          # 이미지 디코딩
 
 [phases.install]
 cmds = [
@@ -24,9 +65,9 @@ cmds = [
   #   · 토글 ON 시점에 chromium 미설치 = launch 에러 → main.py:6700 except 로 fallthrough
   # ~/.cache/ms-playwright/chromium-XXXX/chrome-linux/chrome 위치에 다운로드.
   ". /opt/venv/bin/activate && playwright install chromium 2>&1 | tail -5 || echo 'playwright install chromium failed — HTML 모드 비활성 (토글 OFF 면 영향 0)'",
-  # Linux system deps (libnss3 / libatk / libxkbcommon / libxshmfence 등) 자동 설치.
-  # Nixpacks 가 Debian/Ubuntu 베이스면 apt-get 사용 — Nix store 기반이면 실패 (이때 nixPkgs 추가 spec 별도).
-  ". /opt/venv/bin/activate && playwright install-deps chromium 2>&1 | tail -5 || echo 'playwright install-deps chromium failed — system deps 수동 추가 필요 가능성'",
+  # Spec D-Fix-ChromiumSharedLibs — 'playwright install-deps chromium' 줄 제거.
+  # 이유: Railway = Nix 환경 → apt-get 기반 install-deps 미동작 확정.
+  # 대안: nixPkgs (phases.setup) 에 chromium 의존 시스템 라이브러리 직접 명시 (위 참조).
 ]
 
 [phases.build]

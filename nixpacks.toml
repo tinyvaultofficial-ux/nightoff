@@ -40,7 +40,9 @@ nixPkgs = ["python312", "gcc", "libreoffice", "fontconfig",
            "xorg.libXi",
            "xorg.libXcursor",
            "xorg.libXScrnSaver",  # ScreenSaver (대문자 S, Nix attr name 표준)
-           "libxshmfence",        # GPU 동기화 (xorg 외 단독 attr)
+           # Spec D-Fix-ChromiumSharedLibs-2 — libxshmfence 는 xorg 네임스페이스.
+           # Railway 빌드 에러 "undefined variable 'libxshmfence'" 확정 후 정정.
+           "xorg.libxshmfence",   # GPU 동기화 (xorg 네임스페이스)
            "libGL",               # OpenGL (mesa 와 별도 명시 — 일부 환경 누락 방어)
            # ── GTK / 그래픽 stack ───────────────────────────────
            "gtk3",                # GTK3 (Linux 기본 UI toolkit, chrome 동적 링킹)

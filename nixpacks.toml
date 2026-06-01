@@ -88,33 +88,23 @@ cmds = [
   # 코드 (pptx_generator.py:2508) 의 p.chromium.executable_path 가 가리키는 경로 그대로 작동.
   #
   # ─────────────────────────────────────────────────────────────────────
-  # Spec D-Fix-NixOSPlaywrightDriver — NixOS 공식 권장 방식 (b8e2b7c 빌드 실패 후 전환).
-  # 이전 spec (NixSymlink / NixSymlink-2) = chromium 단독 패키지로는 실행파일 미발견.
-  # 본 spec = playwright-driver.browsers 디렉토리를 PLAYWRIGHT_BROWSERS_PATH 환경변수로 주입.
-  # Playwright python API 가 환경변수 자동 인식 → pptx_generator.py 코드 수정 0.
+  # Spec D-Check-PlaywrightDriverPath — nix store 의 playwright 관련 경로 탐색.
+  # 이전 spec (D-Fix-NixOSPlaywrightDriver / b5cf303) 빌드 로그: '*playwright-browsers*' 패턴 미발견.
+  # 즉 playwright-driver 가 다른 이름·구조로 설치됨. 본 spec = 패턴 확장 + 실제 경로 출력.
+  # 목적: "실제 설치된 playwright 관련 경로를 빌드 로그에서 눈으로 확인" (주입은 보너스).
   #
-  # 방식:
-  #   1. find /nix/store 로 playwright-browsers 디렉토리 탐색 (점 표기 .browsers nixpacks 미보장 → 직접 탐색)
-  #   2. 발견 시 venv activate 스크립트 끝에 export 2줄 추가:
-  #      - export PLAYWRIGHT_BROWSERS_PATH=<경로>
-  #      - export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true  (Nix 환경에서 validate 우회)
-  #   3. 런타임 (uvicorn 기동) 시 venv activate 통해 자동 로드 → Playwright 가 nix store 의 chromium 사용
+  # 3개 entry 분리 (각각 graceful, ';' 연결 + 마지막 '; true' = exit 0 강제):
+  #   1. /nix/store -maxdepth 1 -iname '*playwright*'      전부 출력 (top 20)
+  #   2. /nix/store -maxdepth 5 -iname 'chromium*'|'chrome*' -path '*playwright*'  (top 20)
+  #   3. PLAYWRIGHT_BROWSERS_PATH 후보 결정 (3단계 fallback) + venv activate 주입 또는 skip
   #
-  # 빌드 실패 회피 (b8e2b7c 의 exit 127 교훈):
-  #   · POSIX sh 표준만 사용 (bash-ism 회피)
-  #   · ';' 연결 (`&&` 줄세움 X) — 한 단계 실패해도 다음 진행
-  #   · find 결과 변수에 담기 + ${VAR:-NOTFOUND} POSIX 기본값
-  #   · 마지막 `; true` 강제 exit 0 보장
-  #   · graceful — 디렉토리 미발견 시도 echo 만 출력하고 빌드 통과
-  #
-  # 디버깅 출력:
-  #   · "PLAYWRIGHT_BROWSERS_PATH 후보: <경로 또는 NOTFOUND>"
-  #   · "주입 OK (<경로>)" 또는 "주입 skip (playwright-browsers 미발견)"
-  #
-  # 기존 'playwright install chromium' 줄 (L69) = 그대로 유지 (안전망):
-  #   · playwright-driver 환경변수 방식 실패 시 Playwright 본체 다운로드 fallback
-  #   · 디스크 사용량 ↑ 단점이지만 toggling OFF 면 영향 0
-  ". /opt/venv/bin/activate ; echo '=== D-Fix-NixOSPlaywrightDriver ===' ; PW_BROWSERS=$(find /nix/store -maxdepth 1 -name '*playwright-browsers*' -type d 2>/dev/null | head -n 1) ; echo \"PLAYWRIGHT_BROWSERS_PATH 후보: ${PW_BROWSERS:-NOTFOUND}\" ; if [ -n \"$PW_BROWSERS\" ] ; then echo \"export PLAYWRIGHT_BROWSERS_PATH=$PW_BROWSERS\" >> /opt/venv/bin/activate ; echo \"export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true\" >> /opt/venv/bin/activate ; echo \"주입 OK ($PW_BROWSERS)\" ; else echo '주입 skip (playwright-browsers 디렉토리 미발견 — Playwright 본체 다운로드 fallback)' ; fi ; true",
+  # 후보 결정 우선순위:
+  #   (a) *playwright-browsers* 디렉토리                                    (예상 표준)
+  #   (b) playwright 경로 안 'browsers' 서브디렉토리                         (nixpkgs 구조 변형)
+  #   (c) playwright 경로 안 'chromium-*' 디렉토리의 부모                    (chromium-XXXX 의 부모)
+  ". /opt/venv/bin/activate ; echo '=== D-Check-PlaywrightDriverPath ===' ; echo '--- /nix/store playwright 관련 (top 20) ---' ; (find /nix/store -maxdepth 1 -iname '*playwright*' 2>/dev/null | head -n 20) ; echo '(end of playwright top-level)' ; true",
+  ". /opt/venv/bin/activate ; echo '--- playwright 경로 안 chromium/chrome 관련 (top 20) ---' ; (find /nix/store -maxdepth 5 \\( -iname 'chromium*' -o -iname 'chrome*' \\) -path '*playwright*' 2>/dev/null | head -n 20) ; echo '(end of chromium/chrome inside playwright)' ; true",
+  ". /opt/venv/bin/activate ; PW_BROWSERS=$(find /nix/store -maxdepth 1 -iname '*playwright-browsers*' -type d 2>/dev/null | head -n 1) ; if [ -z \"$PW_BROWSERS\" ] ; then PW_BROWSERS=$(find /nix/store -maxdepth 3 -type d -iname 'browsers' -path '*playwright*' 2>/dev/null | head -n 1) ; fi ; if [ -z \"$PW_BROWSERS\" ] ; then PW_CANDIDATE=$(find /nix/store -maxdepth 4 -type d -iname 'chromium-*' -path '*playwright*' 2>/dev/null | head -n 1) ; if [ -n \"$PW_CANDIDATE\" ] ; then PW_BROWSERS=$(dirname \"$PW_CANDIDATE\") ; fi ; fi ; echo \"최종 PLAYWRIGHT_BROWSERS_PATH 후보: ${PW_BROWSERS:-NOTFOUND}\" ; if [ -n \"$PW_BROWSERS\" ] ; then echo \"export PLAYWRIGHT_BROWSERS_PATH=$PW_BROWSERS\" >> /opt/venv/bin/activate ; echo \"export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true\" >> /opt/venv/bin/activate ; echo \"주입 OK ($PW_BROWSERS)\" ; else echo '주입 skip (playwright 관련 경로 후보 미발견 — 위 로그 확인 후 다음 spec 으로 패턴 조정)' ; fi ; true",
 ]
 
 [phases.build]

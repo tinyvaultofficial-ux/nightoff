@@ -1553,16 +1553,54 @@ NightOff 출력 = 영역 1 (객관적 분석 + 추상 메시지) 만.
 #DDD (구분선·border) / #FFFFFF (배경·역색)
 ※ #FAFAFA / #F5F5F5 / rgba(255,255,255,0.08) 등 회색 변형 절대 X (정확히 6색만).
 
-[★ 폰트 — Paperlogy / Noto Sans KR 우선순위 (Spec D-Fix-PaperlogyFontFace)]
+[★ 폰트 family (Spec D-Fix-PaperlogyFontFace)]
 font-family: 'Paperlogy', 'Noto Sans KR', sans-serif
 - 운영 컨테이너의 <style> 통합 단계에서 @font-face 9개 자동 주입됨
   (Paperlogy 1Thin~9Black ttf 9개를 font-family 'Paperlogy' 하나로 묶고 weight 100~900 매핑)
 - 따라서 font-family:'Paperlogy' + font-weight:NNN 으로 9 weight 자동 선택
 - Pretendard 는 운영 컨테이너에 없음 → font-family 1순위에서 제거
-- 헤드라인 (거버닝 메인): font-size 32~48px / font-weight 700~800
-- 거버닝 서브: font-size 13~16px / font-weight 500
-- 본문: font-size 12~16px / font-weight 400
-- 페이지번호·메타: font-size 9~11px / font-weight 300 / color #999
+
+[★ 페이지 type 별 폰트 size (Spec D-Fix-FontSizeHierarchy)]
+도형 모드의 검증된 pt 값을 px 로 환산 (1pt ≈ 1.333px) — "도형 모드와 같은 시각 크기" 보장.
+페이지 type 별로 카테고리 분리. 큰 위계 (Display 급) 반드시 살리기.
+
+1) 표지 페이지 (slide_type=hero, page=1)
+   - 메인 거버닝 (사업명):    font-size 80px / font-weight 800 (도형 60pt 환산)
+   - 부제 (발주처명):          font-size 24px / font-weight 500 (도형 18pt 환산)
+   - 날짜:                     font-size 16px / font-weight 400 (도형 12pt 환산)
+
+2) 챕터 divider 페이지 (Ⅰ ~ Ⅴ)
+   - 거대 챕터 번호 (Ⅰ/Ⅱ/Ⅲ): font-size 267~320px / font-weight 900 (도형 200~240pt 환산)
+   - 챕터 제목:                font-size 67~93px / font-weight 800 (도형 50~70pt 환산)
+   - 분할선 외 시각 강조 도형 절대 X (Spec D-Fix-26 유지)
+
+3) 콘셉트 슬로건 페이지 (slide_type=hero, 콘셉트 메시지)
+   - 거대 슬로건:              font-size 67~120px / font-weight 700~800 (도형 50~90pt 환산, 글자수 동적 매핑)
+   - 부제 (선택):              font-size 21~27px / font-weight 500 (도형 16~20pt 환산)
+
+4) 핵심 주장 / 강조 페이지 (slide_type=hero, 거버닝 강조)
+   - 메시지:                   font-size 53~80px / font-weight 700~800 (도형 40~60pt 환산)
+   - 부제:                     font-size 21~27px / font-weight 500 (도형 16~20pt 환산)
+
+5) 본문 페이지 (slide_type=text_box / simple_box) — ★ 페이지 간 size 통일 강제
+   - eyebrow (섹션 breadcrumb): font-size 13px / font-weight 300 / color #999 (도형 10pt 환산)
+   - 메인 거버닝:              font-size 27~37px / font-weight 700~800 (도형 20~28pt 환산)
+     ★★★ 모든 본문 페이지 메인 거버닝 size 통일 강제 (도형 모드 L1115~1119 이식):
+        한 슬라이드 32px = 같은 RFP 의 다음 본문 슬라이드도 32px.
+        일부 페이지만 작게 X — 페이지 간 시각 일관성 절대 강제.
+   - 서브 거버닝:              font-size 17~21px / font-weight 500 (도형 13~16pt 환산)
+   - 박스 제목 / 카드 제목:    font-size 21~27px / font-weight 600~700 (도형 16~20pt 환산)
+   - 본문 텍스트:              font-size 15~19px / font-weight 400 (도형 11~14pt 환산)
+   - 캡션 / 출처 / 단위:       font-size 13~15px / font-weight 400 / color #666 (도형 10~11pt 환산)
+
+6) 마무리 페이지 ("감사합니다" / 발주처명)
+   - "감사합니다":             font-size 107~160px / font-weight 800~900 (도형 80~120pt 환산)
+   - 발주처명 / 연락처:        font-size 24~32px / font-weight 500 (도형 18~24pt 환산)
+
+7) 공통 페이지 메타 (모든 페이지)
+   - 페이지번호:               font-size 12px / font-weight 300 / color #999 (도형 9pt 환산)
+
+위 7개 카테고리 = 도형 모드의 검증된 위계 그대로. 임의로 키우거나 줄이지 말 것.
 
 [★ 거버닝 구조 — 상단 eyebrow + 메인 + 서브]
 - eyebrow (섹션 breadcrumb, 예: "Ⅰ. 제안 개요 · 1. 추진 배경"): font-size 11px / color #999

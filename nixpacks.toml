@@ -12,11 +12,16 @@
 #   libXScrnSaver / libxshmfence / libGL / gtk3 / gdk-pixbuf) 까지 한번에 일괄 추가.
 nixPkgs = ["python312", "gcc", "libreoffice", "fontconfig",
            "noto-fonts-cjk-sans", "nanum", "coreutils",
-           # ── Nix chromium 본체 (Spec D-Fix-ChromiumNixSymlink) ───────
-           # Playwright 다운로드 chromium = Nix store 의 .so 못 찾음 (LD_LIBRARY_PATH 미연결).
-           # Nix chromium = 의존성 동봉 (self-contained, Nix 강점) → 동적 링킹 자동 해결.
-           # 아래 install 단계에서 Playwright 의 chrome / chrome-headless-shell 을
-           # 이 chromium 으로 ln -sf 심볼릭 교체 (코드의 p.chromium.executable_path 그대로 사용).
+           # ── NixOS 공식 권장 방식 (Spec D-Fix-NixOSPlaywrightDriver) ───────
+           # playwright-driver = Playwright 의 Node.js driver + chromium/firefox/webkit 본체
+           # (Nix 빌드, 의존성 동봉 — LD_LIBRARY_PATH 자동 해결).
+           # 빌드 결과 디렉토리 = /nix/store/<hash>-playwright-browsers-*/
+           # 아래 install 단계에서 그 경로를 PLAYWRIGHT_BROWSERS_PATH 환경변수로 주입.
+           # Playwright python API 가 환경변수 자동 인식 → 코드 수정 0.
+           "playwright-driver",
+           # ── Nix chromium 본체 (Spec D-Fix-ChromiumNixSymlink, 안전망 유지) ───────
+           # playwright-driver 가 실패해도 fallback 으로 chromium 단독 패키지 보유.
+           # (D-Fix-ChromiumNixSymlink-2 빌드 로그: chromium 실행파일 미발견 → 단독으론 부족)
            "chromium",
            # ── chromium core deps (안전망 — symlink 실패해도 fallback) ───────
            "glib",                # libglib-2.0.so.0 (확정 누락 — 운영 로그 에러)
@@ -82,17 +87,34 @@ cmds = [
   # Nix chromium = 의존성 동봉 (LD_LIBRARY_PATH 자동 해결).
   # 코드 (pptx_generator.py:2508) 의 p.chromium.executable_path 가 가리키는 경로 그대로 작동.
   #
-  # Spec D-Fix-ChromiumNixSymlink-2 — chromium 실행파일 탐색 견고화.
-  # 'which chromium' 만으로 안 잡힘 (Nix chromium 실행파일명 다를 수 있거나 PATH 미등록).
-  # 탐색 우선순위:
-  #   1. which chromium               (PATH 에 있는 표준 이름)
-  #   2. which chromium-browser       (Debian 계 이름)
-  #   3. find /nix/store … chromium   (Nix store 직접 탐색, -maxdepth 4)
-  #   4. find /nix/store … chromium-browser
-  # 발견 후 readlink -f 로 심볼릭 풀어 실제 실행파일 경로 확정.
-  # 디버깅 출력: which 결과 + find 결과 (상위 5개) + 최종 선택 경로.
-  # graceful (else echo) — 실패해도 빌드 통과 (토글 OFF 면 영향 0).
-  ". /opt/venv/bin/activate && echo '=== D-Fix-ChromiumNixSymlink-2 chromium 탐색 ===' && echo \"which chromium: $(which chromium 2>/dev/null || echo none)\" && echo \"which chromium-browser: $(which chromium-browser 2>/dev/null || echo none)\" && echo '/nix/store chromium 실행파일 (상위 5개):' && (find /nix/store -maxdepth 4 -type f \\( -name chromium -o -name chromium-browser \\) 2>/dev/null | head -5 || echo none) && NIX_CHROME=$(which chromium 2>/dev/null || which chromium-browser 2>/dev/null || find /nix/store -maxdepth 4 -type f -name chromium 2>/dev/null | head -1 || find /nix/store -maxdepth 4 -type f -name chromium-browser 2>/dev/null | head -1) && if [ -n \"$NIX_CHROME\" ] && [ -L \"$NIX_CHROME\" ]; then NIX_CHROME=$(readlink -f \"$NIX_CHROME\"); fi && echo \"최종 NIX_CHROME: ${NIX_CHROME:-NOTFOUND}\" && if [ -n \"$NIX_CHROME\" ] && [ -x \"$NIX_CHROME\" ]; then find ~/.cache/ms-playwright -maxdepth 3 -type f \\( -name chrome -o -name chrome-headless-shell \\) -print -exec ln -sf \"$NIX_CHROME\" {} \\; && echo 'symlink OK'; else echo 'Nix chromium symlink skip (chromium 실행파일 미발견)'; fi",
+  # ─────────────────────────────────────────────────────────────────────
+  # Spec D-Fix-NixOSPlaywrightDriver — NixOS 공식 권장 방식 (b8e2b7c 빌드 실패 후 전환).
+  # 이전 spec (NixSymlink / NixSymlink-2) = chromium 단독 패키지로는 실행파일 미발견.
+  # 본 spec = playwright-driver.browsers 디렉토리를 PLAYWRIGHT_BROWSERS_PATH 환경변수로 주입.
+  # Playwright python API 가 환경변수 자동 인식 → pptx_generator.py 코드 수정 0.
+  #
+  # 방식:
+  #   1. find /nix/store 로 playwright-browsers 디렉토리 탐색 (점 표기 .browsers nixpacks 미보장 → 직접 탐색)
+  #   2. 발견 시 venv activate 스크립트 끝에 export 2줄 추가:
+  #      - export PLAYWRIGHT_BROWSERS_PATH=<경로>
+  #      - export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true  (Nix 환경에서 validate 우회)
+  #   3. 런타임 (uvicorn 기동) 시 venv activate 통해 자동 로드 → Playwright 가 nix store 의 chromium 사용
+  #
+  # 빌드 실패 회피 (b8e2b7c 의 exit 127 교훈):
+  #   · POSIX sh 표준만 사용 (bash-ism 회피)
+  #   · ';' 연결 (`&&` 줄세움 X) — 한 단계 실패해도 다음 진행
+  #   · find 결과 변수에 담기 + ${VAR:-NOTFOUND} POSIX 기본값
+  #   · 마지막 `; true` 강제 exit 0 보장
+  #   · graceful — 디렉토리 미발견 시도 echo 만 출력하고 빌드 통과
+  #
+  # 디버깅 출력:
+  #   · "PLAYWRIGHT_BROWSERS_PATH 후보: <경로 또는 NOTFOUND>"
+  #   · "주입 OK (<경로>)" 또는 "주입 skip (playwright-browsers 미발견)"
+  #
+  # 기존 'playwright install chromium' 줄 (L69) = 그대로 유지 (안전망):
+  #   · playwright-driver 환경변수 방식 실패 시 Playwright 본체 다운로드 fallback
+  #   · 디스크 사용량 ↑ 단점이지만 toggling OFF 면 영향 0
+  ". /opt/venv/bin/activate ; echo '=== D-Fix-NixOSPlaywrightDriver ===' ; PW_BROWSERS=$(find /nix/store -maxdepth 1 -name '*playwright-browsers*' -type d 2>/dev/null | head -n 1) ; echo \"PLAYWRIGHT_BROWSERS_PATH 후보: ${PW_BROWSERS:-NOTFOUND}\" ; if [ -n \"$PW_BROWSERS\" ] ; then echo \"export PLAYWRIGHT_BROWSERS_PATH=$PW_BROWSERS\" >> /opt/venv/bin/activate ; echo \"export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true\" >> /opt/venv/bin/activate ; echo \"주입 OK ($PW_BROWSERS)\" ; else echo '주입 skip (playwright-browsers 디렉토리 미발견 — Playwright 본체 다운로드 fallback)' ; fi ; true",
 ]
 
 [phases.build]

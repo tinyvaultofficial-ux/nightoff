@@ -1,0 +1,82 @@
+# ============================================================================
+# Spec D-Build-DockerfileTransition — Docker 빌드 컨텍스트 제외 목록.
+# COPY . /app 시 불필요·민감 파일 차단 → 이미지 크기·보안·빌드 시간 최적화.
+#
+# 반드시 포함 (제외 안 함):
+#   · 운영 코드 7개: main.py / proposal_multi_pass.py / pptx_generator.py /
+#                    rag_retriever.py / rag_build.py / rag_extract.py / rag_kb.db
+#   · 의존성: requirements.txt / requirements-rag.txt
+#   · 정적 자산: static/ (fonts + 이미지)
+#   · 메타: Procfile / railway.toml / nixpacks.toml (rollback 용)
+# ============================================================================
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Python 캐시·바이트코드
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+*.egg-info/
+
+# 환경변수 / 시크릿
+.env
+.env.local
+.env.*
+!.env.example
+
+# DB 백업 (운영 rag_kb.db 는 포함, backup 들만 제외)
+*.backup-*
+*-pre-migration*
+*.db.backup-*
+
+# 시뮬 / 실험 자산 (수 GB)
+_experiments/
+
+# Dev temp 파일들 (운영 비포함)
+_rag_*_console.txt
+_rag_sanitize_*.txt
+_rag_sanitize_dryrun*.txt
+_rag_sanitize_apply*.txt
+_rag_sanitize_report.txt
+_rag_d6_console.txt
+_rag_reembed_d6_console.txt
+_reembed_sanitized_console.txt
+_sanitize_sample.txt
+_multi_pass_test.pptx
+_proposal_system_current_state.md
+
+# 테스트 스크립트 (운영 무관)
+_test_*.py
+test_*.py
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / dev environment
+.claude/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Node.js (사용 안 함, 안전망)
+node_modules/
+
+# Build artifacts
+build/
+dist/
+
+# Docker 자체 (재귀 회피)
+Dockerfile
+.dockerignore

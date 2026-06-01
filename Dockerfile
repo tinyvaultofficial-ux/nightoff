@@ -18,10 +18,14 @@
 
 FROM mcr.microsoft.com/playwright/python:v1.60.0-noble
 
-# ── 1. 시스템 의존성 (LibreOffice + 한글 폰트) ─────────────────────────
+# ── 1. 시스템 의존성 (LibreOffice + 한글 폰트 + Python venv) ──────────
 # Playwright 이미지에 LibreOffice·한글 폰트는 없음 → apt 로 추가 설치.
 # fonts-noto-cjk / fonts-nanum = nixpacks 의 noto-fonts-cjk-sans / nanum 1:1 대체.
 # coreutils 는 베이스에 있지만 명시 (nixpacks 와 정합).
+# Spec D-Fix-DockerfileVenv — python3.12-venv 추가.
+#   Playwright python 이미지에 venv 모듈 없음 (ensurepip 누락 → `python -m venv` exit 1).
+#   python3.12-venv = Ubuntu 24.04 noble 의 Python 3.12 용 venv 패키지.
+#   python3-pip = pip 도 함께 보장 (venv 안 pip 동작 위한 safety).
 # DEBIAN_FRONTEND=noninteractive = apt 가 prompt 없이 진행.
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
@@ -30,7 +34,9 @@ RUN apt-get update && \
         fontconfig \
         fonts-noto-cjk \
         fonts-nanum \
-        coreutils && \
+        coreutils \
+        python3.12-venv \
+        python3-pip && \
     rm -rf /var/lib/apt/lists/*
 
 # ── 2. venv 생성 + 환경변수 ────────────────────────────────────────────

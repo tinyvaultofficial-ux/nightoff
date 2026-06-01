@@ -1553,8 +1553,12 @@ NightOff 출력 = 영역 1 (객관적 분석 + 추상 메시지) 만.
 #DDD (구분선·border) / #FFFFFF (배경·역색)
 ※ #FAFAFA / #F5F5F5 / rgba(255,255,255,0.08) 등 회색 변형 절대 X (정확히 6색만).
 
-[★ 폰트 — Pretendard / Paperlogy / Noto Sans KR 우선순위]
-font-family: 'Pretendard', 'Paperlogy', 'Noto Sans KR', sans-serif
+[★ 폰트 — Paperlogy / Noto Sans KR 우선순위 (Spec D-Fix-PaperlogyFontFace)]
+font-family: 'Paperlogy', 'Noto Sans KR', sans-serif
+- 운영 컨테이너의 <style> 통합 단계에서 @font-face 9개 자동 주입됨
+  (Paperlogy 1Thin~9Black ttf 9개를 font-family 'Paperlogy' 하나로 묶고 weight 100~900 매핑)
+- 따라서 font-family:'Paperlogy' + font-weight:NNN 으로 9 weight 자동 선택
+- Pretendard 는 운영 컨테이너에 없음 → font-family 1순위에서 제거
 - 헤드라인 (거버닝 메인): font-size 32~48px / font-weight 700~800
 - 거버닝 서브: font-size 13~16px / font-weight 500
 - 본문: font-size 12~16px / font-weight 400
@@ -1596,10 +1600,12 @@ user prompt 의 [정량 lock — 절대 변경 X] 블록 안 정량을 페이지
 출력 시작 = `<!DOCTYPE html>`, 끝 = `</html>`. 코드펜스 / 설명 / 마크다운 모두 금지.
 
 예시 (참고용 — 그대로 따라하지 말고 콘텐츠에 맞게 자율 설계):
+운영 통합 단계에서 @font-face 9개 (Paperlogy 1Thin~9Black, weight 100~900) 자동 주입됨.
+LLM 출력의 <style> 은 변환기가 무시 — .slide div 와 그 안 inline style 만 사용.
 ```html
 <!DOCTYPE html>
 <html lang="ko"><head><meta charset="UTF-8"><style>
-* { margin:0; padding:0; box-sizing:border-box; font-family:'Pretendard','Paperlogy','Noto Sans KR',sans-serif; }
+* { margin:0; padding:0; box-sizing:border-box; font-family:'Paperlogy','Noto Sans KR',sans-serif; }
 .slide { width:1123px; height:794px; background:#FFFFFF; color:#1A1A1A; position:relative; overflow:hidden; }
 </style></head><body>
 <div class="slide">
@@ -2277,13 +2283,40 @@ async def orchestrate(
                 final_slides.append({"section": sr.section, "shapes": sr.shapes})
 
     # html 모드 전용 — final_payload 에 html 통합 문자열 추가 (.slide × N).
+    # Spec D-Fix-PaperlogyFontFace — @font-face 9개로 Paperlogy 통합 family 등록.
+    #   · 컨테이너 (Dockerfile) 의 /usr/share/fonts/truetype/paperlogy/ 에 9개 ttf 배치됨.
+    #   · 각 ttf 의 내부 family 가 'Paperlogy 1 Thin'~'Paperlogy 9 Black' 으로 분리 → CSS font-family:'Paperlogy' 단독 매칭 X.
+    #   · @font-face 9개로 ttf 9개를 통합 family 'Paperlogy' + weight 100~900 으로 alias.
+    #   · CSS font-weight:400 등 표준 weight 값 → 해당 ttf 자동 매칭.
+    #   · file:/// 절대경로 = Playwright chromium 이 file:// 페이지 로드 시 인식.
     html_full = ""
     if is_html_mode and final_html_parts:
         body_inner = "\n".join(final_html_parts)
+        font_face_block = (
+            "@font-face { font-family: 'Paperlogy'; font-weight: 100; font-style: normal; "
+            "src: url('file:///usr/share/fonts/truetype/paperlogy/Paperlogy-1Thin.ttf'); }\n"
+            "@font-face { font-family: 'Paperlogy'; font-weight: 200; font-style: normal; "
+            "src: url('file:///usr/share/fonts/truetype/paperlogy/Paperlogy-2ExtraLight.ttf'); }\n"
+            "@font-face { font-family: 'Paperlogy'; font-weight: 300; font-style: normal; "
+            "src: url('file:///usr/share/fonts/truetype/paperlogy/Paperlogy-3Light.ttf'); }\n"
+            "@font-face { font-family: 'Paperlogy'; font-weight: 400; font-style: normal; "
+            "src: url('file:///usr/share/fonts/truetype/paperlogy/Paperlogy-4Regular.ttf'); }\n"
+            "@font-face { font-family: 'Paperlogy'; font-weight: 500; font-style: normal; "
+            "src: url('file:///usr/share/fonts/truetype/paperlogy/Paperlogy-5Medium.ttf'); }\n"
+            "@font-face { font-family: 'Paperlogy'; font-weight: 600; font-style: normal; "
+            "src: url('file:///usr/share/fonts/truetype/paperlogy/Paperlogy-6SemiBold.ttf'); }\n"
+            "@font-face { font-family: 'Paperlogy'; font-weight: 700; font-style: normal; "
+            "src: url('file:///usr/share/fonts/truetype/paperlogy/Paperlogy-7Bold.ttf'); }\n"
+            "@font-face { font-family: 'Paperlogy'; font-weight: 800; font-style: normal; "
+            "src: url('file:///usr/share/fonts/truetype/paperlogy/Paperlogy-8ExtraBold.ttf'); }\n"
+            "@font-face { font-family: 'Paperlogy'; font-weight: 900; font-style: normal; "
+            "src: url('file:///usr/share/fonts/truetype/paperlogy/Paperlogy-9Black.ttf'); }\n"
+        )
         html_full = (
             '<!DOCTYPE html>\n<html lang="ko"><head><meta charset="UTF-8"><style>\n'
-            '* { margin:0; padding:0; box-sizing:border-box; '
-            "font-family:'Pretendard','Paperlogy','Noto Sans KR',sans-serif; }\n"
+            + font_face_block
+            + "* { margin:0; padding:0; box-sizing:border-box; "
+            "font-family:'Paperlogy','Noto Sans KR',sans-serif; }\n"
             '.slide { width:1123px; height:794px; overflow:hidden; '
             'position:relative; background:#FFFFFF; color:#1A1A1A; }\n'
             '</style></head><body>\n' + body_inner + '\n</body></html>'

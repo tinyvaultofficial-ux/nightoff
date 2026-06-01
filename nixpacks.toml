@@ -78,12 +78,21 @@ cmds = [
   # 대안: nixPkgs (phases.setup) 에 chromium 의존 시스템 라이브러리 직접 명시 (위 참조).
   #
   # Spec D-Fix-ChromiumNixSymlink — Playwright 가 다운로드한 chrome / chrome-headless-shell
-  # 본체를 Nix chromium ($(which chromium)) 으로 ln -sf 심볼릭 교체.
+  # 본체를 Nix chromium 으로 ln -sf 심볼릭 교체.
   # Nix chromium = 의존성 동봉 (LD_LIBRARY_PATH 자동 해결).
   # 코드 (pptx_generator.py:2508) 의 p.chromium.executable_path 가 가리키는 경로 그대로 작동.
-  # -maxdepth 3 = chromium-XXXX/chrome-linux/chrome 또는 chromium_headless_shell-XXXX/...
-  # graceful (|| echo) — 실패해도 빌드 통과 (토글 OFF 면 영향 0).
-  ". /opt/venv/bin/activate && NIX_CHROME=$(which chromium 2>/dev/null) && echo \"Nix chromium: $NIX_CHROME\" && [ -n \"$NIX_CHROME\" ] && find ~/.cache/ms-playwright -maxdepth 3 -type f \\( -name 'chrome' -o -name 'chrome-headless-shell' \\) -print -exec ln -sf \"$NIX_CHROME\" {} \\; 2>&1 | tail -10 || echo 'Nix chromium symlink skip (which chromium 없거나 Playwright dir 없음)'",
+  #
+  # Spec D-Fix-ChromiumNixSymlink-2 — chromium 실행파일 탐색 견고화.
+  # 'which chromium' 만으로 안 잡힘 (Nix chromium 실행파일명 다를 수 있거나 PATH 미등록).
+  # 탐색 우선순위:
+  #   1. which chromium               (PATH 에 있는 표준 이름)
+  #   2. which chromium-browser       (Debian 계 이름)
+  #   3. find /nix/store … chromium   (Nix store 직접 탐색, -maxdepth 4)
+  #   4. find /nix/store … chromium-browser
+  # 발견 후 readlink -f 로 심볼릭 풀어 실제 실행파일 경로 확정.
+  # 디버깅 출력: which 결과 + find 결과 (상위 5개) + 최종 선택 경로.
+  # graceful (else echo) — 실패해도 빌드 통과 (토글 OFF 면 영향 0).
+  ". /opt/venv/bin/activate && echo '=== D-Fix-ChromiumNixSymlink-2 chromium 탐색 ===' && echo \"which chromium: $(which chromium 2>/dev/null || echo none)\" && echo \"which chromium-browser: $(which chromium-browser 2>/dev/null || echo none)\" && echo '/nix/store chromium 실행파일 (상위 5개):' && (find /nix/store -maxdepth 4 -type f \\( -name chromium -o -name chromium-browser \\) 2>/dev/null | head -5 || echo none) && NIX_CHROME=$(which chromium 2>/dev/null || which chromium-browser 2>/dev/null || find /nix/store -maxdepth 4 -type f -name chromium 2>/dev/null | head -1 || find /nix/store -maxdepth 4 -type f -name chromium-browser 2>/dev/null | head -1) && if [ -n \"$NIX_CHROME\" ] && [ -L \"$NIX_CHROME\" ]; then NIX_CHROME=$(readlink -f \"$NIX_CHROME\"); fi && echo \"최종 NIX_CHROME: ${NIX_CHROME:-NOTFOUND}\" && if [ -n \"$NIX_CHROME\" ] && [ -x \"$NIX_CHROME\" ]; then find ~/.cache/ms-playwright -maxdepth 3 -type f \\( -name chrome -o -name chrome-headless-shell \\) -print -exec ln -sf \"$NIX_CHROME\" {} \\; && echo 'symlink OK'; else echo 'Nix chromium symlink skip (chromium 실행파일 미발견)'; fi",
 ]
 
 [phases.build]

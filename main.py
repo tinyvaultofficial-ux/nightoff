@@ -1823,6 +1823,17 @@ def _startup() -> None:
             log.info("RAG DB sync skip: %s", rag_result["error"])
     except Exception as e:
         log.warning("RAG DB sync 실패 (무시 — RAG 비활성 모드로): %s", e)
+    # Spec D-Build-SkeletonConnect — 골격 13종 HTML + _index.json 동기화 (HTML 모드 토글 ON 시 사용).
+    # 실패해도 startup 무영향 (HTML 모드 토글 OFF 면 골격 미사용 → 영향 0).
+    # 토글 ON 이어도 캐시 미존재 시 _load_skeleton_html 이 "" 반환 → 카탈로그 fallback.
+    try:
+        import r2_storage
+        skel_result = r2_storage.sync_skeletons()
+        log.info("Skeletons sync OK (downloaded=%d, skipped=%d, failed=%d)",
+                 skel_result.get("downloaded", 0), skel_result.get("skipped", 0),
+                 skel_result.get("failed", 0))
+    except Exception as e:
+        log.warning("Skeletons sync 실패 (무시 — HTML 모드 골격 미배정 fallback): %s", e)
     log.info("=== NightOff server ready (uvicorn 응답 시작) ===")
 
 

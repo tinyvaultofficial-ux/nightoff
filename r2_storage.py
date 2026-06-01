@@ -112,11 +112,14 @@ def _write_marker(p: Path, etag: str) -> None:
         log.warning("ETag marker write 실패 (%s): %s", p, e)
 
 
-def list_objects(suffix: str | None = ".pptx") -> list[dict]:
+def list_objects(suffix: str | None = ".pptx", prefix: str | None = None) -> list[dict]:
     """R2 버킷의 객체 목록.
 
     Args:
       suffix: 필터링할 확장자 (e.g. '.pptx'). None 이면 모두.
+      prefix: R2 키 prefix 필터 (e.g. 'skeletons/'). None 이면 전체 버킷.
+              Spec D-Build-SkeletonConnect — 골격 동기화 시 'skeletons/' 한정.
+              기본값 None = 기존 호출자 (sync_master_templates) 동작 그대로.
     """
     if not _is_configured() or not _BOTO3_AVAILABLE:
         return []
@@ -125,7 +128,10 @@ def list_objects(suffix: str | None = ".pptx") -> list[dict]:
     try:
         client = _client()
         paginator = client.get_paginator("list_objects_v2")
-        for page in paginator.paginate(Bucket=bucket):
+        paginate_kwargs = {"Bucket": bucket}
+        if prefix:
+            paginate_kwargs["Prefix"] = prefix
+        for page in paginator.paginate(**paginate_kwargs):
             for obj in page.get("Contents", []) or []:
                 key = obj.get("Key") or ""
                 if suffix and not key.lower().endswith(suffix):
@@ -244,6 +250,72 @@ def sync_master_templates() -> dict:
         "R2 sync 완료 · 다운로드 %d · skip %d · 실패 %d · default=%s",
         result["downloaded"], result["skipped"], result["failed"],
         getattr(result["default"], "name", None),
+    )
+    return result
+
+
+# ── Spec D-Build-SkeletonConnect — 골격 13종 HTML + _index.json 동기화 ──────
+# R2 nightoff-templates 버킷의 'skeletons/' prefix 아래 객체를 로컬 ./skeletons/ 에 캐시.
+# 파일: KPI.html / G1.html ~ G12.html (총 13개) + _index.json (한 개).
+# 골격 추가/수정 시 R2 업로드만 → 코드 배포 X (sync_master_templates 와 동일 패턴).
+# 환경변수 미설정 / boto3 미설치 = graceful skip (HTML 모드 토글 OFF 영향 0).
+def _local_skeletons_dir() -> Path:
+    p = Path(
+        os.environ.get("R2_SKELETONS_CACHE_DIR")
+        or (Path(__file__).parent / "skeletons")
+    )
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def sync_skeletons(prefix: str = "skeletons/") -> dict:
+    """버킷의 'skeletons/' prefix 아래 모든 객체 (.html + _index.json) 동기화.
+
+    sync_master_templates 와 동일 ETag 캐시 전략 — 동일 etag 면 skip.
+
+    return: {"downloaded": N, "skipped": N, "failed": N}
+    """
+    result = {"downloaded": 0, "skipped": 0, "failed": 0}
+    if not _BOTO3_AVAILABLE:
+        log.warning("R2 skeletons sync skip — boto3 미설치")
+        return result
+    if not _is_configured():
+        log.info("R2 skeletons sync skip — 환경변수 미설정 (로컬 skeletons/ 만 사용)")
+        return result
+
+    cache = _local_skeletons_dir()
+    # suffix=None → .html + .json 둘 다 포함. prefix='skeletons/' 로 한정.
+    objects = list_objects(suffix=None, prefix=prefix)
+    log.info("R2 skeletons %d 개 발견 (prefix=%s)", len(objects), prefix)
+
+    for obj in objects:
+        key = obj["key"]
+        # prefix 제거한 상대 경로만 로컬에 (예: "skeletons/G1.html" → "G1.html")
+        rel = key[len(prefix):] if key.startswith(prefix) else key
+        if not rel or rel.endswith("/"):
+            # prefix 자체 또는 하위 디렉토리 표식 → skip
+            continue
+        local = cache / rel
+        try:
+            local.parent.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            log.warning("R2 skeletons mkdir 실패 (%s): %s", local.parent, e)
+            result["failed"] += 1
+            continue
+        marker = _etag_marker_path(local)
+        prev = _read_marker(marker)
+        if local.exists() and prev == obj["etag"]:
+            result["skipped"] += 1
+            continue
+        p = download_one(key, local)
+        if p is not None:
+            result["downloaded"] += 1
+        else:
+            result["failed"] += 1
+
+    log.info(
+        "R2 skeletons sync 완료 · 다운로드 %d · skip %d · 실패 %d",
+        result["downloaded"], result["skipped"], result["failed"],
     )
     return result
 

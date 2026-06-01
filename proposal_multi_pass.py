@@ -1560,47 +1560,66 @@ font-family: 'Paperlogy', 'Noto Sans KR', sans-serif
 - 따라서 font-family:'Paperlogy' + font-weight:NNN 으로 9 weight 자동 선택
 - Pretendard 는 운영 컨테이너에 없음 → font-family 1순위에서 제거
 
-[★ 페이지 type 별 폰트 size (Spec D-Fix-FontSizeHierarchy)]
-도형 모드의 검증된 pt 값을 px 로 환산 (1pt ≈ 1.333px) — "도형 모드와 같은 시각 크기" 보장.
-페이지 type 별로 카테고리 분리. 큰 위계 (Display 급) 반드시 살리기.
+[★ 폰트 위계 — 의미론 클래스 강제 (Spec D-Fix-WeightSemanticClass)]
+★★★ 절대 강제: 모든 텍스트 div 는 아래 12개 의미론 클래스 중 하나를 반드시 부여한다.
+   클래스 = 도형 모드의 weight 필수필드와 동등한 강제력. 누락 시 자기점검 fail.
+★★★ font-size / font-weight 를 inline style 로 박지 마라.
+   클래스가 size + weight 둘 다 미리 박혀있다 (운영 통합 CSS 에 사전 주입).
+   inline 으로 박으면 클래스 값을 덮어쓰지만, 누락 위험 회피를 위해 기본은 클래스만.
+★★★ 키워드 weight (bold / normal / lighter / bolder) 절대 금지. 숫자 weight 만.
+
+운영 통합 CSS 에 사전 정의된 클래스 — 그대로 사용:
+   .cover-main       (font-size 80px  / font-weight 800)  — 표지 사업명
+   .chapter-num      (font-size 280px / font-weight 900)  — 챕터 거대 번호 (Ⅰ/Ⅱ/Ⅲ)
+   .chapter-title    (font-size 80px  / font-weight 800)  — 챕터 제목
+   .concept-slogan   (font-size 90px  / font-weight 700)  — 콘셉트 슬로건
+   .key-msg          (font-size 64px  / font-weight 700)  — 핵심 주장 메시지
+   .gov-main         (font-size 32px  / font-weight 800)  — 본문 메인 거버닝 ★ 통일값
+   .gov-sub          (font-size 19px  / font-weight 500)  — 본문 서브 거버닝
+   .box-title        (font-size 24px  / font-weight 600)  — 박스/카드 제목
+   .body-text        (font-size 17px  / font-weight 400)  — 본문 텍스트
+   .caption          (font-size 14px  / font-weight 400)  — 캡션/출처/단위
+   .thanks           (font-size 130px / font-weight 900)  — "감사합니다"
+   .page-num         (font-size 12px  / font-weight 300)  — 페이지번호
+
+페이지 type 별 클래스 매핑 (도형 모드의 검증된 위계 그대로):
 
 1) 표지 페이지 (slide_type=hero, page=1)
-   - 메인 거버닝 (사업명):    font-size 80px / font-weight 800 (도형 60pt 환산)
-   - 부제 (발주처명):          font-size 24px / font-weight 500 (도형 18pt 환산)
-   - 날짜:                     font-size 16px / font-weight 400 (도형 12pt 환산)
+   - 메인 거버닝 (사업명):    class="cover-main"
+   - 부제 (발주처명):         class="gov-sub"
+   - 날짜:                    class="body-text"
 
 2) 챕터 divider 페이지 (Ⅰ ~ Ⅴ)
-   - 거대 챕터 번호 (Ⅰ/Ⅱ/Ⅲ): font-size 267~320px / font-weight 900 (도형 200~240pt 환산)
-   - 챕터 제목:                font-size 67~93px / font-weight 800 (도형 50~70pt 환산)
+   - 거대 챕터 번호:          class="chapter-num"
+   - 챕터 제목:               class="chapter-title"
    - 분할선 외 시각 강조 도형 절대 X (Spec D-Fix-26 유지)
 
 3) 콘셉트 슬로건 페이지 (slide_type=hero, 콘셉트 메시지)
-   - 거대 슬로건:              font-size 67~120px / font-weight 700~800 (도형 50~90pt 환산, 글자수 동적 매핑)
-   - 부제 (선택):              font-size 21~27px / font-weight 500 (도형 16~20pt 환산)
+   - 거대 슬로건:             class="concept-slogan"
+   - 부제 (선택):             class="gov-sub"
 
 4) 핵심 주장 / 강조 페이지 (slide_type=hero, 거버닝 강조)
-   - 메시지:                   font-size 53~80px / font-weight 700~800 (도형 40~60pt 환산)
-   - 부제:                     font-size 21~27px / font-weight 500 (도형 16~20pt 환산)
+   - 메시지:                  class="key-msg"
+   - 부제:                    class="gov-sub"
 
-5) 본문 페이지 (slide_type=text_box / simple_box) — ★ 페이지 간 size 통일 강제
-   - eyebrow (섹션 breadcrumb): font-size 13px / font-weight 300 / color #999 (도형 10pt 환산)
-   - 메인 거버닝:              font-size 27~37px / font-weight 700~800 (도형 20~28pt 환산)
-     ★★★ 모든 본문 페이지 메인 거버닝 size 통일 강제 (도형 모드 L1115~1119 이식):
-        한 슬라이드 32px = 같은 RFP 의 다음 본문 슬라이드도 32px.
-        일부 페이지만 작게 X — 페이지 간 시각 일관성 절대 강제.
-   - 서브 거버닝:              font-size 17~21px / font-weight 500 (도형 13~16pt 환산)
-   - 박스 제목 / 카드 제목:    font-size 21~27px / font-weight 600~700 (도형 16~20pt 환산)
-   - 본문 텍스트:              font-size 15~19px / font-weight 400 (도형 11~14pt 환산)
-   - 캡션 / 출처 / 단위:       font-size 13~15px / font-weight 400 / color #666 (도형 10~11pt 환산)
+5) 본문 페이지 (slide_type=text_box / simple_box) — ★ 페이지 간 시각 일관성 자동 보장
+   - eyebrow (섹션 breadcrumb): class="caption" (color #999 는 inline 으로 지정)
+   - 메인 거버닝:             class="gov-main"  ★ 모든 본문 페이지 통일 (클래스 = 32px 고정)
+   - 서브 거버닝:             class="gov-sub"
+   - 박스 제목 / 카드 제목:   class="box-title"
+   - 본문 텍스트:             class="body-text"
+   - 캡션 / 출처 / 단위:      class="caption" (color #666 inline)
 
 6) 마무리 페이지 ("감사합니다" / 발주처명)
-   - "감사합니다":             font-size 107~160px / font-weight 800~900 (도형 80~120pt 환산)
-   - 발주처명 / 연락처:        font-size 24~32px / font-weight 500 (도형 18~24pt 환산)
+   - "감사합니다":            class="thanks"
+   - 발주처명 / 연락처:       class="gov-sub"
 
 7) 공통 페이지 메타 (모든 페이지)
-   - 페이지번호:               font-size 12px / font-weight 300 / color #999 (도형 9pt 환산)
+   - 페이지번호:              class="page-num" (color #999 inline)
 
-위 7개 카테고리 = 도형 모드의 검증된 위계 그대로. 임의로 키우거나 줄이지 말 것.
+★ 매우 큰 거버닝 (챕터 번호 등) 의 글자수가 적으면, size 미세조정을 위해 inline font-size 만
+  덮어쓸 수 있다 (예: <div class="chapter-num" style="position:absolute; ...; font-size:267px;">).
+  하지만 font-weight 는 inline 으로 덮어쓰지 말 것 — 클래스 값이 도형 모드와 정합.
 
 [★ 거버닝 구조 — 상단 eyebrow + 메인 + 서브]
 - eyebrow (섹션 breadcrumb, 예: "Ⅰ. 제안 개요 · 1. 추진 배경"): font-size 11px / color #999
@@ -1638,24 +1657,25 @@ user prompt 의 [정량 lock — 절대 변경 X] 블록 안 정량을 페이지
 출력 시작 = `<!DOCTYPE html>`, 끝 = `</html>`. 코드펜스 / 설명 / 마크다운 모두 금지.
 
 예시 (참고용 — 그대로 따라하지 말고 콘텐츠에 맞게 자율 설계):
-운영 통합 단계에서 @font-face 9개 (Paperlogy 1Thin~9Black, weight 100~900) 자동 주입됨.
-LLM 출력의 <style> 은 변환기가 무시 — .slide div 와 그 안 inline style 만 사용.
+운영 통합 단계에서 @font-face 9개 (Paperlogy 1Thin~9Black, weight 100~900) + 의미론 클래스 12개 자동 주입됨.
+LLM 출력의 <style> 은 변환기가 무시 — .slide div 와 그 안 class / inline style 만 사용.
+★ 모든 텍스트 div = 의미론 클래스 (.cover-main / .gov-main / .body-text 등) 부여 강제.
+★ font-size / font-weight 를 inline 으로 박지 마라 — 클래스가 처리.
 ```html
 <!DOCTYPE html>
 <html lang="ko"><head><meta charset="UTF-8"><style>
-* { margin:0; padding:0; box-sizing:border-box; font-family:'Paperlogy','Noto Sans KR',sans-serif; }
-.slide { width:1123px; height:794px; background:#FFFFFF; color:#1A1A1A; position:relative; overflow:hidden; }
+/* 운영이 통합 단계에서 @font-face 9개 + 의미론 클래스 12개 + .slide 자동 주입 */
 </style></head><body>
 <div class="slide">
-  <div style="position:absolute; left:48px; top:24px; width:600px; height:18px; font-size:11px; font-weight:300; color:#999;">Ⅰ. 제안 개요 · 1. 추진 배경</div>
-  <div style="position:absolute; left:48px; top:60px; width:1027px; height:60px; font-size:40px; font-weight:800; color:#1A1A1A;">[메인 거버닝 그대로]</div>
-  <div style="position:absolute; left:48px; top:130px; width:1027px; height:24px; font-size:14px; font-weight:500; color:#444;">[서브 거버닝 그대로]</div>
-  <!-- 본문 div 들 (좌표 직접 지정) -->
+  <div class="caption" style="position:absolute; left:48px; top:24px; width:600px; height:18px; color:#999;">Ⅰ. 제안 개요 · 1. 추진 배경</div>
+  <div class="gov-main" style="position:absolute; left:48px; top:60px; width:1027px; height:48px; color:#1A1A1A;">[메인 거버닝 그대로]</div>
+  <div class="gov-sub" style="position:absolute; left:48px; top:118px; width:1027px; height:28px; color:#444;">[서브 거버닝 그대로]</div>
+  <!-- 본문 div 들 (좌표 직접 지정, weight/size 는 클래스가 처리) -->
   <div style="position:absolute; left:48px; top:200px; width:500px; height:120px; background:#FFFFFF; border:1px solid #DDD; border-radius:4px;"></div>
-  <div style="position:absolute; left:64px; top:216px; width:468px; height:24px; font-size:16px; font-weight:700; color:#1A1A1A;">박스 안 제목</div>
-  <div style="position:absolute; left:64px; top:248px; width:468px; height:64px; font-size:13px; font-weight:400; color:#444;">박스 안 본문 텍스트</div>
+  <div class="box-title" style="position:absolute; left:64px; top:216px; width:468px; height:32px; color:#1A1A1A;">박스 안 제목</div>
+  <div class="body-text" style="position:absolute; left:64px; top:252px; width:468px; height:64px; color:#444;">박스 안 본문 텍스트</div>
   <!-- 페이지번호 -->
-  <div style="position:absolute; right:48px; bottom:24px; width:60px; height:14px; font-size:9px; font-weight:300; color:#999;">4 / 28</div>
+  <div class="page-num" style="position:absolute; right:48px; bottom:24px; width:60px; height:16px; color:#999;">4 / 28</div>
 </div>
 </body></html>
 ```
@@ -1670,6 +1690,12 @@ LLM 출력의 <style> 은 변환기가 무시 — .slide div 와 그 안 inline 
 7. <br> / em-dash / 콜론·슬래시 명사 나열 0개
 8. 추상 형용사 (혁신적·효율적·다양한·체계적·탁월한·우수한) 슬라이드당 2개 미만
 9. placeholder 페이지면 점선 박스만, 본문 0
+10. ★ 모든 텍스트 div 가 의미론 클래스 (.cover-main / .chapter-num / .chapter-title /
+    .concept-slogan / .key-msg / .gov-main / .gov-sub / .box-title / .body-text /
+    .caption / .thanks / .page-num) 중 하나를 보유 — 누락 0
+11. ★ inline style 에 font-weight 0개 (클래스가 처리). font-size 도 원칙적으로 0개
+    (글자수 많은 거대 거버닝의 미세조정 예외만).
+12. ★ font-weight 키워드 (bold / normal / lighter / bolder) 0개 — 사용 시 fail.
 
 [★ 정형 골격 15종 매핑 — 본 단계 미포함]
 정형 골격 라이브러리 (KPI·프로세스·2단비교 등 15종) 는 별도 spec 으로 추가 예정.
@@ -2350,12 +2376,36 @@ async def orchestrate(
             "@font-face { font-family: 'Paperlogy'; font-weight: 900; font-style: normal; "
             "src: url('file:///usr/share/fonts/truetype/paperlogy/Paperlogy-9Black.ttf'); }\n"
         )
+        # Spec D-Fix-WeightSemanticClass — 의미론 클래스로 weight 강제.
+        #   배경: 위계 0e739be 후에도 거버닝이 Paperlogy Regular 로 출력 (font-weight 누락).
+        #   진단 1순위: LLM 이 inline 'font-weight: NNN' 을 div 마다 박지 않음 →
+        #              CSS 기본값 400 → @font-face 매핑이 Paperlogy-4Regular.ttf 선택.
+        #   해법: 위계 카테고리별 font-size + font-weight 를 클래스에 미리 박고,
+        #         프롬프트가 LLM 에게 클래스 부여를 강제 (도형 모드 weight 필수필드와 동등).
+        #   * 에 font-weight 안 넣음 (클래스가 처리). body 에 400 만 안전망으로 박음.
+        #   weight 값은 0e739be 위계의 대표 고정값. 범위가 필요한 경우 inline override 허용.
+        semantic_class_block = (
+            "body { font-weight: 400; }\n"  # 클래스 없는 잔여 텍스트 안전망 (Paperlogy-4Regular)
+            ".cover-main { font-size: 80px; font-weight: 800; }\n"      # 표지 사업명
+            ".chapter-num { font-size: 280px; font-weight: 900; }\n"     # 챕터 거대번호
+            ".chapter-title { font-size: 80px; font-weight: 800; }\n"    # 챕터 제목
+            ".concept-slogan { font-size: 90px; font-weight: 700; }\n"   # 콘셉트 슬로건
+            ".key-msg { font-size: 64px; font-weight: 700; }\n"          # 핵심 주장 메시지
+            ".gov-main { font-size: 32px; font-weight: 800; }\n"         # 본문 메인 거버닝 (도형 모드 통일값)
+            ".gov-sub { font-size: 19px; font-weight: 500; }\n"          # 본문 서브 거버닝
+            ".box-title { font-size: 24px; font-weight: 600; }\n"        # 박스/카드 제목
+            ".body-text { font-size: 17px; font-weight: 400; }\n"        # 본문 텍스트
+            ".caption { font-size: 14px; font-weight: 400; }\n"          # 캡션/출처/단위
+            ".thanks { font-size: 130px; font-weight: 900; }\n"          # "감사합니다"
+            ".page-num { font-size: 12px; font-weight: 300; }\n"         # 페이지번호
+        )
         html_full = (
             '<!DOCTYPE html>\n<html lang="ko"><head><meta charset="UTF-8"><style>\n'
             + font_face_block
             + "* { margin:0; padding:0; box-sizing:border-box; "
             "font-family:'Paperlogy','Noto Sans KR',sans-serif; }\n"
-            '.slide { width:1123px; height:794px; overflow:hidden; '
+            + semantic_class_block
+            + '.slide { width:1123px; height:794px; overflow:hidden; '
             'position:relative; background:#FFFFFF; color:#1A1A1A; }\n'
             '</style></head><body>\n' + body_inner + '\n</body></html>'
         )

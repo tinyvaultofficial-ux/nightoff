@@ -72,7 +72,15 @@ COPY . /app
 # pptx_generator.py:2508 의 p.chromium.executable_path 그대로 작동.
 
 # ── 7. 포트 + 시작 ────────────────────────────────────────────────────
-# Railway 가 ${PORT} 환경변수 동적 주입 → shell 형식 CMD 필수 (exec 형식이면 무시됨).
+# Spec D-Fix-DockerfilePort — CMD 를 exec 형식 sh -c wrapper 로 명시.
+#   이전 (shell 형식 CMD ...): Railway 가 ${PORT:-8000} 치환 안 함 →
+#     "Invalid value for '--port': '${PORT:-8000}' is not a valid integer" 에러.
+#   현재 (exec 형식 + sh -c): /bin/sh 가 명시적으로 shell 처리 → ${PORT} 치환 보장.
 # /healthz 엔드포인트 = railway.toml 의 healthcheckPath.
+#
+# ⚠ Railway 우선순위: railway.toml [deploy].startCommand 가 Dockerfile CMD 보다 우선.
+#   현재 railway.toml:10 startCommand 도 동일 명령 (shell 문자열) → 같은 에러 가능성 큼.
+#   본 spec 으로 CMD 만 수정해도 Railway 가 startCommand 우선 사용하면 효과 없음.
+#   필요 시 별도 spec 으로 railway.toml startCommand 도 sh -c wrapper 적용.
 EXPOSE 8000
-CMD /opt/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
+CMD ["/bin/sh", "-c", "/opt/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]

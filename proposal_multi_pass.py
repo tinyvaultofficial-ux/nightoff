@@ -1907,13 +1907,31 @@ def _skeletons_cache_dir() -> Path:
 def _load_skeleton_html(skeleton_id: str) -> str:
     """./skeletons/{skeleton_id}.html 텍스트 반환. 파일 없거나 오류면 ""."""
     if not skeleton_id or skeleton_id not in _SKELETON_ID_ALLOWED:
+        # Spec D-Fix-SkeletonLoadLogging — silent fail 추적용 로그.
+        log.warning(
+            "_load_skeleton_html: 화이트리스트 밖 id (skeleton_id=%r, 허용=%s)",
+            skeleton_id, sorted(_SKELETON_ID_ALLOWED),
+        )
         return ""
     try:
         p = _skeletons_cache_dir() / f"{skeleton_id}.html"
         if not p.exists():
+            log.warning(
+                "_load_skeleton_html: 파일 없음 (skeleton_id=%s, path=%s)",
+                skeleton_id, str(p),
+            )
             return ""
-        return p.read_text(encoding="utf-8")
-    except Exception:
+        text = p.read_text(encoding="utf-8")
+        log.info(
+            "_load_skeleton_html OK (skeleton_id=%s, bytes=%d)",
+            skeleton_id, len(text),
+        )
+        return text
+    except Exception as e:
+        log.warning(
+            "_load_skeleton_html 예외 (skeleton_id=%s): %r",
+            skeleton_id, e,
+        )
         return ""
 
 
@@ -1923,27 +1941,58 @@ def _load_skeleton_index() -> str:
     형식 (R2 _index.json): {"skeletons":[{"id","name","use","slots"}...]}
     출력: "  · {id} — {name}: {use}" 줄 모음. 파일 없거나 비어있으면 "".
     OUTLINE 단계에서만 호출. 실패 시 LLM 이 모든 슬라이드 skeleton_id="" 로 둠 (안전 fallback).
+
+    Spec D-Fix-SkeletonLoadLogging — 모든 빈 값 반환 분기에 로그 추가
+    (silent fail 추적용 / 반환 동작 동일 / 로직 불변).
     """
     try:
         p = _skeletons_cache_dir() / "_index.json"
         if not p.exists():
+            log.warning(
+                "_load_skeleton_index: _index.json 없음 (path=%s)", str(p),
+            )
             return ""
         data = json.loads(p.read_text(encoding="utf-8"))
         skels = data.get("skeletons") or []
         if not skels:
+            log.warning(
+                "_load_skeleton_index: skeletons 비어있음 (keys=%s, "
+                "skeletons_type=%s)",
+                list(data.keys()) if isinstance(data, dict) else "(not dict)",
+                type(data.get("skeletons")).__name__
+                if isinstance(data, dict) else "(not dict)",
+            )
             return ""
         lines: list[str] = []
+        seen_input_ids: list[str] = []  # 로그용 진단 변수 — 반환값 영향 0
         for s in skels:
             if not isinstance(s, dict):
                 continue
             sid = str(s.get("id") or "").strip()
+            seen_input_ids.append(sid)
             if not sid or sid not in _SKELETON_ID_ALLOWED:
                 continue
             name = str(s.get("name") or "").strip()
             use = str(s.get("use") or "").strip()
             lines.append(f"  · {sid} — {name}: {use}")
+        if not lines:
+            log.warning(
+                "_load_skeleton_index: 유효 id 0건 "
+                "(입력 ids=%s, 허용=%s)",
+                seen_input_ids, sorted(_SKELETON_ID_ALLOWED),
+            )
+        else:
+            valid_ids = [
+                line.lstrip(" ·").split(" — ", 1)[0].strip()
+                for line in lines
+            ]
+            log.info(
+                "_load_skeleton_index OK (유효 %d종: %s)",
+                len(lines), valid_ids,
+            )
         return "\n".join(lines)
-    except Exception:
+    except Exception as e:
+        log.warning("_load_skeleton_index 예외: %r", e)
         return ""
 
 

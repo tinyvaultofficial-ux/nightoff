@@ -8257,6 +8257,57 @@ def api_admin_quota_reset_monthly(admin: dict = Depends(require_admin)):
     }
 
 
+# ─── Spec D-Build-DebugProposal — 제안서 디버그 조회 (admin read-only) ───────
+# D-Check-SkeletonNotApplied 의 D.2 설계 그대로. 골격 미적용 회귀 확정용 진단 창구.
+# 동작: 단일 SELECT (messages 최신 assistant) → JSON parse → 7 키만 반환.
+# 쓰기·삭제·운영 로직 변경 0. require_admin 가드로 admin role 외 차단.
+@app.get("/api/admin/debug/proposal/{conv_id}")
+def api_admin_debug_proposal(conv_id: str, admin: dict = Depends(require_admin)):
+    """제안서 저장 데이터 read-only 조회.
+
+    반환:
+      output_mode                  — 저장된 final_payload.output_mode
+      html_len                     — final_payload.html 문자열 길이
+      html_head                    — final_payload.html 첫 2000자
+      outline_total                — final_payload.outline 항목 수
+      skeleton_id_distribution     — outline의 skeleton_id 값별 개수 (예: {"":75} 또는 {"G1":12,...})
+      slides_total                 — final_payload.slides 수
+
+    실패 시 graceful:
+      - 메시지 0건  → {"error":"no assistant message"}
+      - JSON 파싱 실패 → {"error":"json parse fail: ...", "content_head":"<첫 500자>"}
+    """
+    with get_db() as db:
+        row = db.execute(
+            "SELECT content FROM messages "
+            "WHERE conversation_id=? AND role='assistant' "
+            "ORDER BY created_at DESC LIMIT 1",
+            (conv_id,),
+        ).fetchone()
+    if not row or not row["content"]:
+        return {"error": "no assistant message"}
+    try:
+        payload = json.loads(row["content"])
+    except Exception as e:
+        return {"error": f"json parse fail: {e}", "content_head": row["content"][:500]}
+    outline = payload.get("outline") or []
+    skel_dist: dict = {}
+    for it in outline:
+        sid = (it.get("skeleton_id") or "") if isinstance(it, dict) else ""
+        skel_dist[sid] = skel_dist.get(sid, 0) + 1
+    html_text = payload.get("html") or ""
+    if not isinstance(html_text, str):
+        html_text = ""
+    return {
+        "output_mode": payload.get("output_mode"),
+        "html_len": len(html_text),
+        "html_head": html_text[:2000],
+        "outline_total": len(outline),
+        "skeleton_id_distribution": skel_dist,
+        "slides_total": len(payload.get("slides") or []),
+    }
+
+
 # ─── Phase 4 — APScheduler 자동 리셋 (00:00 KST 매일) ────────────────────────
 # 패키지 미설치(또는 import 실패) 시 graceful skip — 어드민 수동 트리거가 백업.
 # Railway 단일 인스턴스 + uvicorn 단일 워커(Procfile 기본) 환경에서 BackgroundScheduler

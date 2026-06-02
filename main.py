@@ -2872,12 +2872,13 @@ def _get_rfp_aggregated(client_id: str) -> Optional[dict]:
     return None
 
 
-def _get_raw_rfp_text(client_id: str, max_chars: int = 45000) -> str:
+def _get_raw_rfp_text(client_id: str, max_chars: int = 150000) -> str:
     """client_id 의 RFP 원문 텍스트 조합 반환 (D-A).
 
     옵션 D (Anthropic prompt caching) 의 cache 영역에 inject 용도.
-    _run_rfp_aggregate (line 3719+) 의 SELECT 패턴 재사용:
-    - 역할별 정렬 (공고문 → 과업지시서 → 제안요청서 → 기타)
+    _run_rfp_aggregate 의 SELECT 패턴 재사용:
+    - 역할별 정렬 (제안요청서 → 과업지시서 → 공고문 → 기타) — Spec D-Fix-RFPFulltextCap
+      페이지 제한·평가기준·제출조건이 제안요청서에 있어, cap 도달 시 잘리지 않도록 우선.
     - 누적 max_chars 자 cap (default 45,000자)
     - rfp_files 우선, fallback 으로 rfp_docs (구 단일 RFP 테이블)
     - 실패/비어있음 시 빈 문자열 반환 (caller graceful degrade)
@@ -2893,10 +2894,12 @@ def _get_raw_rfp_text(client_id: str, max_chars: int = 45000) -> str:
             rows = db.execute(
                 "SELECT role, filename, raw_text FROM rfp_files "
                 "WHERE client_id=? AND raw_text IS NOT NULL AND raw_text <> '' "
+                # Spec D-Fix-RFPFulltextCap — 제안요청서 우선 정렬.
+                # 페이지 제한·평가기준·제출조건이 제안요청서에 있어, cap 도달 시 잘리지 않게.
                 "ORDER BY CASE role "
-                "  WHEN '공고문' THEN 1 "
+                "  WHEN '제안요청서' THEN 1 "
                 "  WHEN '과업지시서' THEN 2 "
-                "  WHEN '제안요청서' THEN 3 "
+                "  WHEN '공고문' THEN 3 "
                 "  ELSE 4 END",
                 (client_id,),
             ).fetchall()
@@ -3964,12 +3967,17 @@ def _run_rfp_aggregate(cid: str) -> dict:
             db.execute("DELETE FROM client_intel WHERE client_id=?", (cid,))
         return {}
 
-    # 역할별 텍스트 조합 (공고문 → 과업지시서 → 제안요청서 → 기타 순서)
-    role_order = {"공고문": 0, "과업지시서": 1, "제안요청서": 2, "기타": 3}
+    # 역할별 텍스트 조합 — Spec D-Fix-RFPFulltextCap.
+    # 제안요청서 우선 정렬: 페이지 제한·평가기준·제출조건이 제안요청서에 있어, cap 도달 시 잘리지 않게.
+    # _get_raw_rfp_text 의 SQL ORDER BY 와 동일 순서.
+    role_order = {"제안요청서": 0, "과업지시서": 1, "공고문": 2, "기타": 3}
     sorted_files = sorted(files, key=lambda f: role_order.get(f["role"], 4))
     parts = []
     total_len = 0
-    LIMIT = 45000  # 안전 토큰 버짓
+    # Spec D-Fix-RFPFulltextCap — cap 45,000 → 150,000.
+    # 큰 RFP (예: 소래포구 chars=45,130) 의 제안요청서가 cap 도달로 잘리던 문제 해결.
+    # claude-sonnet-4-5 context window 200K tokens 안전 영역 안.
+    LIMIT = 150000
     for f in sorted_files:
         header = f"[ROLE: {f['role']} — FILE: {f['filename']}]"
         body = (f["raw_text"] or "").strip()
@@ -3985,9 +3993,15 @@ def _run_rfp_aggregate(cid: str) -> dict:
     try:
         client = require_client()
         prompt = RFP_ANALYSIS_PROMPT.replace("{RFP_TEXT}", combined)
+        # Spec D-Fix-RFPFulltextCap — max_tokens 4000 → 8000.
+        # 입력 RFP cap 이 45K → 150K (3.3x) 로 늘어나면서 분석 추출 항목 (key_requirements 5-8개,
+        # evaluation_criteria, proposal_outline_items, deliverables, risk_points 3-5개,
+        # qualifications 5 카테고리, quantitative_locks 6 키 — main.py:1520-1559 스키마) 도
+        # 늘어날 수 있음. 4000 토큰 안에서 JSON 잘림 위험 회피용 안전 마진.
+        # 비용 영향: output token 만, input 무관. 분석 4 endpoint 모두 동일 영향.
         resp = client.messages.create(
             model=get_setting("model", MODEL_DEFAULT),
-            max_tokens=4000,
+            max_tokens=8000,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = _extract_text_from_resp(resp)

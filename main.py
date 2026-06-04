@@ -8295,6 +8295,28 @@ def api_admin_debug_proposal(conv_id: str, admin: dict = Depends(require_admin))
     for it in outline:
         sid = (it.get("skeleton_id") or "") if isinstance(it, dict) else ""
         skel_dist[sid] = skel_dist.get(sid, 0) + 1
+    # Spec D-Fix-NarrativeMeasure — 분포 추가 측정(read-only, 기존 키 무변경 / 옆에 키 추가만).
+    # 도형 모드(토글 N) + HTML 모드(Y) 모두 outline payload 그대로 — 진단용 read-only 집계.
+    viz_dist: dict = {}
+    role_dist: dict = {}
+    stype_dist: dict = {}
+    for it in outline:
+        if not isinstance(it, dict):
+            continue
+        vp = it.get("viz_pattern") or ""
+        rl = it.get("role") or ""
+        st = it.get("slide_type") or ""
+        viz_dist[vp] = viz_dist.get(vp, 0) + 1
+        role_dist[rl] = role_dist.get(rl, 0) + 1
+        stype_dist[st] = stype_dist.get(st, 0) + 1
+    # SLIDE pass 출력의 preset 키 분포 — 도형 모드 narrative preset 박힘 여부 측정.
+    # preset 키 없으면 "none" 으로 카운트.
+    preset_dist: dict = {}
+    for s in (payload.get("slides") or []):
+        if not isinstance(s, dict):
+            continue
+        pk = s.get("preset") or "none"
+        preset_dist[pk] = preset_dist.get(pk, 0) + 1
     html_text = payload.get("html") or ""
     if not isinstance(html_text, str):
         html_text = ""
@@ -8304,6 +8326,10 @@ def api_admin_debug_proposal(conv_id: str, admin: dict = Depends(require_admin))
         "html_head": html_text[:2000],
         "outline_total": len(outline),
         "skeleton_id_distribution": skel_dist,
+        "viz_pattern_distribution": viz_dist,
+        "role_distribution": role_dist,
+        "slide_type_distribution": stype_dist,
+        "preset_distribution": preset_dist,
         "slides_total": len(payload.get("slides") or []),
     }
 

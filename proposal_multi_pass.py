@@ -2240,6 +2240,12 @@ async def generate_outline(
             _st_check = str(it.get("slide_type", "")).strip().lower()
             _rl_check = str(it.get("role", "")).strip().lower()
             if _st_check != "text_box" or _rl_check != "body":
+                # Spec D-Fix-NarrativeMeasure — 강등 추적 로그(read-only, 동작 무변경).
+                # 운영 분포 측정용. 강등 빈도/위치를 Railway 로그에서 확인 가능.
+                log.info(
+                    "D-Fix-NarrativeGuard 강등 p=%s viz=%s slide_type=%s role=%s",
+                    it.get("page"), viz_pattern, _st_check, _rl_check,
+                )
                 viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
         # Spec D-Fix-BodyRole-1 — role 화이트리스트 (body/support/"" 만 허용).
         # outline AI 가 임의 값을 박으면 ""로 강등 (식별 누락 → 무영향 fallback).

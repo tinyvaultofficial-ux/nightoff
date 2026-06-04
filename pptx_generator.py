@@ -2143,30 +2143,28 @@ def _build_preset_two_column(slide_data: dict) -> list:
 
 
 def _build_preset_narrative(slide_data: dict) -> list:
-    """Spec D-Fix-Preset4 — 내러티브 흐름형(시장분석·인사이트·논리 전개) 레이아웃 프리셋.
+    """Spec D-Fix-Preset4 / D-Fix-NarrativeV3 — 내러티브 흐름형 레이아웃 프리셋.
 
-    도식 없이 텍스트 위계로 흐름을 보여주는 단순 3슬롯 구조.
+    도식 없이 텍스트 위계로 흐름을 보여주는 단순 슬롯 구조.
     slide_data["quote"]      = "큰 인용 문구"               (필수)
+    slide_data["eyebrow"]    = "좌상단 메타 라벨"           (선택 — D-Fix-NarrativeV3)
     slide_data["flow"]       = ["흐름 설명1", "흐름 설명2", ...] (선택 / 1~3개)
     slide_data["conclusion"] = "결론 강조 문구"             (선택)
-    반환 = render_shape_to_slide 가 처리하는 JSON 도형 리스트
-           (인용 text + 흐름 text 1~3 + 결론 rect + 결론 text).
-    quote 없음 / 모든 슬롯 빈 값 → 빈 리스트 (호출부 try/except 와 별개 안전망).
+    반환 = render_shape_to_slide 가 처리하는 JSON 도형 리스트.
+    quote 없음 → 빈 리스트 (호출부 try/except 와 별개 안전망).
 
-    좌표 설계 (A4 가로 11.69 × 8.27 / 좌우 여백 0.9 / 본문 폭 9.89):
-      · 인용 (필수)   : x=0.9 y=1.8 w=9.89 h=1.6 / 30pt 700w 검정 center
-      · 흐름 (1~3개) : x=0.9 w=9.89 h=0.7 / 15pt 400w #555 center
-                       y = 3.8, 4.7, 5.6 (각 0.9 간격)
-      · 결론 (선택)  : rect x=2.4 y=6.5 w=6.89 h=0.9 흰 fill 검정 stroke 1.5pt
-                       + text 같은 자리 19pt 700w center
-      · 모든 텍스트 _add_text 거침 → auto_size 자동 적용 (넘침 방지).
+    좌표 설계 v3 (Spec D-Fix-NarrativeV3 — 거버닝 없는 전제 + 수직 중앙정렬):
+      · eyebrow (선택)  : x=0.9 y=0.5 w=9.89 h=0.4 / 11pt 400w #BBBBBB left top
+      · 인용 (필수)    : x=1.2 y=2.0 w=9.29 h=1.8 / 40pt 700w 검정 center middle
+      · 흐름 (1~3개)  : x=1.2 w=9.29 h=0.55 / 15pt 400w #666 center / y=4.1 +0.62 간격
+      · 결론 (선택)   : 가는 구분선(rect h=0.02) + text 18pt 700w center middle
 
-    Spec D-Fix-Preset5 — style 분기 추가:
-      · "quote" (기본) → 인용 + 흐름 + 결론 (아래 로직 / D-Fix-Preset4 보존)
-      · "declaration" → 큰 선언 + 근거 2~3개
-      · "qa"          → 질문 + 답변 1~3
-      · "emphasis"    → 소제목 + 본문 + 핵심 강조
-      · "contrast"    → "A가 아니라 B" 대비
+    Spec D-Fix-Preset5 — style 분기:
+      · "quote" (기본) → 본 로직 (D-Fix-NarrativeV3)
+      · "declaration" → 큰 선언 + 근거 2~3개 (D-Fix-NarrativeV3 v3 좌표)
+      · "qa"          → 질문 + 답변 1~3 (기존 유지)
+      · "emphasis"    → 소제목 + 본문 + 핵심 강조 (기존 유지)
+      · "contrast"    → "A가 아니라 B" 대비 (기존 유지)
     """
     style = str(slide_data.get("style", "quote")).strip().lower()
     if style == "declaration":
@@ -2177,8 +2175,11 @@ def _build_preset_narrative(slide_data: dict) -> list:
         return _narrative_emphasis(slide_data)
     if style == "contrast":
         return _narrative_contrast(slide_data)
-    # style == "quote" 또는 미지정 → 기존 로직 그대로 (D-Fix-Preset4 보존)
+    # style == "quote" 또는 미지정 — Spec D-Fix-NarrativeV3:
+    #   거버닝 없는 전제(컨셉 슬로건은 별도 hero 페이지가 담당) + 수직 중앙정렬.
+    #   eyebrow 옵션 — 있으면 좌상단 회색 작은 메타, 없으면 생략.
     quote = str(slide_data.get("quote", "")).strip()
+    eyebrow = str(slide_data.get("eyebrow", "")).strip()
     flow_raw = slide_data.get("flow") or []
     if not isinstance(flow_raw, list):
         flow_raw = []
@@ -2189,64 +2190,90 @@ def _build_preset_narrative(slide_data: dict) -> list:
         return []
 
     shapes: list = []
-    # 큰 인용 (필수)
+    # eyebrow (선택) — 좌상단 회색 메타 1줄
+    if eyebrow:
+        shapes.append({
+            "type": "text",
+            "x": 0.9, "y": 0.5, "w": 9.89, "h": 0.4,
+            "text": eyebrow,
+            "size": 11, "weight": 400, "color": "#BBBBBB",
+            "align": "left", "valign": "top",
+        })
+    # 큰 인용 (필수) — 40pt 수직 중앙
     shapes.append({
         "type": "text",
-        "x": 0.9, "y": 1.8, "w": 9.89, "h": 1.6,
+        "x": 1.2, "y": 2.0, "w": 9.29, "h": 1.8,
         "text": quote,
-        "size": 30, "weight": 700, "color": "#1A1A1A",
+        "size": 40, "weight": 700, "color": "#1A1A1A",
         "align": "center", "valign": "middle",
     })
-    # 흐름 설명 (선택 / 최대 3개)
+    # 흐름 설명 (선택 / 최대 3개) — 0.62 간격
+    y = 4.1
     for i, line in enumerate(flow):
         shapes.append({
             "type": "text",
-            "x": 0.9, "y": 3.8 + i * 0.9, "w": 9.89, "h": 0.7,
+            "x": 1.2, "y": y + i * 0.62, "w": 9.29, "h": 0.55,
             "text": line,
-            "size": 15, "weight": 400, "color": "#555555",
+            "size": 15, "weight": 400, "color": "#666666",
             "align": "center", "valign": "middle",
         })
-    # 결론 강조 박스 (선택)
+    # 결론 (선택) — 가는 구분선 + 18pt 텍스트
+    yend = y + len(flow) * 0.62 + 0.25
     if conclusion:
         shapes.append({
             "type": "rect",
-            "x": 2.4, "y": 6.5, "w": 6.89, "h": 0.9,
-            "fill": "#FFFFFF",
-            "stroke": "#1A1A1A",
-            "stroke_width": 1.5,
+            "x": 4.34, "y": yend, "w": 3.0, "h": 0.02,
+            "fill": "#1A1A1A",
         })
         shapes.append({
             "type": "text",
-            "x": 2.4, "y": 6.5, "w": 6.89, "h": 0.9,
+            "x": 1.2, "y": yend + 0.15, "w": 9.29, "h": 0.6,
             "text": conclusion,
-            "size": 19, "weight": 700, "color": "#1A1A1A",
+            "size": 18, "weight": 700, "color": "#1A1A1A",
             "align": "center", "valign": "middle",
         })
     return shapes
 
 
 def _narrative_declaration(slide_data: dict) -> list:
-    """D-Fix-Preset5 narrative style=declaration — 큰 선언 + 근거 2~3개."""
+    """D-Fix-Preset5 / D-Fix-NarrativeV3 narrative style=declaration —
+    거버닝 없는 전제 + 수직 중앙정렬 + eyebrow 옵션.
+    큰 선언(44pt) + 근거 2~3개("— " 접두).
+    """
     declaration = str(slide_data.get("declaration", "")).strip()
+    eyebrow = str(slide_data.get("eyebrow", "")).strip()
     grounds_raw = slide_data.get("grounds") or []
     if not isinstance(grounds_raw, list):
         grounds_raw = []
     grounds = [str(g).strip() for g in grounds_raw if str(g).strip()][:3]
     if not declaration:
         return []
-    shapes: list = [{
+    shapes: list = []
+    # eyebrow (선택)
+    if eyebrow:
+        shapes.append({
+            "type": "text",
+            "x": 0.9, "y": 0.5, "w": 9.89, "h": 0.4,
+            "text": eyebrow,
+            "size": 11, "weight": 400, "color": "#BBBBBB",
+            "align": "left", "valign": "top",
+        })
+    # 큰 선언 (필수) — 44pt
+    shapes.append({
         "type": "text",
-        "x": 0.9, "y": 2.0, "w": 9.89, "h": 1.8,
+        "x": 1.2, "y": 2.2, "w": 9.29, "h": 2.0,
         "text": declaration,
-        "size": 32, "weight": 700, "color": "#1A1A1A",
+        "size": 44, "weight": 700, "color": "#1A1A1A",
         "align": "center", "valign": "middle",
-    }]
+    })
+    # 근거 (선택 / 최대 3개) — "— " 접두 / 0.68 간격
+    y = 4.7
     for i, g in enumerate(grounds):
         shapes.append({
             "type": "text",
-            "x": 0.9, "y": 4.4 + i * 1.0, "w": 9.89, "h": 0.8,
-            "text": g,
-            "size": 16, "weight": 400, "color": "#444444",
+            "x": 1.2, "y": y + i * 0.68, "w": 9.29, "h": 0.6,
+            "text": "— " + g,
+            "size": 16, "weight": 400, "color": "#555555",
             "align": "center", "valign": "middle",
         })
     return shapes

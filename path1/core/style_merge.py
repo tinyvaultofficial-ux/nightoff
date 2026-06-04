@@ -7,12 +7,18 @@ v2: 규칙 단위 파싱 → 같은 selector 1개만(마지막 우선) → 스�
 """
 import re
 
+# 병합에서 제외할 전역 selector.
+# - body/html: 조립기 작업용(예: body{background:#888})이라 운영에 새면 안 됨.
+# - *: 전역 리셋. 운영 통합 빌더가 이미 자체 * 규칙을 가짐.
+# 이들은 운영 통합 CSS가 책임지고, 조립기 것은 .slide div 안 클래스만 가져온다.
+_GLOBAL_SKIP = {"*", "body", "html", "html, body", "body, html"}
+
 def _parse_rules(css):
     rules = []
     for m in re.finditer(r'([^{}]+)\{([^}]*)\}', css):
         sel = m.group(1).strip()
         body = re.sub(r'\s+', ' ', m.group(2).strip())
-        if sel:
+        if sel and sel.lower() not in _GLOBAL_SKIP:
             rules.append((sel, body))
     return rules
 

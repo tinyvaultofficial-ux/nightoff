@@ -2744,6 +2744,49 @@ async def orchestrate(
     html_full = ""
     if is_html_mode and final_html_parts:
         body_inner = "\n".join(final_html_parts)
+        # Spec D-Fix-StyleMergeIntegration — 조립기 <style> 영역 병합.
+        # 의도 변경: 조립기 시대 — 조립기 <style> 을 신뢰해 병합한다
+        # (이전 LLM 시대엔 <style> 폐기 = LLM 이 디자인 흔드는 것 방지 목적).
+        # path1/core/style_merge.merge_deck 활용:
+        #   - 입력 = [(라벨, html)...]
+        #   - 동작 = 각 html 의 <style> 규칙 단위 파싱 → same-selector last-wins → 통합
+        #   - _GLOBAL_SKIP ({*, body, html ...}) = 전역 selector 자동 제외
+        # 예외 시 assembler_css="" 안전 fallback (운영 통합 CSS 만 적용 — 기존 동작).
+        assembler_css = ""
+        try:
+            import sys as _sys
+            import os as _os
+            _path1_core = _os.path.join(
+                _os.path.dirname(_os.path.abspath(__file__)), "path1", "core",
+            )
+            if _path1_core not in _sys.path:
+                _sys.path.insert(0, _path1_core)
+            import style_merge as _style_merge
+            slides_for_merge = [
+                (sr.section, sr.html)
+                for sr in ordered
+                if not sr.error and sr.html
+            ]
+            if slides_for_merge:
+                _deck_html, _conflicts = _style_merge.merge_deck(slides_for_merge)
+                _style_m = re.search(r"<style>(.*?)</style>", _deck_html, re.S)
+                assembler_css = _style_m.group(1) if _style_m else ""
+                if _conflicts:
+                    log.warning(
+                        "path1 style_merge selector 충돌 %d건 "
+                        "(cascade 후순위 우선 적용): %s",
+                        len(_conflicts), _conflicts[:5],
+                    )
+                log.info(
+                    "path1 style_merge OK — 조립기 CSS %d 자, 충돌 %d 건, 입력 %d 슬라이드",
+                    len(assembler_css), len(_conflicts), len(slides_for_merge),
+                )
+        except Exception as _e:
+            log.warning(
+                "style_merge 예외 (조립기 CSS 미적용 / 운영 통합 CSS 만 사용): %r",
+                _e,
+            )
+            assembler_css = ""
         font_face_block = (
             "@font-face { font-family: 'Paperlogy'; font-weight: 100; font-style: normal; "
             "src: url('file:///usr/share/fonts/truetype/paperlogy/Paperlogy-1Thin.ttf'); }\n"
@@ -2793,6 +2836,12 @@ async def orchestrate(
             + "* { margin:0; padding:0; box-sizing:border-box; "
             "font-family:'Paperlogy','Noto Sans KR',sans-serif; }\n"
             + semantic_class_block
+            # Spec D-Fix-StyleMergeIntegration — 조립기 병합 CSS (위에서 추출).
+            # CSS cascade 후순위 우선 규칙 → 운영 의미론 클래스 (.gov-main/.gov-sub)
+            # 와 충돌 시 조립기 정의가 이김 (조립기가 디자인 책임자, 의도 정합).
+            # _GLOBAL_SKIP 가 *, body, html 등 전역 selector 자동 제외했으므로
+            # 운영 통합 빌더의 * { font-family:Paperlogy } / body / .slide 영향 0.
+            + (assembler_css + "\n" if assembler_css else "")
             + '.slide { width:1123px; height:794px; overflow:hidden; '
             'position:relative; background:#FFFFFF; color:#1A1A1A; }\n'
             '</style></head><body>\n' + body_inner + '\n</body></html>'

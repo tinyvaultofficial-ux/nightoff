@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#888; padding:20px; }
+  .slide {
+    position:relative; width:1123px; height:794px;
+    background:#FFFFFF; overflow:hidden; margin:0 auto 24px;
+    font-family:'Paperlogy 4 Regular', sans-serif;
+  }
+  .slide > div { position:absolute; }
+  .eyebrow { left:60px; top:42px; width:500px; height:20px; font-size:13px; color:#999; }
+  .eyebrow-b { left:60px; top:63px; width:500px; height:26px;
+               font-family:'Paperlogy 7 Bold'; font-weight:bold; font-size:17px; color:#1A1A1A; }
+  .chapter { left:563px; top:42px; width:500px; height:44px; font-size:13px; color:#999; text-align:right; }
+  .gov-main { left:60px; top:108px; width:1003px; height:44px;
+              font-family:'Paperlogy 7 Bold'; font-weight:bold; font-size:28px; color:#1A1A1A; }
+  .gov-sub { left:60px; top:158px; width:1003px; height:26px; font-size:15px; color:#444; }
+  .divline { left:60px; top:196px; width:1003px; height:0; border-top:1px solid #DDD; }
+  .pagenum { left:1003px; top:765px; width:60px; height:18px; font-size:11px; color:#999; text-align:right; }
+  .ph { border:1px dashed #999; background:#F4F4F4; }
+  .ph-label { font-size:12px; color:#999; text-align:center; }
+  .glabel { left:60px; top:740px; width:600px; height:20px; font-size:11px; color:#999; }
+
+  /* ===== G3 인물 소개 2분할 (자기 CSS만) ===== */
+  .pf-half-r { width:511px; height:520px; background:#F4F4F4; }
+  .pf-photo { width:180px; height:220px; }
+  .pf-no { font-family:'Paperlogy 8 ExtraBold'; font-weight:800; font-size:40px; color:#DDD; }
+  .pf-role { font-family:'Paperlogy 7 Bold'; font-weight:bold; font-size:20px; color:#1A1A1A; }
+  .pf-list { font-size:13px; color:#666; line-height:1.9; }
+  .pf-card { width:430px; height:54px; border:1px solid #DDD; background:#FFFFFF;
+             font-size:13px; color:#444; text-align:center; line-height:54px; }
+</style></head>
+<body>
+<div class="slide">
+  <div class="eyebrow">{{eyebrow}}</div>
+  <div class="eyebrow-b">{{eyebrow_b}}</div>
+  <div class="chapter">{{chapter}}</div>
+  <div class="gov-main">{{gov_main}}</div>
+  <div class="gov-sub">{{gov_sub}}</div>
+  <div class="divline"></div>
+
+  <!-- 좌: 인물 1 -->
+  <div class="pf-no"   style="left:60px;  top:240px;">1</div>
+  <div class="pf-role" style="left:110px; top:250px; width:300px;">{{left_role}}</div>
+  <div class="ph pf-photo" style="left:340px; top:240px;"></div>
+  <div class="ph-label" style="left:340px; top:340px; width:180px;">[ 인물 사진 자리 ]</div>
+  <div class="pf-list" style="left:60px; top:320px; width:260px;">{{left_list}}</div>
+
+  <!-- 우: 인물 2 + 카드 -->
+  <div class="pf-half-r" style="left:572px; top:240px;"></div>
+  <div class="pf-no"   style="left:602px; top:260px; color:#999;">2</div>
+  <div class="pf-role" style="left:652px; top:270px; width:300px;">{{right_role}}</div>
+  <div class="ph pf-photo" style="left:850px; top:260px;"></div>
+  <div class="ph-label" style="left:850px; top:360px; width:180px;">[ 인물 사진 자리 ]</div>
+  {{right_cards}}
+
+  <div class="glabel">{{glabel}}</div>
+  <div class="pagenum">{{pagenum}}</div>
+</div>
+</body>
+</html>

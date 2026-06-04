@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#888; padding:20px; }
+  .slide { position:relative; width:1123px; height:794px; background:#FFFFFF;
+           overflow:hidden; margin:0 auto 24px; font-family:'Paperlogy 4 Regular', sans-serif; }
+  .slide > div { position:absolute; }
+  .eyebrow { left:60px; top:42px; width:500px; height:20px; font-size:13px; color:#999; }
+  .eyebrow-b { left:60px; top:63px; width:500px; height:26px;
+               font-family:'Paperlogy 7 Bold'; font-weight:bold; font-size:17px; color:#1A1A1A; }
+  .chapter { left:563px; top:42px; width:500px; height:44px; font-size:13px; color:#999; text-align:right; }
+  .pagenum { left:1003px; top:765px; width:60px; height:18px; font-size:11px; color:#999; text-align:right; }
+  .glabel { left:60px; top:758px; width:700px; height:20px; font-size:11px; color:#999; }
+  .ph { border:1px dashed #999; background:#F4F4F4; }
+  .ph-label { font-size:12px; color:#999; text-align:center; }
+
+  .q-faint { font-family:'Paperlogy 7 Bold'; font-weight:bold; font-size:42px; color:#DDD; }
+  .q-head { font-family:'Paperlogy 8 ExtraBold'; font-weight:800; font-size:48px; color:#1A1A1A; }
+  .q-body { font-size:16px; color:#444; line-height:1.9; }
+  .q-rule { border-top:2px solid #1A1A1A; height:0; }
+  .q-mark { font-family:'Paperlogy 8 ExtraBold'; font-weight:800; font-size:40px; color:#999; }
+  .q-quote { font-family:'Paperlogy 7 Bold'; font-weight:bold; font-size:24px;
+             color:#1A1A1A; text-align:center; line-height:1.5; }
+</style></head>
+<body>
+<div class="slide">
+  <div class="eyebrow">{{eyebrow}}</div>
+  <div class="eyebrow-b">{{eyebrow_b}}</div>
+  <div class="chapter">{{chapter}}</div>
+
+  <div class="q-faint" style="left:90px; top:200px; width:600px;">{{faint}}</div>
+  <div class="q-head"  style="left:90px; top:255px; width:600px;">{{head}}</div>
+  <div class="q-body"  style="left:90px; top:350px; width:520px;">{{body}}</div>
+  <div class="q-rule"  style="left:90px; top:560px; width:420px;"></div>
+
+  <div class="q-mark"  style="left:210px; top:600px; width:50px;">&ldquo;</div>
+  <div class="q-quote" style="left:260px; top:610px; width:340px;">{{quote}}</div>
+  <div class="q-mark"  style="left:600px; top:600px; width:50px;">&rdquo;</div>
+
+  <div class="ph" style="left:700px; top:160px; width:330px; height:520px;"></div>
+  <div class="ph-label" style="left:700px; top:410px; width:330px;">[ 근거 이미지·캡처 자리 — 디자이너 영역 ]</div>
+
+  <div class="glabel">{{glabel}}</div>
+  <div class="pagenum">{{pagenum}}</div>
+</div>
+</body>
+</html>

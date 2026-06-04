@@ -1,0 +1,37 @@
+<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#888; padding:20px; }
+.slide { position:relative; width:1123px; height:794px; background:#FFFFFF; overflow:hidden; margin:0 auto 24px; font-family:'Paperlogy 4 Regular', sans-serif; }
+.slide > div { position:absolute; }
+.eyebrow { left:60px; top:42px; width:500px; height:20px; font-size:13px; }
+.eyebrow-b { left:60px; top:63px; width:500px; height:26px; font-family:'Paperlogy 7 Bold'; font-weight:bold; font-size:17px; }
+.chapter { left:563px; top:42px; width:500px; height:44px; font-size:13px; color:#999; text-align:right; }
+.glabel { left:60px; top:758px; width:700px; height:20px; font-size:11px; color:#999; }
+.pagenum { left:1003px; top:765px; width:60px; height:18px; font-size:11px; text-align:right; }
+/* 풀 배경 placeholder */
+.fullbg { left:0; top:0; width:1123px; height:794px; background:#1A1A1A; }
+.bg-ph-label { left:0; top:120px; width:1123px; font-size:13px; color:#666; text-align:center; }
+/* 중앙 인용 */
+.q-big { font-family:'Paperlogy 7 Bold'; font-weight:bold; font-size:34px; text-align:center; line-height:1.5; }
+.q-src { font-size:16px; text-align:center; }
+.q-dot { font-size:20px; text-align:center; }
+/* 하단 강조 */
+.q-foot { font-family:'Paperlogy 5 Medium'; font-size:20px; text-align:center; line-height:1.6; }
+.q-foot-b { font-family:'Paperlogy 8 ExtraBold'; font-weight:800; }
+</style></head><body>
+<div class="slide">
+<div class="fullbg"></div>
+<div class="bg-ph-label">[ 배경 이미지 자리 — 사용자가 사진을 깔면 완성됩니다 ]</div>
+
+<div class="eyebrow" style="color:#999;">{{eyebrow}}</div>
+<div class="eyebrow-b" style="color:#FFFFFF;">{{eyebrow_b}}</div>
+<div class="chapter" style="color:#999;">{{chapter}}</div>
+
+<div class="q-big" style="left:90px; top:250px; width:943px; color:#FFFFFF;">{{quote}}</div>
+<div class="q-src" style="left:90px; top:400px; width:943px; color:#BBBBBB;">{{source}}</div>
+<div class="q-dot" style="left:90px; top:500px; width:943px; color:#999;">&middot;</div>
+<div class="q-foot" style="left:90px; top:580px; width:943px; color:#DDDDDD;">{{foot}}</div>
+
+<div class="glabel">{{glabel}}</div>
+<div class="pagenum" style="color:#999;">{{pagenum}}</div>
+</div></body></html>

@@ -1,0 +1,28 @@
+<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#888; padding:20px; }
+.slide { position:relative; width:1123px; height:794px; background:#FFFFFF; overflow:hidden; margin:0 auto 24px; font-family:'Paperlogy 4 Regular', sans-serif; }
+.slide > div { position:absolute; }
+.eyebrow { left:60px; top:42px; width:500px; height:20px; font-size:13px; color:#999; }
+.eyebrow-b { left:60px; top:63px; width:500px; height:26px; font-family:'Paperlogy 7 Bold'; font-weight:bold; font-size:17px; color:#1A1A1A; }
+.chapter { left:563px; top:42px; width:500px; height:44px; font-size:13px; color:#999; text-align:right; }
+.glabel { left:60px; top:758px; width:700px; height:20px; font-size:11px; color:#999; }
+.pagenum { left:1003px; top:765px; width:60px; height:18px; font-size:11px; color:#999; text-align:right; }
+.c-tag { width:120px; height:32px; background:#1A1A1A; font-family:'Paperlogy 7 Bold'; font-weight:bold; font-size:13px; color:#FFFFFF; text-align:center; line-height:32px; }
+.c-concept { width:1123px; height:80px; font-family:'Paperlogy 8 ExtraBold'; font-weight:800; font-size:60px; color:#1A1A1A; text-align:center; }
+.c-slogan { width:1123px; height:40px; font-family:'Paperlogy 5 Medium'; font-size:26px; color:#666; text-align:center; }
+.c-line { font-family:'Paperlogy 7 Bold'; font-weight:bold; font-size:18px; color:#1A1A1A; text-align:center; width:1123px; }
+.c-body { font-size:15px; color:#444; text-align:center; width:1123px; line-height:1.9; }
+</style></head><body>
+<div class="slide">
+<div class="eyebrow">{{eyebrow}}</div>
+<div class="eyebrow-b">{{eyebrow_b}}</div>
+<div class="chapter">{{chapter}}</div>
+<div class="c-tag" style="left:501px; top:250px;">{{tag}}</div>
+<div class="c-concept" style="left:0; top:300px;">{{concept}}</div>
+<div class="c-slogan" style="left:0; top:390px;">{{slogan}}</div>
+<div class="c-line" style="left:0; top:460px;">{{line}}</div>
+<div class="c-body" style="left:0; top:520px;">{{body}}</div>
+<div class="glabel">{{glabel}}</div>
+<div class="pagenum">{{pagenum}}</div>
+</div></body></html>

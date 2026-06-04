@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#888; padding:20px; }
+  .slide {
+    position:relative; width:1123px; height:794px;
+    background:#FFFFFF; overflow:hidden; margin:0 auto 24px;
+    font-family:'Paperlogy 4 Regular', sans-serif;
+  }
+  .slide > div { position:absolute; }
+
+  .eyebrow { left:60px; top:42px; width:500px; height:20px; font-size:13px; color:#999; }
+  .eyebrow-b { left:60px; top:63px; width:500px; height:26px;
+               font-family:'Paperlogy 7 Bold'; font-weight:bold; font-size:17px; color:#1A1A1A; }
+  .chapter { left:563px; top:42px; width:500px; height:44px; font-size:13px; color:#999; text-align:right; }
+  .gov-main { left:60px; top:108px; width:1003px; height:44px;
+              font-family:'Paperlogy 7 Bold'; font-weight:bold; font-size:28px; color:#1A1A1A; }
+  .gov-sub { left:60px; top:158px; width:1003px; height:26px; font-size:15px; color:#444; }
+  .pagenum { left:1003px; top:765px; width:60px; height:18px; font-size:11px; color:#999; text-align:right; }
+  .glabel { left:60px; top:758px; width:700px; height:20px; font-size:11px; color:#999; }
+
+  /* 칸 (배경 명도/좌표/크기는 조립기가 inline 지정) */
+  .seg { }                                  /* 칸 박스: bg/좌표 inline */
+  .seg-kw { font-family:'Paperlogy 8 ExtraBold'; font-weight:800; font-size:34px;
+            color:#FFFFFF; text-align:center; }            /* 큰 한글 키워드 */
+  .seg-band { font-family:'Paperlogy 7 Bold'; font-weight:bold; font-size:15px;
+              color:#FFFFFF; text-align:center; }           /* 영문 부제 띠 */
+  .seg-band-bg { background:#FFFFFF; }                       /* 부제 띠 배경(반전): inline */
+  .seg-band-d { font-family:'Paperlogy 7 Bold'; font-weight:bold; font-size:15px;
+                color:#1A1A1A; text-align:center; }          /* 띠 안 글자(어두운 칸용) */
+  .seg-desc-w { font-size:13px; color:#FFFFFF; text-align:center; line-height:1.6; }
+  .seg-ph-label { font-size:12px; color:#FFFFFF; text-align:center; opacity:0.6; }
+</style></head>
+<body>
+<div class="slide">
+  <div class="eyebrow">{{eyebrow}}</div>
+  <div class="eyebrow-b">{{eyebrow_b}}</div>
+  <div class="chapter">{{chapter}}</div>
+  <div class="gov-main">{{gov_main}}</div>
+  <div class="gov-sub">{{gov_sub}}</div>
+
+  {{segments}}
+
+  <div class="glabel">{{glabel}}</div>
+  <div class="pagenum">{{pagenum}}</div>
+</div>
+</body>
+</html>

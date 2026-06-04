@@ -1,0 +1,23 @@
+<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#888; padding:20px; }
+.slide { position:relative; width:1123px; height:794px; background:#FFFFFF; overflow:hidden; margin:0 auto 24px; font-family:'Paperlogy 4 Regular', sans-serif; }
+.slide > div { position:absolute; }
+.eyebrow { left:60px; top:42px; width:500px; height:20px; font-size:13px; color:#999; }
+.eyebrow-b { left:60px; top:63px; width:500px; height:26px; font-family:'Paperlogy 7 Bold'; font-weight:bold; font-size:17px; color:#1A1A1A; }
+.chapter { left:563px; top:42px; width:500px; height:44px; font-size:13px; color:#999; text-align:right; }
+.glabel { left:60px; top:758px; width:700px; height:20px; font-size:11px; color:#999; }
+.pagenum { left:1003px; top:765px; width:60px; height:18px; font-size:11px; color:#999; text-align:right; }
+.band-en { font-family:'Paperlogy 7 Bold'; font-weight:bold; font-size:22px; text-align:center; }
+.seg-title { font-family:'Paperlogy 7 Bold'; font-weight:bold; font-size:20px; color:#1A1A1A; text-align:center; }
+.seg-desc { font-size:13px; color:#666; text-align:center; line-height:1.6; }
+.seg-vline { width:0; border-left:1px solid #DDD; }
+</style></head><body>
+<div class="slide">
+<div class="eyebrow">{{eyebrow}}</div>
+<div class="eyebrow-b">{{eyebrow_b}}</div>
+<div class="chapter">{{chapter}}</div>
+{{bands}}
+<div class="glabel">{{glabel}}</div>
+<div class="pagenum">{{pagenum}}</div>
+</div></body></html>

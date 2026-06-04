@@ -2403,6 +2403,64 @@ async def generate_one_slide(
     quantitative_locks: dict | None = None,
     output_mode: str = "shapes",  # Spec D-Build-HTMLOutput — "shapes"|"html"
 ) -> SlideResult:
+    # Spec D-Build-Path1Connect — HTML 모드는 LLM 호출 전 path1 조립 경로 우선 시도.
+    # 성공 시: LLM 호출 0회 + 즉시 return (비용 절감 + 좌표 정밀, LLM 이 디자인 안 만짐)
+    # 실패 시 (NONE / build 빈 결과 / 예외): output_mode='shapes' 강제 → 기존 도형 모드 경로 자동 진입
+    # output_mode='shapes' (토글 OFF 기본): 본 분기 미진입 → 기존 동작 100% 동일
+    if output_mode == "html":
+        try:
+            import sys as _sys
+            import os as _os
+            _path1_core = _os.path.join(
+                _os.path.dirname(_os.path.abspath(__file__)), "path1", "core",
+            )
+            if _path1_core not in _sys.path:
+                _sys.path.insert(0, _path1_core)
+            import adapter as _path1_adapter
+            import dispatch as _path1_dispatch
+            item_dict = {
+                "page": item.page,
+                "section": item.section,
+                "governing_main": item.governing_main,
+                "governing_sub": item.governing_sub,
+                "key_msgs": item.key_msgs,
+                "viz_hint": item.viz_hint,
+                "viz_pattern": item.viz_pattern,
+                "role": item.role,
+                "skeleton_id": item.skeleton_id,
+            }
+            adapted = _path1_adapter.adapt_item(item_dict)
+            tpl = adapted.get("template", "NONE")
+            if tpl != "NONE":
+                html = _path1_dispatch.build(adapted)
+                if html and '<div class="slide">' in html:
+                    log.info(
+                        "path1 조립 OK p%d template=%s bytes=%d (LLM 미호출)",
+                        item.page, tpl, len(html),
+                    )
+                    return SlideResult(
+                        page=item.page, section=item.section,
+                        shapes=[], html=html,
+                    )
+                log.warning(
+                    "path1 build 결과 부적합 p%d template=%s "
+                    "(빈 결과 또는 .slide 누락) → 도형 모드 fallback",
+                    item.page, tpl,
+                )
+            else:
+                log.info(
+                    "path1 template=NONE p%d skeleton=%s → 도형 모드 fallback",
+                    item.page, getattr(item, "skeleton_id", "") or "",
+                )
+        except Exception as _e:
+            log.warning(
+                "path1 예외 p%d: %r → 도형 모드 fallback",
+                item.page, _e,
+            )
+        # fallback: 도형 모드 강제. 이후 user prompt / system prompt / for 루프 모두
+        # output_mode='shapes' 경로로 진입 (기존 도형 모드 동작 그대로).
+        output_mode = "shapes"
+
     user = _build_slide_user_prompt(
         item, outline_summary, rag_per_slide_block, canvas, total_slides,
         domain=domain,

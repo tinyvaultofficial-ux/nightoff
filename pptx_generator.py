@@ -2632,6 +2632,10 @@ def generate_from_html(html_string, out_path):
                     )
                     tf = tb.text_frame
                     tf.word_wrap = True
+                    try:
+                        tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_SHAPE_FIT  # D-Fix-AutoSize-HTML: 박스 넘치면 폰트 자동 축소(도형 모드 _add_text와 동일 안전망)
+                    except Exception:
+                        pass
                     tf.margin_left = 0
                     tf.margin_right = 0
                     tf.margin_top = 0

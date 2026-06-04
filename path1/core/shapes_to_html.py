@@ -17,6 +17,22 @@ import html as _html
 
 PX = 96.0  # 인치 → px
 
+# weight → Paperlogy variant 매핑 (pptx_generator.WEIGHT_FONT_MAP과 동일).
+# 도형 모드는 _resolve_font(weight)로 이 매핑을 PPTX에 직접 박는데,
+# shapes_to_html이 이걸 안 박으면 굵기 위계가 사라진다(거버닝/본문 구분 소실).
+_PAPERLOGY = {
+    100: "Paperlogy 1 Thin", 200: "Paperlogy 2 ExtraLight", 300: "Paperlogy 3 Light",
+    400: "Paperlogy 4 Regular", 500: "Paperlogy 5 Medium", 600: "Paperlogy 6 SemiBold",
+    700: "Paperlogy 7 Bold", 800: "Paperlogy 8 ExtraBold", 900: "Paperlogy 9 Black",
+}
+
+def _paperlogy_for(weight):
+    try:
+        w = max(100, min(900, round(int(weight) / 100) * 100))
+    except Exception:
+        w = 400
+    return _PAPERLOGY.get(w, "Paperlogy 4 Regular")
+
 def _esc(s):
     return _html.escape(str(s))
 
@@ -79,12 +95,16 @@ def _one(sd):
         # valign: flex로 세로 정렬
         jc = {"top": "flex-start", "middle": "center", "bottom": "flex-end"}.get(valign, "flex-start")
         italic = "italic" if sd.get("italic") else "normal"
+        font_family = _paperlogy_for(weight)
+        valign_cls = {"middle": "s2h-vmid", "center": "s2h-vmid", "bottom": "s2h-vbot"}.get(valign, "")
         txt = _esc(sd.get("text", "")).replace("\n", "<br>")
         style = (f"position:absolute;left:{x:.0f}px;top:{y:.0f}px;width:{w:.0f}px;height:{h:.0f}px;"
-                 f"font-size:{size:.0f}pt;font-weight:{weight};color:{color};text-align:{align};"
-                 f"font-style:{italic};display:flex;flex-direction:column;justify-content:{jc};"
+                 f"font-family:'{font_family}';font-size:{size:.0f}pt;font-weight:{weight};color:{color};text-align:{align};"
+                 f"font-style:{italic};overflow:hidden;word-break:keep-all;"
+                 f"display:flex;flex-direction:column;justify-content:{jc};"
                  f"{'align-items:center;' if align=='center' else ('align-items:flex-end;' if align=='right' else '')}")
-        return f'<div style="{style}">{txt}</div>'
+        cls_attr = f' class="{valign_cls}"' if valign_cls else ""
+        return f'<div{cls_attr} style="{style}">{txt}</div>'
 
     if t == "line":
         x1 = float(sd.get("x1", 0)) * PX
@@ -136,8 +156,9 @@ def _one(sd):
             ts = float(sd.get("text_size", 12))
             tw = int(sd.get("text_weight", 400))
             ta = _align_css(sd.get("text_align") or "center")
+            tf_family = _paperlogy_for(tw)
             label = (f'<div style="position:absolute;left:{x:.0f}px;top:{y:.0f}px;width:{w:.0f}px;height:{h:.0f}px;'
-                     f'font-size:{ts:.0f}pt;font-weight:{tw};color:{tc};text-align:{ta};'
+                     f"font-family:'{tf_family}';font-size:{ts:.0f}pt;font-weight:{tw};color:{tc};text-align:{ta};"
                      f'display:flex;align-items:center;justify-content:center;">{_esc(txt)}</div>')
             return box + label
         return box

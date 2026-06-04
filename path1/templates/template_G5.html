@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#888; padding:20px; }
+  .slide { position:relative; width:1123px; height:794px; background:#FFFFFF;
+           overflow:hidden; margin:0 auto 24px; font-family:'Paperlogy 4 Regular', sans-serif; }
+  .slide > div { position:absolute; }
+  .eyebrow { left:60px; top:42px; width:500px; height:20px; font-size:13px; color:#999; }
+  .eyebrow-b { left:60px; top:63px; width:500px; height:26px;
+               font-family:'Paperlogy 7 Bold'; font-weight:bold; font-size:17px; color:#1A1A1A; }
+  .chapter { left:563px; top:42px; width:500px; height:44px; font-size:13px; color:#999; text-align:right; }
+  .gov-main { left:60px; top:108px; width:1003px; height:44px;
+              font-family:'Paperlogy 7 Bold'; font-weight:bold; font-size:28px; color:#1A1A1A; }
+  .gov-sub { left:60px; top:158px; width:1003px; height:26px; font-size:15px; color:#444; }
+  .divline { left:60px; top:196px; width:1003px; height:0; border-top:1px solid #DDD; }
+  .pagenum { left:1003px; top:765px; width:60px; height:18px; font-size:11px; color:#999; text-align:right; }
+  .glabel { left:60px; top:758px; width:700px; height:20px; font-size:11px; color:#999; }
+
+  .kp-chip { height:56px; background:#1A1A1A; font-family:'Paperlogy 7 Bold';
+             font-weight:bold; font-size:15px; color:#FFFFFF; text-align:center; line-height:56px; }
+  .kp-chip-c { width:340px; height:70px; background:#444; font-family:'Paperlogy 7 Bold';
+               font-weight:bold; font-size:16px; color:#FFFFFF; text-align:center; line-height:70px; }
+  .ch-ttl { width:300px; height:24px; font-family:'Paperlogy 7 Bold';
+            font-weight:bold; font-size:16px; color:#1A1A1A; text-align:center; }
+  .ch-pill { width:200px; height:38px; border:1px solid #DDD;
+             font-size:13px; color:#444; text-align:center; line-height:38px; }
+  .ch-vline { width:0; height:200px; border-left:1px solid #DDD; }
+  .sub-c { font-size:15px; color:#444; text-align:center; }
+</style></head>
+<body>
+<div class="slide">
+  <div class="eyebrow">{{eyebrow}}</div>
+  <div class="eyebrow-b">{{eyebrow_b}}</div>
+  <div class="chapter">{{chapter}}</div>
+  <div class="gov-main">{{gov_main}}</div>
+  <div class="gov-sub">{{gov_sub}}</div>
+  <div class="divline"></div>
+
+  <div class="kp-chip-c" style="left:392px; top:250px;">{{kp_center}}</div>
+  <div class="kp-chip"   style="left:90px;  top:330px; width:300px;">{{kp_left}}</div>
+  <div class="kp-chip"   style="left:733px; top:330px; width:300px;">{{kp_right}}</div>
+
+  <div class="divline" style="top:440px;"></div>
+  <div class="sub-c" style="top:460px; left:0; width:1123px;">{{channel_sub}}</div>
+
+  {{channels}}
+
+  <div class="glabel">{{glabel}}</div>
+  <div class="pagenum">{{pagenum}}</div>
+</div>
+</body>
+</html>

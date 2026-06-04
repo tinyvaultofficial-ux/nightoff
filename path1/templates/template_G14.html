@@ -1,0 +1,33 @@
+<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#888; padding:20px; }
+.slide { position:relative; width:1123px; height:794px; background:#FFFFFF; overflow:hidden; margin:0 auto 24px; font-family:'Paperlogy 4 Regular', sans-serif; }
+.slide > div { position:absolute; }
+.eyebrow { left:60px; top:42px; width:500px; height:20px; font-size:13px; color:#999; }
+.eyebrow-b { left:60px; top:63px; width:500px; height:26px; font-family:'Paperlogy 7 Bold'; font-weight:bold; font-size:17px; color:#1A1A1A; }
+.chapter { left:563px; top:42px; width:500px; height:44px; font-size:13px; color:#999; text-align:right; }
+.glabel { left:60px; top:758px; width:700px; height:20px; font-size:11px; color:#999; }
+.pagenum { left:1003px; top:765px; width:60px; height:18px; font-size:11px; color:#999; text-align:right; }
+/* 좌측 텍스트 영역 */
+.lt-tag { left:60px; top:150px; width:520px; height:22px; font-family:'Paperlogy 7 Bold'; font-weight:bold; font-size:14px; color:#999; }
+.lt-head { left:60px; top:185px; width:520px; height:100px; font-family:'Paperlogy 8 ExtraBold'; font-weight:800; font-size:34px; color:#1A1A1A; line-height:1.35; }
+.lt-body { left:60px; width:520px; font-size:16px; color:#444; line-height:1.8; }
+/* 우측 이미지 placeholder */
+.rt-ph { left:600px; top:60px; width:463px; height:674px; border:1px dashed #999; background:#F4F4F4; }
+.rt-ph-label { left:600px; top:390px; width:463px; font-size:13px; color:#999; text-align:center; }
+</style></head><body>
+<div class="slide">
+<div class="eyebrow">{{eyebrow}}</div>
+<div class="eyebrow-b">{{eyebrow_b}}</div>
+<div class="chapter">{{chapter}}</div>
+
+<div class="lt-tag">{{tag}}</div>
+<div class="lt-head">{{head}}</div>
+{{body_blocks}}
+
+<div class="rt-ph"></div>
+<div class="rt-ph-label">[ 이미지 자리 — 지도·사진 등 (디자이너 영역) ]</div>
+
+<div class="glabel">{{glabel}}</div>
+<div class="pagenum">{{pagenum}}</div>
+</div></body></html>

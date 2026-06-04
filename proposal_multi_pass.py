@@ -2405,6 +2405,107 @@ def _build_slide_user_prompt(
     return "\n".join(parts)
 
 
+# ─── Spec D-Fix-Path1Enrich — path1 결과의 텍스트 칸을 LLM이 cap 안에서 풍성화 ──
+# 위치: adapter.adapt_item() 다음 / dispatch.build() 직전 (generate_one_slide 안).
+# 토글 OFF(output_mode='shapes') 시엔 path1 분기 자체에 진입 안 함 → enrich 미실행.
+# 도형 모드 / 통합 빌더 / main.py 영향 0. field_spec.py 의 cap 슬라이싱·키 차단으로
+# LLM 출력의 키 추가·항목 수 폭주·cap 초과는 모두 코드가 차단. 어떤 실패도 원본 adapted
+# 반환 → path1 dispatch 그대로 진행 (빈 페이지 0).
+async def _path1_enrich(
+    client,
+    item: "OutlineItem",
+    adapted: dict,
+    tpl: str,
+    rag_per_slide_block: str,
+    quantitative_locks: dict | None,
+    domain: str,
+    outline_summary: str,
+    model: str = "",
+) -> dict:
+    """path1 풍성화 — field_spec 정의 골격만(주력 3종: G4/G7/G10). 외 골격은 스킵.
+
+    LLM은 골격 구조·좌표·CSS를 만지지 않는다. 각 칸의 텍스트만 cap 안에서 채운다.
+    cap 위반·키 추가/삭제는 field_spec.merge_with_cap 이 차단(검증본 그대로).
+
+    실패 시(spec 없음·파싱 실패·예외) adapted 원본 반환 → path1 dispatch 그대로 진행.
+    재시도 0회 — 풍성화 실패 = 앙상함(현재 상태)으로 후퇴, 페이지 사고 X.
+    """
+    try:
+        # path1/core 는 path1 분기 진입 시 sys.path 에 추가됨(L2431-2432).
+        import field_spec as _field_spec
+    except Exception as e:
+        log.warning(
+            "path1 enrich field_spec import 실패 p%d: %r → 원본 dispatch",
+            item.page, e,
+        )
+        return adapted
+    if not _field_spec.has_spec(tpl):
+        # 주력 3종(G4/G7/G10) 외 → 풍성화 스킵, 어댑터 결과 그대로 사용(이번 spec 범위).
+        log.info("path1 enrich 스킵 p%d tpl=%s (spec 미정의)", item.page, tpl)
+        return adapted
+    try:
+        spec_json = json.dumps(
+            _field_spec._PATH1_FIELD_SPEC[tpl], ensure_ascii=False,
+        )
+        adapted_json = json.dumps(adapted, ensure_ascii=False)
+        qlock_block = _format_quantitative_locks(quantitative_locks) or "없음"
+        rag_block = rag_per_slide_block or "없음"
+        key_msgs_block = " / ".join(item.key_msgs) if item.key_msgs else "(없음)"
+        system_prompt = (
+            "너는 한국 B2G(정부·공공) 제안서의 한 슬라이드 텍스트 작성자다.\n"
+            "도형·좌표·CSS·골격은 코드가 이미 정했다. 너의 임무 = 골격 안 텍스트 칸을 풍성하고 구체적으로 채우기.\n"
+            "\n"
+            "[절대 원칙]\n"
+            "- 입력 JSON의 키 이름·구조를 한 글자도 바꾸지 마라. 새 키 추가 금지, 키 삭제 금지.\n"
+            "- 각 칸의 텍스트 값만 채워라. 리스트 항목 수는 [칸 스펙]의 min_n~max_n 범위 안에서만.\n"
+            "- 각 칸은 [칸 스펙]의 글자수(cap) 이내. cap 초과분은 코드가 잘라내니, cap 안에서 의미가 완결되게.\n"
+            "\n"
+            "[텍스트 품질]\n"
+            "- 추상 형용사(\"혁신적·효율적·다양한·체계적·탁월한·우수한\") 슬라이드당 2개 미만.\n"
+            "- 수치는 무조건 단위까지(㎡·m·명·원·%·회·dB·분 등). 막연한 표현 대신 구체 수치.\n"
+            "- 제공된 RAG·정량 lock의 사실·수치를 적극 활용. lock 수치는 그대로 인용.\n"
+            "- 자사 실적·회사명·연락처는 절대 넣지 마라.\n"
+            "\n"
+            "[출력 형식]\n"
+            "입력과 같은 키 구조의 JSON 1개만. 시작은 {, 끝은 }. 코드펜스·설명·다른 텍스트 절대 금지."
+        )
+        user_prompt = (
+            f"[페이지] {item.page} · 섹션 {item.section}\n"
+            f"[메인 메시지] {item.governing_main}\n"
+            f"[원본 메모(풍성화 재료, 참고만)] {key_msgs_block}\n"
+            f"\n"
+            f"[정량 lock — 그대로 인용]\n{qlock_block}\n"
+            f"\n"
+            f"[도메인 톤] {domain}\n"
+            f"\n"
+            f"[RAG 검색 결과 — 살붙이기 재료]\n{rag_block}\n"
+            f"\n"
+            f"[채울 골격] {tpl}\n"
+            f"[칸 스펙(각 칸 cap·개수)]\n{spec_json}\n"
+            f"\n"
+            f"[채울 JSON(이 구조 유지, 텍스트만 풍성화)]\n{adapted_json}"
+        )
+        raw = await asyncio.to_thread(
+            _call_anthropic_sync, client, system_prompt, user_prompt, 2000, model,
+        )
+        parsed = _parse_json_safely(raw)
+        if not parsed:
+            log.warning(
+                "path1 enrich JSON 파싱 실패 p%d tpl=%s → 원본 dispatch",
+                item.page, tpl,
+            )
+            return adapted
+        merged = _field_spec.merge_with_cap(adapted, parsed, tpl)
+        log.info("path1 enrich OK p%d tpl=%s", item.page, tpl)
+        return merged
+    except Exception as e:
+        log.warning(
+            "path1 enrich 예외 p%d tpl=%s: %r → 원본 dispatch",
+            item.page, tpl, e,
+        )
+        return adapted
+
+
 async def generate_one_slide(
     client,
     item: OutlineItem,
@@ -2446,6 +2547,13 @@ async def generate_one_slide(
             adapted = _path1_adapter.adapt_item(item_dict)
             tpl = adapted.get("template", "NONE")
             if tpl != "NONE":
+                # Spec D-Fix-Path1Enrich — adapter 결과 텍스트 칸을 LLM 이 cap 안에서 풍성화.
+                # 주력 3종(G4/G7/G10)만 적용. 외 골격은 has_spec(tpl)=False → 원본 그대로.
+                # 어떤 실패도 원본 adapted 반환 → dispatch 그대로 진행 (빈 페이지 0).
+                adapted = await _path1_enrich(
+                    client, item, adapted, tpl, rag_per_slide_block,
+                    quantitative_locks, domain, outline_summary, model,
+                )
                 html = _path1_dispatch.build(adapted)
                 if html and '<div class="slide">' in html:
                     log.info(

@@ -2522,10 +2522,19 @@ def _html_extract_all_slides(html_string):
                   slide.querySelectorAll('div').forEach(el => {
                     const r = el.getBoundingClientRect();
                     const cs = getComputedStyle(el);
-                    const text = Array.from(el.childNodes)
-                      .filter(nn => nn.nodeType === 3)
-                      .map(nn => nn.textContent.trim())
-                      .join(' ').trim();
+                    // direct children: text nodes as text, <br> as newline
+                    let parts = [];
+                    el.childNodes.forEach(nn => {
+                      if (nn.nodeType === 3) {
+                        const t = nn.textContent.trim();
+                        if (t) parts.push(t);
+                      } else if (nn.nodeName === 'BR') {
+                        parts.push('\\n');
+                      }
+                    });
+                    // join with space, keep newlines clean
+                    const text = parts.join(' ')
+                                      .replace(/\\s*\\n\\s*/g, '\\n').trim();
                     out.push({
                       x: r.left - sb.left, y: r.top - sb.top,
                       w: r.width, h: r.height, text: text,
@@ -2534,6 +2543,8 @@ def _html_extract_all_slides(html_string):
                       color: cs.color, bg: cs.backgroundColor,
                       borderTop: cs.borderTopWidth, borderColor: cs.borderTopColor,
                       borderRadius: cs.borderTopLeftRadius, textAlign: cs.textAlign,
+                      cls: el.className || "",
+                      lineHeight: cs.lineHeight,
                     });
                   });
                   return { sw: sb.width, sh: sb.height, els: out };
@@ -2625,17 +2636,39 @@ def generate_from_html(html_string, out_path):
                     tf.margin_right = 0
                     tf.margin_top = 0
                     tf.margin_bottom = 0
-                    p = tf.paragraphs[0]
-                    run = p.add_run()
-                    run.text = el["text"]
-                    f = run.font
-                    f.size = Pt(el["fontSize"] * 0.75)  # px → pt
-                    f.color.rgb = _html_css_rgb(el["color"])
+                    # 세로 정렬: 원/박스 안에 얹힌 텍스트는 가운데로.
+                    # CSS line-height 가 height 와 같으면(=한 줄 세로중앙 의도) MIDDLE.
+                    cls = el.get("cls", "")
+                    vcenter = any(k in cls for k in (
+                        "kpi-label", "kpi-value", "chip", "pf-card", "cat-box"))
+                    if vcenter:
+                        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+                    # 가로 정렬: 추출한 text-align 그대로 반영 (이전엔 무시됐음).
+                    align = {
+                        "center": PP_ALIGN.CENTER,
+                        "right": PP_ALIGN.RIGHT,
+                        "justify": PP_ALIGN.JUSTIFY,
+                    }.get((el.get("textAlign") or "left").lower(), PP_ALIGN.LEFT)
+
+                    # \n 으로 여러 줄 → 여러 단락. (HTML <br> 이 \n 으로 추출됨)
+                    fsize = Pt(el["fontSize"] * 0.75)
+                    fcolor = _html_css_rgb(el["color"])
                     fw = el["fontWeight"]
-                    f.bold = (fw == "bold" or (fw.isdigit() and int(fw) >= 600))
+                    fbold = (fw == "bold" or (fw.isdigit() and int(fw) >= 600))
                     fname = _html_pick_font(el["fontFamily"])
-                    f.name = fname
-                    _html_set_ea_font(run, fname)
+
+                    lines = (el["text"] or "").split("\n")
+                    for li, line in enumerate(lines):
+                        p = tf.paragraphs[0] if li == 0 else tf.add_paragraph()
+                        p.alignment = align
+                        run = p.add_run()
+                        run.text = line
+                        f = run.font
+                        f.size = fsize
+                        f.color.rgb = fcolor
+                        f.bold = fbold
+                        f.name = fname
+                        _html_set_ea_font(run, fname)
                     rendered_total += 1
             except Exception as e:
                 errors.append(f"el@({el.get('x',0):.0f},{el.get('y',0):.0f}): {type(e).__name__}: {e}")

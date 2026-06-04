@@ -671,23 +671,46 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
 - viz_hint 는 다음 단계에서 도형 JSON 그릴 때의 힌트 (간단히)
 - 표지 / 목차 / 챕터 divider 5장 / 마무리 1장은 반드시 포함
 
-[viz_pattern 사전 배정 규칙 — Spec D-Fix-LayoutVariety-1]
-모든 outline 항목에 "viz_pattern" 필드를 포함. 본문 페이지(slide_type=text_box / 일부 hero)는 아래 6종 중 하나의 키를 배정. 특수 페이지(표지 / 목차 / 챕터 divider / 감사 / 마무리)는 "" 빈 문자열.
+[viz_pattern 사전 배정 규칙 — Spec D-Fix-LayoutVariety-1 / D-Fix-NarrativeDiversity]
+모든 outline 항목에 "viz_pattern" 필드를 포함. 본문 페이지(slide_type=text_box / 일부 hero)는 아래 8종 중 하나의 키를 배정. 특수 페이지(표지 / 목차 / 챕터 divider / 감사 / 마무리)는 "" 빈 문자열.
 
-안전 6종 풀 (이 외 값 배정 금지 — 위험 4종은 절대 풀에 X):
+안전 8종 풀 (이 외 값 배정 금지 — 위험 4종은 절대 풀에 X):
   · 2col          — 좌우 2분할 (현재/개선·문제/해결·전후)
   · cards3        — 3카드 등분 비교 (평행 분류·차별점)
   · process       — 가로 단계 흐름 (절차·추진 단계·일정 흐름)
   · before_after  — Before/After 점층 카드 (도입 효과·개선 사례)
   · quant         — 정량 강조 (큰 숫자 + 라벨, KPI·예산·규모)
   · cards_grid    — 카드 그리드 2x3 / 2x4 (팀원·사례·zone 분리)
+  · text_quote       — 텍스트 위계형 (큰 인용 + 흐름 1~3 + 결론 / 도식 없음)
+                       ★ 적합: slide_type=text_box AND role=body 페이지의
+                              "전략 선언·접근 방향·도메인 인사이트·시장 분석·논리 전개"
+                       ⚠ 부적합: 표지·목차·챕터 divider·컨셉 슬로건(hero) /
+                              예산·일정·리스크·조직(role=support) /
+                              세부 실행 계획·운영 매뉴얼 (구체 수치 나열)
+  · text_declaration — 텍스트 위계형 (큰 선언 + 근거 2~3개 / 도식 없음)
+                       ★ 적합: slide_type=text_box AND role=body 페이지의
+                              "핵심 전략 선언·차별화 천명·도메인 결단"
+                       ⚠ 부적합: 컨셉 슬로건(이미 hero 페이지가 담당) /
+                              role=support / 세부 실행
+
+★ 컨셉 슬로건 페이지는 별도 hero 페이지(카탈로그 11번)가 담당.
+  text_* 키로 컨셉 슬로건을 만들지 말 것 — 컨셉 슬로건은 80~90pt 거대 슬로건 hero,
+  text_* 는 본문 페이지의 30~44pt 텍스트 위계로 완전히 다른 구조.
+★ text_* 는 slide_type=text_box AND role=body 위치에만 배정.
+  그 외 위치(hero/support/simple_box)에 박으면 코드가 자동 "" 강등(D-Fix-NarrativeGuard).
 
 분배 규칙 (★ 매핑형 절대 금지 — "이 내용엔 반드시 이 패턴"식 X):
-① 본문 페이지 전체에 6종이 골고루 분포하게. 특정 1~2종 편중 금지.
+① 본문 페이지 전체에 8종이 골고루 분포하게. 특정 1~2종 편중 금지.
 ② 직전 본문 페이지와 같은 viz_pattern 을 연속 배정 X (반드시 다른 키).
 ③ 페이지 내용이 특정 패턴에 자연스러우면 그것을 우선 선택하되, 다양성을 우선 — 억지로 맞추지 말고 자연스러운 후보 2~3개 중 직전과 다른 것 선택.
-④ 위험 4종(벤다이어그램 / 2x2 매트릭스 / 수직 타임라인 / 다이어그램+표) 절대 X — 안전 6종 키 밖 값은 코드가 자동 ""로 강등시킴 (배정 무효).
-⑤ 특수 페이지(표지·목차·챕터 divider 5장·마무리)는 "" (배정 안 함).
+④ ★ 박스/카드 계열(cards3 / before_after / cards_grid) 합산 cap — 본문 페이지의 40% 이내
+   (예: 본문 20장 → 합 8장 이하). 초과 시 다른 계열(2col / process / quant / text_*)로 회전.
+   박스 도배 = 단조로움(평가위원 "패턴 하나만 반복" 인식).
+⑤ ★ 텍스트 위계 계열(text_quote / text_declaration) — 본문 페이지의 5~15% 권장(최소 1장).
+   너무 적으면 단조로움 유지, 15% 초과면 텍스트 과다. 적합 페이지(role=body 전략 선언) 우선.
+⑥ 위험 4종(벤다이어그램 / 2x2 매트릭스 / 수직 타임라인 / 다이어그램+표) 절대 X —
+   안전 8종 키 밖 값은 코드가 자동 ""로 강등시킴 (배정 무효).
+⑦ 특수 페이지(표지·목차·챕터 divider 5장·마무리)는 "" (배정 안 함).
 
 [skeleton_id 배정 규칙 — Spec D-Build-SkeletonConnect / Spec D-Fix-SkeletonDiversity]
 운영이 사람이 양질 제안서에서 떠낸 검증된 골격 15종 HTML 을 R2 에서 동기화해뒀다.
@@ -2204,11 +2227,20 @@ async def generate_outline(
         if not isinstance(gov_sub_raw, list):
             gov_sub_raw = []
         gov_sub = [str(s).strip() for s in gov_sub_raw if s and str(s).strip()]
-        # Spec D-Fix-LayoutVariety-1 — viz_pattern 안전 6종 키 화이트리스트 검증.
+        # Spec D-Fix-LayoutVariety-1 / D-Fix-NarrativeDiversity — viz_pattern 안전 8종 화이트리스트.
         # outline AI 가 위험 4종 또는 임의 값을 박더라도 안전 풀 밖이면 ""로 fallback.
-        _VIZ_PATTERN_SAFE = {"2col", "cards3", "process", "before_after", "quant", "cards_grid"}
+        _VIZ_PATTERN_SAFE = {"2col", "cards3", "process", "before_after", "quant", "cards_grid",
+                             "text_quote", "text_declaration"}
         viz_pattern_raw = str(it.get("viz_pattern", "")).strip().lower()
         viz_pattern = viz_pattern_raw if viz_pattern_raw in _VIZ_PATTERN_SAFE else ""
+        # ★ Spec D-Fix-NarrativeGuard — text 위계는 hero/support/simple_box 페이지에 배정 X.
+        #   컨셉 슬로건(hero)·표지·divider·예산·일정·조직(support) 등에 text_* 박혀도 무력화.
+        #   배정 허용 = slide_type=text_box AND role=body 위치만(전략 선언·인사이트 자리).
+        if viz_pattern.startswith("text_"):
+            _st_check = str(it.get("slide_type", "")).strip().lower()
+            _rl_check = str(it.get("role", "")).strip().lower()
+            if _st_check != "text_box" or _rl_check != "body":
+                viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
         # Spec D-Fix-BodyRole-1 — role 화이트리스트 (body/support/"" 만 허용).
         # outline AI 가 임의 값을 박으면 ""로 강등 (식별 누락 → 무영향 fallback).
         _ROLE_SAFE = {"body", "support", ""}
@@ -2348,15 +2380,38 @@ def _build_slide_user_prompt(
         f"[핵심 메시지 (함축해서 핵심만 — 디자이너가 시각 요소로 풀어냄)] {' / '.join(item.key_msgs)}",
         f"[시각화 힌트] {item.viz_hint}",
     ])
-    # Spec D-Fix-LayoutVariety-1 — outline 단계에서 사전 배정된 레이아웃 패턴 inject.
+    # Spec D-Fix-LayoutVariety-1 / D-Fix-NarrativeDiversity — outline 단계 사전 배정 레이아웃 패턴 inject.
     # 본문 페이지만 값 있음. 특수 페이지(표지/목차/챕터/마무리)는 "" → inject X.
     if item.viz_pattern:
-        parts.append(
-            f"[배정된 레이아웃 패턴] {item.viz_pattern} — 본 페이지는 이 패턴으로 구성하라. "
-            "안전 6종(2col / cards3 / process / before_after / quant / cards_grid) 범위 안에서만, "
-            "위험 4종(벤다이어그램·2x2 매트릭스·수직 타임라인·다이어그램+표)으로 벗어나지 말 것. "
-            "겹침 좌표 주의."
-        )
+        if item.viz_pattern in ("text_quote", "text_declaration"):
+            # Spec D-Fix-NarrativeDiversity — 텍스트 위계형(preset='narrative' 강제).
+            # 좌표·폰트·정렬은 코드(_build_preset_narrative)가 박음, LLM 은 텍스트만 채움.
+            # preset 키 누락 시 박스로 회귀 — user prompt 에서 강하게 강제.
+            _style_map = {"text_quote": "quote", "text_declaration": "declaration"}
+            _style_v = _style_map[item.viz_pattern]
+            _keys_hint = (
+                '"quote"(큰 인용, 필수) + "flow"(흐름 1~3개, 선택) + "conclusion"(결론, 선택)'
+                if _style_v == "quote"
+                else '"declaration"(큰 선언, 필수) + "grounds"(근거 2~3개, 선택)'
+            )
+            parts.append(
+                f"[배정된 레이아웃 패턴] {item.viz_pattern} (텍스트 위계형 — 도식 없음)\n"
+                f"본 페이지는 도형/박스 없이 텍스트 위계만으로 입체감을 만든다. 박스/카드 그리드 절대 금지.\n"
+                f"★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                f'  · "preset": "narrative"  (필수)\n'
+                f'  · "style": "{_style_v}"     (필수)\n'
+                f"  · 본문 키 — {_keys_hint}\n"
+                f"  · (선택) \"eyebrow\" — 좌상단 메타 라벨(섹션 breadcrumb 등, 11pt 회색)\n"
+                f"  → 코드가 좌표·폰트·정렬 자동 배치. shapes 배열은 비우거나 페이지번호 같은 메타 도형만.\n"
+                f"  ★ preset 키 누락 시 페이지가 박스로 회귀(다양성 효과 0) — 반드시 포함."
+            )
+        else:
+            parts.append(
+                f"[배정된 레이아웃 패턴] {item.viz_pattern} — 본 페이지는 이 패턴으로 구성하라. "
+                "안전 6종(2col / cards3 / process / before_after / quant / cards_grid) 범위 안에서만, "
+                "위험 4종(벤다이어그램·2x2 매트릭스·수직 타임라인·다이어그램+표)으로 벗어나지 말 것. "
+                "겹침 좌표 주의."
+            )
     # Spec D-Build-SkeletonConnect — 골격 통째 inject (HTML 모드 + skeleton_id 배정 시만).
     # 2중 가드: output_mode == "html" AND item.skeleton_id 가 비어있지 않을 때만 진입.
     # 도형 모드 (shapes) 는 가드에 막혀 절대 미진입 → 도형 모드 user prompt 입력 변화 0.

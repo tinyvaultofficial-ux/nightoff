@@ -2460,6 +2460,13 @@ async def generate_one_slide(
         # fallback: 도형 모드 강제. 이후 user prompt / system prompt / for 루프 모두
         # output_mode='shapes' 경로로 진입 (기존 도형 모드 동작 그대로).
         output_mode = "shapes"
+        # Spec D-Fix-ShapesToHtmlFallback — fallback 추적 플래그.
+        # 도형 모드 return 시점에 shapes→HTML 변환 가드로 사용 (이 경로에서만 변환).
+        # 토글 OFF (output_mode='shapes' 직행) 시엔 위 path1 분기 미진입 → False 유지 →
+        # 변환 미실행 → 도형 모드 기존 동작 100% 동일.
+        _path1_fallback_used = True
+    else:
+        _path1_fallback_used = False
 
     user = _build_slide_user_prompt(
         item, outline_summary, rag_per_slide_block, canvas, total_slides,
@@ -2525,10 +2532,42 @@ async def generate_one_slide(
                     page=item.page, section=item.section,
                     error=f"{last_err} (재시도 {MAX_ATTEMPTS}회 모두 실패)",
                 )
+            # Spec D-Fix-ShapesToHtmlFallback — path1 fallback 경로일 때만 shapes→HTML 변환.
+            # 통합 빌더 L2697 가드 (if sr.error or not sr.html:) 가 sr.html 만 검사하므로,
+            # fallback 슬라이드의 shapes 가 폐기되어 빈 페이지가 되던 버그
+            # (D-Check-EmptySlideRootCause) 해결. html_text 채우면 통합 빌더가 정상 처리.
+            # 토글 OFF (도형 모드 직행) 시엔 _path1_fallback_used=False → 변환 미실행 →
+            # sr.html="" 그대로 → 통합 빌더 else 분기 → 도형 모드 기존 동작 100% 동일.
+            html_text = ""
+            if _path1_fallback_used:
+                try:
+                    import sys as _sys
+                    import os as _os
+                    _path1_core = _os.path.join(
+                        _os.path.dirname(_os.path.abspath(__file__)),
+                        "path1", "core",
+                    )
+                    if _path1_core not in _sys.path:
+                        _sys.path.insert(0, _path1_core)
+                    import shapes_to_html as _s2h
+                    html_text = _s2h.shapes_to_html_slide(parsed["shapes"], canvas)
+                    log.info(
+                        "path1 fallback shapes→html 변환 p%d "
+                        "(도형 %d개, html %d 자)",
+                        item.page, len(parsed["shapes"]), len(html_text or ""),
+                    )
+                except Exception as _e:
+                    log.warning(
+                        "shapes_to_html 변환 실패 p%d: %r → shapes 만 반환 "
+                        "(통합 빌더가 placeholder 처리)",
+                        item.page, _e,
+                    )
+                    html_text = ""
             return SlideResult(
                 page=item.page,
                 section=str(parsed.get("section", item.section)),
                 shapes=parsed["shapes"],
+                html=html_text,
             )
         except Exception as e:
             last_err = str(e)[:200]

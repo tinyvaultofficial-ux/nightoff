@@ -49,6 +49,69 @@ except Exception:  # pragma: no cover — theme.py 누락 환경 (실험 폴더 
             "ACCENT":      "#1A1A1A",
         }
 
+
+# ─── Spec D-Build-ThemeColorMap (1-c, 옵션 A) — render 단계 색 매핑 ────────────
+# 배경: preset/inject/SLIDE_SYSTEM_PROMPT 가 전부 흑백 6색으로 그리고, 텍스트의 94%
+#       가 color 를 명시. 1-b 의 "기본값만" 패치로는 다크 모드에서 글자 대부분이
+#       검정 그대로 → 검정 배경에 묻혀 안 보임. 이 모듈은 명시된 색을 render 순간에
+#       role(text/fill/stroke) 별로 다크 매핑한다. theme!='dark' 일 때 입력색 그대로.
+#
+# ★ light 무변경 보장: _map_color 는 theme != "dark" 면 hex_str 을 그대로 반환 →
+#   라이트 경로는 패치 전후 비트 단위 동일 (split/asymmetric 의 검정면+흰글씨도
+#   기존과 똑같이 출력).
+# ★ role 구분 필수: 같은 #1A1A1A 가 fill(검정 면)로 쓰일 때와 text(검정 글자)로
+#   쓰일 때 다르게 매핑돼야 split 의 검정면+흰글씨 ↔ 흰면+검정글씨 자연 반전 성립.
+# ★ DARK_MAP 에 없는 색은 그대로 통과 (임의 변환 금지) — 매핑 표가 진실의 단일 출처.
+
+def _norm_hex(h):
+    """hex 정규화 — 대문자 + 6자리 풀어쓰기 (#FFF → #FFFFFF). DARK_MAP 키 매칭용."""
+    if not h:
+        return h
+    h = str(h).upper().lstrip("#")
+    if len(h) == 3:
+        h = "".join(c * 2 for c in h)
+    return "#" + h
+
+
+DARK_MAP = {
+    # 글자색 (role='text') — 검정 배경 위에서 보이도록 반전 / 회색 단계는 토큰 매핑.
+    ("#1A1A1A", "text"): "#FFFFFF",   # 본문/헤드라인 검정 → 흰
+    ("#444444", "text"): "#DDDDDD",   # 부차 진회색 → FG_SUB
+    ("#666666", "text"): "#DDDDDD",   # 부차 중회색 → FG_SUB
+    ("#999999", "text"): "#888888",   # 메타/캡션 옅은 회색 → FG_META
+    ("#BBBBBB", "text"): "#888888",   # eyebrow 옅은 → FG_META
+    ("#333333", "text"): "#DDDDDD",   # 진회색 글자 → FG_SUB
+    ("#555555", "text"): "#DDDDDD",   # 진회색 글자 → FG_SUB
+    ("#FFFFFF", "text"): "#1A1A1A",   # 검정 면 위 흰 글자(split 좌측) → 흰 면 위 검정 글자
+    ("#DDDDDD", "text"): "#444444",   # 검정 면 위 부차 글자(split 좌측 pts) → 흰 면 위 부차 글자
+    # 채움 (role='fill') — 면 강조 반전 / 흰 면은 다크 배경에 묻히도록 BG 와 동일.
+    ("#1A1A1A", "fill"): "#FFFFFF",   # 강조 검정 면(split 좌측 / asymmetric 우측) → 흰 면
+    ("#000000", "fill"): "#FFFFFF",   # 같은 의미의 #000 → 흰 면
+    ("#FFFFFF", "fill"): "#0A0A0A",   # 흰 면(split 우측) → 다크 배경 일치 (자연스럽게 묻힘)
+    ("#F5F5F5", "fill"): "#1F1F1F",   # 이미지 placeholder 옅은 회색 면 → 어두운 회색
+    ("#FAFAFA", "fill"): "#1F1F1F",   # 같은 의미의 옅은 회색 면 → 어두운 회색
+    ("#ECECEC", "fill"): "#1F1F1F",   # 옅은 회색 면 → 어두운 회색
+    ("#DDDDDD", "fill"): "#2A2A2A",   # 연한 회색 면 → 다크 LINE
+    # 선/테두리 (role='stroke') — 검정 선은 흰 선 / 회색 선은 다크용 회색.
+    ("#1A1A1A", "stroke"): "#FFFFFF", # 진한 구분선/말풍선 테두리 → 흰
+    ("#DDDDDD", "stroke"): "#2A2A2A", # 연한 구분선 → 다크 LINE
+    ("#999999", "stroke"): "#666666", # 중간 회색 선 → 살짝 어둡게
+    ("#CCCCCC", "stroke"): "#444444", # placeholder 테두리 → 어두운 회색
+}
+
+
+def _map_color(hex_str, role, theme="light"):
+    """role-aware 다크 매핑.
+
+    theme != "dark" → 입력색 그대로 (★ 라이트 비트 단위 무변경 보장).
+    hex_str falsy(None/"") → 그대로 (fill=None 같은 "투명/지우기" 시그널 보존).
+    DARK_MAP 에 없는 색 → 그대로 (임의 변환 금지 / 명시색 무변환 = 안전).
+    """
+    if theme != "dark" or not hex_str:
+        return hex_str
+    return DARK_MAP.get((_norm_hex(hex_str), role), hex_str)
+
+
 log = logging.getLogger("pptx_gen")
 
 
@@ -1491,19 +1554,24 @@ def _set_no_line(shape) -> None:
         pass
 
 
-def _add_rect(slide, x, y, w, h, *, fill="#FFFFFF", stroke=None, stroke_width=None, radius=None):
-    """사각형 (옵션: rounded, 테두리, 채움)."""
+def _add_rect(slide, x, y, w, h, *, fill="#FFFFFF", stroke=None, stroke_width=None, radius=None,
+              theme="light"):
+    """사각형 (옵션: rounded, 테두리, 채움).
+
+    Spec D-Build-ThemeColorMap (1-c, 옵션 A): theme='dark' 면 fill/stroke 를 role 별 다크 매핑.
+    light 면 입력색 그대로 (_map_color 가 theme 가드).
+    """
     shape_type = MSO_SHAPE.ROUNDED_RECTANGLE if radius else MSO_SHAPE.RECTANGLE
     shape = slide.shapes.add_shape(
         shape_type, Inches(x), Inches(y), Inches(w), Inches(h)
     )
     if fill:
         shape.fill.solid()
-        shape.fill.fore_color.rgb = _hex_to_rgb(fill)
+        shape.fill.fore_color.rgb = _hex_to_rgb(_map_color(fill, "fill", theme))
     else:
         _set_no_fill(shape)
     if stroke:
-        shape.line.color.rgb = _hex_to_rgb(stroke)
+        shape.line.color.rgb = _hex_to_rgb(_map_color(stroke, "stroke", theme))
         if stroke_width:
             shape.line.width = Pt(float(stroke_width))
     else:
@@ -1514,8 +1582,13 @@ def _add_rect(slide, x, y, w, h, *, fill="#FFFFFF", stroke=None, stroke_width=No
 def _add_text(slide, x, y, w, h, text, *,
               size=14, weight=400, color="#1A1A1A",
               align="left", valign="top",
-              font_family=None, italic=False):
-    """텍스트 박스. 줄바꿈 \\n 으로 멀티라인 지원."""
+              font_family=None, italic=False,
+              theme="light"):
+    """텍스트 박스. 줄바꿈 \\n 으로 멀티라인 지원.
+
+    Spec D-Build-ThemeColorMap (1-c, 옵션 A): theme='dark' 면 color 를 text role 다크 매핑.
+    light 면 입력색 그대로.
+    """
     box = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
     tf = box.text_frame
     tf.word_wrap = True
@@ -1571,7 +1644,7 @@ def _add_text(slide, x, y, w, h, text, *,
         run.font.bold = weight_norm >= 600
         if italic:
             run.font.italic = True
-        run.font.color.rgb = _hex_to_rgb(color)
+        run.font.color.rgb = _hex_to_rgb(_map_color(color, "text", theme))
         # 폰트 매핑: font_family 명시 우선 → weight 자동 매핑 (Paperlogy 9 단계)
         try:
             run.font.name = target_font
@@ -1580,13 +1653,16 @@ def _add_text(slide, x, y, w, h, text, *,
     return box
 
 
-def _add_line(slide, x1, y1, x2, y2, *, color="#1A1A1A", width=1.0):
-    """직선 (커넥터)."""
+def _add_line(slide, x1, y1, x2, y2, *, color="#1A1A1A", width=1.0, theme="light"):
+    """직선 (커넥터).
+
+    Spec D-Build-ThemeColorMap (1-c): theme='dark' 면 color 를 stroke role 다크 매핑.
+    """
     line = slide.shapes.add_connector(
         MSO_CONNECTOR.STRAIGHT,
         Inches(x1), Inches(y1), Inches(x2), Inches(y2),
     )
-    line.line.color.rgb = _hex_to_rgb(color)
+    line.line.color.rgb = _hex_to_rgb(_map_color(color, "stroke", theme))
     try:
         line.line.width = Pt(float(width))
     except Exception:
@@ -1594,13 +1670,16 @@ def _add_line(slide, x1, y1, x2, y2, *, color="#1A1A1A", width=1.0):
     return line
 
 
-def _add_arrow(slide, x1, y1, x2, y2, *, color="#1A1A1A", width=1.5):
-    """화살표 — 직선 + tail 끝에 삼각형."""
+def _add_arrow(slide, x1, y1, x2, y2, *, color="#1A1A1A", width=1.5, theme="light"):
+    """화살표 — 직선 + tail 끝에 삼각형.
+
+    Spec D-Build-ThemeColorMap (1-c): theme='dark' 면 color 를 stroke role 다크 매핑.
+    """
     line = slide.shapes.add_connector(
         MSO_CONNECTOR.STRAIGHT,
         Inches(x1), Inches(y1), Inches(x2), Inches(y2),
     )
-    line.line.color.rgb = _hex_to_rgb(color)
+    line.line.color.rgb = _hex_to_rgb(_map_color(color, "stroke", theme))
     try:
         line.line.width = Pt(float(width))
     except Exception:
@@ -1625,18 +1704,22 @@ def _add_arrow(slide, x1, y1, x2, y2, *, color="#1A1A1A", width=1.5):
     return line
 
 
-def _add_circle(slide, x, y, w, h, *, fill="#000000", stroke=None, stroke_width=None):
-    """원/타원."""
+def _add_circle(slide, x, y, w, h, *, fill="#000000", stroke=None, stroke_width=None,
+                theme="light"):
+    """원/타원.
+
+    Spec D-Build-ThemeColorMap (1-c): theme='dark' 면 fill/stroke 를 role 별 다크 매핑.
+    """
     shape = slide.shapes.add_shape(
         MSO_SHAPE.OVAL, Inches(x), Inches(y), Inches(w), Inches(h)
     )
     if fill:
         shape.fill.solid()
-        shape.fill.fore_color.rgb = _hex_to_rgb(fill)
+        shape.fill.fore_color.rgb = _hex_to_rgb(_map_color(fill, "fill", theme))
     else:
         _set_no_fill(shape)
     if stroke:
-        shape.line.color.rgb = _hex_to_rgb(stroke)
+        shape.line.color.rgb = _hex_to_rgb(_map_color(stroke, "stroke", theme))
         if stroke_width:
             shape.line.width = Pt(float(stroke_width))
     else:
@@ -1644,14 +1727,29 @@ def _add_circle(slide, x, y, w, h, *, fill="#000000", stroke=None, stroke_width=
     return shape
 
 
-def _add_image_placeholder(slide, x, y, w, h, hint="이미지 추가"):
-    """이미지 자리 — 회색 박스 + 안내. 사용자가 PowerPoint 에서 더블클릭으로 이미지 삽입."""
+def _add_image_placeholder(slide, x, y, w, h, hint="이미지 추가", *, theme="light"):
+    """이미지 자리 — 회색 박스 + 안내. 사용자가 PowerPoint 에서 더블클릭으로 이미지 삽입.
+
+    Spec D-Build-ThemeColorMap (1-c, 옵션 A — 예외 처리):
+      이 함수는 RGBColor 직접 호출(하드코딩)이라 _map_color 로 감쌀 수 없음.
+      theme='dark' 면 본문 내 직접 분기 — 다크 placeholder 색 사용.
+      light(현재): fill=#ECECEC, stroke=#CCCCCC, text=#888888
+      dark       : fill=#1F1F1F, stroke=#444444, text=#888888 (text 는 동일 — 안내문구 가독 유지)
+    """
+    if theme == "dark":
+        _fill_rgb = RGBColor(0x1F, 0x1F, 0x1F)   # 어두운 회색 면 (다크 배경보다 살짝 들뜸)
+        _stroke_rgb = RGBColor(0x44, 0x44, 0x44) # 어두운 테두리
+        _text_rgb = RGBColor(0x88, 0x88, 0x88)   # 동일한 중회색 안내문구
+    else:
+        _fill_rgb = RGBColor(0xEC, 0xEC, 0xEC)   # 현재값 그대로 (라이트 무변경)
+        _stroke_rgb = RGBColor(0xCC, 0xCC, 0xCC)
+        _text_rgb = RGBColor(0x88, 0x88, 0x88)
     box = slide.shapes.add_shape(
         MSO_SHAPE.RECTANGLE, Inches(x), Inches(y), Inches(w), Inches(h)
     )
     box.fill.solid()
-    box.fill.fore_color.rgb = RGBColor(0xEC, 0xEC, 0xEC)
-    box.line.color.rgb = RGBColor(0xCC, 0xCC, 0xCC)
+    box.fill.fore_color.rgb = _fill_rgb
+    box.line.color.rgb = _stroke_rgb
     box.line.width = Pt(0.75)
     tf = box.text_frame
     tf.word_wrap = True
@@ -1664,7 +1762,7 @@ def _add_image_placeholder(slide, x, y, w, h, hint="이미지 추가"):
     run = p.add_run()
     run.text = "🖼  " + str(hint)
     run.font.size = Pt(11)
-    run.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
+    run.font.color.rgb = _text_rgb
     run.font.italic = True
     return box
 
@@ -1680,11 +1778,13 @@ def _add_image_placeholder(slide, x, y, w, h, hint="이미지 추가"):
 def _add_shape_with_text(slide, mso_shape_type, x, y, w, h, *,
                           fill="#FFFFFF", stroke=None, stroke_width=None,
                           text=None, text_color="#1A1A1A", text_size=12,
-                          text_weight=400, text_align="center"):
+                          text_weight=400, text_align="center",
+                          theme="light"):
     """내부 헬퍼 — 신규 도형 5종 영역 공통 본문 (DRY 영역).
 
     fill / stroke 영역 = _add_rect 패턴 정확 정합.
     텍스트 영역 = _add_image_placeholder 패턴 + _add_text 정렬 정합.
+    Spec D-Build-ThemeColorMap (1-c): theme='dark' 면 fill/stroke/text_color 모두 role 별 다크 매핑.
     """
     shape = slide.shapes.add_shape(
         mso_shape_type, Inches(x), Inches(y), Inches(w), Inches(h),
@@ -1692,11 +1792,11 @@ def _add_shape_with_text(slide, mso_shape_type, x, y, w, h, *,
     # fill / stroke (_add_rect 패턴)
     if fill:
         shape.fill.solid()
-        shape.fill.fore_color.rgb = _hex_to_rgb(fill)
+        shape.fill.fore_color.rgb = _hex_to_rgb(_map_color(fill, "fill", theme))
     else:
         _set_no_fill(shape)
     if stroke:
-        shape.line.color.rgb = _hex_to_rgb(stroke)
+        shape.line.color.rgb = _hex_to_rgb(_map_color(stroke, "stroke", theme))
         if stroke_width:
             shape.line.width = Pt(float(stroke_width))
     else:
@@ -1726,7 +1826,7 @@ def _add_shape_with_text(slide, mso_shape_type, x, y, w, h, *,
         except Exception:
             run.font.size = Pt(12)
         run.font.bold = weight_norm >= 600
-        run.font.color.rgb = _hex_to_rgb(text_color)
+        run.font.color.rgb = _hex_to_rgb(_map_color(text_color, "text", theme))
         try:
             run.font.name = target_font
         except Exception:
@@ -1735,70 +1835,84 @@ def _add_shape_with_text(slide, mso_shape_type, x, y, w, h, *,
 
 
 def _add_chevron(slide, x, y, w, h, *, fill="#FFFFFF", stroke=None, stroke_width=None,
-                 text=None, text_color="#1A1A1A", text_size=12, text_weight=400, text_align="center"):
-    """CHEVRON 도형 (프로세스 단계 영역). 텍스트는 도형 안 가운데 정렬."""
+                 text=None, text_color="#1A1A1A", text_size=12, text_weight=400, text_align="center",
+                 theme="light"):
+    """CHEVRON 도형 (프로세스 단계 영역). 텍스트는 도형 안 가운데 정렬.
+
+    Spec D-Build-ThemeColorMap (1-c): theme 를 _add_shape_with_text 로 통과.
+    """
     return _add_shape_with_text(
         slide, MSO_SHAPE.CHEVRON, x, y, w, h,
         fill=fill, stroke=stroke, stroke_width=stroke_width,
         text=text, text_color=text_color, text_size=text_size,
-        text_weight=text_weight, text_align=text_align,
+        text_weight=text_weight, text_align=text_align, theme=theme,
     )
 
 
 def _add_pentagon(slide, x, y, w, h, *, fill="#FFFFFF", stroke=None, stroke_width=None,
-                  text=None, text_color="#1A1A1A", text_size=12, text_weight=400, text_align="center"):
-    """PENTAGON 도형 (Phase / 단계 영역). 텍스트는 도형 안 가운데 정렬."""
+                  text=None, text_color="#1A1A1A", text_size=12, text_weight=400, text_align="center",
+                  theme="light"):
+    """PENTAGON 도형 (Phase / 단계 영역). 텍스트는 도형 안 가운데 정렬.
+
+    Spec D-Build-ThemeColorMap (1-c): theme 를 _add_shape_with_text 로 통과.
+    """
     return _add_shape_with_text(
         slide, MSO_SHAPE.PENTAGON, x, y, w, h,
         fill=fill, stroke=stroke, stroke_width=stroke_width,
         text=text, text_color=text_color, text_size=text_size,
-        text_weight=text_weight, text_align=text_align,
+        text_weight=text_weight, text_align=text_align, theme=theme,
     )
 
 
 def _add_callout(slide, x, y, w, h, *, fill="#FFFFFF", stroke="#1A1A1A", stroke_width=1.0,
-                 text=None, text_color="#1A1A1A", text_size=12, text_weight=400, text_align="center"):
+                 text=None, text_color="#1A1A1A", text_size=12, text_weight=400, text_align="center",
+                 theme="light"):
     """RECTANGULAR_CALLOUT 도형 (말풍선 / 핵심 메시지 강조).
 
     기본 stroke = #1A1A1A — 말풍선 영역 본질 (테두리 있음).
+    Spec D-Build-ThemeColorMap (1-c): theme 를 _add_shape_with_text 로 통과.
     """
     return _add_shape_with_text(
         slide, MSO_SHAPE.RECTANGULAR_CALLOUT, x, y, w, h,
         fill=fill, stroke=stroke, stroke_width=stroke_width,
         text=text, text_color=text_color, text_size=text_size,
-        text_weight=text_weight, text_align=text_align,
+        text_weight=text_weight, text_align=text_align, theme=theme,
     )
 
 
 def _add_block_arrow(slide, x, y, w, h, *, fill="#1A1A1A", stroke=None, stroke_width=None,
-                     text=None, text_color="#FFFFFF", text_size=12, text_weight=400, text_align="center"):
+                     text=None, text_color="#FFFFFF", text_size=12, text_weight=400, text_align="center",
+                     theme="light"):
     """RIGHT_ARROW 도형 (굵은 화살표 — line/arrow 영역 보다 시각 ↑).
 
     기본 fill = #1A1A1A / text_color = #FFFFFF — 검은 화살표 + 흰 글자 본질.
+    Spec D-Build-ThemeColorMap (1-c): theme 를 _add_shape_with_text 로 통과.
     """
     return _add_shape_with_text(
         slide, MSO_SHAPE.RIGHT_ARROW, x, y, w, h,
         fill=fill, stroke=stroke, stroke_width=stroke_width,
         text=text, text_color=text_color, text_size=text_size,
-        text_weight=text_weight, text_align=text_align,
+        text_weight=text_weight, text_align=text_align, theme=theme,
     )
 
 
 def _add_star(slide, x, y, w, h, *, fill="#1A1A1A", stroke=None, stroke_width=None,
-              text=None, text_color="#FFFFFF", text_size=14, text_weight=700, text_align="center"):
+              text=None, text_color="#FFFFFF", text_size=14, text_weight=700, text_align="center",
+              theme="light"):
     """STAR_5_POINT 도형 (차별화 / 강조 포인트).
 
     기본 text_weight=700 / text_size=14 — 별 영역 강조 본질.
+    Spec D-Build-ThemeColorMap (1-c): theme 를 _add_shape_with_text 로 통과.
     """
     return _add_shape_with_text(
         slide, MSO_SHAPE.STAR_5_POINT, x, y, w, h,
         fill=fill, stroke=stroke, stroke_width=stroke_width,
         text=text, text_color=text_color, text_size=text_size,
-        text_weight=text_weight, text_align=text_align,
+        text_weight=text_weight, text_align=text_align, theme=theme,
     )
 
 
-def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A"):
+def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A", theme="light"):
     """단일 도형 스펙(JSON) → 슬라이드에 그림.
 
     지원 type:
@@ -1811,6 +1925,10 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A"):
       라이트(기본): "#1A1A1A" — 현재 운영과 동일.
       다크: "#FFFFFF" — generate_from_shape_json 에서 theme="dark" 일 때 주입.
     ★ shape_def 에 color 가 명시돼 있으면 그 값을 그대로 사용 — 기본값만 영향.
+
+    [Spec D-Build-ThemeColorMap 1-c (옵션 A)]
+    theme — 'light'(기본) / 'dark'. 모든 helper 호출에 그대로 전달 →
+      helper 내부에서 _map_color 가 role 별로 다크 매핑(라이트면 입력색 그대로).
     """
     if not isinstance(shape_def, dict):
         return None
@@ -1825,11 +1943,13 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A"):
                 stroke=shape_def.get("stroke"),
                 stroke_width=shape_def.get("stroke_width"),
                 radius=shape_def.get("radius"),
+                theme=theme,
             )
         if t == "text":
             # Spec D-Fix-GovColorRemove-1 — 거버닝 파랑(#1E40AF) 강제 휴리스틱 제거.
             # AI 가 SLIDE_SYSTEM_PROMPT 의 흑백 6색 규칙으로 출력하니 그 색 그대로 사용.
             # Spec D-Build-ThemeConnect 1-b — color 누락 시 기본값을 theme 토큰으로(라이트=#1A1A1A 유지).
+            # Spec D-Build-ThemeColorMap 1-c — 명시 color 도 다크에서 role 별 매핑(_add_text 내부 _map_color).
             return _add_text(
                 slide,
                 float(shape_def.get("x", 0)), float(shape_def.get("y", 0)),
@@ -1842,6 +1962,7 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A"):
                 valign=str(shape_def.get("valign", "top")),
                 font_family=shape_def.get("font_family"),
                 italic=bool(shape_def.get("italic", False)),
+                theme=theme,
             )
         if t == "line":
             return _add_line(
@@ -1850,6 +1971,7 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A"):
                 float(shape_def.get("x2", 1)), float(shape_def.get("y2", 0)),
                 color=str(shape_def.get("color", "#1A1A1A")),
                 width=float(shape_def.get("width", 1.0)),
+                theme=theme,
             )
         if t == "arrow":
             return _add_arrow(
@@ -1858,6 +1980,7 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A"):
                 float(shape_def.get("x2", 1)), float(shape_def.get("y2", 0)),
                 color=str(shape_def.get("color", "#1A1A1A")),
                 width=float(shape_def.get("width", 1.5)),
+                theme=theme,
             )
         if t in ("circle", "ellipse", "oval"):
             return _add_circle(
@@ -1867,6 +1990,7 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A"):
                 fill=str(shape_def.get("fill", "#000000")),
                 stroke=shape_def.get("stroke"),
                 stroke_width=shape_def.get("stroke_width"),
+                theme=theme,
             )
         if t in ("image", "image_placeholder"):
             return _add_image_placeholder(
@@ -1874,6 +1998,7 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A"):
                 float(shape_def.get("x", 0)), float(shape_def.get("y", 0)),
                 float(shape_def.get("w", 4)), float(shape_def.get("h", 3)),
                 hint=str(shape_def.get("hint", "이미지 추가")),
+                theme=theme,
             )
         # Spec D-Fix-11a Stage A (5/19) — 신규 도형 5종 분기
         # ⚠ 효과 0 (의도된 안전 — LLM 영역 본 type 출력 X, Stage B 영역 안내 추가 후 활성).
@@ -1890,6 +2015,7 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A"):
                 text_size=float(shape_def.get("text_size", 12)),
                 text_weight=int(shape_def.get("text_weight", 400)),
                 text_align=str(shape_def.get("text_align", "center")),
+                theme=theme,
             )
         if t in ("pentagon", "step"):
             return _add_pentagon(
@@ -1904,6 +2030,7 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A"):
                 text_size=float(shape_def.get("text_size", 12)),
                 text_weight=int(shape_def.get("text_weight", 400)),
                 text_align=str(shape_def.get("text_align", "center")),
+                theme=theme,
             )
         if t in ("callout", "rect_callout"):
             return _add_callout(
@@ -1918,6 +2045,7 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A"):
                 text_size=float(shape_def.get("text_size", 12)),
                 text_weight=int(shape_def.get("text_weight", 400)),
                 text_align=str(shape_def.get("text_align", "center")),
+                theme=theme,
             )
         if t in ("block_arrow", "right_arrow"):
             return _add_block_arrow(
@@ -1932,6 +2060,7 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A"):
                 text_size=float(shape_def.get("text_size", 12)),
                 text_weight=int(shape_def.get("text_weight", 400)),
                 text_align=str(shape_def.get("text_align", "center")),
+                theme=theme,
             )
         if t in ("star", "star_5_point"):
             return _add_star(
@@ -1946,6 +2075,7 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A"):
                 text_size=float(shape_def.get("text_size", 14)),
                 text_weight=int(shape_def.get("text_weight", 700)),
                 text_align=str(shape_def.get("text_align", "center")),
+                theme=theme,
             )
     except Exception as e:
         log.warning("도형 렌더링 실패 (type=%s): %s", t, e)
@@ -2862,8 +2992,10 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
                 # Spec D-Build-ThemeConnect 1-b — default_text_color 주입.
                 # 라이트=#1A1A1A(현재값 그대로), 다크=tokens["FG"]=#FFFFFF.
                 # shape_def 에 "color" 명시 시 그 값이 우선(이번 단계는 기본값만).
+                # Spec D-Build-ThemeColorMap 1-c — theme 전달 → helper 내부 _map_color 가 role 별 매핑.
                 result = render_shape_to_slide(slide, shape_def,
-                                               default_text_color=default_text_color)
+                                               default_text_color=default_text_color,
+                                               theme=theme)
                 if result is not None:
                     rendered_total += 1
             except Exception as e:

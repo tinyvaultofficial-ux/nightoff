@@ -2553,6 +2553,74 @@ def _build_preset_asymmetric(slide_data):
     return shapes
 
 
+# ─── Spec D-Build-PresetZigzag — zigzag (가운데 축 좌우 번갈아) 레이아웃 프리셋 ─
+# 슬라이드 중앙 세로 라인 + 점 단계 마커. 각 단계 텍스트(label/head/desc)를 좌·우 번갈아
+# 배치 — 짝수 번째 좌측(right-align), 홀수 번째 우측(left-align). 아이템 1~6개.
+# 입력 스키마:
+#   slide_data["eyebrow"] = "좌상단 메타 라벨"      (선택)
+#   slide_data["title"]   = "상단 페이지 제목"      (선택)
+#   slide_data["items"]   = [{"label","head"(필수),"desc"}, ...]  (1~6)
+# 안전망: items list 아님 또는 모든 head 누락 → 빈 리스트 반환.
+# 1 단계는 코드만 등록 — viz_pattern 연결은 별도 spec.
+def _build_preset_zigzag(slide_data):
+    eyebrow = str(slide_data.get("eyebrow", "")).strip()
+    title   = str(slide_data.get("title", "")).strip()
+    items_raw = slide_data.get("items") or []
+    if not isinstance(items_raw, list):
+        return []
+    items = []
+    for it in items_raw:
+        if not isinstance(it, dict):
+            continue
+        head = str(it.get("head", "")).strip()
+        if not head:
+            continue
+        items.append({
+            "label": str(it.get("label", "")).strip(),
+            "head": head,
+            "desc": str(it.get("desc", "")).strip(),
+        })
+    items = items[:6]
+    if not items:
+        return []
+    W, H = 11.69, 8.27
+    cx = W / 2
+    shapes = []
+    if eyebrow:
+        shapes.append({"type":"text","x":0.9,"y":0.5,"w":9.89,"h":0.4,"text":eyebrow,"size":11,"weight":400,"color":"#BBBBBB","align":"left","valign":"top"})
+    top = 1.1
+    if title:
+        shapes.append({"type":"text","x":0.9,"y":1.0,"w":10.0,"h":0.9,"text":title,"size":26,"weight":800,"color":"#1A1A1A","align":"left","valign":"top"})
+        top = 2.3
+    n = len(items)
+    area_top = top + 0.3
+    area_bot = 7.5
+    gap = (area_bot - area_top) / n
+    dot_r = 0.05
+    shapes.append({"type":"line","x1":cx,"y1":area_top,"x2":cx,"y2":area_bot,"color":"#DDDDDD","width":1.5})
+    for i, it in enumerate(items):
+        cy = area_top + gap * i + gap / 2
+        is_left = (i % 2 == 0)
+        shapes.append({"type":"circle","x":cx - dot_r,"y":cy - dot_r,"w":dot_r*2,"h":dot_r*2,"fill":"#1A1A1A"})
+        if is_left:
+            tx = 0.9
+            tw = cx - tx - 0.7
+            al = "right"
+        else:
+            tx = cx + 0.7
+            tw = W - tx - 0.9
+            al = "left"
+        ty = cy - 0.5
+        if it["label"]:
+            shapes.append({"type":"text","x":tx,"y":ty,"w":tw,"h":0.3,"text":it["label"],"size":11,"weight":700,"color":"#999999","align":al,"valign":"top"})
+            ty += 0.32
+        shapes.append({"type":"text","x":tx,"y":ty,"w":tw,"h":0.45,"text":it["head"],"size":16,"weight":700,"color":"#1A1A1A","align":al,"valign":"top"})
+        ty += 0.45
+        if it["desc"]:
+            shapes.append({"type":"text","x":tx,"y":ty,"w":tw,"h":0.6,"text":it["desc"],"size":12,"weight":400,"color":"#666666","align":al,"valign":"top"})
+    return shapes
+
+
 def generate_from_shape_json(json_data, output_path):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -2666,6 +2734,17 @@ def generate_from_shape_json(json_data, output_path):
             # timeline/split 과 동일 패턴 — 성공 시 preset 만(겹침 차단), 실패/예외 시 LLM 백업.
             try:
                 preset_shapes = _build_preset_asymmetric(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "zigzag":
+            # Spec D-Build-PresetZigzag — 가운데 축 좌우 번갈아 배치 (1단계: 코드 등록만, viz_pattern 미연결).
+            # asymmetric/timeline/split 과 동일 패턴 — 성공 시 preset 만(겹침 차단), 실패/예외 시 LLM 백업.
+            try:
+                preset_shapes = _build_preset_zigzag(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

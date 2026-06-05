@@ -2463,38 +2463,55 @@ def generate_from_shape_json(json_data, output_path):
             prs.slides.add_slide(blank_layout)
             continue
         slide = prs.slides.add_slide(blank_layout)
-        # Spec D-Fix-Preset1 — 옵트인 레이아웃 프리셋 (preset 키 없으면 현행 / 실패 시 AI 좌표 fallback)
+        # Spec D-Fix-Preset1 / D-Fix-PresetNoOverlap — 옵트인 레이아웃 프리셋.
+        # 분기 패턴: preset 성공(도형 리스트 != []) → preset 도형만(백업 폐기, 겹침 방지).
+        #            preset 실패(필수 키 누락 → []) → LLM 백업 fallback(빈 페이지 방지).
+        #            예외 발생 → LLM 백업 fallback(except 절, 기존 그대로).
         preset_name = slide_data.get("preset")
         if preset_name == "quantitative":
             try:
                 preset_shapes = _build_preset_quantitative_emphasis(slide_data)
-                shapes = preset_shapes + (slide_data.get("shapes") or [])
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
             except Exception:
                 shapes = slide_data.get("shapes", [])
         elif preset_name == "process":
             try:
                 preset_shapes = _build_preset_horizontal_process(slide_data)
-                shapes = preset_shapes + (slide_data.get("shapes") or [])
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
             except Exception:
                 shapes = slide_data.get("shapes", [])
         elif preset_name == "two_column":
             try:
                 preset_shapes = _build_preset_two_column(slide_data)
-                shapes = preset_shapes + (slide_data.get("shapes") or [])
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
             except Exception:
                 shapes = slide_data.get("shapes", [])
         elif preset_name == "narrative":
             try:
                 preset_shapes = _build_preset_narrative(slide_data)
-                shapes = preset_shapes + (slide_data.get("shapes") or [])
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
             except Exception:
                 shapes = slide_data.get("shapes", [])
         elif preset_name == "split":
-            # Spec D-Build-PresetSplit — 색면 2분할 (1단계: 코드 등록만, viz_pattern 미연결).
-            # narrative 와 동일 패턴 — 예외 시 LLM shapes 로 fallback, 정상 시 preset+shapes 합.
+            # Spec D-Build-PresetSplit — 색면 2분할.
             try:
                 preset_shapes = _build_preset_split(slide_data)
-                shapes = preset_shapes + (slide_data.get("shapes") or [])
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
             except Exception:
                 shapes = slide_data.get("shapes", [])
         else:

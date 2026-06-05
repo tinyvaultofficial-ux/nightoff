@@ -2259,10 +2259,12 @@ async def generate_outline(
         #   role=support(예산/일정/조직)·hero(컨셉/표지)·simple_box 에 박혀도 무력화.
         elif viz_pattern == "split":
             _rl_split = str(it.get("role", "")).strip().lower()
-            if _rl_split != "body":
+            _st_split = str(it.get("slide_type", "")).strip().lower()
+            # hero(컨셉 슬로건 등) 자리 침범 방지 — role=body 여도 slide_type=hero 면 차단.
+            if _rl_split != "body" or _st_split == "hero":
                 log.info(
-                    "D-Fix-SplitGuard 강등 p=%s role=%s",
-                    it.get("page"), _rl_split,
+                    "D-Fix-SplitGuard 강등 p=%s role=%s slide_type=%s",
+                    it.get("page"), _rl_split, _st_split,
                 )
                 viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
         # Spec D-Fix-BodyRole-1 — role 화이트리스트 (body/support/"" 만 허용).

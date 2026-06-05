@@ -6768,7 +6768,13 @@ def api_proposals_pptx(body: PptxExportIn, user: dict = Depends(get_current_user
         log.info("PPTX 생성: 도형 JSON 모드 (slides=%d)", len(proposal_json.get("slides", [])))
         try:
             import pptx_generator
-            shape_result = pptx_generator.generate_from_shape_json(proposal_json, out_path)
+            # Spec D-Build-ThemeConnect 1-b — theme 정책 조회 후 전달.
+            # 미시드/미존재/미정의 모두 'light' fallback (output_mode 와 동일 패턴).
+            # 라이트일 때 generate_from_shape_json 분기 미진입 → 동작 100% 무변경.
+            _theme = _get_policy("theme", "light")
+            shape_result = pptx_generator.generate_from_shape_json(
+                proposal_json, out_path, theme=_theme
+            )
             slide_count = shape_result.get("slide_count", 0)
             # D-Fix-PptxR2: PPTX 를 R2 에 영구 업로드 (로컬도 보존 = 이중 안전망 / R2 실패해도 생성 안 깨짐)
             try:
@@ -7075,7 +7081,9 @@ async def api_proposals_regenerate_page(
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        pptx_generator.generate_from_shape_json(payload, out_path)
+        # Spec D-Build-ThemeConnect 1-b — partial-regen 경로도 theme 전달(정합).
+        _theme = _get_policy("theme", "light")
+        pptx_generator.generate_from_shape_json(payload, out_path, theme=_theme)
     except Exception as e:
         log.exception("partial-regen: PPTX 생성 실패 conv=%s page=%d", conv_id, page)
         raise HTTPException(500, f"PPTX 생성 실패: {str(e)[:120]}")

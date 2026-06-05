@@ -30,6 +30,25 @@ from pptx import Presentation
 from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
 
+# Spec D-Build-ThemeConnect (1-b) — 다크 테마 토대 연결 (theme.py 토큰 사용).
+# 1-a(7c3ca11) 에서 정의만 한 토큰을 generate_from_shape_json 에서 처음 import.
+# theme="light" 일 때 토큰값(#1A1A1A 등) = 현재 운영 색과 정확 일치 → 라이트 동작 무변경.
+try:
+    from theme import get_theme as _get_theme  # noqa: F401
+except Exception:  # pragma: no cover — theme.py 누락 환경 (실험 폴더 등) 대비
+    def _get_theme(name: str = "light") -> dict:
+        # 안전 fallback — 라이트 팔레트만 인라인 (다크 호출되면 라이트로 떨어짐).
+        return {
+            "BG":          "#FFFFFF",
+            "FG":          "#1A1A1A",
+            "FG_SUB":      "#444444",
+            "FG_META":     "#999999",
+            "LINE":        "#DDDDDD",
+            "PANEL_FILL":  "#1A1A1A",
+            "PANEL_FG":    "#FFFFFF",
+            "ACCENT":      "#1A1A1A",
+        }
+
 log = logging.getLogger("pptx_gen")
 
 
@@ -1779,13 +1798,19 @@ def _add_star(slide, x, y, w, h, *, fill="#1A1A1A", stroke=None, stroke_width=No
     )
 
 
-def render_shape_to_slide(slide, shape_def):
+def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A"):
     """단일 도형 스펙(JSON) → 슬라이드에 그림.
 
     지원 type:
       [기존] rect, text, line, arrow, circle/ellipse/oval, image/image_placeholder
       [Stage A (5/19) 신규] chevron, pentagon, callout, block_arrow, star
     실패 시 None 반환 (다른 도형 렌더링은 계속됨).
+
+    [Spec D-Build-ThemeConnect 1-b]
+    default_text_color — text 도형의 color 가 누락됐을 때의 기본 글자색.
+      라이트(기본): "#1A1A1A" — 현재 운영과 동일.
+      다크: "#FFFFFF" — generate_from_shape_json 에서 theme="dark" 일 때 주입.
+    ★ shape_def 에 color 가 명시돼 있으면 그 값을 그대로 사용 — 기본값만 영향.
     """
     if not isinstance(shape_def, dict):
         return None
@@ -1804,6 +1829,7 @@ def render_shape_to_slide(slide, shape_def):
         if t == "text":
             # Spec D-Fix-GovColorRemove-1 — 거버닝 파랑(#1E40AF) 강제 휴리스틱 제거.
             # AI 가 SLIDE_SYSTEM_PROMPT 의 흑백 6색 규칙으로 출력하니 그 색 그대로 사용.
+            # Spec D-Build-ThemeConnect 1-b — color 누락 시 기본값을 theme 토큰으로(라이트=#1A1A1A 유지).
             return _add_text(
                 slide,
                 float(shape_def.get("x", 0)), float(shape_def.get("y", 0)),
@@ -1811,7 +1837,7 @@ def render_shape_to_slide(slide, shape_def):
                 str(shape_def.get("text", "")),
                 size=float(shape_def.get("size", 14)),
                 weight=int(shape_def.get("weight", 400)),
-                color=str(shape_def.get("color", "#1A1A1A")),
+                color=str(shape_def.get("color", default_text_color)),
                 align=str(shape_def.get("align", "left")),
                 valign=str(shape_def.get("valign", "top")),
                 font_family=shape_def.get("font_family"),
@@ -2655,7 +2681,7 @@ def _build_preset_hsplit(slide_data):
     return shapes
 
 
-def generate_from_shape_json(json_data, output_path):
+def generate_from_shape_json(json_data, output_path, *, theme="light"):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
     json_data 형식:
@@ -2676,6 +2702,14 @@ def generate_from_shape_json(json_data, output_path):
           ...
         ]
       }
+
+    [Spec D-Build-ThemeConnect 1-b — 다크 테마 토대 연결]
+    theme — 'light'(기본) / 'dark'.
+      'light' 일 때 → 분기 미진입(if theme == "dark" 가드), 동작 100% 무변경.
+      'dark'  일 때 → (1) 슬라이드별 검정 배경 rect 를 "맨 처음" prepend,
+                      (2) text 도형 color 누락 시 기본 글자색을 흰색(FG)으로.
+    ★ 명시된 color 는 변환하지 않음 (이번 단계는 기본값만 — 1-c 이후 명시색 매핑).
+    main.py 호출부에서 _get_policy('theme', 'light') 결과를 전달.
     """
     if not isinstance(json_data, dict):
         raise ValueError("json_data 가 dict 가 아님")
@@ -2693,6 +2727,17 @@ def generate_from_shape_json(json_data, output_path):
     prs.slide_height = Inches(sh)
     blank_layout = prs.slide_layouts[6]
 
+    # Spec D-Build-ThemeConnect 1-b — theme 토큰 해석.
+    # 라이트는 분기 미진입이므로 토큰 dict 만 가져와 두고 사용 안 함(아래 가드 참조).
+    # default_text_color: 라이트=#1A1A1A (현재 운영 그대로) / 다크=tokens["FG"]=#FFFFFF.
+    _tokens = _get_theme(theme) if theme == "dark" else None
+    if theme == "dark" and _tokens:
+        default_text_color = _tokens.get("FG", "#FFFFFF")
+        dark_bg = _tokens.get("BG", "#0A0A0A")
+    else:
+        default_text_color = "#1A1A1A"  # 라이트 = 현재 운영 기본값(무변경 보장)
+        dark_bg = None
+
     rendered_total = 0
     errors_total = []
     for slide_idx, slide_data in enumerate(slides_data):
@@ -2701,6 +2746,17 @@ def generate_from_shape_json(json_data, output_path):
             prs.slides.add_slide(blank_layout)
             continue
         slide = prs.slides.add_slide(blank_layout)
+        # Spec D-Build-ThemeConnect 1-b — 다크 모드만 검정 배경 rect prepend.
+        # 라이트는 이 블록 미진입 → 흰 바탕 inherit (PPT 기본, 현재 동작 그대로).
+        # 다른 모든 도형 위에 깔리지 않도록 슬라이드 첫 도형으로 추가(추가 순=하단).
+        if theme == "dark" and dark_bg:
+            try:
+                _add_rect(slide, 0, 0, sw, sh, fill=dark_bg, stroke=None)
+            except Exception as _bg_err:
+                errors_total.append(
+                    "slide" + str(slide_idx) + ":dark_bg: " +
+                    type(_bg_err).__name__ + ": " + str(_bg_err)
+                )
         # Spec D-Fix-Preset1 / D-Fix-PresetNoOverlap — 옵트인 레이아웃 프리셋.
         # 분기 패턴: preset 성공(도형 리스트 != []) → preset 도형만(백업 폐기, 겹침 방지).
         #            preset 실패(필수 키 누락 → []) → LLM 백업 fallback(빈 페이지 방지).
@@ -2803,7 +2859,11 @@ def generate_from_shape_json(json_data, output_path):
             continue
         for shape_idx, shape_def in enumerate(shapes):
             try:
-                result = render_shape_to_slide(slide, shape_def)
+                # Spec D-Build-ThemeConnect 1-b — default_text_color 주입.
+                # 라이트=#1A1A1A(현재값 그대로), 다크=tokens["FG"]=#FFFFFF.
+                # shape_def 에 "color" 명시 시 그 값이 우선(이번 단계는 기본값만).
+                result = render_shape_to_slide(slide, shape_def,
+                                               default_text_color=default_text_color)
                 if result is not None:
                     rendered_total += 1
             except Exception as e:

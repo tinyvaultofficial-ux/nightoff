@@ -2408,8 +2408,12 @@ def _build_slide_user_prompt(
                 f'  · "style": "{_style_v}"     (필수)\n'
                 f"  · 본문 키 — {_keys_hint}\n"
                 f"  · (선택) \"eyebrow\" — 좌상단 메타 라벨(섹션 breadcrumb 등, 11pt 회색)\n"
-                f"  → 코드가 좌표·폰트·정렬 자동 배치. shapes 배열은 비우거나 페이지번호 같은 메타 도형만.\n"
-                f"  ★ preset 키 누락 시 페이지가 박스로 회귀(다양성 효과 0) — 반드시 포함."
+                f"  → 코드가 preset 좌표·폰트·정렬을 자동 배치한다.\n"
+                f"  ★ 단, 만일을 위해 shapes 배열에도 이 페이지의 핵심 메시지를 담은 일반 text 도형 2~4개를\n"
+                f"    백업으로 채워라(제목 1개 + 본문 1~3개, 박스/카드 없이 text만, 흑백 6색,\n"
+                f"    A4 가로 11.69x8.27 좌표 안). preset이 정상 작동하면 백업 도형은 자연스럽게 아래에\n"
+                f"    배치되거나 무시될 수 있으나, preset 키 처리에 실패해도 페이지가 비지 않도록 반드시 채운다.\n"
+                f"  ★ preset 키 누락 시 페이지가 박스로 회귀(다양성 효과 0) — preset 키는 반드시 포함."
             )
         else:
             parts.append(
@@ -2816,6 +2820,60 @@ async def generate_slides_parallel(
         yield await coro
 
 
+# ─── Spec D-Fix-EmptyPageSafeguard — 빈 페이지 판정 helper ──────────────────
+# shapes 가 '비었느냐'(len==0) 가 아니라 '의미있는 도형이 있느냐'로 판정.
+# text_quote/text_declaration 페이지에서 LLM 이 백업 도형은 안 채우고 페이지번호만
+# 박은 경우(또는 일반 페이지가 들러리만 가진 경우) 0개로 카운트되어 복원 경로 진입.
+#
+# 들러리(=내용 아님) 판정:
+#   · text 도형 중 (size <= 12 AND color 가 회색계열) — 페이지번호·메타 라벨
+#   · text 도형 중 본문이 비어있는 경우
+#   · rect 중 캔버스(11.69 x 8.27 인치) 거의 전체를 덮는 배경 rect (w>=11 AND h>=8)
+# 그 외 도형(text 본문 / rect 박스 / line / arrow / circle / chevron / image 등) = 1개씩 카운트.
+def _meaningful_shape_count(shapes) -> int:
+    """들러리(페이지번호·배경)을 제외한 의미있는 도형 개수.
+
+    회색 계열: #999/#666/#444/#bbb/#ddd 계열(짧은·긴 hex 모두 매칭).
+    들러리 판정 기준은 보수적으로 — 애매하면 1개로 셈(false negative 회피).
+    """
+    if not isinstance(shapes, list):
+        return 0
+    _GRAY_HEXES = {"#999", "#999999", "#666", "#666666", "#444", "#444444",
+                   "#bbb", "#bbbbbb", "#ddd", "#dddddd"}
+    cnt = 0
+    for s in shapes:
+        if not isinstance(s, dict):
+            continue
+        t = str(s.get("type", "")).strip().lower()
+        if t == "text":
+            text = str(s.get("text", "")).strip()
+            if not text:
+                continue  # 빈 텍스트 = 들러리
+            try:
+                size = float(s.get("size", 14))
+            except Exception:
+                size = 14.0
+            color = str(s.get("color", "")).strip().lower()
+            # 작은 회색 = 페이지번호·메타
+            if size <= 12 and color in _GRAY_HEXES:
+                continue
+            cnt += 1
+        elif t in ("rect", "rectangle"):
+            try:
+                w = float(s.get("w", 0))
+                h = float(s.get("h", 0))
+            except Exception:
+                w = h = 0.0
+            # 거의 전체 캔버스 덮는 배경 rect = 들러리
+            if w >= 11 and h >= 8:
+                continue
+            cnt += 1
+        else:
+            # line / arrow / circle / chevron / image 등은 본문 시각요소로 카운트
+            cnt += 1
+    return cnt
+
+
 # ─── Phase 3: 병합 + 진행률 SSE ──────────────────────────────────────────────
 async def orchestrate(
     *,
@@ -2942,9 +3000,14 @@ async def orchestrate(
             # html 모드도 final_slides 에 section 메타만 보존 (audit / regen 호환)
             final_slides.append({"section": sr.section, "shapes": [], "html_only": True})
         else:
-            # 기존 shapes 모드 — 한 글자도 변경 없음.
-            if sr.error or not sr.shapes:
-                # 빈 슬라이드 placeholder (전체 실패 막기)
+            # 기존 shapes 모드.
+            # Spec D-Fix-EmptyPageSafeguard — 3 분기:
+            #   1) sr.error 진짜 API 실패 → 기존 오류 안내 placeholder 유지
+            #   2) shapes 는 있으나 의미있는 도형 0개(text_*+preset 누락 등 들러리만) →
+            #      outline 항목의 governing_main + key_msgs 로 최소 정상 페이지 복원
+            #   3) 정상 → sr.shapes 그대로 (기존 동작)
+            if sr.error:
+                # API 실패 등 진짜 오류 — 기존 placeholder 유지 (한 글자도 변경 없음)
                 final_slides.append({
                     "section": sr.section,
                     "shapes": [
@@ -2952,6 +3015,51 @@ async def orchestrate(
                          "text": f"[페이지 {sr.page} 일시 생성 오류 — 제안서를 다시 만들어주세요]",
                          "size": 18, "color": "#999"},
                     ],
+                })
+            elif _meaningful_shape_count(sr.shapes) == 0:
+                # 의미있는 도형 0개 — outline 항목으로 최소 정상 페이지 복원.
+                # 재생성(LLM 추가 호출) 없이 이미 가지고 있는 outline 데이터만 사용.
+                _oitem = next(
+                    (it for it in outline.outline if it.page == sr.page), None,
+                )
+                _title = (_oitem.governing_main if _oitem else "") or sr.section or ""
+                _msgs = list(_oitem.key_msgs) if _oitem else []
+                _restored: list[dict] = []
+                # 제목 (큰 텍스트, 검정) — A4 가로 11.69x8.27 / 흑백 6색
+                _restored.append({
+                    "type": "text",
+                    "x": 0.9, "y": 1.0, "w": 9.89, "h": 1.2,
+                    "text": _title[:80],
+                    "size": 28, "weight": 700, "color": "#1A1A1A",
+                    "align": "left", "valign": "top",
+                })
+                # 본문 (key_msgs 각 줄 — 최대 5개, 1.0 인치 간격)
+                _y = 2.6
+                for _m in _msgs[:5]:
+                    _restored.append({
+                        "type": "text",
+                        "x": 0.9, "y": _y, "w": 9.89, "h": 1.0,
+                        "text": str(_m)[:160],
+                        "size": 16, "weight": 400, "color": "#1A1A1A",
+                        "align": "left", "valign": "top",
+                    })
+                    _y += 1.0
+                # key_msgs 도 없으면 안내 한 줄 (최후 fallback)
+                if not _msgs:
+                    _restored.append({
+                        "type": "text",
+                        "x": 0.9, "y": 2.6, "w": 9.89, "h": 1.0,
+                        "text": "[페이지 내용 준비 중]",
+                        "size": 16, "weight": 400, "color": "#666666",
+                        "align": "left", "valign": "top",
+                    })
+                log.warning(
+                    "D-Fix-EmptyPageSafeguard 복원 p%d (의미 도형 0개 → outline %d개로 복원, raw_shapes=%d)",
+                    sr.page, len(_restored), len(sr.shapes or []),
+                )
+                final_slides.append({
+                    "section": sr.section,
+                    "shapes": _restored,
                 })
             else:
                 final_slides.append({"section": sr.section, "shapes": sr.shapes})

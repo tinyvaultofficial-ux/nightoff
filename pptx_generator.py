@@ -2491,6 +2491,68 @@ def _build_preset_timeline(slide_data):
     return shapes
 
 
+# ─── Spec D-Build-PresetAsymmetric — asymmetric (비대칭 2분할) 레이아웃 프리셋 ─
+# 좌측 흰 영역(약 65%) + 우측 검정 영역(약 35%) — 좌측은 큰 숫자/메인 헤드라인/포인트
+# 텍스트 위계, 우측 검정면은 흰 글씨 보조 항목 리스트(label/desc).
+# 입력 스키마:
+#   slide_data["eyebrow"] = "좌상단 메타 라벨"      (선택)
+#   slide_data["number"]  = "큰 숫자/번호"          (선택, 예 "01")
+#   slide_data["head"]    = "큰 헤드라인"           (필수)
+#   slide_data["points"]  = ["좌측 본문 포인트", ...] (선택, 최대 3)
+#   slide_data["items"]   = [{"label","desc"}, ...]   (선택, 최대 4 — 우측 검정면)
+# 안전망: head 누락 → 빈 리스트 반환. 1단계는 코드만 등록 — viz_pattern 연결은 별도 spec.
+def _build_preset_asymmetric(slide_data):
+    eyebrow = str(slide_data.get("eyebrow", "")).strip()
+    number  = str(slide_data.get("number", "")).strip()
+    head    = str(slide_data.get("head", "")).strip()
+    pts = [str(p).strip() for p in (slide_data.get("points") or []) if str(p).strip()][:3]
+    items_raw = slide_data.get("items") or []
+    items = []
+    if isinstance(items_raw, list):
+        for it in items_raw:
+            if not isinstance(it, dict):
+                continue
+            lab = str(it.get("label", "")).strip()
+            dsc = str(it.get("desc", "")).strip()
+            if lab or dsc:
+                items.append({"label": lab, "desc": dsc})
+    items = items[:4]
+    if not head:
+        return []
+    W, H = 11.69, 8.27
+    divider_x = 7.6
+    shapes = []
+    shapes.append({"type":"rect","x":divider_x,"y":0,"w":W-divider_x,"h":H,"fill":"#1A1A1A"})
+    if eyebrow:
+        shapes.append({"type":"text","x":0.9,"y":0.5,"w":6.0,"h":0.4,"text":eyebrow,"size":11,"weight":400,"color":"#BBBBBB","align":"left","valign":"top"})
+    lx = 0.9
+    lw = divider_x - lx - 0.5
+    y = 1.6
+    if number:
+        shapes.append({"type":"text","x":lx,"y":y,"w":lw,"h":1.0,"text":number,"size":54,"weight":800,"color":"#1A1A1A","align":"left","valign":"top"})
+        y += 1.3
+    shapes.append({"type":"text","x":lx,"y":y,"w":lw,"h":1.4,"text":head,"size":28,"weight":800,"color":"#1A1A1A","align":"left","valign":"top"})
+    y += 1.5
+    for p in pts:
+        shapes.append({"type":"text","x":lx,"y":y,"w":lw,"h":0.7,"text":p,"size":14,"weight":400,"color":"#444444","align":"left","valign":"top"})
+        y += 0.8
+    rx = divider_x + 0.5
+    rw = W - rx - 0.5
+    if items:
+        ry_top = 1.7
+        ry_bot = H - 1.0
+        n = len(items)
+        gap = (ry_bot - ry_top) / n
+        for i, it in enumerate(items):
+            iy = ry_top + i * gap
+            if it["label"]:
+                shapes.append({"type":"text","x":rx,"y":iy,"w":rw,"h":0.4,"text":it["label"],"size":14,"weight":700,"color":"#FFFFFF","align":"left","valign":"top"})
+                iy += 0.42
+            if it["desc"]:
+                shapes.append({"type":"text","x":rx,"y":iy,"w":rw,"h":0.8,"text":it["desc"],"size":12,"weight":400,"color":"#BBBBBB","align":"left","valign":"top"})
+    return shapes
+
+
 def generate_from_shape_json(json_data, output_path):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -2593,6 +2655,17 @@ def generate_from_shape_json(json_data, output_path):
             # split 과 동일 패턴 — 성공 시 preset 만(겹침 차단), 실패/예외 시 LLM 백업.
             try:
                 preset_shapes = _build_preset_timeline(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "asymmetric":
+            # Spec D-Build-PresetAsymmetric — 비대칭 2분할(좌 흰/우 검정) (1단계: 코드 등록만, viz_pattern 미연결).
+            # timeline/split 과 동일 패턴 — 성공 시 preset 만(겹침 차단), 실패/예외 시 LLM 백업.
+            try:
+                preset_shapes = _build_preset_asymmetric(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

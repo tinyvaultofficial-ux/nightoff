@@ -2462,6 +2462,7 @@ def _build_slide_user_prompt(
     domain: str = "other",
     quantitative_locks: dict | None = None,
     output_mode: str = "shapes",  # Spec D-Fix-HTMLPromptConflict — "shapes"|"html"
+    theme: str = "light",         # Spec D-Build-TextRunsInject 1-d-② — "light"|"dark"
 ) -> str:
     # 본인 회사명 inject 제거 (한국 공공입찰 청렴제 — 회사명 본문 등장 비정상)
     parts = [
@@ -2766,6 +2767,33 @@ def _build_slide_user_prompt(
     else:
         parts.append("위 정보를 바탕으로 이 한 슬라이드의 도형 JSON 을 출력해라.")
         parts.append(f"출력 = {{ \"section\": \"{item.section}\", \"shapes\": [...] }}")
+
+    # Spec D-Build-TextRunsInject (1-d-②) — 다크 형광 강조 안내.
+    # 1-d-①(ed54e36) 에서 렌더 메커니즘 완성: text_runs 필드의 accent:true run 만 다크에서 #9CFF00.
+    # ★ theme!='dark' 면 본 블록 미주입 → 라이트 동작 한 글자도 안 바뀜.
+    # ★ SLIDE_SYSTEM_PROMPT(baseline, md5 87d5c91) 무수정 — 동적 user prompt 끝부분에만 추가.
+    if theme == "dark":
+        parts.append("")
+        parts.append("[다크 강조 — 형광 (text_runs)]")
+        parts.append(
+            "이 제안서는 검정 배경 + 흰 글씨로 출력된다. 글의 핵심을 형광 그린(#9CFF00)으로\n"
+            "강조할 수 있다. 강조 방법: text 도형에 \"text_runs\" 필드를 추가한다.\n"
+            "  예) \"text\": \"누적 수주 46조원 달성\",\n"
+            "      \"text_runs\": [\n"
+            "        {\"t\": \"누적 수주 \"},\n"
+            "        {\"t\": \"46조원\", \"accent\": true},\n"
+            "        {\"t\": \" 달성\"}\n"
+            "      ]\n"
+            "  (text 필드는 fallback 으로 같이 둔다. text_runs 의 t 를 모두 이으면 text 와 같아야 한다.)\n"
+            "\n"
+            "★★ 강조는 \"이 페이지에서 가장 중요한 1개, 많아야 2개\"만. 정량 수치(46조원·90%·200팀)나\n"
+            "    핵심 키워드(차별화 포인트·결정적 단어)에만 적용.\n"
+            "★★ 과용 절대 금지: 한 페이지에 형광이 3곳 이상이면 강조 효과가 사라진다.\n"
+            "    애매하면 강조하지 마라 (text_runs 생략).\n"
+            "★  거버닝(제목) · 큰 숫자 · 핵심 메시지에 우선 적용. 평범한 본문·나열 항목엔 쓰지 마라.\n"
+            "★  강조할 게 마땅치 않은 페이지는 text_runs 없이 일반 text 만 출력해도 된다\n"
+            "    (강조 없는 페이지가 있어도 좋다)."
+        )
     return "\n".join(parts)
 
 
@@ -2881,6 +2909,7 @@ async def generate_one_slide(
     domain: str = "other",
     quantitative_locks: dict | None = None,
     output_mode: str = "shapes",  # Spec D-Build-HTMLOutput — "shapes"|"html"
+    theme: str = "light",         # Spec D-Build-TextRunsInject 1-d-② — "light"|"dark"
 ) -> SlideResult:
     # Spec D-Build-Path1Connect — HTML 모드는 LLM 호출 전 path1 조립 경로 우선 시도.
     # 성공 시: LLM 호출 0회 + 즉시 return (비용 절감 + 좌표 정밀, LLM 이 디자인 안 만짐)
@@ -2959,6 +2988,7 @@ async def generate_one_slide(
         domain=domain,
         quantitative_locks=quantitative_locks,
         output_mode=output_mode,  # Spec D-Fix-HTMLPromptConflict — user 마지막 명령도 모드 분기
+        theme=theme,              # Spec D-Build-TextRunsInject 1-d-② — 다크 형광 inject 분기
     )
     # Spec D-Build-HTMLOutput — output_mode 분기 (기본 'shapes' = 기존 동작 그대로).
     # 'html' 모드 = admin + 토글 'Y' 조건 충족 시에만 진입.
@@ -3123,6 +3153,7 @@ async def generate_slides_parallel(
     concurrency: int = 5,
     model: str = "",
     output_mode: str = "shapes",  # Spec D-Build-HTMLOutput — "shapes"|"html"
+    theme: str = "light",         # Spec D-Build-TextRunsInject 1-d-② — "light"|"dark"
 ) -> AsyncIterator[SlideResult]:
     """슬라이드들을 동시 N 개씩 병렬 호출하면서, 끝나는 대로 yield.
 
@@ -3150,6 +3181,7 @@ async def generate_slides_parallel(
                 domain=outline.domain,
                 quantitative_locks=outline.quantitative_locks,
                 output_mode=output_mode,
+                theme=theme,    # Spec D-Build-TextRunsInject 1-d-②
             )
 
     tasks = [asyncio.create_task(_bound(it)) for it in outline.outline]
@@ -3225,6 +3257,7 @@ async def orchestrate(
     model: str = "",
     pages_override: Optional[int] = None,
     output_mode: str = "shapes",  # Spec D-Build-HTMLOutput — "shapes"|"html"
+    theme: str = "light",         # Spec D-Build-TextRunsInject 1-d-② — "light"|"dark"
 ) -> AsyncIterator[dict]:
     """전체 파이프라인 실행. dict 이벤트 stream 으로 yield.
 
@@ -3283,6 +3316,7 @@ async def orchestrate(
     async for sr in generate_slides_parallel(
         client, outline, rag_for_slide, concurrency, model,
         output_mode=output_mode,
+        theme=theme,    # Spec D-Build-TextRunsInject 1-d-②
     ):
         slides[sr.page] = sr
         done_count += 1

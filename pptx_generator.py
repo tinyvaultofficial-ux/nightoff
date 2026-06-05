@@ -2621,6 +2621,40 @@ def _build_preset_zigzag(slide_data):
     return shapes
 
 
+# ─── Spec D-Build-PresetHsplit — hsplit (가로 분할 — 위 이미지/아래 텍스트) ─────
+# 상단 이미지 영역 placeholder(회색 박스) + 하단 텍스트(헤드라인 + 설명).
+# 한 페이지가 "주제 + 시각" 단순 구성일 때 사용 — 이미지 1장 + 본문 한 묶음.
+# 입력 스키마:
+#   slide_data["eyebrow"] = "좌상단 메타 라벨"        (선택)
+#   slide_data["head"]    = "큰 헤드라인"             (필수)
+#   slide_data["desc"]    = "한 줄 설명"              (선택)
+#   slide_data["caption"] = "이미지 placeholder 안 안내" (선택, 기본 "이미지 영역")
+# 안전망: head 누락 시 빈 리스트 반환.
+# 1 단계는 코드만 등록 — viz_pattern 연결은 별도 spec.
+def _build_preset_hsplit(slide_data):
+    eyebrow = str(slide_data.get("eyebrow", "")).strip()
+    head    = str(slide_data.get("head", "")).strip()
+    desc    = str(slide_data.get("desc", "")).strip()
+    caption = str(slide_data.get("caption", "")).strip() or "이미지 영역"
+    if not head:
+        return []
+    W, H = 11.69, 8.27
+    shapes = []
+    if eyebrow:
+        shapes.append({"type":"text","x":0.9,"y":0.5,"w":9.89,"h":0.4,"text":eyebrow,"size":11,"weight":400,"color":"#BBBBBB","align":"left","valign":"top"})
+    img_x = 0.9
+    img_w = W - img_x * 2
+    img_top = 1.1
+    img_h = 3.8
+    shapes.append({"type":"rect","x":img_x,"y":img_top,"w":img_w,"h":img_h,"fill":"#F5F5F5","stroke":"#DDDDDD","stroke_width":1})
+    shapes.append({"type":"text","x":img_x,"y":img_top + img_h/2 - 0.2,"w":img_w,"h":0.4,"text":caption,"size":12,"weight":400,"color":"#BBBBBB","align":"center","valign":"middle"})
+    txt_top = img_top + img_h + 0.5
+    shapes.append({"type":"text","x":img_x,"y":txt_top,"w":img_w,"h":0.8,"text":head,"size":26,"weight":800,"color":"#1A1A1A","align":"left","valign":"top"})
+    if desc:
+        shapes.append({"type":"text","x":img_x,"y":txt_top + 0.9,"w":img_w,"h":0.9,"text":desc,"size":14,"weight":400,"color":"#444444","align":"left","valign":"top"})
+    return shapes
+
+
 def generate_from_shape_json(json_data, output_path):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -2745,6 +2779,17 @@ def generate_from_shape_json(json_data, output_path):
             # asymmetric/timeline/split 과 동일 패턴 — 성공 시 preset 만(겹침 차단), 실패/예외 시 LLM 백업.
             try:
                 preset_shapes = _build_preset_zigzag(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "hsplit":
+            # Spec D-Build-PresetHsplit — 가로 분할(위 이미지/아래 텍스트) (1단계: 코드 등록만, viz_pattern 미연결).
+            # zigzag/asymmetric/timeline/split 과 동일 패턴 — 성공 시 preset 만(겹침 차단), 실패/예외 시 LLM 백업.
+            try:
+                preset_shapes = _build_preset_hsplit(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

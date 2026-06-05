@@ -7042,10 +7042,13 @@ async def api_proposals_regenerate_page(
         raise HTTPException(500, f"페이지 재생성 실패: {sr.error or 'shapes 비어있음'}")
 
     # 8. payload 업데이트 (slides[page-1] 교체)
-    payload["slides"][page - 1] = {
-        "section": sr.section,
-        "shapes": sr.shapes,
-    }
+    # Spec D-Build-PresetBelt — sr.meta(preset/left/right 등)를 펼쳐 박되 section/shapes 우선.
+    # meta 가 비면(=기존 6종 viz_pattern, LLM 이 preset 키 안 채운 경우) preset 없는 dict
+    # 그대로 박힘 → generate_from_shape_json else 분기 직행 → 기존 동작 무변경.
+    _slide = dict(sr.meta) if isinstance(getattr(sr, "meta", None), dict) else {}
+    _slide["section"] = sr.section
+    _slide["shapes"] = sr.shapes
+    payload["slides"][page - 1] = _slide
 
     # 9. 새 assistant 메시지 INSERT — history 보존 (옛 메시지는 audit 용 잔존)
     assistant_id = uuid.uuid4().hex[:12]

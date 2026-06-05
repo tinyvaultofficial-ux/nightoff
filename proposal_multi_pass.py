@@ -2088,6 +2088,12 @@ class SlideResult:
     # Spec D-Build-HTMLOutput — html 모드 결과 (output_mode='html' 시에만 채워짐).
     # shapes 모드 (기본) = "" 빈 문자열 그대로. 기존 호출자 영향 0 (필드 default 있음).
     html: str = ""
+    # Spec D-Build-PresetBelt — LLM 출력의 shapes/section 외 모든 키(preset/style/left/right/
+    # declaration/grounds/quote/eyebrow/flow/conclusion/metrics/steps/columns/... 등)를 통째로
+    # 보존하기 위한 자유 dict. 통합 빌더·partial-regen 에서 payload["slides"][i] 로 펼쳐 박힘.
+    # → generate_from_shape_json 의 preset 분기(_build_preset_*)가 정상 호출되어 색면/위계가
+    # PPTX 에 그려진다. 기본값 {} → 기존 호출자(error/html/path1 경로) 영향 0.
+    meta: dict = field(default_factory=dict)
 
 
 # ─── 유틸 ─────────────────────────────────────────────────────────────────────
@@ -2836,11 +2842,17 @@ async def generate_one_slide(
                     bool(_right_head),
                     (raw or "").replace("\n", " ")[:2000],
                 )
+            # Spec D-Build-PresetBelt — parsed 의 shapes/section 외 키(preset/style/left/right/
+            # declaration/grounds/quote/... 등)를 meta 에 통째 보존.
+            # 통합 빌더·partial-regen 이 payload["slides"][i] 로 펼쳐 박아 preset 분기 정상 호출.
+            # 6종 viz_pattern 페이지는 LLM 이 preset 키를 안 채우므로 meta 비어 영향 0.
+            _meta = {k: v for k, v in parsed.items() if k not in ("shapes", "section")}
             return SlideResult(
                 page=item.page,
                 section=str(parsed.get("section", item.section)),
                 shapes=parsed["shapes"],
                 html=html_text,
+                meta=_meta,
             )
         except Exception as e:
             last_err = str(e)[:200]
@@ -3148,7 +3160,13 @@ async def orchestrate(
                     "shapes": _restored,
                 })
             else:
-                final_slides.append({"section": sr.section, "shapes": sr.shapes})
+                # Spec D-Build-PresetBelt — sr.meta(preset/left/right 등)를 펼쳐 박되 section/shapes 우선.
+                # meta 가 비면(=기존 6종 viz_pattern, LLM 이 preset 키 안 채운 경우) preset 없는 dict
+                # 그대로 박힘 → generate_from_shape_json else 분기 직행 → 기존 동작 무변경.
+                _slide = dict(sr.meta) if isinstance(sr.meta, dict) else {}
+                _slide["section"] = sr.section
+                _slide["shapes"] = sr.shapes
+                final_slides.append(_slide)
 
     # html 모드 전용 — final_payload 에 html 통합 문자열 추가 (.slide × N).
     # Spec D-Fix-PaperlogyFontFace — @font-face 9개로 Paperlogy 통합 family 등록.

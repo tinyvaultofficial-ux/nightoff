@@ -2366,6 +2366,57 @@ def _narrative_contrast(slide_data: dict) -> list:
     return shapes
 
 
+# ─── Spec D-Build-PresetSplit — split (색면 2분할) 레이아웃 프리셋 ─────────────
+# 좌 검정/우 흰 색면 대비 + 좌우 각각 (label / head / points 1~4) 텍스트 위계.
+# 입력 스키마:
+#   slide_data["left"]  = {"label": "...", "head": "...(필수)", "points": [..., ...]}
+#   slide_data["right"] = {"label": "...", "head": "...(필수)", "points": [..., ...]}
+# 안전망: left/right 가 dict 아님 / head 누락 → 빈 리스트 반환 (호출부 try/except 와
+#         별개 안전 fallback). 1 단계는 코드만 등록 — viz_pattern 연결은 별도 spec.
+def _build_preset_split(slide_data):
+    left  = slide_data.get("left")  or {}
+    right = slide_data.get("right") or {}
+    if not isinstance(left, dict) or not isinstance(right, dict):
+        return []
+    l_label = str(left.get("label", "")).strip()
+    l_head  = str(left.get("head", "")).strip()
+    l_pts = [str(p).strip() for p in (left.get("points") or []) if str(p).strip()][:4]
+    r_label = str(right.get("label", "")).strip()
+    r_head  = str(right.get("head", "")).strip()
+    r_pts = [str(p).strip() for p in (right.get("points") or []) if str(p).strip()][:4]
+    if not l_head or not r_head:
+        return []
+    W, H = 11.69, 8.27
+    half = W / 2
+    shapes = [
+        {"type":"rect","x":0,"y":0,"w":half,"h":H,"fill":"#1A1A1A"},
+        {"type":"rect","x":half,"y":0,"w":half,"h":H,"fill":"#FFFFFF"},
+    ]
+    def _start_y(label, pts):
+        block = 0.0
+        if label: block += 0.5 + 0.2
+        block += 1.2
+        if pts: block += 0.5 + len(pts) * 0.62
+        return max(0.8, (H - block) / 2)
+    def _build_side(x, w, label, head, pts, label_color, head_color, pt_color, head_weight):
+        out = []
+        y = _start_y(label, pts)
+        if label:
+            out.append({"type":"text","x":x,"y":y,"w":w,"h":0.5,"text":label,"size":13,"weight":700,"color":label_color,"align":"center","valign":"middle"})
+            y += 0.7
+        out.append({"type":"text","x":x,"y":y,"w":w,"h":1.2,"text":head,"size":26,"weight":head_weight,"color":head_color,"align":"center","valign":"middle"})
+        y += 1.7
+        for p in pts:
+            out.append({"type":"text","x":x,"y":y,"w":w,"h":0.55,"text":p,"size":13,"weight":400,"color":pt_color,"align":"center","valign":"middle"})
+            y += 0.62
+        return out
+    lx, lw = 0.6, half - 1.2
+    rx, rw = half + 0.6, half - 1.2
+    shapes += _build_side(lx, lw, l_label, l_head, l_pts, "#FFFFFF", "#FFFFFF", "#DDDDDD", 800)
+    shapes += _build_side(rx, rw, r_label, r_head, r_pts, "#1A1A1A", "#1A1A1A", "#444444", 800)
+    return shapes
+
+
 def generate_from_shape_json(json_data, output_path):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -2435,6 +2486,14 @@ def generate_from_shape_json(json_data, output_path):
         elif preset_name == "narrative":
             try:
                 preset_shapes = _build_preset_narrative(slide_data)
+                shapes = preset_shapes + (slide_data.get("shapes") or [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "split":
+            # Spec D-Build-PresetSplit — 색면 2분할 (1단계: 코드 등록만, viz_pattern 미연결).
+            # narrative 와 동일 패턴 — 예외 시 LLM shapes 로 fallback, 정상 시 preset+shapes 합.
+            try:
+                preset_shapes = _build_preset_split(slide_data)
                 shapes = preset_shapes + (slide_data.get("shapes") or [])
             except Exception:
                 shapes = slide_data.get("shapes", [])

@@ -674,7 +674,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
 [viz_pattern 사전 배정 규칙 — Spec D-Fix-LayoutVariety-1 / D-Fix-NarrativeDiversity]
 모든 outline 항목에 "viz_pattern" 필드를 포함. 본문 페이지(slide_type=text_box / 일부 hero)는 아래 8종 중 하나의 키를 배정. 특수 페이지(표지 / 목차 / 챕터 divider / 감사 / 마무리)는 "" 빈 문자열.
 
-안전 12종 풀 (이 외 값 배정 금지 — 위험 4종은 절대 풀에 X):
+안전 13종 풀 (이 외 값 배정 금지 — 위험 4종은 절대 풀에 X):
   · 2col          — 좌우 2분할 (현재/개선·문제/해결·전후)
   · cards3        — 3카드 등분 비교 (평행 분류·차별점)
   · process       — 가로 단계 흐름 (절차·추진 단계·일정 흐름)
@@ -716,6 +716,13 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
                               (예: 귀사가 겪는 문제 4가지, 우리의 강점 4가지, 핵심 특징 6가지)
                        ⚠ 부적합: 순차 단계(흐름) → timeline / role=support
                        ※ 순차 단계는 timeline / 항목 나열 리듬은 zigzag. 짝수(4 or 6) 권장.
+  · hsplit           — 가로 분할 (위 큰 이미지 / 아래 제목·설명)
+                       ★ 적합: role=body 페이지의 "비주얼 중심" 페이지
+                              (예: 개념·솔루션 소개, 챕터 도입, 핵심 이미지 강조, 시각 비교)
+                       ⚠ 부적합: 텍스트를 많이 담아야 하는 페이지(정보·항목 많음) → cards/2col /
+                              role=support
+                       ※ 텍스트가 적고 비주얼이 본질일 때만. 좌우(세로) 분할은 split/asymmetric,
+                          위아래(가로) 분할은 hsplit.
 
 ★ 컨셉 슬로건 페이지는 별도 hero 페이지(카탈로그 11번)가 담당.
   text_* 키로 컨셉 슬로건을 만들지 말 것 — 컨셉 슬로건은 80~90pt 거대 슬로건 hero,
@@ -724,7 +731,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
   그 외 위치(hero/support/simple_box)에 박으면 코드가 자동 "" 강등(D-Fix-NarrativeGuard).
 
 분배 규칙 (★ 매핑형 절대 금지 — "이 내용엔 반드시 이 패턴"식 X):
-① 본문 페이지 전체에 12종이 골고루 분포하게. 특정 1~2종 편중 금지.
+① 본문 페이지 전체에 13종이 골고루 분포하게. 특정 1~2종 편중 금지.
 ② 직전 본문 페이지와 같은 viz_pattern 을 연속 배정 X (반드시 다른 키).
 ③ 페이지 내용이 특정 패턴에 자연스러우면 그것을 우선 선택하되, 다양성을 우선 — 억지로 맞추지 말고 자연스러운 후보 2~3개 중 직전과 다른 것 선택.
 ④ ★ 박스/카드 계열(cards3 / before_after / cards_grid) 합산 cap — 본문 페이지의 40% 이내
@@ -2261,7 +2268,7 @@ async def generate_outline(
         # outline AI 가 위험 4종 또는 임의 값을 박더라도 안전 풀 밖이면 ""로 fallback.
         _VIZ_PATTERN_SAFE = {"2col", "cards3", "process", "before_after", "quant", "cards_grid",
                              "text_quote", "text_declaration", "split", "timeline", "asymmetric",
-                             "zigzag"}
+                             "zigzag", "hsplit"}
         viz_pattern_raw = str(it.get("viz_pattern", "")).strip().lower()
         viz_pattern = viz_pattern_raw if viz_pattern_raw in _VIZ_PATTERN_SAFE else ""
         # ★ Spec D-Fix-NarrativeGuard — text 위계는 hero/support/simple_box 페이지에 배정 X.
@@ -2325,6 +2332,18 @@ async def generate_outline(
                 log.info(
                     "D-Fix-ZigzagGuard 강등 p=%s role=%s slide_type=%s",
                     it.get("page"), _rl_zz, _st_zz,
+                )
+                viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
+        # ★ Spec D-Build-PresetHsplit — hsplit 가드 (zigzag/asymmetric 과 동일 강도).
+        #   hsplit = "위 이미지/아래 텍스트" 가로 분할이므로 role=body 페이지에만 적합.
+        #   hero(컨셉/표지)·support(예산/일정/조직)·simple_box 에 박혀도 무력화.
+        elif viz_pattern == "hsplit":
+            _rl_hs = str(it.get("role", "")).strip().lower()
+            _st_hs = str(it.get("slide_type", "")).strip().lower()
+            if _rl_hs != "body" or _st_hs == "hero":
+                log.info(
+                    "D-Fix-HsplitGuard 강등 p=%s role=%s slide_type=%s",
+                    it.get("page"), _rl_hs, _st_hs,
                 )
                 viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
         # Spec D-Fix-BodyRole-1 — role 화이트리스트 (body/support/"" 만 허용).
@@ -2658,6 +2677,42 @@ def _build_slide_user_prompt(
                 '],'
                 '"shapes":[{"type":"text","x":0.9,"y":1.0,"w":10,"h":0.6,'
                 '"text":"귀사가 겪는 문제","size":18,"weight":700,"color":"#1A1A1A"}]}'
+            )
+        elif item.viz_pattern == "hsplit":
+            # Spec D-Build-PresetHsplit — 가로 분할(위 이미지/아래 텍스트).
+            # 좌표·이미지 영역 placeholder 는 _build_preset_hsplit 가 자동 배치.
+            # 빈 페이지 방지: 백업 text 도형 함께 채우게 강제(rect/박스/이미지 절대 X).
+            parts.append(
+                "[배정된 레이아웃 패턴] hsplit (가로 분할 — 위는 큰 이미지 영역, 아래는 제목+설명)\n"
+                "★ 용도: 비주얼로 보여주는 게 핵심인 페이지에만.\n"
+                "  예: 개념/솔루션 소개, 챕터 도입, 핵심 이미지 강조, before/after 같은 시각 비교.\n"
+                "  위 이미지 영역은 실사용자가 채울 자리(코드가 placeholder 로 그림).\n"
+                "★ 주의: 이 레이아웃은 텍스트를 많이 못 담는다(제목 + 짧은 설명만).\n"
+                "  정보·항목이 많은 페이지엔 쓰지 말 것(그런 페이지는 cards/2col 등).\n"
+                "  \"내용 적게, 비주얼로 임팩트\" 가 맞는 자리에만.\n"
+                "★ 다른 분할과 구분: split/asymmetric 은 좌우(세로) 분할.\n"
+                "  hsplit 은 위아래(가로) 분할 + 위가 큰 이미지.\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "hsplit"  (필수)\n'
+                '  · "head": 아래 제목  (필수)\n'
+                '  · "desc": 한 줄 설명  (선택)\n'
+                '  · "caption": 이미지 영역 안내 문구  (선택, 예 "솔루션 구조도")\n'
+                "  · (선택) \"eyebrow\" — 좌상단 메타 라벨\n"
+                "  → 좌표·이미지 영역은 코드가 자동 배치 — 신경 쓰지 말 것.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
+                "    절대 금지: rect / 박스 / 이미지 / 도형(type='text' 외).\n"
+                "    이미지 영역 placeholder 는 코드가 자동으로 그린다.\n"
+                "    백업으로 넣을 것 (text 만): 제목 text 정도. preset 처리 실패 대비용.\n"
+                "  ★ preset='hsplit' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
+                "\n"
+                "★ 완성 예시 (이 구조 그대로 따라):\n"
+                '{"preset":"hsplit",'
+                '"head":"거친 텍스트 초안에서 구조화된 슬라이드로",'
+                '"desc":"RFP가 들어오면 AI가 섹션별 기획·본문·도식을 자동 생성해 완성본을 출력한다",'
+                '"caption":"Before / After 비교",'
+                '"shapes":[{"type":"text","x":0.9,"y":6.0,"w":10,"h":0.6,'
+                '"text":"거친 초안에서 완성본으로","size":18,"weight":700,"color":"#1A1A1A"}]}'
             )
         else:
             parts.append(
@@ -3003,7 +3058,7 @@ async def generate_one_slide(
             _vp_raw = str(getattr(item, "viz_pattern", ""))
             if (_vp_raw.startswith("text_") or _vp_raw == "split"
                     or _vp_raw == "timeline" or _vp_raw == "asymmetric"
-                    or _vp_raw == "zigzag"):
+                    or _vp_raw == "zigzag" or _vp_raw == "hsplit"):
                 _left_obj = parsed.get("left") if isinstance(parsed.get("left"), dict) else {}
                 _right_obj = parsed.get("right") if isinstance(parsed.get("right"), dict) else {}
                 _left_head = str(_left_obj.get("head", "")).strip() if _left_obj else ""

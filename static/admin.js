@@ -821,6 +821,18 @@ const POLICY_META = {
     min: 0,
     desc: "한 IP에서 발송 가능한 일일 SMS cap (봇 방지). 10 권장.",
   },
+
+  // ───────── Spec D-Build-ThemeAdminToggle — 다크 테마 select 드롭다운 ─────────
+  // 1-a(7c3ca11) 에서 시드, 1-b(9d5f214)/1-c(29adcce) 에서 실제 적용 완료.
+  // trial_enabled 와 동일 select 패턴(Y/N → light/dark) — 백엔드 변경 0,
+  // GET/PATCH /api/admin/settings 가 이미 모든 키 자동 지원.
+  theme: {
+    label: "테마 (라이트/다크)",
+    suffix: "",
+    type: "select",
+    options: ["light", "dark"],
+    desc: "PPTX 생성 색 테마. light=흰 바탕+검정 글씨(현재 운영) / dark=검정 바탕+흰 글씨. 변경 즉시 다음 제안서 생성부터 적용.",
+  },
 };
 
 async function loadSettings() {

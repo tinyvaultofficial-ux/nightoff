@@ -541,6 +541,12 @@ def init_db() -> None:
                 -- 일반 사용자는 'Y' 여도 기존 도형 JSON 경로 그대로 (영향 0).
                 ('output_mode_enabled', 'N');
 
+            -- Spec D-Build-ThemeFoundation — 다크 테마 토글 (1-a 단계: 시드만, 미사용).
+            -- 'light' / 'dark' 중 하나. 1-a 단계는 이 키만 등록하고 어디서도 읽지 않음.
+            -- 후속(1-b 이후) generate_one_slide 등에서 _get_policy('theme', 'light') 로 분기.
+            INSERT OR IGNORE INTO policy_settings(key, value) VALUES
+                ('theme', 'light');
+
             -- ───────── Phase 1-A-3 — 무료체험 정책 시드 ─────────
             -- trial_enabled: kill-switch (Y/N) — 어드민이 운영 중 전체 비활성화 가능
             -- trial_credits: 활성화 시 부여 크레딧 (5000 = 50p, Step 2-A 단위)

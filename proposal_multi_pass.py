@@ -674,7 +674,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
 [viz_pattern 사전 배정 규칙 — Spec D-Fix-LayoutVariety-1 / D-Fix-NarrativeDiversity]
 모든 outline 항목에 "viz_pattern" 필드를 포함. 본문 페이지(slide_type=text_box / 일부 hero)는 아래 8종 중 하나의 키를 배정. 특수 페이지(표지 / 목차 / 챕터 divider / 감사 / 마무리)는 "" 빈 문자열.
 
-안전 11종 풀 (이 외 값 배정 금지 — 위험 4종은 절대 풀에 X):
+안전 12종 풀 (이 외 값 배정 금지 — 위험 4종은 절대 풀에 X):
   · 2col          — 좌우 2분할 (현재/개선·문제/해결·전후)
   · cards3        — 3카드 등분 비교 (평행 분류·차별점)
   · process       — 가로 단계 흐름 (절차·추진 단계·일정 흐름)
@@ -711,6 +711,11 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
                               (예: 성공 전략, 핵심 차별화, 추진 방향)
                        ⚠ 부적합: 좌우 대등한 두 축은 split / role=support
                        ※ 좌우 대등 → split / 한쪽 주인공 + 다른 쪽 받쳐줌 → asymmetric.
+  · zigzag           — 가운데 축 좌우 번갈아 배치 (여러 항목을 리듬 있게 나열)
+                       ★ 적합: role=body 페이지의 "여러 항목 리듬 있게 나열"
+                              (예: 귀사가 겪는 문제 4가지, 우리의 강점 4가지, 핵심 특징 6가지)
+                       ⚠ 부적합: 순차 단계(흐름) → timeline / role=support
+                       ※ 순차 단계는 timeline / 항목 나열 리듬은 zigzag. 짝수(4 or 6) 권장.
 
 ★ 컨셉 슬로건 페이지는 별도 hero 페이지(카탈로그 11번)가 담당.
   text_* 키로 컨셉 슬로건을 만들지 말 것 — 컨셉 슬로건은 80~90pt 거대 슬로건 hero,
@@ -719,7 +724,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
   그 외 위치(hero/support/simple_box)에 박으면 코드가 자동 "" 강등(D-Fix-NarrativeGuard).
 
 분배 규칙 (★ 매핑형 절대 금지 — "이 내용엔 반드시 이 패턴"식 X):
-① 본문 페이지 전체에 11종이 골고루 분포하게. 특정 1~2종 편중 금지.
+① 본문 페이지 전체에 12종이 골고루 분포하게. 특정 1~2종 편중 금지.
 ② 직전 본문 페이지와 같은 viz_pattern 을 연속 배정 X (반드시 다른 키).
 ③ 페이지 내용이 특정 패턴에 자연스러우면 그것을 우선 선택하되, 다양성을 우선 — 억지로 맞추지 말고 자연스러운 후보 2~3개 중 직전과 다른 것 선택.
 ④ ★ 박스/카드 계열(cards3 / before_after / cards_grid) 합산 cap — 본문 페이지의 40% 이내
@@ -2255,7 +2260,8 @@ async def generate_outline(
         # Spec D-Fix-LayoutVariety-1 / D-Fix-NarrativeDiversity / D-Build-PresetSplit — 안전 9종 화이트리스트.
         # outline AI 가 위험 4종 또는 임의 값을 박더라도 안전 풀 밖이면 ""로 fallback.
         _VIZ_PATTERN_SAFE = {"2col", "cards3", "process", "before_after", "quant", "cards_grid",
-                             "text_quote", "text_declaration", "split", "timeline", "asymmetric"}
+                             "text_quote", "text_declaration", "split", "timeline", "asymmetric",
+                             "zigzag"}
         viz_pattern_raw = str(it.get("viz_pattern", "")).strip().lower()
         viz_pattern = viz_pattern_raw if viz_pattern_raw in _VIZ_PATTERN_SAFE else ""
         # ★ Spec D-Fix-NarrativeGuard — text 위계는 hero/support/simple_box 페이지에 배정 X.
@@ -2307,6 +2313,18 @@ async def generate_outline(
                 log.info(
                     "D-Fix-AsymmetricGuard 강등 p=%s role=%s slide_type=%s",
                     it.get("page"), _rl_as, _st_as,
+                )
+                viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
+        # ★ Spec D-Build-PresetZigzag — zigzag 가드 (asymmetric/timeline/split 과 동일 강도).
+        #   zigzag = "가운데 축 좌우 번갈아 항목 나열"이므로 role=body 페이지에만 적합.
+        #   hero(컨셉/표지)·support(예산/일정/조직)·simple_box 에 박혀도 무력화.
+        elif viz_pattern == "zigzag":
+            _rl_zz = str(it.get("role", "")).strip().lower()
+            _st_zz = str(it.get("slide_type", "")).strip().lower()
+            if _rl_zz != "body" or _st_zz == "hero":
+                log.info(
+                    "D-Fix-ZigzagGuard 강등 p=%s role=%s slide_type=%s",
+                    it.get("page"), _rl_zz, _st_zz,
                 )
                 viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
         # Spec D-Fix-BodyRole-1 — role 화이트리스트 (body/support/"" 만 허용).
@@ -2603,6 +2621,43 @@ def _build_slide_user_prompt(
                 '],'
                 '"shapes":[{"type":"text","x":0.9,"y":1.0,"w":6,"h":0.6,'
                 '"text":"핵심 전략","size":18,"weight":700,"color":"#1A1A1A"}]}'
+            )
+        elif item.viz_pattern == "zigzag":
+            # Spec D-Build-PresetZigzag — 가운데 세로축 기준 항목을 좌우 번갈아 배치.
+            # 좌표·축·점은 _build_preset_zigzag 가 자동 배치. LLM 은 items 텍스트만 채움.
+            # 빈 페이지 방지: 백업 text 도형 함께 채우게 강제(rect/원/선 절대 X).
+            parts.append(
+                "[배정된 레이아웃 패턴] zigzag (지그재그 — 가운데 세로축 기준 항목 좌우 번갈아 배치)\n"
+                "★ 용도: 여러 항목(이슈/문제점/특징/단계)을 가운데 축 좌우로 번갈아 나열.\n"
+                "  예: 귀사가 겪는 문제 4가지, 우리의 강점 4가지, 핵심 특징 6가지.\n"
+                "★ timeline 과 구분: timeline 은 한쪽(왼쪽)에 쭉 정렬된 \"순차 단계\"(흐름).\n"
+                "  zigzag 는 가운데 축 기준 좌우 번갈아 — 항목 나열에 \"리듬\"을 준다.\n"
+                "  순서가 중요 → timeline / 항목 나열 리듬 → zigzag.\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "zigzag"  (필수)\n'
+                '  · "items": [{"label": 짧은 라벨(선택, 예 "Issue 01"),\n'
+                '               "head": 항목 제목(필수),\n'
+                '               "desc": 한 줄 설명(선택)}, ...]  (4개 또는 6개 권장 — 좌우 균형상 짝수)\n'
+                "  · (선택) \"title\" — 페이지 제목 / \"eyebrow\" — 좌상단 메타 라벨\n"
+                "  → 좌표·축·점은 코드가 자동 배치 — 신경 쓰지 말 것.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
+                "    절대 금지: rect / 박스 / 원 / 선 / 도형(type='text' 외).\n"
+                "    가운데 축과 점은 코드가 자동으로 그린다.\n"
+                "    백업으로 넣을 것 (text 만): 제목 + 항목 요약 text 정도. preset 처리 실패 대비용.\n"
+                "  ★ preset='zigzag' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
+                "\n"
+                "★ 완성 예시 (이 구조 그대로 따라):\n"
+                '{"preset":"zigzag",'
+                '"title":"귀사가 겪는 문제는 무엇입니까?",'
+                '"items":['
+                '{"label":"Issue 01","head":"수주율의 딜레마","desc":"치열한 경쟁 속 수주율을 높일 무기가 필요하지 않으신가요"},'
+                '{"label":"Issue 02","head":"놓치는 기회","desc":"전담 인력이 없어 포기한 사업이 있지 않으신가요"},'
+                '{"label":"Issue 03","head":"고정비 부담","desc":"채용해도 결과가 보장되지 않는 속앓이"},'
+                '{"label":"Issue 04","head":"외주 관리 피로","desc":"여러 업체와 소통·조율하는 늪"}'
+                '],'
+                '"shapes":[{"type":"text","x":0.9,"y":1.0,"w":10,"h":0.6,'
+                '"text":"귀사가 겪는 문제","size":18,"weight":700,"color":"#1A1A1A"}]}'
             )
         else:
             parts.append(
@@ -2940,22 +2995,25 @@ async def generate_one_slide(
                     )
                     html_text = ""
             # Spec D-Fix-NarrativeRaw / D-Build-PresetSplit / D-Build-PresetTimeline /
-            # D-Build-PresetAsymmetric — text_*/split/timeline/asymmetric SLIDE LLM raw 추적
-            # (read-only / 동작 무변경). Railway 로그 "D-Fix-NarrativeRaw" 검색 시:
+            # D-Build-PresetAsymmetric / D-Build-PresetZigzag —
+            # text_*/split/timeline/asymmetric/zigzag SLIDE LLM raw 추적 (read-only / 동작 무변경).
+            # Railway 로그 "D-Fix-NarrativeRaw" 검색 시:
             # text_* → preset/style / split → left/right.head / timeline → steps_n /
-            # asymmetric → head_present 채움 여부. 그 외 viz_pattern 은 분기 미진입.
+            # asymmetric → head_present / zigzag → items_n 채움 여부. 그 외는 분기 미진입.
             _vp_raw = str(getattr(item, "viz_pattern", ""))
             if (_vp_raw.startswith("text_") or _vp_raw == "split"
-                    or _vp_raw == "timeline" or _vp_raw == "asymmetric"):
+                    or _vp_raw == "timeline" or _vp_raw == "asymmetric"
+                    or _vp_raw == "zigzag"):
                 _left_obj = parsed.get("left") if isinstance(parsed.get("left"), dict) else {}
                 _right_obj = parsed.get("right") if isinstance(parsed.get("right"), dict) else {}
                 _left_head = str(_left_obj.get("head", "")).strip() if _left_obj else ""
                 _right_head = str(_right_obj.get("head", "")).strip() if _right_obj else ""
                 _steps_n = len(parsed.get("steps") or []) if isinstance(parsed.get("steps"), list) else 0
                 _head_present = bool(str(parsed.get("head", "")).strip())
+                _items_n = len(parsed.get("items") or []) if isinstance(parsed.get("items"), list) else 0
                 log.warning(
                     "D-Fix-NarrativeRaw p%s viz=%s preset=%s style=%s shapes_n=%s "
-                    "left_head=%s right_head=%s steps_n=%s head_present=%s raw=%s",
+                    "left_head=%s right_head=%s steps_n=%s head_present=%s items_n=%s raw=%s",
                     item.page,
                     item.viz_pattern,
                     parsed.get("preset", "none"),
@@ -2965,6 +3023,7 @@ async def generate_one_slide(
                     bool(_right_head),
                     _steps_n,
                     _head_present,
+                    _items_n,
                     (raw or "").replace("\n", " ")[:2000],
                 )
             # Spec D-Build-PresetBelt — parsed 의 shapes/section 외 키(preset/style/left/right/

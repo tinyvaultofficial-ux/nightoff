@@ -1583,11 +1583,20 @@ def _add_text(slide, x, y, w, h, text, *,
               size=14, weight=400, color="#1A1A1A",
               align="left", valign="top",
               font_family=None, italic=False,
-              theme="light"):
+              theme="light",
+              text_runs=None):
     """텍스트 박스. 줄바꿈 \\n 으로 멀티라인 지원.
 
     Spec D-Build-ThemeColorMap (1-c, 옵션 A): theme='dark' 면 color 를 text role 다크 매핑.
     light 면 입력색 그대로.
+
+    Spec D-Build-TextRunsRender (1-d-①): text_runs 가 있으면 부분 강조 경로.
+      형식: [{"t":"...", "accent":bool?}, ...]
+      run 단위로 색 분기 — accent=True && theme=='dark' 만 형광(#9CFF00), 그 외 일반 color.
+      ★ text_runs 없음/빈 list → 기존 경로 가드 (비트 단위 무변경 / 한 글자도 안 건드림).
+      ★ text 필드는 fallback 으로 유지 — text_runs 미지원/디버깅용. 새 경로는 text 무시.
+      ★ segment 의 "t" 안에 \\n 이 있으면: split 후 각 \\n 경계마다 paragraph 분리,
+         accent 속성은 분리된 양쪽 모두 유지(빈 segment 는 paragraph 경계 역할만).
     """
     box = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
     tf = box.text_frame
@@ -1618,13 +1627,68 @@ def _add_text(slide, x, y, w, h, text, *,
         "justify": PP_ALIGN.JUSTIFY,
     }
 
-    lines = (text or "").split("\n")
     # weight 기반 자동 폰트 매핑 (font_family 명시 시 그것이 우선)
     target_font = _resolve_font(font_family, weight)
     # 안전망: target_font 가 빈 문자열 / None 으로 새어 나올 경우 DEFAULT 강제
     if not target_font or not str(target_font).strip():
         target_font = DEFAULT_FONT_FAMILY
     weight_norm = _normalize_weight(weight)
+
+    # Spec D-Build-TextRunsRender (1-d-①) — 신규 경로 분기.
+    # text_runs 가 None/빈값/list 아님 → 기존 경로(아래)로 떨어짐 → 비트 단위 무변경.
+    if text_runs and isinstance(text_runs, list):
+        # 1) 평탄화 — 각 segment 의 t 를 \n 으로 split, accent 속성 보존.
+        #    빈 part 는 run 생성 X (paragraph 경계 역할만), 정상 part 만 run 으로 추가.
+        paragraphs: list[list[dict]] = [[]]
+        for seg in text_runs:
+            if not isinstance(seg, dict):
+                continue
+            t = str(seg.get("t", ""))
+            accent = bool(seg.get("accent", False))
+            parts = t.split("\n")
+            for idx, part in enumerate(parts):
+                if idx > 0:
+                    paragraphs.append([])
+                if part:
+                    paragraphs[-1].append({"t": part, "accent": accent})
+
+        # 2) 모든 paragraph 가 비면 빈 박스만 반환 (안전망).
+        if not any(paragraphs):
+            return box
+
+        # 3) paragraph 단위로 그리기 — 같은 paragraph 내 run 색만 분기, 나머지 폰트는 동일.
+        for i, segs in enumerate(paragraphs):
+            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+            p.line_spacing = 1.15  # 기존 경로와 동일 — Phase 4 일관
+            try:
+                p.alignment = align_map.get(str(align).lower(), PP_ALIGN.LEFT)
+            except Exception:
+                pass
+            # 빈 paragraph(연속 \n) → run 0개 = 빈 줄
+            for seg in segs:
+                run = p.add_run()
+                run.text = seg["t"]
+                try:
+                    run.font.size = Pt(float(size))
+                except Exception:
+                    run.font.size = Pt(14)
+                run.font.bold = weight_norm >= 600
+                if italic:
+                    run.font.italic = True
+                # ★ 색 결정 — accent && dark 만 형광(#9CFF00). 라이트는 accent 무시 → 일반 color.
+                if seg["accent"] and theme == "dark":
+                    seg_color = "#9CFF00"
+                else:
+                    seg_color = color
+                run.font.color.rgb = _hex_to_rgb(_map_color(seg_color, "text", theme))
+                try:
+                    run.font.name = target_font
+                except Exception:
+                    pass
+        return box
+
+    # 기존 경로 (text_runs 없음) — 한 글자도 안 바뀜 / 비트 단위 무변경 가드.
+    lines = (text or "").split("\n")
 
     for i, line in enumerate(lines):
         p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
@@ -1950,6 +2014,8 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A", the
             # AI 가 SLIDE_SYSTEM_PROMPT 의 흑백 6색 규칙으로 출력하니 그 색 그대로 사용.
             # Spec D-Build-ThemeConnect 1-b — color 누락 시 기본값을 theme 토큰으로(라이트=#1A1A1A 유지).
             # Spec D-Build-ThemeColorMap 1-c — 명시 color 도 다크에서 role 별 매핑(_add_text 내부 _map_color).
+            # Spec D-Build-TextRunsRender 1-d-① — text_runs(선택) 그대로 전달, _add_text 가 분기 처리.
+            #   text_runs 없는 도형(기존 100%) → _add_text 내부에서 기존 경로로 들어가 비트 단위 무변경.
             return _add_text(
                 slide,
                 float(shape_def.get("x", 0)), float(shape_def.get("y", 0)),
@@ -1963,6 +2029,7 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A", the
                 font_family=shape_def.get("font_family"),
                 italic=bool(shape_def.get("italic", False)),
                 theme=theme,
+                text_runs=shape_def.get("text_runs"),
             )
         if t == "line":
             return _add_line(

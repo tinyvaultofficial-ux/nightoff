@@ -2451,9 +2451,15 @@ def _build_slide_user_prompt(
                 '  · "left":  {"label": 짧은 라벨, "head": 핵심 헤드라인(필수), "points": [근거 2~4개]}\n'
                 '  · "right": {"label": 짧은 라벨, "head": 핵심 헤드라인(필수), "points": [근거 2~4개]}\n'
                 "  → 좌표·색·정렬은 코드가 자동 배치 — 신경 쓰지 말 것.\n"
-                "  ★ 단, 만일을 위해 shapes 배열에도 이 페이지의 백업 text 도형 2~4개를 채워라\n"
-                "    (제목 + 양축 요약, 박스 없이 text 만, 흑백 6색, A4 가로 11.69x8.27 좌표 안).\n"
-                "    preset 처리 실패해도 페이지가 비지 않도록.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
+                "    절대 금지: rect / 박스 / 색면 / 그 외 모든 shape(type='text' 외).\n"
+                "    좌 검정면 / 우 흰면 색면 2분할은 코드(_build_preset_split)가 자동으로 그린다.\n"
+                "    shapes 에 rect 를 넣으면 preset 의 색면을 덮어버려 박스 단조로움으로 회귀한다.\n"
+                "    백업으로 넣을 것 (text 만, 3개):\n"
+                "      · 페이지 제목 text 1개 (상단)\n"
+                "      · 좌측 요약 text 1개 (좌측 head 의 한 줄 요약)\n"
+                "      · 우측 요약 text 1개 (우측 head 의 한 줄 요약)\n"
+                "    preset 처리 실패해도 최소한 텍스트는 남도록.\n"
                 "  ★ preset='split' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
                 "\n"
                 "★ 완성 예시 (이 구조 그대로 따라):\n"
@@ -2464,10 +2470,14 @@ def _build_slide_user_prompt(
                 '"right":{"label":"오프라인 전략","head":"현장 이벤트로 방문 전환",'
                 '"points":["상권 스탬프 투어·플리마켓 연계","서포터즈 현장 활동",'
                 '"온라인 참여를 실제 방문으로"]},'
-                '"shapes":[{"type":"text","x":0.8,"y":0.4,"w":10,"h":0.5,'
-                '"text":"통합 마케팅 전략","size":18,"weight":700,"color":"#1A1A1A"}, '
-                '{"type":"text","x":0.8,"y":7.5,"w":10,"h":0.5,'
-                '"text":"온·오프라인 양축 병렬 추진","size":12,"weight":400,"color":"#666"}]}'
+                '"shapes":['
+                '{"type":"text","x":0.8,"y":0.4,"w":10,"h":0.5,'
+                '"text":"통합 마케팅 전략","size":18,"weight":700,"color":"#1A1A1A"},'
+                '{"type":"text","x":0.6,"y":7.5,"w":5,"h":0.5,'
+                '"text":"온라인: SNS 인지도 확산","size":12,"weight":400,"color":"#666"},'
+                '{"type":"text","x":6,"y":7.5,"w":5,"h":0.5,'
+                '"text":"오프라인: 현장 방문 전환","size":12,"weight":400,"color":"#666"}'
+                ']}'
             )
         else:
             parts.append(

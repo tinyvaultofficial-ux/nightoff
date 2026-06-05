@@ -2417,6 +2417,80 @@ def _build_preset_split(slide_data):
     return shapes
 
 
+# ─── Spec D-Build-PresetTimeline — timeline (세로 점 단계형) 레이아웃 프리셋 ───
+# 좌측 세로 라인 + 점(circle) 단계 마커 + 각 단계 (label / head / desc) 텍스트 위계,
+# 우측은 이미지 영역 placeholder (회색 box). 단계 1~6.
+# 입력 스키마:
+#   slide_data["eyebrow"] = "좌상단 메타 라벨"        (선택)
+#   slide_data["title"]   = "상단 페이지 제목"        (선택)
+#   slide_data["steps"]   = [{"label","head"(필수),"desc"}, ...]  (1~6)
+# 안전망: steps list 아님 / 모든 step.head 누락 → 빈 리스트 반환.
+# 1 단계는 코드만 등록 — viz_pattern 연결은 별도 spec.
+def _build_preset_timeline(slide_data):
+    eyebrow = str(slide_data.get("eyebrow", "")).strip()
+    title   = str(slide_data.get("title", "")).strip()
+    steps_raw = slide_data.get("steps") or []
+    if not isinstance(steps_raw, list):
+        return []
+    steps = []
+    for s in steps_raw:
+        if not isinstance(s, dict):
+            continue
+        head = str(s.get("head", "")).strip()
+        if not head:
+            continue
+        steps.append({
+            "label": str(s.get("label", "")).strip(),
+            "head": head,
+            "desc": str(s.get("desc", "")).strip(),
+        })
+    steps = steps[:6]
+    if not steps:
+        return []
+    W, H = 11.69, 8.27
+    shapes = []
+    if eyebrow:
+        shapes.append({"type":"text","x":0.9,"y":0.5,"w":9.89,"h":0.4,"text":eyebrow,"size":11,"weight":400,"color":"#BBBBBB","align":"left","valign":"top"})
+    top = 1.1
+    if title:
+        shapes.append({"type":"text","x":0.9,"y":1.0,"w":10.0,"h":0.9,"text":title,"size":26,"weight":800,"color":"#1A1A1A","align":"left","valign":"top"})
+        top = 2.3
+    line_x = 1.6
+    dot_r = 0.04
+    area_top = top + 0.3
+    area_bot = 7.5
+    n = len(steps)
+    if n == 1:
+        ys = [(area_top + area_bot) / 2]
+    else:
+        gap = (area_bot - area_top) / (n - 1)
+        gap = min(gap, 1.5)
+        total = gap * (n - 1)
+        start = area_top + ((area_bot - area_top) - total) / 2
+        ys = [start + i * gap for i in range(n)]
+    text_x = line_x + 0.6
+    text_w = 6.7 - text_x - 0.3
+    for i, st in enumerate(steps):
+        cy = ys[i]
+        shapes.append({"type":"circle","x":line_x - dot_r,"y":cy - dot_r,"w":dot_r*2,"h":dot_r*2,"fill":"#1A1A1A"})
+        ty = cy - 0.45
+        if st["label"]:
+            shapes.append({"type":"text","x":text_x,"y":ty,"w":text_w,"h":0.3,"text":st["label"],"size":11,"weight":700,"color":"#999999","align":"left","valign":"top"})
+            ty += 0.32
+        shapes.append({"type":"text","x":text_x,"y":ty,"w":text_w,"h":0.45,"text":st["head"],"size":17,"weight":700,"color":"#1A1A1A","align":"left","valign":"top"})
+        ty += 0.45
+        if st["desc"]:
+            shapes.append({"type":"text","x":text_x,"y":ty,"w":text_w,"h":0.5,"text":st["desc"],"size":12,"weight":400,"color":"#666666","align":"left","valign":"top"})
+    ph_x = 6.7
+    ph_w = W - ph_x - 0.8
+    ph_top = ys[0] - dot_r
+    ph_bot = ys[-1] + dot_r
+    ph_h = ph_bot - ph_top
+    shapes.append({"type":"rect","x":ph_x,"y":ph_top,"w":ph_w,"h":ph_h,"fill":"#F5F5F5","stroke":"#DDDDDD","stroke_width":1})
+    shapes.append({"type":"text","x":ph_x,"y":ph_top + ph_h/2 - 0.2,"w":ph_w,"h":0.4,"text":"이미지 영역","size":12,"weight":400,"color":"#BBBBBB","align":"center","valign":"middle"})
+    return shapes
+
+
 def generate_from_shape_json(json_data, output_path):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -2508,6 +2582,17 @@ def generate_from_shape_json(json_data, output_path):
             # Spec D-Build-PresetSplit — 색면 2분할.
             try:
                 preset_shapes = _build_preset_split(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "timeline":
+            # Spec D-Build-PresetTimeline — 세로 점 단계형 (1단계: 코드 등록만, viz_pattern 미연결).
+            # split 과 동일 패턴 — 성공 시 preset 만(겹침 차단), 실패/예외 시 LLM 백업.
+            try:
+                preset_shapes = _build_preset_timeline(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

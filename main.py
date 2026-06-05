@@ -3709,6 +3709,7 @@ async def api_proposals_generate_multipass(
                 model=model,
                 pages_override=pages_override,   # Step 2 — 사용자가 모달에서 선택한 페이지 수
                 output_mode=output_mode,         # Spec D-Build-HTMLOutput — admin 전용 토글 분기
+                theme=_get_policy("theme", "light"),  # Spec D-Build-TextRunsInject 1-d-② — 다크 형광 inject 분기
             ):
                 if ev.get("type") == "done":
                     final_payload = ev.get("payload")
@@ -7044,6 +7045,7 @@ async def api_proposals_regenerate_page(
             model=model,
             domain=domain,
             quantitative_locks=quantitative_locks,
+            theme=_get_policy("theme", "light"),  # Spec D-Build-TextRunsInject 1-d-② — partial-regen 도 정합
         )
     except Exception as e:
         log.exception("partial-regen 예외 conv=%s page=%d", conv_id, page)

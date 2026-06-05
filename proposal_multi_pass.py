@@ -674,7 +674,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
 [viz_pattern 사전 배정 규칙 — Spec D-Fix-LayoutVariety-1 / D-Fix-NarrativeDiversity]
 모든 outline 항목에 "viz_pattern" 필드를 포함. 본문 페이지(slide_type=text_box / 일부 hero)는 아래 8종 중 하나의 키를 배정. 특수 페이지(표지 / 목차 / 챕터 divider / 감사 / 마무리)는 "" 빈 문자열.
 
-안전 8종 풀 (이 외 값 배정 금지 — 위험 4종은 절대 풀에 X):
+안전 9종 풀 (이 외 값 배정 금지 — 위험 4종은 절대 풀에 X):
   · 2col          — 좌우 2분할 (현재/개선·문제/해결·전후)
   · cards3        — 3카드 등분 비교 (평행 분류·차별점)
   · process       — 가로 단계 흐름 (절차·추진 단계·일정 흐름)
@@ -692,6 +692,13 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
                               "핵심 전략 선언·차별화 천명·도메인 결단"
                        ⚠ 부적합: 컨셉 슬로건(이미 hero 페이지가 담당) /
                               role=support / 세부 실행
+  · split            — 색면 2분할 (좌 검정/우 흰 두 색면에 대등한 두 전략 축 나란히 배치)
+                       ★ 적합: role=body 페이지의 "두 전략 축 병렬 제시"
+                              (예: 온라인/오프라인, 콘텐츠축/참여축, 정량/정성)
+                       ⚠ 부적합: AS-IS/TO-BE 시간 대비 → before_after 우선 /
+                              단순 항목 나열 → cards3·cards_grid /
+                              role=support / 세부 실행
+                       ※ 좌우는 우열 없는 "병렬" 관계 — 한쪽이 이전·다른쪽이 개선은 split 아님.
 
 ★ 컨셉 슬로건 페이지는 별도 hero 페이지(카탈로그 11번)가 담당.
   text_* 키로 컨셉 슬로건을 만들지 말 것 — 컨셉 슬로건은 80~90pt 거대 슬로건 hero,
@@ -700,7 +707,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
   그 외 위치(hero/support/simple_box)에 박으면 코드가 자동 "" 강등(D-Fix-NarrativeGuard).
 
 분배 규칙 (★ 매핑형 절대 금지 — "이 내용엔 반드시 이 패턴"식 X):
-① 본문 페이지 전체에 8종이 골고루 분포하게. 특정 1~2종 편중 금지.
+① 본문 페이지 전체에 9종이 골고루 분포하게. 특정 1~2종 편중 금지.
 ② 직전 본문 페이지와 같은 viz_pattern 을 연속 배정 X (반드시 다른 키).
 ③ 페이지 내용이 특정 패턴에 자연스러우면 그것을 우선 선택하되, 다양성을 우선 — 억지로 맞추지 말고 자연스러운 후보 2~3개 중 직전과 다른 것 선택.
 ④ ★ 박스/카드 계열(cards3 / before_after / cards_grid) 합산 cap — 본문 페이지의 40% 이내
@@ -2227,10 +2234,10 @@ async def generate_outline(
         if not isinstance(gov_sub_raw, list):
             gov_sub_raw = []
         gov_sub = [str(s).strip() for s in gov_sub_raw if s and str(s).strip()]
-        # Spec D-Fix-LayoutVariety-1 / D-Fix-NarrativeDiversity — viz_pattern 안전 8종 화이트리스트.
+        # Spec D-Fix-LayoutVariety-1 / D-Fix-NarrativeDiversity / D-Build-PresetSplit — 안전 9종 화이트리스트.
         # outline AI 가 위험 4종 또는 임의 값을 박더라도 안전 풀 밖이면 ""로 fallback.
         _VIZ_PATTERN_SAFE = {"2col", "cards3", "process", "before_after", "quant", "cards_grid",
-                             "text_quote", "text_declaration"}
+                             "text_quote", "text_declaration", "split"}
         viz_pattern_raw = str(it.get("viz_pattern", "")).strip().lower()
         viz_pattern = viz_pattern_raw if viz_pattern_raw in _VIZ_PATTERN_SAFE else ""
         # ★ Spec D-Fix-NarrativeGuard — text 위계는 hero/support/simple_box 페이지에 배정 X.
@@ -2245,6 +2252,17 @@ async def generate_outline(
                 log.info(
                     "D-Fix-NarrativeGuard 강등 p=%s viz=%s slide_type=%s role=%s",
                     it.get("page"), viz_pattern, _st_check, _rl_check,
+                )
+                viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
+        # ★ Spec D-Build-PresetSplit — split 가드 (text_* 와 별개 조건, 나란히 적용).
+        #   split = "대등한 두 전략 축" 병렬 제시이므로 role=body 페이지에만 적합.
+        #   role=support(예산/일정/조직)·hero(컨셉/표지)·simple_box 에 박혀도 무력화.
+        elif viz_pattern == "split":
+            _rl_split = str(it.get("role", "")).strip().lower()
+            if _rl_split != "body":
+                log.info(
+                    "D-Fix-SplitGuard 강등 p=%s role=%s",
+                    it.get("page"), _rl_split,
                 )
                 viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
         # Spec D-Fix-BodyRole-1 — role 화이트리스트 (body/support/"" 만 허용).
@@ -2414,6 +2432,40 @@ def _build_slide_user_prompt(
                 f"    A4 가로 11.69x8.27 좌표 안). preset이 정상 작동하면 백업 도형은 자연스럽게 아래에\n"
                 f"    배치되거나 무시될 수 있으나, preset 키 처리에 실패해도 페이지가 비지 않도록 반드시 채운다.\n"
                 f"  ★ preset 키 누락 시 페이지가 박스로 회귀(다양성 효과 0) — preset 키는 반드시 포함."
+            )
+        elif item.viz_pattern == "split":
+            # Spec D-Build-PresetSplit — 색면 2분할(좌 검정/우 흰) + 좌우 대등한 두 전략 축.
+            # 스키마가 깊어(left/right 안에 label/head/points) LLM 이 틀리기 쉬워서
+            # 완성 JSON 예시를 통째로 inject. preset='split' + left/right 객체 강제.
+            # 빈 페이지 방지(declaration 학습): 백업 text 2~4개도 함께 채우게 강제.
+            parts.append(
+                "[배정된 레이아웃 패턴] split (색면 2분할 — 두 전략 축을 나란히 보여주는 레이아웃)\n"
+                "본 페이지는 좌 검정/우 흰 색면 위에 대등한 두 전략 축을 병렬 제시한다.\n"
+                "좌·우는 우열 없는 \"대등한 병렬\" 관계여야 한다. AS-IS/TO-BE 같은 시간 대비는 X (그건 before_after).\n"
+                "단순 항목 나열도 X (그건 cards3/cards_grid). split 은 '대등한 두 축'일 때만.\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "split"  (필수)\n'
+                '  · "left":  {"label": 짧은 라벨, "head": 핵심 헤드라인(필수), "points": [근거 2~4개]}\n'
+                '  · "right": {"label": 짧은 라벨, "head": 핵심 헤드라인(필수), "points": [근거 2~4개]}\n'
+                "  → 좌표·색·정렬은 코드가 자동 배치 — 신경 쓰지 말 것.\n"
+                "  ★ 단, 만일을 위해 shapes 배열에도 이 페이지의 백업 text 도형 2~4개를 채워라\n"
+                "    (제목 + 양축 요약, 박스 없이 text 만, 흑백 6색, A4 가로 11.69x8.27 좌표 안).\n"
+                "    preset 처리 실패해도 페이지가 비지 않도록.\n"
+                "  ★ preset='split' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
+                "\n"
+                "★ 완성 예시 (이 구조 그대로 따라):\n"
+                '{"preset":"split",'
+                '"left":{"label":"온라인 전략","head":"SNS 채널로 인지도 확산",'
+                '"points":["블로그·인스타·페북·유튜브 통합 운영",'
+                '"월 80건 콘텐츠로 검색 자산 구축","해시태그 챌린지로 MZ세대 도달"]},'
+                '"right":{"label":"오프라인 전략","head":"현장 이벤트로 방문 전환",'
+                '"points":["상권 스탬프 투어·플리마켓 연계","서포터즈 현장 활동",'
+                '"온라인 참여를 실제 방문으로"]},'
+                '"shapes":[{"type":"text","x":0.8,"y":0.4,"w":10,"h":0.5,'
+                '"text":"통합 마케팅 전략","size":18,"weight":700,"color":"#1A1A1A"}, '
+                '{"type":"text","x":0.8,"y":7.5,"w":10,"h":0.5,'
+                '"text":"온·오프라인 양축 병렬 추진","size":12,"weight":400,"color":"#666"}]}'
             )
         else:
             parts.append(
@@ -2750,18 +2802,26 @@ async def generate_one_slide(
                         item.page, _e,
                     )
                     html_text = ""
-            # Spec D-Fix-NarrativeRaw — text_quote/text_declaration 페이지의 SLIDE LLM raw 추적용
-            # (read-only / 동작 무변경). Railway 로그에서 "D-Fix-NarrativeRaw" 검색하면
-            # 해당 페이지의 raw 앞 2000자 + preset/style 키 채움 여부 확인 가능.
-            # text_* 외 페이지는 분기 미진입 → 기존 로그 노이즈 0.
-            if str(getattr(item, "viz_pattern", "")).startswith("text_"):
+            # Spec D-Fix-NarrativeRaw / D-Build-PresetSplit — text_*/split 페이지 SLIDE LLM raw 추적
+            # (read-only / 동작 무변경). Railway 로그 "D-Fix-NarrativeRaw" 검색 시:
+            # text_* → preset/style 키 / split → left.head/right.head 채움 여부 직접 확인.
+            # 위 두 viz_pattern 외 페이지는 분기 미진입 → 노이즈 0.
+            _vp_raw = str(getattr(item, "viz_pattern", ""))
+            if _vp_raw.startswith("text_") or _vp_raw == "split":
+                _left_obj = parsed.get("left") if isinstance(parsed.get("left"), dict) else {}
+                _right_obj = parsed.get("right") if isinstance(parsed.get("right"), dict) else {}
+                _left_head = str(_left_obj.get("head", "")).strip() if _left_obj else ""
+                _right_head = str(_right_obj.get("head", "")).strip() if _right_obj else ""
                 log.warning(
-                    "D-Fix-NarrativeRaw p%s viz=%s preset=%s style=%s shapes_n=%s raw=%s",
+                    "D-Fix-NarrativeRaw p%s viz=%s preset=%s style=%s shapes_n=%s "
+                    "left_head=%s right_head=%s raw=%s",
                     item.page,
                     item.viz_pattern,
                     parsed.get("preset", "none"),
                     parsed.get("style", "none"),
                     len(parsed.get("shapes") or []),
+                    bool(_left_head),
+                    bool(_right_head),
                     (raw or "").replace("\n", " ")[:2000],
                 )
             return SlideResult(

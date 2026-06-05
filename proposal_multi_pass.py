@@ -2750,6 +2750,20 @@ async def generate_one_slide(
                         item.page, _e,
                     )
                     html_text = ""
+            # Spec D-Fix-NarrativeRaw — text_quote/text_declaration 페이지의 SLIDE LLM raw 추적용
+            # (read-only / 동작 무변경). Railway 로그에서 "D-Fix-NarrativeRaw" 검색하면
+            # 해당 페이지의 raw 앞 2000자 + preset/style 키 채움 여부 확인 가능.
+            # text_* 외 페이지는 분기 미진입 → 기존 로그 노이즈 0.
+            if str(getattr(item, "viz_pattern", "")).startswith("text_"):
+                log.warning(
+                    "D-Fix-NarrativeRaw p%s viz=%s preset=%s style=%s shapes_n=%s raw=%s",
+                    item.page,
+                    item.viz_pattern,
+                    parsed.get("preset", "none"),
+                    parsed.get("style", "none"),
+                    len(parsed.get("shapes") or []),
+                    (raw or "").replace("\n", " ")[:2000],
+                )
             return SlideResult(
                 page=item.page,
                 section=str(parsed.get("section", item.section)),

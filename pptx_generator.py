@@ -1773,13 +1773,21 @@ def _add_circle(slide, x, y, w, h, *, fill="#000000", stroke=None, stroke_width=
     """원/타원.
 
     Spec D-Build-ThemeColorMap (1-c): theme='dark' 면 fill/stroke 를 role 별 다크 매핑.
+
+    Spec D-Build-PresetCircles — fill 정규화: "none"/"transparent"/"" → 채움 없음(투명).
+      render_shape_to_slide 의 circle 분기가 str() 로 강제 변환하므로 None 으로는 안 도달.
+      preset 'circles' 가 fill="none" 으로 테두리만 있는 원을 요청할 때 필수 가드.
+      이 가드 없으면 _hex_to_rgb("none") 가 6자리 hex 아님 → 검정 폴백 → 원이 검정으로 꽉 참.
     """
     shape = slide.shapes.add_shape(
         MSO_SHAPE.OVAL, Inches(x), Inches(y), Inches(w), Inches(h)
     )
-    if fill:
+    fill_norm = fill
+    if isinstance(fill_norm, str) and fill_norm.strip().lower() in ("none", "transparent", ""):
+        fill_norm = None
+    if fill_norm:
         shape.fill.solid()
-        shape.fill.fore_color.rgb = _hex_to_rgb(_map_color(fill, "fill", theme))
+        shape.fill.fore_color.rgb = _hex_to_rgb(_map_color(fill_norm, "fill", theme))
     else:
         _set_no_fill(shape)
     if stroke:
@@ -2878,6 +2886,66 @@ def _build_preset_hsplit(slide_data):
     return shapes
 
 
+# ─── Spec D-Build-PresetCircles — circles (원형 가로 정렬) 레이아웃 프리셋 ──────
+# 가로로 동일 크기 원 1~4 개를 균등 배치 + 각 원 안에 큰 수치/키워드 + 아래 라벨/설명.
+# 원은 "테두리만 있는 원"(fill="none") — _add_circle 의 fill 정규화 가드가 처리.
+# 입력 스키마:
+#   slide_data["eyebrow"] = "좌상단 메타 라벨"        (선택)
+#   slide_data["title"]   = "상단 페이지 제목"        (선택)
+#   slide_data["items"]   = [{"value"(필수),"label","desc"}, ...]  (1~4)
+# 안전망: items list 아님 / value 누락 → 빈 리스트 반환.
+# 1 단계는 코드만 등록 — viz_pattern 연결은 별도 spec (2단계).
+def _build_preset_circles(slide_data):
+    eyebrow = str(slide_data.get("eyebrow", "")).strip()
+    title   = str(slide_data.get("title", "")).strip()
+    items_raw = slide_data.get("items") or []
+    if not isinstance(items_raw, list):
+        return []
+    items = []
+    for it in items_raw:
+        if not isinstance(it, dict):
+            continue
+        val = str(it.get("value", it.get("keyword", ""))).strip()
+        if not val:
+            continue
+        items.append({
+            "value": val,
+            "label": str(it.get("label", it.get("head", ""))).strip(),
+            "desc": str(it.get("desc", "")).strip(),
+        })
+    items = items[:4]
+    if not items:
+        return []
+    W, H = 11.69, 8.27
+    shapes = []
+    if eyebrow:
+        shapes.append({"type":"text","x":0.9,"y":0.5,"w":9.89,"h":0.4,"text":eyebrow,"size":11,"weight":400,"color":"#BBBBBB","align":"left","valign":"top"})
+    top = 1.1
+    if title:
+        shapes.append({"type":"text","x":0.9,"y":1.0,"w":10.0,"h":0.9,"text":title,"size":26,"weight":800,"color":"#1A1A1A","align":"left","valign":"top"})
+        top = 2.4
+    n = len(items)
+    circle_d = 2.0
+    margin = 0.9
+    usable = W - margin * 2
+    gap = (usable - circle_d * n) / (n - 1) if n > 1 else 0
+    circle_y = top + 1.0
+    cy_center = circle_y + circle_d / 2
+    for i, it in enumerate(items):
+        cx = margin + i * (circle_d + gap)
+        shapes.append({"type":"circle","x":cx,"y":circle_y,"w":circle_d,"h":circle_d,"fill":"none","stroke":"#1A1A1A","stroke_width":1.5})
+        vlen = len(it["value"])
+        vsize = 30 if vlen <= 4 else (22 if vlen <= 7 else 16)
+        shapes.append({"type":"text","x":cx,"y":cy_center - 0.45,"w":circle_d,"h":0.9,"text":it["value"],"size":vsize,"weight":800,"color":"#1A1A1A","align":"center","valign":"middle"})
+        ty = circle_y + circle_d + 0.4
+        if it["label"]:
+            shapes.append({"type":"text","x":cx - 0.3,"y":ty,"w":circle_d + 0.6,"h":0.5,"text":it["label"],"size":14,"weight":700,"color":"#1A1A1A","align":"center","valign":"top"})
+            ty += 0.55
+        if it["desc"]:
+            shapes.append({"type":"text","x":cx - 0.3,"y":ty,"w":circle_d + 0.6,"h":1.0,"text":it["desc"],"size":11,"weight":400,"color":"#666666","align":"center","valign":"top"})
+    return shapes
+
+
 def generate_from_shape_json(json_data, output_path, *, theme="light"):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -3043,6 +3111,17 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
             # zigzag/asymmetric/timeline/split 과 동일 패턴 — 성공 시 preset 만(겹침 차단), 실패/예외 시 LLM 백업.
             try:
                 preset_shapes = _build_preset_hsplit(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "circles":
+            # Spec D-Build-PresetCircles — 원형 가로 정렬(수치/키워드 1~4개) (1단계: 코드 등록만, viz_pattern 미연결).
+            # hsplit/zigzag/asymmetric/timeline/split 과 동일 패턴 — 성공 시 preset 만(겹침 차단), 실패/예외 시 LLM 백업.
+            try:
+                preset_shapes = _build_preset_circles(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

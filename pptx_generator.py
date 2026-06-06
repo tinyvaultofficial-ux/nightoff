@@ -2946,6 +2946,62 @@ def _build_preset_circles(slide_data):
     return shapes
 
 
+# ─── Spec D-Build-PresetQuad — quad (색면 4분할 흑/백/흑/백) 레이아웃 프리셋 ────
+# split(2분할) 의 확장: 세로 4면을 흑/백/흑/백으로 번갈아 칠하고,
+# 각 면 안에 keyword(상단 라벨) + head(메인) + desc(부연)를 가운데정렬.
+# 면 색에 따라 글자색 자동 결정 — 검정 면 → 흰 글자, 흰 면 → 검정 글자.
+# 다크 테마에서는 _map_color 가 fill/text 각각 role-aware 반전 → split 처럼 자연 반전.
+# 입력 스키마:
+#   slide_data["items"] = [{"keyword","head"(필수 중 하나),"desc"}, ...]  (2~4, alias: "columns")
+# 안전망: items list 아님 / keyword+head 모두 비어있음 / 유효 items < 2 → 빈 리스트 반환.
+# 1 단계는 코드만 등록 — viz_pattern 연결은 별도 spec (2단계).
+def _build_preset_quad(slide_data):
+    items_raw = slide_data.get("items") or slide_data.get("columns") or []
+    if not isinstance(items_raw, list):
+        return []
+    items = []
+    for it in items_raw:
+        if not isinstance(it, dict):
+            continue
+        kw = str(it.get("keyword", it.get("label", ""))).strip()
+        head = str(it.get("head", "")).strip()
+        desc = str(it.get("desc", "")).strip()
+        if not (kw or head):
+            continue
+        items.append({"keyword": kw, "head": head, "desc": desc})
+    items = items[:4]
+    if len(items) < 2:
+        return []
+    W, H = 11.69, 8.27
+    n = len(items)
+    panel_w = W / n
+    shapes = []
+    fills = ["#1A1A1A", "#FFFFFF", "#1A1A1A", "#FFFFFF"]
+    for i, it in enumerate(items):
+        px = i * panel_w
+        fill = fills[i] if n == 4 else fills[i % 2]
+        shapes.append({"type":"rect","x":px,"y":0,"w":panel_w,"h":H,"fill":fill})
+        is_dark_panel = fill == "#1A1A1A"
+        kw_color   = "#FFFFFF" if is_dark_panel else "#1A1A1A"
+        head_color = "#FFFFFF" if is_dark_panel else "#1A1A1A"
+        desc_color = "#DDDDDD" if is_dark_panel else "#666666"
+        pad = 0.45
+        tw = panel_w - pad * 2
+        if it["keyword"]:
+            shapes.append({"type":"text","x":px+pad,"y":1.5,"w":tw,"h":0.5,
+                           "text":it["keyword"],"size":13,"weight":500,"color":kw_color,
+                           "align":"center","valign":"top"})
+        if it["head"]:
+            shapes.append({"type":"text","x":px+pad,"y":3.2,"w":tw,"h":2.0,
+                           "text":it["head"],"size":20,"weight":800,"color":head_color,
+                           "align":"center","valign":"top"})
+        if it["desc"]:
+            shapes.append({"type":"text","x":px+pad,"y":5.6,"w":tw,"h":2.0,
+                           "text":it["desc"],"size":11,"weight":400,"color":desc_color,
+                           "align":"center","valign":"top"})
+    return shapes
+
+
 def generate_from_shape_json(json_data, output_path, *, theme="light"):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -3122,6 +3178,17 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
             # hsplit/zigzag/asymmetric/timeline/split 과 동일 패턴 — 성공 시 preset 만(겹침 차단), 실패/예외 시 LLM 백업.
             try:
                 preset_shapes = _build_preset_circles(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "quad":
+            # Spec D-Build-PresetQuad — 색면 4분할(흑/백/흑/백 세로 면) (1단계: 코드 등록만, viz_pattern 미연결).
+            # split 의 확장 — circles/hsplit/zigzag/asymmetric/timeline/split 과 동일 패턴.
+            try:
+                preset_shapes = _build_preset_quad(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

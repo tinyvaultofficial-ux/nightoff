@@ -3002,6 +3002,94 @@ def _build_preset_quad(slide_data):
     return shapes
 
 
+# ─── Spec D-Build-PresetDivider — 챕터 간지(divider) 코드 고정 템플릿 ──────────
+# 챕터 간지(Ⅰ/Ⅱ/...) 5개가 LLM 자유 출력으로 매번 제각각 나오는 문제 해결.
+# 식별: slide_type="hero" AND (section "(챕터 divider)" OR governing_main "Ⅰ. " 패턴).
+# 콘셉트 슬로건("Ⅰ.4 콘셉트")/강조 hero("Ⅰ.3 ...")는 section 형식 차이로 자동 제외.
+# 디자인: 왼쪽 정렬, 로마숫자(큰) + 부문명(중간)을 한 줄로, 부제/분할선/페이지번호 X.
+# ★ _add_text 의 text_runs 는 run 별 size 다르게 지원 X (1-d-① 색만 분기) →
+#   두 개의 text 도형으로 분리 + valign="bottom" baseline 정렬.
+
+_DIVIDER_ROMAN_RE = re.compile(r"^(Ⅰ|Ⅱ|Ⅲ|Ⅳ|Ⅴ|I{1,3}|IV|V)\.\s+(.+)$")
+_SECTION_DOT_DIGIT_RE = re.compile(r"^.{1,5}\.\d")
+
+
+def _is_chapter_divider(slide_data):
+    """챕터 간지 페이지 식별 — slide_type=hero AND (라벨 OR 패턴 매칭).
+
+    1차: section 에 "(챕터 divider)" 또는 "(chapter divider)" 라벨 존재.
+    2차(fallback): governing_main 이 "Ⅰ. ", "Ⅱ. " 등 정수+공백 패턴 AND
+                   section 이 "Ⅰ.3" 같은 정수+소수점+숫자 형식이 아님.
+    → 콘셉트 슬로건("Ⅰ.4 콘셉트")·강조 hero("Ⅰ.3 ...") 자동 제외(false positive 0).
+    """
+    if not isinstance(slide_data, dict):
+        return False
+    if str(slide_data.get("slide_type", "")).strip().lower() != "hero":
+        return False
+    section = str(slide_data.get("section", ""))
+    if "(챕터 divider)" in section or "(chapter divider)" in section.lower():
+        return True
+    # fallback: governing_main 이 "Ⅰ. ", "Ⅱ. " 등 패턴
+    gm = str(slide_data.get("governing_main", "")).strip()
+    if _DIVIDER_ROMAN_RE.match(gm):
+        # section 이 "Ⅰ.3 ..." 형식이면 콘셉트/강조 hero → 제외
+        if not _SECTION_DOT_DIGIT_RE.match(section):
+            return True
+    return False
+
+
+def _build_preset_divider(slide_data):
+    """챕터 간지 페이지 — 큰 로마숫자 + 중간 부문명 한 줄(왼쪽 정렬).
+
+    입력 스키마:
+      slide_data["governing_main"] = "Ⅰ. 제안 개요"  (정규식 분리 → "Ⅰ", "제안 개요")
+    분리 실패 시 빈 list 반환 → LLM 백업 fallback (백업 없으면 빈 페이지 안전망 작동).
+    ★ 부문명 길이에 따라 폰트 자동 축소 (한 줄 유지). 로마숫자도 비례 조절.
+    ★ valign="bottom" 으로 두 박스의 baseline 정렬 (run 단위 size 다르게 못 하므로).
+    """
+    gm = str(slide_data.get("governing_main", "")).strip()
+    m = _DIVIDER_ROMAN_RE.match(gm)
+    if not m:
+        return []
+    roman = m.group(1).strip()
+    title = m.group(2).strip()
+    if not roman or not title:
+        return []
+    # 부문명 길이별 폰트 자동 축소 — 한 줄 안 넘침 보수적 설정.
+    # 한글 1자 폭 ≈ 폰트 크기와 비슷(1pt ≈ 1/72인치). 보수적으로 추정.
+    n = len(title)
+    if n <= 6:
+        roman_size, title_size = 150, 54
+    elif n <= 9:
+        roman_size, title_size = 140, 48
+    elif n <= 12:
+        roman_size, title_size = 130, 42
+    elif n <= 15:
+        roman_size, title_size = 120, 36
+    else:
+        roman_size, title_size = 110, 30
+    W, H = 11.69, 8.27
+    # 세로 중앙쯤 — 큰 박스 h=2.5, y_box 가 박스 상단 (valign="bottom" 으로 baseline 정렬)
+    y_box = 2.9
+    box_h = 2.5
+    x_left = 0.9
+    # 로마숫자 박스 폭 — 한글 1자 폭 ≈ size/72 인치. 보수적으로 size*1.3/72 (안전 여백).
+    # Ⅰ(좁음) / Ⅲ(넓음) 변동 흡수.
+    roman_w = max(1.8, roman_size * 1.5 / 72.0)
+    # 부문명 박스 — 로마숫자 우측 + 0.25 인치 여백
+    title_x = x_left + roman_w + 0.25
+    title_w = W - title_x - 0.5
+    shapes = [
+        {"type":"text", "x":x_left, "y":y_box, "w":roman_w, "h":box_h,
+         "text":roman, "size":roman_size, "weight":900, "color":"#1A1A1A",
+         "align":"left", "valign":"bottom"},
+        {"type":"text", "x":title_x, "y":y_box, "w":title_w, "h":box_h,
+         "text":title, "size":title_size, "weight":900, "color":"#1A1A1A",
+         "align":"left", "valign":"bottom"},
+    ]
+    return shapes
+
+
 def generate_from_shape_json(json_data, output_path, *, theme="light"):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -3082,8 +3170,21 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
         # 분기 패턴: preset 성공(도형 리스트 != []) → preset 도형만(백업 폐기, 겹침 방지).
         #            preset 실패(필수 키 누락 → []) → LLM 백업 fallback(빈 페이지 방지).
         #            예외 발생 → LLM 백업 fallback(except 절, 기존 그대로).
+        # Spec D-Build-PresetDivider — 챕터 간지 식별 가드 (preset_name 분기보다 먼저).
+        # divider 페이지는 viz_pattern="" 이라 LLM 이 preset 키를 안 박음 → preset_name 분기 미진입.
+        # slide_type=hero + section/governing_main 패턴으로 식별 → 코드 고정 템플릿 강제.
+        # 성공 시 LLM 백업 폐기(circles/quad 동일 패턴), 실패 시 백업 fallback.
         preset_name = slide_data.get("preset")
-        if preset_name == "quantitative":
+        if _is_chapter_divider(slide_data):
+            try:
+                preset_shapes = _build_preset_divider(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "quantitative":
             try:
                 preset_shapes = _build_preset_quantitative_emphasis(slide_data)
                 if preset_shapes:

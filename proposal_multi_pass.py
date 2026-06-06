@@ -729,6 +729,12 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
                        ⚠ 부적합: 순차 단계(흐름) → timeline / 좌우 대비 → split·asymmetric /
                               role=support
                        ※ 순차 흐름이면 timeline, 좌우 대비면 split. 원 3~4개 권장(최대 4).
+  · quad             — 대등한 핵심 요소 4개를 색면으로 나란히 (4대 전략/4대 요소)
+                       ★ 적합: role=body 페이지의 "대등한 4요소를 색면 대비로 임팩트 있게"
+                              (예: 4대 전략 축, 4단계 깔때기, 4대 솔루션, 4대 차별점)
+                       ⚠ 부적합: 2개 대비 → split / 수치는 circles / 순차 흐름은 timeline /
+                              role=support
+                       ※ 2개 대비는 split, 수치는 circles, 순차는 timeline. 4개 권장(2~4 가능).
 
 ★ 컨셉 슬로건 페이지는 별도 hero 페이지(카탈로그 11번)가 담당.
   text_* 키로 컨셉 슬로건을 만들지 말 것 — 컨셉 슬로건은 80~90pt 거대 슬로건 hero,
@@ -737,7 +743,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
   그 외 위치(hero/support/simple_box)에 박으면 코드가 자동 "" 강등(D-Fix-NarrativeGuard).
 
 분배 규칙 (★ 매핑형 절대 금지 — "이 내용엔 반드시 이 패턴"식 X):
-① 본문 페이지 전체에 14종이 골고루 분포하게. 특정 1~2종 편중 금지.
+① 본문 페이지 전체에 15종이 골고루 분포하게. 특정 1~2종 편중 금지.
 ② 직전 본문 페이지와 같은 viz_pattern 을 연속 배정 X (반드시 다른 키).
 ③ 페이지 내용이 특정 패턴에 자연스러우면 그것을 우선 선택하되, 다양성을 우선 — 억지로 맞추지 말고 자연스러운 후보 2~3개 중 직전과 다른 것 선택.
 ④ ★ 박스/카드 계열(cards3 / before_after / cards_grid) 합산 cap — 본문 페이지의 40% 이내
@@ -2274,7 +2280,7 @@ async def generate_outline(
         # outline AI 가 위험 4종 또는 임의 값을 박더라도 안전 풀 밖이면 ""로 fallback.
         _VIZ_PATTERN_SAFE = {"2col", "cards3", "process", "before_after", "quant", "cards_grid",
                              "text_quote", "text_declaration", "split", "timeline", "asymmetric",
-                             "zigzag", "hsplit", "circles"}
+                             "zigzag", "hsplit", "circles", "quad"}
         viz_pattern_raw = str(it.get("viz_pattern", "")).strip().lower()
         viz_pattern = viz_pattern_raw if viz_pattern_raw in _VIZ_PATTERN_SAFE else ""
         # ★ Spec D-Fix-NarrativeGuard — text 위계는 hero/support/simple_box 페이지에 배정 X.
@@ -2362,6 +2368,18 @@ async def generate_outline(
                 log.info(
                     "D-Fix-CirclesGuard 강등 p=%s role=%s slide_type=%s",
                     it.get("page"), _rl_cc, _st_cc,
+                )
+                viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
+        # ★ Spec D-Build-PresetQuad — quad 가드 (circles/hsplit/zigzag/asymmetric 과 동일 강도).
+        #   quad = "대등한 핵심 요소 4개 색면 4분할(흑/백/흑/백)"이므로 role=body 페이지에만 적합.
+        #   hero(컨셉/표지)·support(예산/일정/조직)·simple_box 에 박혀도 무력화.
+        elif viz_pattern == "quad":
+            _rl_qd = str(it.get("role", "")).strip().lower()
+            _st_qd = str(it.get("slide_type", "")).strip().lower()
+            if _rl_qd != "body" or _st_qd == "hero":
+                log.info(
+                    "D-Fix-QuadGuard 강등 p=%s role=%s slide_type=%s",
+                    it.get("page"), _rl_qd, _st_qd,
                 )
                 viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
         # Spec D-Fix-BodyRole-1 — role 화이트리스트 (body/support/"" 만 허용).
@@ -2781,6 +2799,49 @@ def _build_slide_user_prompt(
                 '"shapes":[{"type":"text","x":0.9,"y":7.4,"w":10,"h":0.6,'
                 '"text":"4대 핵심 지표","size":18,"weight":700,"color":"#1A1A1A"}]}'
             )
+        elif item.viz_pattern == "quad":
+            # Spec D-Build-PresetQuad — 색면 4분할(흑/백/흑/백 세로 면).
+            # 좌표·면색·글자색은 _build_preset_quad 가 자동 배치(면색 반대 글자색).
+            # 빈 페이지 방지: 백업 text 도형 함께 채우게 강제(rect/박스/이미지 절대 X).
+            parts.append(
+                "[비박스 레이아웃 — quad (색면 4분할)]\n"
+                "세로로 4개의 색면(흑/백 번갈아)을 나란히 두고, 각 면에 핵심 요소 하나씩 담는\n"
+                "레이아웃. 핵심 요소 4개를 대등하게 나란히 보여줄 때 적합.\n"
+                "\n"
+                "★ 채우는 법 — 각 면(item):\n"
+                "  · keyword: 상단 짧은 라벨/단어 (예: \"인지\", \"관심\", \"참여\", \"전환\").\n"
+                "  · head: 그 면의 핵심 한 줄 (예: \"광범위 노출로 브랜드 각인\").\n"
+                "  · desc: 짧은 부연 한 줄 (예: \"온·오프라인 통합 집행\").\n"
+                "★ 면이 좁으니 텍스트는 짧게. head 는 한 줄(10자 내외), desc 도 한 줄.\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "quad"  (필수)\n'
+                '  · "items": [{"keyword": "...", "head": "...", "desc": "..."}, ...]\n'
+                "    (4개 권장, 2~4 가능 — 5개 이상은 잘림 / 2개 미만이면 빈 페이지로 fallback)\n"
+                "  → 좌표·면색·글자색은 코드가 자동 배치한다 (검정 면 → 흰 글자 / 흰 면 → 검정 글자).\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
+                "    절대 금지: rect / 박스 / 이미지 / 도형(type='text' 외).\n"
+                "    색면 4분할은 코드가 자동으로 그린다.\n"
+                "    백업으로 넣을 것 (text 만): 제목 + 각 면 keyword 텍스트 정도. preset 처리 실패 대비용.\n"
+                "  ★ preset='quad' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
+                "\n"
+                "★ 다른 패턴과 구분:\n"
+                "  · 좌우 2개 대비 → split / asymmetric\n"
+                "  · 수치 원형 → circles\n"
+                "  · 순차 흐름 → timeline\n"
+                "  · quad 는 \"대등한 4요소를 나란히\" — 색면 대비로 임팩트.\n"
+                "\n"
+                "★ 완성 예시 (이 구조 그대로 따라):\n"
+                '{"preset":"quad",'
+                '"items":['
+                '{"keyword":"인지","head":"광범위 노출로 브랜드 각인","desc":"온·오프라인 통합 집행"},'
+                '{"keyword":"관심","head":"콘텐츠 몰입 유도","desc":"스토리텔링 카드뉴스"},'
+                '{"keyword":"참여","head":"자발적 확산 설계","desc":"참여형 이벤트로 바이럴"},'
+                '{"keyword":"전환","head":"센터 실적 연결","desc":"상담 연결로 실적 전환"}'
+                '],'
+                '"shapes":[{"type":"text","x":0.9,"y":7.4,"w":10,"h":0.6,'
+                '"text":"인지 → 관심 → 참여 → 전환","size":18,"weight":700,"color":"#1A1A1A"}]}'
+            )
         else:
             parts.append(
                 f"[배정된 레이아웃 패턴] {item.viz_pattern} — 본 페이지는 이 패턴으로 구성하라. "
@@ -3168,7 +3229,7 @@ async def generate_one_slide(
             if (_vp_raw.startswith("text_") or _vp_raw == "split"
                     or _vp_raw == "timeline" or _vp_raw == "asymmetric"
                     or _vp_raw == "zigzag" or _vp_raw == "hsplit"
-                    or _vp_raw == "circles"):
+                    or _vp_raw == "circles" or _vp_raw == "quad"):
                 _left_obj = parsed.get("left") if isinstance(parsed.get("left"), dict) else {}
                 _right_obj = parsed.get("right") if isinstance(parsed.get("right"), dict) else {}
                 _left_head = str(_left_obj.get("head", "")).strip() if _left_obj else ""

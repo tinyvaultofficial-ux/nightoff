@@ -2437,6 +2437,15 @@ async def generate_outline(
         "outline role 분포: body=%d / support=%d / blank=%d / total=%d (body=%.0f%%)",
         _body, _support, _blank, len(items), _ratio,
     )
+    # Spec D-Fix-RoleAssign — 페이지별 role 배정 로그 (read-only / 동작 무변경 / 측정 전용).
+    # 분포 집계만으로는 "어느 섹션에서 오판하는지" 알 수 없어 페이지별 상세 추가.
+    # Railway 로그 "D-Fix-RoleAssign" 검색 시: page / section / role 매핑 확인 가능.
+    # ★ OutlineItem 에 slide_type 필드 없음 → page / section / role 3개만 기록 (확인 후 결정).
+    for _it in items:
+        log.info(
+            "D-Fix-RoleAssign p=%s section=%s role=%s",
+            _it.page, _it.section, (_it.role or "-"),
+        )
 
     return OutlineResult(
         title=str(parsed.get("title", "")).strip(),

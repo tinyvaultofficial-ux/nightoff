@@ -723,6 +723,12 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
                               role=support
                        ※ 텍스트가 적고 비주얼이 본질일 때만. 좌우(세로) 분할은 split/asymmetric,
                           위아래(가로) 분할은 hsplit.
+  · circles          — 핵심 수치/요소 3~4개를 원형으로 나란히 (KPI·지표·구성요소)
+                       ★ 적합: role=body 페이지의 "핵심 지표/구성요소 나란히 비교·제시"
+                              (예: 4대 핵심 KPI, 사업 성과 지표, 3대 구성 요소, 핵심 차별점)
+                       ⚠ 부적합: 순차 단계(흐름) → timeline / 좌우 대비 → split·asymmetric /
+                              role=support
+                       ※ 순차 흐름이면 timeline, 좌우 대비면 split. 원 3~4개 권장(최대 4).
 
 ★ 컨셉 슬로건 페이지는 별도 hero 페이지(카탈로그 11번)가 담당.
   text_* 키로 컨셉 슬로건을 만들지 말 것 — 컨셉 슬로건은 80~90pt 거대 슬로건 hero,
@@ -731,7 +737,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
   그 외 위치(hero/support/simple_box)에 박으면 코드가 자동 "" 강등(D-Fix-NarrativeGuard).
 
 분배 규칙 (★ 매핑형 절대 금지 — "이 내용엔 반드시 이 패턴"식 X):
-① 본문 페이지 전체에 13종이 골고루 분포하게. 특정 1~2종 편중 금지.
+① 본문 페이지 전체에 14종이 골고루 분포하게. 특정 1~2종 편중 금지.
 ② 직전 본문 페이지와 같은 viz_pattern 을 연속 배정 X (반드시 다른 키).
 ③ 페이지 내용이 특정 패턴에 자연스러우면 그것을 우선 선택하되, 다양성을 우선 — 억지로 맞추지 말고 자연스러운 후보 2~3개 중 직전과 다른 것 선택.
 ④ ★ 박스/카드 계열(cards3 / before_after / cards_grid) 합산 cap — 본문 페이지의 40% 이내
@@ -2268,7 +2274,7 @@ async def generate_outline(
         # outline AI 가 위험 4종 또는 임의 값을 박더라도 안전 풀 밖이면 ""로 fallback.
         _VIZ_PATTERN_SAFE = {"2col", "cards3", "process", "before_after", "quant", "cards_grid",
                              "text_quote", "text_declaration", "split", "timeline", "asymmetric",
-                             "zigzag", "hsplit"}
+                             "zigzag", "hsplit", "circles"}
         viz_pattern_raw = str(it.get("viz_pattern", "")).strip().lower()
         viz_pattern = viz_pattern_raw if viz_pattern_raw in _VIZ_PATTERN_SAFE else ""
         # ★ Spec D-Fix-NarrativeGuard — text 위계는 hero/support/simple_box 페이지에 배정 X.
@@ -2344,6 +2350,18 @@ async def generate_outline(
                 log.info(
                     "D-Fix-HsplitGuard 강등 p=%s role=%s slide_type=%s",
                     it.get("page"), _rl_hs, _st_hs,
+                )
+                viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
+        # ★ Spec D-Build-PresetCircles — circles 가드 (hsplit/zigzag/asymmetric 과 동일 강도).
+        #   circles = "핵심 수치/요소 3~4개 원형 가로 정렬"이므로 role=body 페이지에만 적합.
+        #   hero(컨셉/표지)·support(예산/일정/조직)·simple_box 에 박혀도 무력화.
+        elif viz_pattern == "circles":
+            _rl_cc = str(it.get("role", "")).strip().lower()
+            _st_cc = str(it.get("slide_type", "")).strip().lower()
+            if _rl_cc != "body" or _st_cc == "hero":
+                log.info(
+                    "D-Fix-CirclesGuard 강등 p=%s role=%s slide_type=%s",
+                    it.get("page"), _rl_cc, _st_cc,
                 )
                 viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
         # Spec D-Fix-BodyRole-1 — role 화이트리스트 (body/support/"" 만 허용).
@@ -2714,6 +2732,54 @@ def _build_slide_user_prompt(
                 '"caption":"Before / After 비교",'
                 '"shapes":[{"type":"text","x":0.9,"y":6.0,"w":10,"h":0.6,'
                 '"text":"거친 초안에서 완성본으로","size":18,"weight":700,"color":"#1A1A1A"}]}'
+            )
+        elif item.viz_pattern == "circles":
+            # Spec D-Build-PresetCircles — 원형 가로 정렬(수치/키워드 3~4개).
+            # 좌표·원·텍스트 위계는 _build_preset_circles 가 자동 배치.
+            # 빈 페이지 방지: 백업 text 도형 함께 채우게 강제(rect/박스/이미지 절대 X).
+            parts.append(
+                "[비박스 레이아웃 — circles (원형 가로 정렬)]\n"
+                "핵심 수치나 요소 3~4개를 원 안에 넣어 가로로 나란히 보여주는 레이아웃.\n"
+                "\n"
+                "★ 채우는 법:\n"
+                "  · 원 안(value): 수치 우선 (예: \"95%\", \"200팀\", \"1,200만\", \"월 4회\", \"3종\").\n"
+                "    %·명·개·회·만·억 등 단위 포함 짧게.\n"
+                "    수치가 마땅치 않으면 짧은 핵심 키워드 2~3글자 (예: \"인지\", \"신뢰\", \"확산\") 도 가능.\n"
+                "  · label: 그 수치/키워드가 무엇인지\n"
+                "    (예: \"참가자 만족도\", \"월 노출 수\", \"전국 모집\").\n"
+                "  · desc: label 을 보충하는 짧은 한 줄 설명 (선택).\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "circles"  (필수)\n'
+                '  · "items": [{"value": "...(필수)", "label": "...", "desc": "..."}, ...]\n'
+                "    (3~4개 권장, 최대 4 — 5개 이상은 잘림)\n"
+                "  · (선택) \"eyebrow\" — 좌상단 메타 라벨\n"
+                "  · (선택) \"title\"   — 상단 페이지 제목\n"
+                "  → 좌표·원·폰트·정렬은 코드가 자동 배치한다.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
+                "    절대 금지: rect / 박스 / 이미지 / 도형(type='text' 외).\n"
+                "    원 도형은 코드가 자동으로 그린다.\n"
+                "    백업으로 넣을 것 (text 만): 제목 + value 핵심값 텍스트 정도. preset 처리 실패 대비용.\n"
+                "  ★ preset='circles' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
+                "\n"
+                "★ 다른 패턴과 구분:\n"
+                "  · 순차 단계(흐름) → timeline\n"
+                "  · 좌우 대비 → split / asymmetric\n"
+                "  · 항목 나열 리듬 → zigzag\n"
+                "  · circles 는 \"핵심 지표/구성요소를 나란히 비교·제시\" 할 때.\n"
+                "\n"
+                "★ 완성 예시 (이 구조 그대로 따라):\n"
+                '{"preset":"circles",'
+                '"eyebrow":"Ⅰ. 사업 이해 · 핵심 목표 지표",'
+                '"title":"4대 핵심 지표로 검증하는 사업 성과",'
+                '"items":['
+                '{"value":"1,200만","label":"월 노출 수","desc":"포털·SNS·배너 통합 도달"},'
+                '{"value":"200팀","label":"참가자 모집","desc":"지상파 광고로 D-60까지 확보"},'
+                '{"value":"95%","label":"참가자 만족도","desc":"사후 설문 기반 측정"},'
+                '{"value":"월 4회","label":"성과 리포트","desc":"주간 단위 최적화"}'
+                '],'
+                '"shapes":[{"type":"text","x":0.9,"y":7.4,"w":10,"h":0.6,'
+                '"text":"4대 핵심 지표","size":18,"weight":700,"color":"#1A1A1A"}]}'
             )
         else:
             parts.append(
@@ -3101,7 +3167,8 @@ async def generate_one_slide(
             _vp_raw = str(getattr(item, "viz_pattern", ""))
             if (_vp_raw.startswith("text_") or _vp_raw == "split"
                     or _vp_raw == "timeline" or _vp_raw == "asymmetric"
-                    or _vp_raw == "zigzag" or _vp_raw == "hsplit"):
+                    or _vp_raw == "zigzag" or _vp_raw == "hsplit"
+                    or _vp_raw == "circles"):
                 _left_obj = parsed.get("left") if isinstance(parsed.get("left"), dict) else {}
                 _right_obj = parsed.get("right") if isinstance(parsed.get("right"), dict) else {}
                 _left_head = str(_left_obj.get("head", "")).strip() if _left_obj else ""

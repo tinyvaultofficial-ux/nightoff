@@ -3013,47 +3013,89 @@ def _build_preset_quad(slide_data):
 _DIVIDER_ROMAN_RE = re.compile(r"^(Ⅰ|Ⅱ|Ⅲ|Ⅳ|Ⅴ|I{1,3}|IV|V)\.\s+(.+)$")
 _SECTION_DOT_DIGIT_RE = re.compile(r"^.{1,5}\.\d")
 
+# Spec D-Fix-DividerActuallyWorks — 1-based 순번 → 유니코드 로마숫자.
+# LLM 이 로마숫자를 자유 매김(V 중복 등) 하는 환각 차단용. 코드가 등장 순서대로 부여.
+_DIVIDER_ROMAN_NUMERALS = ["Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ", "Ⅷ", "Ⅸ", "Ⅹ"]
+
+
+def _divider_idx_to_roman(idx):
+    """1-based 정수 → 유니코드 로마숫자. 11+ 는 "11", "12" 형태 fallback (안전망)."""
+    if not isinstance(idx, int) or idx < 1:
+        return "?"
+    if idx <= len(_DIVIDER_ROMAN_NUMERALS):
+        return _DIVIDER_ROMAN_NUMERALS[idx - 1]
+    return str(idx)
+
 
 def _is_chapter_divider(slide_data):
-    """챕터 간지 페이지 식별 — slide_type=hero AND (라벨 OR 패턴 매칭).
+    """챕터 간지 페이지 식별 — section "(챕터 divider)" 라벨 단독으로 식별.
 
-    1차: section 에 "(챕터 divider)" 또는 "(chapter divider)" 라벨 존재.
-    2차(fallback): governing_main 이 "Ⅰ. ", "Ⅱ. " 등 정수+공백 패턴 AND
-                   section 이 "Ⅰ.3" 같은 정수+소수점+숫자 형식이 아님.
-    → 콘셉트 슬로건("Ⅰ.4 콘셉트")·강조 hero("Ⅰ.3 ...") 자동 제외(false positive 0).
+    Spec D-Fix-DividerActuallyWorks (어제 작업이 한 번도 작동 안 한 회귀 수정):
+      어제 spec(0a814ab) 의 1차 가드 `slide_type == "hero"` 가 항상 False 였다.
+      이유: SLIDE pass output 스키마는 {section, shapes} 만 강제(L2768) →
+            LLM 이 slide_type 키를 자기 JSON 출력에 안 박음 →
+            final_slides 변환의 sr.meta(L3339, "shapes/section 제외 키만 보존")에
+            slide_type 미포함 → generate_from_shape_json 의 slide_data 에서 부재.
+      → slide_type 의존 완전 제거. section 라벨 "(챕터 divider)" 단독 식별.
+
+    이 라벨은 OUTLINE_SYSTEM_PROMPT 출력 예시(L636) 에서 챕터 divider 에만 부여.
+    콘셉트 슬로건("Ⅰ.4 콘셉트") / 강조 hero("Ⅰ.3 ...") 는 라벨 안 받음 →
+    false positive 0 (어제 진단에서 확인).
     """
     if not isinstance(slide_data, dict):
-        return False
-    if str(slide_data.get("slide_type", "")).strip().lower() != "hero":
         return False
     section = str(slide_data.get("section", ""))
     if "(챕터 divider)" in section or "(chapter divider)" in section.lower():
         return True
-    # fallback: governing_main 이 "Ⅰ. ", "Ⅱ. " 등 패턴
-    gm = str(slide_data.get("governing_main", "")).strip()
-    if _DIVIDER_ROMAN_RE.match(gm):
-        # section 이 "Ⅰ.3 ..." 형식이면 콘셉트/강조 hero → 제외
-        if not _SECTION_DOT_DIGIT_RE.match(section):
-            return True
     return False
 
 
-def _build_preset_divider(slide_data):
-    """챕터 간지 페이지 — 큰 로마숫자 + 중간 부문명 한 줄(왼쪽 정렬).
+def _extract_divider_title(slide_data):
+    """챕터 간지 부문명 추출 — governing_main 우선, 없으면 section 에서 추출.
 
-    입력 스키마:
-      slide_data["governing_main"] = "Ⅰ. 제안 개요"  (정규식 분리 → "Ⅰ", "제안 개요")
-    분리 실패 시 빈 list 반환 → LLM 백업 fallback (백업 없으면 빈 페이지 안전망 작동).
-    ★ 부문명 길이에 따라 폰트 자동 축소 (한 줄 유지). 로마숫자도 비례 조절.
-    ★ valign="bottom" 으로 두 박스의 baseline 정렬 (run 단위 size 다르게 못 하므로).
+    Spec D-Fix-DividerActuallyWorks:
+      governing_main 도 LLM 이 SLIDE output JSON 에 안 박을 수 있음 →
+      section 에서 "(챕터 divider)" 라벨을 떼서 부문명으로 사용 (확실한 fallback).
+
+    우선순위:
+      1. governing_main 이 "Ⅰ. 제안 개요" 형식이면 prefix 떼고 "제안 개요"
+      2. governing_main 이 비-empty 면 그대로
+      3. section 에서 "(챕터 divider)" 라벨 떼고 strip
+      4. 모두 실패 시 "" (빈 문자열 — _build_preset_divider 가 빈 list 로 처리)
     """
     gm = str(slide_data.get("governing_main", "")).strip()
-    m = _DIVIDER_ROMAN_RE.match(gm)
-    if not m:
-        return []
-    roman = m.group(1).strip()
-    title = m.group(2).strip()
-    if not roman or not title:
+    if gm:
+        m = _DIVIDER_ROMAN_RE.match(gm)
+        if m:
+            return m.group(2).strip()
+        return gm
+    section = str(slide_data.get("section", ""))
+    title = section.replace("(챕터 divider)", "").replace("(chapter divider)", "").strip()
+    return title
+
+
+def _build_preset_divider(slide_data, divider_idx=1):
+    """챕터 간지 페이지 — 큰 로마숫자(코드 자동 매김) + 중간 부문명 한 줄(왼쪽 정렬).
+
+    Spec D-Fix-DividerActuallyWorks (어제 spec 의 회귀 수정):
+      어제 작업은 governing_main 의 LLM 매김 로마숫자(_DIVIDER_ROMAN_RE) 를 신뢰했으나,
+      행사 도메인에서 LLM 이 로마숫자를 안 박거나 잘못 박음(V 중복 등) → 정규식 실패 →
+      빈 list → LLM 백업 fallback → 들쭉날쭉. 이번엔 로마숫자를 코드가 등장 순서로
+      자동 매김 (divider_idx) → LLM 자유 매김 환각 차단.
+
+    입력:
+      slide_data — chapter divider 식별된 페이지
+      divider_idx — 1-based 등장 순번. generate_from_shape_json 의 카운터가 부여.
+
+    부문명 추출 (_extract_divider_title):
+      governing_main 우선 (prefix 떼기) → section 에서 라벨 떼기 → "" fallback.
+    부문명 없으면 빈 list → 백업 fallback (마지막 안전망).
+    ★ 부문명 길이에 따라 폰트 자동 축소 (한 줄 유지).
+    ★ valign="bottom" 으로 두 박스의 baseline 정렬 (run 단위 size 다르게 못 하므로).
+    """
+    roman = _divider_idx_to_roman(divider_idx)
+    title = _extract_divider_title(slide_data)
+    if not title:
         return []
     # 부문명 길이별 폰트 자동 축소 — 한 줄 안 넘침 보수적 설정.
     # 한글 1자 폭 ≈ 폰트 크기와 비슷(1pt ≈ 1/72인치). 보수적으로 추정.
@@ -3149,6 +3191,10 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
 
     rendered_total = 0
     errors_total = []
+    # Spec D-Fix-DividerActuallyWorks — 챕터 간지 등장 순번 카운터.
+    # _is_chapter_divider 가 True 인 페이지를 만날 때마다 ++. _build_preset_divider 에
+    # 1-based 순번 전달 → 코드가 로마숫자(Ⅰ~Ⅹ) 자동 매김. LLM 로마숫자 자유 매김(V 중복) 차단.
+    _divider_counter = 0
     for slide_idx, slide_data in enumerate(slides_data):
         if not isinstance(slide_data, dict):
             errors_total.append("slide" + str(slide_idx) + ": not a dict")
@@ -3176,8 +3222,9 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
         # 성공 시 LLM 백업 폐기(circles/quad 동일 패턴), 실패 시 백업 fallback.
         preset_name = slide_data.get("preset")
         if _is_chapter_divider(slide_data):
+            _divider_counter += 1
             try:
-                preset_shapes = _build_preset_divider(slide_data)
+                preset_shapes = _build_preset_divider(slide_data, _divider_counter)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

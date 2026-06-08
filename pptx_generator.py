@@ -3010,7 +3010,25 @@ def _build_preset_quad(slide_data):
 # ★ _add_text 의 text_runs 는 run 별 size 다르게 지원 X (1-d-① 색만 분기) →
 #   두 개의 text 도형으로 분리 + valign="bottom" baseline 정렬.
 
-_DIVIDER_ROMAN_RE = re.compile(r"^(Ⅰ|Ⅱ|Ⅲ|Ⅳ|Ⅴ|I{1,3}|IV|V)\.\s+(.+)$")
+# Spec D-Fix-DividerPrefixStrip — section/governing_main 맨 앞 "번호 prefix" 광범위 흡수.
+#   기존: "로마숫자(Ⅰ~Ⅴ / I~V) + 점 + 공백" 만 매칭 → 변형 케이스(점 뒤 공백 X / 점 X /
+#         Ⅵ 이상 / 아라비아 숫자) 미매칭 → fallback 시 LLM prefix 잔존 → 코드 자동 매김
+#         prefix 와 겹침("Ⅰ Ⅲ. 공간구성계획" 사고 원인, 진단 D-Check-DividerRomanCollision).
+#   확장: 로마숫자 Ⅰ~Ⅻ(유니코드 단일 문자) / I~XII(ASCII 긴 것 먼저, IX/XI 우선) /
+#         아라비아 1~99 + 구분자 [.\s]* (0개 이상 — 점/공백/없음 모두 흡수).
+#   호환: group(1) = 번호 prefix / group(2) = 본문 (기존 _extract_divider_title L3068-3070
+#         의 m.group(2) 사용 코드와 그대로 호환).
+#   주의: ASCII alternation 순서 — XII 가 XI 보다 먼저, IX 가 X 보다 먼저, IV 가 I/II/III 보다
+#         먼저 와야 긴 것이 우선 매칭 (greedy alternation 보장).
+_DIVIDER_ROMAN_RE = re.compile(
+    r"^("
+    r"[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ]"           # 유니코드 로마숫자 1~12 (단일 문자)
+    r"|XII|VIII|VII|XI|IX|IV|III|VI|II|X|V|I"  # ASCII 로마 (긴 것·우선순위 높은 것 먼저)
+    r"|\d{1,2}"                          # 아라비아 1~99
+    r")"
+    r"[.\s]*"                             # 구분자 0개 이상 (점·공백 임의 조합)
+    r"(.+)$"                              # 본문 (최소 1자)
+)
 _SECTION_DOT_DIGIT_RE = re.compile(r"^.{1,5}\.\d")
 
 # Spec D-Fix-DividerActuallyWorks — 1-based 순번 → 유니코드 로마숫자.
@@ -3069,8 +3087,15 @@ def _extract_divider_title(slide_data):
         if m:
             return m.group(2).strip()
         return gm
+    # Spec D-Fix-DividerPrefixStrip — section fallback 에도 prefix 떼기 적용.
+    #   기존: section 에서 "(챕터 divider)" 라벨만 떼고 통째 반환 → LLM 이 section 에 박은
+    #         로마숫자 prefix("Ⅲ. 공간구성계획") 잔존 → 코드 자동 매김 prefix("Ⅰ") 와 합쳐져
+    #         "Ⅰ Ⅲ. 공간구성계획" 사고. governing_main 경로와 동일한 정규식 적용해 일관 보장.
     section = str(slide_data.get("section", ""))
     title = section.replace("(챕터 divider)", "").replace("(chapter divider)", "").strip()
+    m2 = _DIVIDER_ROMAN_RE.match(title)
+    if m2:
+        title = m2.group(2).strip()
     return title
 
 

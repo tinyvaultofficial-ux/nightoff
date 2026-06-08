@@ -3045,6 +3045,107 @@ def _divider_idx_to_roman(idx):
     return str(idx)
 
 
+# Spec D-Fix-DividerNumberFromLLM — ASCII 로마 → 정수 매핑 (정규화용).
+# LLM 이 ASCII 로마(I, II, III, IV, V, ...) 또는 아라비아(1, 2, 3, ...) 어떤 형식으로
+# prefix 박아도 유니코드 로마(Ⅰ, Ⅱ, ...) 로 통일해 간지에 표시.
+_ASCII_ROMAN_TO_INT = {
+    "I": 1, "II": 2, "III": 3, "IV": 4, "V": 5, "VI": 6,
+    "VII": 7, "VIII": 8, "IX": 9, "X": 10, "XI": 11, "XII": 12,
+}
+
+# 정규화 입력용 — 유니코드 로마 1~12. _DIVIDER_ROMAN_NUMERALS(L3018, Ⅰ~Ⅹ 10개) 는
+# _divider_idx_to_roman 의 출력 매핑(fallback) 용이라 무변경. 본 dict 는 LLM 이
+# 박은 prefix 가 Ⅺ·Ⅻ 일 때도 정규화 통과시키기 위한 입력 인식용(별도 책임 분리).
+_UNICODE_ROMAN_TO_INT = {
+    "Ⅰ": 1, "Ⅱ": 2, "Ⅲ": 3, "Ⅳ": 4, "Ⅴ": 5, "Ⅵ": 6,
+    "Ⅶ": 7, "Ⅷ": 8, "Ⅸ": 9, "Ⅹ": 10, "Ⅺ": 11, "Ⅻ": 12,
+}
+
+
+def _normalize_divider_prefix_to_roman(prefix):
+    """LLM 박은 prefix(유니코드 로마 / ASCII 로마 / 아라비아) → 유니코드 로마숫자 정규화.
+
+    Spec D-Fix-DividerNumberFromLLM:
+      간지 번호를 코드 자동 매김(_divider_counter) 이 아니라 LLM 박은 prefix 그대로 사용해
+      목차·소항목과 같은 출처 보장 (목차 Ⅲ + 간지 Ⅲ 일치).
+
+    매핑:
+      유니코드 로마(Ⅰ~Ⅻ) → 그대로
+      ASCII 로마(I~XII)    → 유니코드 로마
+      아라비아(1~12)       → 유니코드 로마
+      아라비아(13~)         → "13", "14" 형태 fallback (안전망, _divider_idx_to_roman 와 동일)
+      매칭 실패              → "" (caller 가 fallback 카운터 사용)
+    """
+    if not prefix or not isinstance(prefix, str):
+        return ""
+    p = prefix.strip()
+    if not p:
+        return ""
+    # 유니코드 로마(Ⅰ~Ⅻ) — 1~10 은 _divider_idx_to_roman 출력과 동형이라 그대로,
+    # Ⅺ·Ⅻ 도 인식해 그대로 반환 (입력 보존). _UNICODE_ROMAN_TO_INT 가 1~12 다 커버.
+    if p in _UNICODE_ROMAN_TO_INT:
+        return p
+    # ASCII 로마 → 정수 → 유니코드 로마
+    n = _ASCII_ROMAN_TO_INT.get(p)
+    if n is not None:
+        # 11~12 는 _divider_idx_to_roman fallback("11"/"12") 대신 Ⅺ·Ⅻ 직접 매핑
+        # (입력 의도 보존 — LLM 이 XI 박았는데 출력에서 "11" 로 강등되면 어긋남).
+        if n == 11:
+            return "Ⅺ"
+        if n == 12:
+            return "Ⅻ"
+        return _divider_idx_to_roman(n)
+    # 아라비아 → 정수 → 유니코드 로마 (1~12). 13+ 는 _divider_idx_to_roman 의 숫자 fallback.
+    if p.isdigit():
+        try:
+            n = int(p)
+            if n == 11:
+                return "Ⅺ"
+            if n == 12:
+                return "Ⅻ"
+            if n >= 1:
+                return _divider_idx_to_roman(n)
+        except ValueError:
+            pass
+    return ""
+
+
+def _extract_divider_roman(slide_data):
+    """LLM 이 section / governing_main 에 박은 prefix → 유니코드 로마숫자.
+
+    Spec D-Fix-DividerNumberFromLLM (간지 번호 ↔ 목차 번호 일치 보장):
+      _extract_divider_title 이 이미 _DIVIDER_ROMAN_RE 로 prefix(group 1) + 제목(group 2)
+      둘 다 매칭하지만 제목만 사용. 본 함수가 group 1 (LLM 박은 번호) 을 정규화해 반환.
+
+    우선순위:
+      1. governing_main 에서 매칭 → group(1) 정규화 (가장 정제된 LLM 출력)
+      2. section 에서 "(챕터 divider)" 라벨 떼고 매칭 → group(1) 정규화
+      3. 둘 다 실패 (LLM 이 prefix 안 박음 / 잘못 박음) → "" 반환
+         → _build_preset_divider 가 _divider_counter 기반 fallback 사용 (어제 의도 보존)
+    """
+    if not isinstance(slide_data, dict):
+        return ""
+    # 1순위 governing_main
+    gm = str(slide_data.get("governing_main", "")).strip()
+    if gm:
+        m = _DIVIDER_ROMAN_RE.match(gm)
+        if m:
+            roman = _normalize_divider_prefix_to_roman(m.group(1))
+            if roman:
+                return roman
+    # 2순위 section (라벨 떼고)
+    section = str(slide_data.get("section", "")).strip()
+    if section:
+        title = section.replace("(챕터 divider)", "").replace("(chapter divider)", "").strip()
+        if title:
+            m2 = _DIVIDER_ROMAN_RE.match(title)
+            if m2:
+                roman = _normalize_divider_prefix_to_roman(m2.group(1))
+                if roman:
+                    return roman
+    return ""
+
+
 def _is_chapter_divider(slide_data):
     """챕터 간지 페이지 식별 — section "(챕터 divider)" 라벨 단독으로 식별.
 
@@ -3118,7 +3219,15 @@ def _build_preset_divider(slide_data, divider_idx=1):
     ★ 부문명 길이에 따라 폰트 자동 축소 (한 줄 유지).
     ★ valign="bottom" 으로 두 박스의 baseline 정렬 (run 단위 size 다르게 못 하므로).
     """
-    roman = _divider_idx_to_roman(divider_idx)
+    # Spec D-Fix-DividerNumberFromLLM — 간지 번호 결정 우선순위:
+    #   1순위: LLM 이 section/governing_main 에 박은 prefix (목차·소항목과 같은 출처라 일치 보장)
+    #          예: LLM 이 "Ⅲ. 공간구성계획" 박으면 간지에 Ⅲ → 목차 Ⅲ 과 정확히 일치.
+    #          아라비아("3. ~") / ASCII 로마("III. ~") 도 유니코드 Ⅲ 으로 정규화.
+    #   2순위 fallback: _divider_idx_to_roman(divider_idx) — _divider_counter 등장 순서 기반
+    #          (어제 D-Fix-DividerActuallyWorks 의 "LLM 번호 누락/잘못 박음 시 코드 백업" 의도 보존)
+    #   회귀 원인 (이번 spec 이 해결): 단순 카운터가 LLM 의도와 어긋남 (예: Ⅰ·Ⅱ 챕터 divider 가
+    #          카운트 미진입 시 Ⅲ 챕터부터 카운터 1 → 간지에 Ⅰ 표시, 목차 Ⅲ 와 불일치).
+    roman = _extract_divider_roman(slide_data) or _divider_idx_to_roman(divider_idx)
     title = _extract_divider_title(slide_data)
     if not title:
         return []

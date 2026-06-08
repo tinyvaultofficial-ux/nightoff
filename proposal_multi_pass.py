@@ -2744,15 +2744,23 @@ def _build_slide_user_prompt(
                 "★ 용도: 순서가 있는 단계/흐름/발전과정. 예: 사업 추진 단계, 성장 로드맵,\n"
                 "  고객 여정(인지→관심→참여→전환), 운영 프로세스.\n"
                 "  ※ 추진 일정(날짜 중심)은 간트차트가 담당 — timeline 은 '단계의 흐름'에.\n"
-                "★ process(가로 프로세스)와 구분: 단계에 설명이 붙고 4개 이상이면 timeline(세로),\n"
-                "  단계가 짧고 3~4개 가로 흐름이면 process. 헷갈리면 timeline.\n"
+                "★ Spec D-Fix-TimelineGoverning — process(가로) vs timeline(세로) 구분 강화:\n"
+                "  · 단계 3~4개 + 각 단계 설명 충분 → **timeline (세로) 권장** + 상단에 거버닝 메시지.\n"
+                "  · 단계 5개 이상 또는 각 단계 설명이 길면 → **가로 process preset 우선 검토**\n"
+                "    (timeline 세로에 5+ 단계 + 거버닝까지 넣으면 단계 텍스트가 겹치거나 슬라이드 바닥 침범).\n"
+                "  · 헷갈리면 단계 수 기준: 3~4 = timeline / 5+ = process.\n"
                 "\n"
                 "★ slide JSON 출력에 반드시 다음 키 포함:\n"
                 '  · "preset": "timeline"  (필수)\n'
+                '  · "title": 페이지 거버닝 메시지 (★ 필수, Spec D-Fix-TimelineGoverning).\n'
+                '             outline 의 governing_main 을 그대로 박아라. 비워두지 마라.\n'
+                '             명사형 25~40자 (예: "관객 흐름과 무대 시간을 일치시키는 운영").\n'
+                '             32pt 굵게로 자동 렌더 — 거버닝 표준 위계 (D-Fix-WeightSemanticClass `.gov-main`).\n'
                 '  · "steps": [{"label": 짧은 단계명(선택, 예 "STEP 01"),\n'
                 '               "head": 단계 제목(필수),\n'
-                '               "desc": 한 줄 설명(선택)}, ...]  (3~6개 권장)\n'
-                "  · (선택) \"eyebrow\" — 좌상단 메타 라벨 / \"title\" — 상단 페이지 제목\n"
+                '               "desc": 한 줄 설명(선택)}, ...]\n'
+                '             ★ 3~4개 권장 (Spec D-Fix-TimelineGoverning). 5+ 는 가로 process 검토.\n'
+                "  · (선택) \"eyebrow\" — 좌상단 메타 라벨\n"
                 "  → 좌표·점·이미지 영역은 코드가 자동 배치 — 신경 쓰지 말 것.\n"
                 "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
                 "    절대 금지: rect / 박스 / 원 / 도형(type='text' 외).\n"

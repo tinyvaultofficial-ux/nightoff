@@ -5508,33 +5508,38 @@ function createStreamProgress() {
 // 취소 / ESC / backdrop 클릭 = 닫고 아무 액션 X.
 // CSS: .beta-notice-* 클래스 재사용 (overlay/card 기본 스타일) + 옵션 버튼 인라인 스타일.
 //
-// pageLimit (선택 인자): RFP 분석의 page_limit 값. 권장 배지 동적 매핑 + 초과 경고.
-//   - 유효한 양의 정수: opt.pages ≤ pageLimit 중 최대값에 권장 (모두 초과 시 최소값에 권장)
-//   - null / undefined / 0 / 비숫자: 기존 동작 (100페이지에 권장)
-// pageLimit 기반 동적 옵션 생성 (RFP 한도 정밀 반영).
-//   - pageLimit 없음/0/비숫자: 기존 고정 옵션 (100/50/30)
-//   - pageLimit 있음: [한도-5p (정석), 한도/2 (표준), 30p (간단)] 동적 — 중복 제거 + 내림차순.
+// pageLimit (선택 인자): RFP 분석의 page_limit 값. 권장 배지 = RFP 매수 (없으면 50).
+//   Spec D-Fix-PageBaseConsistent — "권장 = RFP page_limit (없으면 50), -5/-10 은 보조 옵션".
+//   채팅 안내 룰(CHAT_SYSTEM_PROMPT) 의 "RFP page_limit (없으면 50) 기준" 과 정합.
+// 옵션 생성:
+//   - pageLimit 없음/0/비숫자 fallback: [50 (권장), 45 (-5p), 40 (-10p)] — "기준 50" 일관.
+//   - pageLimit 있음: [pageLimit (권장), pageLimit-5 (압축), pageLimit-10 (간결)] — 중복 제거 + 내림차순.
+//     하한 max(10, ...) 으로 작은 RFP 에서도 음수·과소 방지.
+// 권장 배지 결정: effectiveLimit 그대로 (없으면 50). 옛 "-5에 권장" (D-Fix-PageLabel) 폐기.
 // credits = pages × CREDITS_PER_PAGE (= 100, Step 2-A 단위 단순화 반영).
 function buildPageOptions(pageLimit) {
   const C = CREDITS_PER_PAGE;  // L284 module-level 정의 (= 100)
   // pageLimit 타입 가드 — LLM 이 가끔 문자열 반환 가능. 숫자 양수만 신뢰.
+  // Spec D-Fix-PageBaseConsistent — pageLimit 없음 fallback = "기준 50, -5/-10".
+  //   채팅 안내 룰("RFP 없으면 50장 기준") + 모달 권장 배지(50) 와 정합.
   if (typeof pageLimit !== "number" || pageLimit <= 0) {
     return [
-      { pages: 100, credits: 100 * C, label: "100페이지", desc: "풀 분량 제안서" },
-      { pages: 50,  credits: 50 * C,  label: "50페이지",  desc: "표준 분량" },
-      { pages: 30,  credits: 30 * C,  label: "30페이지",  desc: "간단 분량" },
+      { pages: 50, credits: 50 * C, label: "50페이지", desc: "권장 (기준 분량)" },
+      { pages: 45, credits: 45 * C, label: "45페이지", desc: "-5p (압축)" },
+      { pages: 40, credits: 40 * C, label: "40페이지", desc: "-10p (간결)" },
     ];
   }
-  // Spec D-Fix-PageLabel — 의미 기반 재구성 (모든 pageLimit 에 일관):
-  //   표준 = RFP 요구 그대로 / 정석 = 요구 -5 (권장) / 간단 = 요구 -10.
+  // Spec D-Fix-PageBaseConsistent — 라벨 의미 갱신:
+  //   권장 = RFP 요구 그대로 (배지도 여기 부여) / -5p = 압축 / -10p = 간결.
+  //   기존 (D-Fix-PageLabel) 의 "정석 = 요구 -5" 표기 폐기 — "정석" 단어가 권장으로 읽혀 모순.
   //   하한 max(10, ...) 으로 작은 RFP 에서도 음수·과소 방지. 중복은 아래 seen 으로 제거.
   const standard    = pageLimit;
   const recommended = Math.max(10, pageLimit - 5);
   const compact     = Math.max(10, pageLimit - 10);
   const candidates = [
-    { pages: standard,    label: `${standard}페이지`,    desc: "표준 분량 (RFP 요구 그대로)" },
-    { pages: recommended, label: `${recommended}페이지`, desc: "정석 (RFP 한도 -5p)" },
-    { pages: compact,     label: `${compact}페이지`,     desc: "간단 분량" },
+    { pages: standard,    label: `${standard}페이지`,    desc: "권장 (RFP 요구 분량)" },
+    { pages: recommended, label: `${recommended}페이지`, desc: "-5p (압축)" },
+    { pages: compact,     label: `${compact}페이지`,     desc: "-10p (간결)" },
   ];
   // 중복 제거 (예: 한도 35 → recommended=30 + middle=18→20 + minimum=30 → 30 중복) + credits 계산
   const seen = new Set();
@@ -5561,17 +5566,16 @@ function showProposalPageSelectionModal(onConfirm, pageLimit = null) {
   // pageLimit 타입 가드 — LLM 이 가끔 문자열 반환 가능. 숫자 양수만 신뢰.
   const effectiveLimit = (typeof pageLimit === "number" && pageLimit > 0) ? pageLimit : null;
 
-  // 권장 페이지 결정:
-  //   - effectiveLimit 없음 → 50 (중간값, 보수적 권장 — 사용자가 한도 모를 때 100p 는 과다)
-  //   - opt.pages ≤ effectiveLimit 인 옵션 있음 → 그 중 최대값 (동적 OPTIONS 의 경우 자동으로 한도 -5p)
-  //   - 모든 옵션이 effectiveLimit 초과 → 가장 작은 옵션 (limit 에 가장 근접한 선택 유도)
+  // Spec D-Fix-PageBaseConsistent — 권장 = RFP 매수 (없으면 50). 아래 -5/-10 은 보조 옵션.
+  //   기존 (D-Fix-PageLabel): 권장 배지 = 정석(요구-5). RFP 매수 자체에는 권장 미부여 →
+  //   사용자가 "RFP 가 50 인데 권장은 45?" 헷갈리는 사고 발생.
+  //   변경: 권장 배지 = RFP page_limit 그대로 (effectiveLimit 자체). pageLimit 없을 때 50 fallback.
+  //   채팅 안내 룰(CHAT_SYSTEM_PROMPT) 의 "RFP page_limit (없으면 50) 기준 안내" 와 정합.
   let recommendedPages;
   if (effectiveLimit === null) {
     recommendedPages = 50;
   } else {
-    // Spec D-Fix-PageLabel — 권장 배지 = 정석(요구-5)에 고정 (buildPageOptions 의 recommended 와 같은 식).
-    //   기존 max(한도이하) 휴리스틱은 의미·라벨 불일치 사고 발생 → 정석 고정으로 일관.
-    recommendedPages = Math.max(10, effectiveLimit - 5);
+    recommendedPages = effectiveLimit;
   }
 
   const close = () => {

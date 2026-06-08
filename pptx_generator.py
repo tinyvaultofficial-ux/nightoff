@@ -2684,14 +2684,27 @@ def _build_preset_timeline(slide_data):
         shapes.append({"type":"text","x":0.9,"y":0.5,"w":9.89,"h":0.4,"text":eyebrow,"size":11,"weight":400,"color":"#BBBBBB","align":"left","valign":"top"})
     top = 1.1
     if title:
-        # Spec D-Fix-TimelineGoverning — title 자리를 거버닝(상단 메시지) 으로 격상.
-        #   기존: y=1.0, h=0.9, size=26 (페이지 제목 위계 — 약함)
-        #   변경: y=0.8, h=1.2, size=32 (거버닝 표준 = D-Fix-WeightSemanticClass `.gov-main` 32pt 800w)
-        #   거버닝 끝 = 0.8 + 1.2 = 2.0. top = 2.4 (여백 0.4"). area_top = 2.7 (= top + 0.3).
-        #   text_runs 형광 inject 호환 (text 도형 — theme=dark 시 #9CFF00 자동 적용).
-        #   ★ 본 변경은 timeline preset 만 — 다른 preset(asymmetric L2837, hsplit L2896, circles L2938 등)의
-        #     동일한 title text 도형은 무변경 (사용자 명령 — 다른 preset 의 title/거버닝 처리 무변경).
-        shapes.append({"type":"text","x":0.9,"y":0.8,"w":10.0,"h":1.2,"text":title,"size":32,"weight":800,"color":"#1A1A1A","align":"left","valign":"top"})
+        # Spec D-Fix-TimelineGoverningPartialAccent — 직전 spec(D-Fix-TimelineGoverningFollowup)의
+        # "전체 강조(text_runs 단일 run accent=True)" 를 "핵심 명사구 한 곳만 형광" 으로 교체.
+        #   다른 거버닝 표준: D-Build-TextRunsInject (proposal_multi_pass.py:3057-3083) —
+        #   "거버닝당 형광 1곳만 / 핵심 가치를 압축한 명사구 한 곳에만 accent".
+        #   timeline 도 같은 방식: LLM 이 SLIDE 출력에 slide_data["title_runs"] 키로 segment 직접 결정.
+        #     [{"t":"앞부분 "},{"t":"핵심 명사구","accent":true},{"t":" 뒷부분"}]
+        #   title_runs 유효(list + 비어있지 않음) → title 도형의 text_runs 키로 그대로 박음
+        #     → dispatch(L2040) → _add_text(L1638) → run 단위 색 분기 → accent && dark 만 #9CFF00.
+        #   title_runs 없음/빈 list/비-list → text_runs 키 자체 누락 → _add_text L1690 기존 경로 →
+        #     일반 거버닝 fallback (형광 없음, 거버닝 자체는 28pt 로 표시 — 안전).
+        #   ★ size 28 / 좌표 (y=0.8, h=1.2, top=2.4, area_top=2.7) 무변경 — 단계 분포 0 영향.
+        title_runs_raw = slide_data.get("title_runs")
+        title_shape = {
+            "type": "text", "x": 0.9, "y": 0.8, "w": 10.0, "h": 1.2,
+            "text": title,
+            "size": 28, "weight": 800, "color": "#1A1A1A",
+            "align": "left", "valign": "top",
+        }
+        if isinstance(title_runs_raw, list) and title_runs_raw:
+            title_shape["text_runs"] = title_runs_raw
+        shapes.append(title_shape)
         top = 2.4
     line_x = 1.6
     dot_r = 0.04

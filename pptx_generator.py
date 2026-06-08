@@ -2681,7 +2681,12 @@ def _build_preset_timeline(slide_data):
     W, H = 11.69, 8.27
     shapes = []
     if eyebrow:
-        shapes.append({"type":"text","x":0.9,"y":0.5,"w":9.89,"h":0.4,"text":eyebrow,"size":11,"weight":400,"color":"#BBBBBB","align":"left","valign":"top"})
+        # Spec D-Fix-TimelineGoverningPosition — eyebrow x 0.9 → 0.5 로 일반 본문 페이지 정합.
+        #   일반 본문 거버닝 표준 좌표 (proposal_multi_pass.py:1737-1738 SLIDE 예시) x=0.5 와
+        #   상단 좌측 정렬 통일. w=9.89 / y=0.5 / h=0.4 / size 11 / color #BBBBBB 무변경.
+        #   ★ 본 변경은 timeline preset 만 — 다른 preset (asymmetric/circles/zigzag/hsplit/quad 등)의
+        #     동일한 eyebrow 도형은 무변경 (사용자 명령).
+        shapes.append({"type":"text","x":0.5,"y":0.5,"w":9.89,"h":0.4,"text":eyebrow,"size":11,"weight":400,"color":"#BBBBBB","align":"left","valign":"top"})
     top = 1.1
     if title:
         # Spec D-Fix-TimelineGoverningPartialAccent — 직전 spec(D-Fix-TimelineGoverningFollowup)의
@@ -2695,9 +2700,16 @@ def _build_preset_timeline(slide_data):
         #   title_runs 없음/빈 list/비-list → text_runs 키 자체 누락 → _add_text L1690 기존 경로 →
         #     일반 거버닝 fallback (형광 없음, 거버닝 자체는 28pt 로 표시 — 안전).
         #   ★ size 28 / 좌표 (y=0.8, h=1.2, top=2.4, area_top=2.7) 무변경 — 단계 분포 0 영향.
+        # Spec D-Fix-TimelineGoverningPosition — title 거버닝 x 0.9 → 0.5, w 10.0 → 10.5 로
+        #   일반 본문 페이지 거버닝 표준 좌표 (proposal_multi_pass.py:1737-1738 SLIDE 예시
+        #   x=0.5, y=0.8, w=10.5, h=1.2) 와 정렬 통일. eyebrow x=0.5 와도 좌측 정렬 일관.
+        #   ★ y=0.8 / h=1.2 / size=28 / 형광 title_runs / weight=800 / color 무변경 — 위치 (x/w) 만.
+        #   ★ 거버닝 끝 = 0.8 + 1.2 = 2.0 그대로 → top=2.4, area_top=2.7, area_bot=7.4, ys 분포,
+        #     박스 마커, 세로 라인, 우측 placeholder 모두 무변경 (좌표 0 영향).
+        #   ★ 단계 박스 line_x=1.6 무변경 — 거버닝/eyebrow 만 좌측 정렬 (단계는 그대로).
         title_runs_raw = slide_data.get("title_runs")
         title_shape = {
-            "type": "text", "x": 0.9, "y": 0.8, "w": 10.0, "h": 1.2,
+            "type": "text", "x": 0.5, "y": 0.8, "w": 10.5, "h": 1.2,
             "text": title,
             "size": 28, "weight": 800, "color": "#1A1A1A",
             "align": "left", "valign": "top",

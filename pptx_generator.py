@@ -2684,8 +2684,15 @@ def _build_preset_timeline(slide_data):
         shapes.append({"type":"text","x":0.9,"y":0.5,"w":9.89,"h":0.4,"text":eyebrow,"size":11,"weight":400,"color":"#BBBBBB","align":"left","valign":"top"})
     top = 1.1
     if title:
-        shapes.append({"type":"text","x":0.9,"y":1.0,"w":10.0,"h":0.9,"text":title,"size":26,"weight":800,"color":"#1A1A1A","align":"left","valign":"top"})
-        top = 2.3
+        # Spec D-Fix-TimelineGoverning — title 자리를 거버닝(상단 메시지) 으로 격상.
+        #   기존: y=1.0, h=0.9, size=26 (페이지 제목 위계 — 약함)
+        #   변경: y=0.8, h=1.2, size=32 (거버닝 표준 = D-Fix-WeightSemanticClass `.gov-main` 32pt 800w)
+        #   거버닝 끝 = 0.8 + 1.2 = 2.0. top = 2.4 (여백 0.4"). area_top = 2.7 (= top + 0.3).
+        #   text_runs 형광 inject 호환 (text 도형 — theme=dark 시 #9CFF00 자동 적용).
+        #   ★ 본 변경은 timeline preset 만 — 다른 preset(asymmetric L2837, hsplit L2896, circles L2938 등)의
+        #     동일한 title text 도형은 무변경 (사용자 명령 — 다른 preset 의 title/거버닝 처리 무변경).
+        shapes.append({"type":"text","x":0.9,"y":0.8,"w":10.0,"h":1.2,"text":title,"size":32,"weight":800,"color":"#1A1A1A","align":"left","valign":"top"})
+        top = 2.4
     line_x = 1.6
     dot_r = 0.04
     # Spec D-Fix-TimelineDotsLine — 마커를 원(circle) → 작은 네모(rect, 한 변 0.1") 로 교체.
@@ -2694,7 +2701,12 @@ def _build_preset_timeline(slide_data):
     #   ph_x/ph_w/ph_h 좌표 정합을 위해 dot_r=0.04 그대로 유지.
     box_half = 0.05
     area_top = top + 0.3
-    area_bot = 7.5
+    # Spec D-Fix-TimelineGoverning — 슬라이드 바닥(8.27") 침범 안전망.
+    #   진단 발견: 옛 area_bot=7.5 + label+head+desc 모두 있는 마지막 단계 →
+    #   ys[-1] + 0.82 (desc 끝) = 8.32 → 바닥 0.05" 침범 (기존 버그).
+    #   변경: 7.5 → 7.4 로 0.1" 올림. n=4 (cap 1.5 적용) 영향 0, n=5 desc 끝 = 8.22 (안전).
+    #   n=3·4 의 ys[-1] 는 cap 1.5 로 결정되므로 area_bot 0.1" 변경 영향 거의 없음 (안전 여유 ↑).
+    area_bot = 7.4
     n = len(steps)
     if n == 1:
         ys = [(area_top + area_bot) / 2]

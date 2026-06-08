@@ -2755,10 +2755,14 @@ def _build_slide_user_prompt(
                 '  · "title": 페이지 거버닝 메시지 (★ 필수, Spec D-Fix-TimelineGoverning).\n'
                 '             outline 의 governing_main 을 그대로 박아라. 비워두지 마라.\n'
                 '             명사형 25~40자 (예: "관객 흐름과 무대 시간을 일치시키는 운영").\n'
-                '             32pt 굵게로 자동 렌더 — 거버닝 표준 위계 (D-Fix-WeightSemanticClass `.gov-main`).\n'
+                '             28pt 굵게로 자동 렌더 — 도형 모드 거버닝 표준(20~28pt) 정합 / theme=dark 시 형광 자동.\n'
                 '  · "steps": [{"label": 짧은 단계명(선택, 예 "STEP 01"),\n'
-                '               "head": 단계 제목(필수),\n'
-                '               "desc": 한 줄 설명(선택)}, ...]\n'
+                '               "head": 단계 제목(필수, ★ 1줄 / 25자 이내 권장 — 길면 줄바꿈으로 박스 초과),\n'
+                '               "desc": 한 줄 설명(선택, ★ Spec D-Fix-TimelineGoverningFollowup —\n'
+                '                       반드시 1줄, 40자 이내. timeline 은 단계 흐름을 한눈에 보는 구조라\n'
+                '                       긴 설명 절대 금지. 길게 쓰면 word_wrap 자동 줄바꿈으로 박스 0.5" 초과 →\n'
+                '                       슬라이드 바닥 벗어남. 핵심만 명사형 한 줄.)\n'
+                '              }, ...]\n'
                 '             ★ 3~4개 권장 (Spec D-Fix-TimelineGoverning). 5+ 는 가로 process 검토.\n'
                 "  · (선택) \"eyebrow\" — 좌상단 메타 라벨\n"
                 "  → 좌표·점·이미지 영역은 코드가 자동 배치 — 신경 쓰지 말 것.\n"

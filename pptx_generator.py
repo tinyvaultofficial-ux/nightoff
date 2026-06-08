@@ -2688,6 +2688,11 @@ def _build_preset_timeline(slide_data):
         top = 2.3
     line_x = 1.6
     dot_r = 0.04
+    # Spec D-Fix-TimelineDotsLine — 마커를 원(circle) → 작은 네모(rect, 한 변 0.1") 로 교체.
+    #   box_half 는 박스 한 변의 절반 (= 0.05"). 박스 그릴 때 좌상단 = (line_x - box_half, cy - box_half).
+    #   dot_r 자체는 무변경 — placeholder 영역(ph_top/ph_bot, L2717-2718) 계산이 dot_r 에 의존하므로
+    #   ph_x/ph_w/ph_h 좌표 정합을 위해 dot_r=0.04 그대로 유지.
+    box_half = 0.05
     area_top = top + 0.3
     area_bot = 7.5
     n = len(steps)
@@ -2701,9 +2706,17 @@ def _build_preset_timeline(slide_data):
         ys = [start + i * gap for i in range(n)]
     text_x = line_x + 0.6
     text_w = 6.7 - text_x - 0.3
+    # Spec D-Fix-TimelineDotsLine — 세로 라인 추가 (첫 박스 중심 ~ 마지막 박스 중심).
+    #   박스보다 먼저 append → z-order 아래 → 박스가 라인 위에 도드라짐 (PPTX 도형 추가 순 = 하단).
+    #   n==1 일 때는 라인 안 그림 (시작=끝, h=0 → 의미 없음).
+    if n >= 2:
+        shapes.append({"type":"rect","x":line_x - 0.005,"y":ys[0],"w":0.01,"h":ys[-1] - ys[0],"fill":"#DDDDDD"})
     for i, st in enumerate(steps):
         cy = ys[i]
-        shapes.append({"type":"circle","x":line_x - dot_r,"y":cy - dot_r,"w":dot_r*2,"h":dot_r*2,"fill":"#1A1A1A"})
+        # Spec D-Fix-TimelineDotsLine — 마커: 원(circle) → 작은 네모(rect, 한 변 0.1").
+        #   기존 점 (지름 0.08" ≈ 2mm) 이 너무 작아 시각 신호 약함 → 박스(한 변 0.1") + 라인 조합.
+        #   x/y 좌상단 = (line_x - box_half, cy - box_half) → 중심이 기존 점 중심과 동일.
+        shapes.append({"type":"rect","x":line_x - box_half,"y":cy - box_half,"w":box_half*2,"h":box_half*2,"fill":"#1A1A1A"})
         ty = cy - 0.45
         if st["label"]:
             shapes.append({"type":"text","x":text_x,"y":ty,"w":text_w,"h":0.3,"text":st["label"],"size":11,"weight":700,"color":"#999999","align":"left","valign":"top"})

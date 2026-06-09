@@ -3331,22 +3331,13 @@ function openClosingNoticesModal(notices) {
 // hover: 자동 롤링 일시정지 (Hero / 마감 임박 패턴 정합).
 const SAMPLE_POOL = [
   {
-    id: "sample-1",
-    title: "2026 서울안전한마당",
-    agency: "서울특별시 소방재난본부",
-    domain: "행사",
+    id: "sample-pet",
+    title: "2026 위드펫스타 제2회 동물보호의 날 축제",
+    agency: "부산광역시",
+    domain: "행사 대행",
     budget: 0,
-    pdfUrl: "/static/samples/sample-1-seoul-safety.pdf",
-    thumbnailUrl: "/static/samples/sample-1-seoul-safety-thumb.png",
-  },
-  {
-    id: "sample-2",
-    title: "정읍샘고을 정다운상권 SNS 운영·홍보",
-    agency: "정읍샘고을정다운상권 활성화사업추진단",
-    domain: "홍보",
-    budget: 0,
-    pdfUrl: "/static/samples/sample-2-jeongeup-sns.pdf",
-    thumbnailUrl: "/static/samples/sample-2-jeongeup-sns-thumb.png",
+    pdfUrl: "/static/samples/sample-pet.pdf",
+    thumbnailUrl: "/static/samples/sample-pet-thumb.png",
   },
 ];
 

@@ -6027,7 +6027,7 @@ async function openSettings() {
   } else {
     status.textContent = "설정된 키 없음 — 입력 후 저장하거나 Railway 환경변수로 주입하세요.";
   }
-  $("#model-select").value = s.model || "claude-sonnet-4-5-20250929";
+  $("#model-select").value = s.model || "claude-opus-4-8";
 
   const dx = $("#settings-diagnostic");
   if (dx) { dx.classList.add("hidden"); dx.classList.remove("ok", "err"); dx.innerHTML = ""; }

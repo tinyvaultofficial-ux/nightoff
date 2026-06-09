@@ -2421,9 +2421,15 @@ async def generate_outline(
         gov_sub = [str(s).strip() for s in gov_sub_raw if s and str(s).strip()]
         # Spec D-Fix-LayoutVariety-1 / D-Fix-NarrativeDiversity / D-Build-PresetSplit — 안전 9종 화이트리스트.
         # outline AI 가 위험 4종 또는 임의 값을 박더라도 안전 풀 밖이면 ""로 fallback.
+        # Spec D-Build-PresetAllowlistEnable3 — matrix/funnel/hsplit_top 활성화 (스위치 ON).
+        #   3종은 함수/dispatch/가드/SLIDE 가이드/user prompt 예시 5지점 완성·머지된 상태에서
+        #   본 spec 으로 화이트리스트 1지점 추가 = OUTLINE LLM 이 viz_pattern 으로 선택 가능.
+        #   ★ hsplit_top 은 PR(별도 브랜치) 머지 후 6지점 완전 활성 — 본 spec 이 먼저 머지돼도
+        #     dispatch/가드 분기 없어 LLM 이 안 박음(안전). 머지 순서 무관.
         _VIZ_PATTERN_SAFE = {"2col", "cards3", "process", "before_after", "quant", "cards_grid",
                              "text_quote", "text_declaration", "split", "timeline", "asymmetric",
-                             "zigzag", "hsplit", "circles", "quad"}
+                             "zigzag", "hsplit", "circles", "quad",
+                             "matrix", "funnel", "hsplit_top"}
         viz_pattern_raw = str(it.get("viz_pattern", "")).strip().lower()
         viz_pattern = viz_pattern_raw if viz_pattern_raw in _VIZ_PATTERN_SAFE else ""
         # ★ Spec D-Fix-NarrativeGuard — text 위계는 hero/support/simple_box 페이지에 배정 X.

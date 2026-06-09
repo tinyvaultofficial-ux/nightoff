@@ -982,13 +982,13 @@ function renderLanding() {
   // ── 가격 (Spec D-Fix-21: 3 티어 비교 표)
   const TIERS = [
     { name: "스타터", en: "Starter", emoji: "🌱",
-      promo: "15만원", regular: "20만원", discount: "-25%", unit: "10만원",
+      promo: "31만원", regular: "40만원", discount: "-22.5%", unit: "20만원",
       proposals: "2건", best: false },
     { name: "프로", en: "Pro", emoji: "🚀",
-      promo: "36만원", regular: "47.5만원", discount: "-24%", unit: "9.5만원",
+      promo: "79만원", regular: "100만원", discount: "-21%", unit: "20만원",
       proposals: "5건", best: true },
     { name: "비즈니스", en: "Business", emoji: "💎",
-      promo: "70만원", regular: "90만원", discount: "-22%", unit: "9만원",
+      promo: "151만원", regular: "200만원", discount: "-24.5%", unit: "20만원",
       proposals: "10건", best: false },
   ];
   const FEATURES = [

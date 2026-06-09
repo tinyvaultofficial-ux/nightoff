@@ -735,10 +735,10 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
 - viz_hint 는 다음 단계에서 도형 JSON 그릴 때의 힌트 (간단히)
 - 표지 / 목차 / 챕터 divider 5장 / 마무리 1장은 반드시 포함
 
-[viz_pattern 사전 배정 규칙 — Spec D-Fix-LayoutVariety-1 / D-Fix-NarrativeDiversity]
-모든 outline 항목에 "viz_pattern" 필드를 포함. 본문 페이지(slide_type=text_box / 일부 hero)는 아래 8종 중 하나의 키를 배정. 특수 페이지(표지 / 목차 / 챕터 divider / 감사 / 마무리)는 "" 빈 문자열.
+[viz_pattern 사전 배정 규칙 — Spec D-Fix-LayoutVariety-1 / D-Fix-NarrativeDiversity / D-Fix-OutlinePresetCatalogRef]
+모든 outline 항목에 "viz_pattern" 필드를 포함. 본문 페이지(slide_type=text_box / 일부 hero)는 아래 카탈로그의 키 중 하나를 배정. 특수 페이지(표지 / 목차 / 챕터 divider / 감사 / 마무리)는 "" 빈 문자열.
 
-안전 13종 풀 (이 외 값 배정 금지 — 위험 4종은 절대 풀에 X):
+안전 카탈로그 (이 외 값 배정 금지 — 위험 4종은 절대 카탈로그에 X):
   · 2col          — 좌우 2분할 (현재/개선·문제/해결·전후)
   · cards3        — 3카드 등분 비교 (평행 분류·차별점)
   · process       — 가로 단계 흐름 (절차·추진 단계·일정 흐름)
@@ -826,16 +826,16 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
   그 외 위치(hero/support/simple_box)에 박으면 코드가 자동 "" 강등(D-Fix-NarrativeGuard).
 
 분배 규칙 (★ 매핑형 절대 금지 — "이 내용엔 반드시 이 패턴"식 X):
-① 본문 페이지 전체에 15종이 골고루 분포하게. 특정 1~2종 편중 금지.
+① 본문 페이지 전체에 카탈로그의 여러 종이 골고루 분포하게. 특정 1~2종 편중 금지.
 ② 직전 본문 페이지와 같은 viz_pattern 을 연속 배정 X (반드시 다른 키).
 ③ 페이지 내용이 특정 패턴에 자연스러우면 그것을 우선 선택하되, 다양성을 우선 — 억지로 맞추지 말고 자연스러운 후보 2~3개 중 직전과 다른 것 선택.
 ④ ★ 박스/카드 계열(cards3 / before_after / cards_grid) 합산 cap — 본문 페이지의 40% 이내
-   (예: 본문 20장 → 합 8장 이하). 초과 시 다른 계열(2col / process / quant / text_*)로 회전.
+   (예: 본문 20장 → 합 8장 이하). 초과 시 다른 계열(2col / process / quant / text_quote / text_declaration / split / timeline / asymmetric / zigzag / hsplit / circles / matrix / funnel / hsplit_top / quad)로 회전.
    박스 도배 = 단조로움(평가위원 "패턴 하나만 반복" 인식).
 ⑤ ★ 텍스트 위계 계열(text_quote / text_declaration) — 본문 페이지의 5~15% 권장(최소 1장).
    너무 적으면 단조로움 유지, 15% 초과면 텍스트 과다. 적합 페이지(role=body 전략 선언) 우선.
 ⑥ 위험 4종(벤다이어그램 / 2x2 매트릭스 / 수직 타임라인 / 다이어그램+표) 절대 X —
-   안전 8종 키 밖 값은 코드가 자동 ""로 강등시킴 (배정 무효).
+   안전 카탈로그 키 밖 값은 코드가 자동 ""로 강등시킴 (배정 무효).
 ⑦ 특수 페이지(표지·목차·챕터 divider 5장·마무리)는 "" (배정 안 함).
 
 [skeleton_id 배정 규칙 — Spec D-Build-SkeletonConnect / Spec D-Fix-SkeletonDiversity]

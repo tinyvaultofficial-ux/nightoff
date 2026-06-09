@@ -799,6 +799,13 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
                        ⚠ 부적합: 축 없는 단순 4개 나열 → quad / 순차 흐름 → process /
                               role=support
                        ※ 평가·매핑·우선순위면 matrix, 단순 나열이면 quad. 4분면 모두 채울 것.
+  · funnel           — 단계별로 좁아지는 계단형 (모집→선발 압축, 전환율 깔때기)
+                       ★ 적합: 수량이 줄어드는 압축 / 전환 / 선발
+                              (예: 200팀→50→30→10 선발, 인지→관심→구매 전환)
+                       ⚠ 부적합: 시간/순차 흐름 → timeline / 균등 단계 → process /
+                              role=support
+                       ※ 수량이 줄어드는 압축이면 funnel, 시간 흐름이면 timeline.
+                          단계 3~5개, 각 단계 수치(value) 강력 권장.
   · quad             — 대등한 핵심 요소 4개를 색면으로 나란히 (4대 전략/4대 요소)
                        ★ 적합: role=body 페이지의 "대등한 4요소를 색면 대비로 임팩트 있게"
                               (예: 4대 전략 축, 4단계 깔때기, 4대 솔루션, 4대 차별점)
@@ -2521,6 +2528,21 @@ async def generate_outline(
                     it.get("page"), _rl_mx, _st_mx,
                 )
                 viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
+        # ★ Spec D-Build-PresetFunnel — funnel 가드 (matrix 와 동일 강도).
+        #   funnel = "단계별 수량 감소 압축 흐름 (모집→선발, 전환율 깔때기)"이므로 role=body 만 적합.
+        #   hero(컨셉/표지)·support(예산/일정/조직)·simple_box 에 박혀도 무력화.
+        #   ★ 본 spec 단계: 화이트리스트(_VIZ_PATTERN_SAFE) 에 "funnel" 미추가 → 본 가드 분기는
+        #     viz_pattern_raw 가 화이트리스트에서 ""로 fallback 된 후라 진입 0건. 4종 완성 후
+        #     별도 spec 으로 화이트리스트 켜면 본 가드가 실제 작동 시작.
+        elif viz_pattern == "funnel":
+            _rl_fn = str(it.get("role", "")).strip().lower()
+            _st_fn = str(it.get("slide_type", "")).strip().lower()
+            if _rl_fn != "body" or _st_fn == "hero":
+                log.info(
+                    "D-Build-PresetFunnelGuard 강등 p=%s role=%s slide_type=%s",
+                    it.get("page"), _rl_fn, _st_fn,
+                )
+                viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
         # ★ Spec D-Build-PresetQuad — quad 가드 (circles/hsplit/zigzag/asymmetric 과 동일 강도).
         #   quad = "대등한 핵심 요소 4개 색면 4분할(흑/백/흑/백)"이므로 role=body 페이지에만 적합.
         #   hero(컨셉/표지)·support(예산/일정/조직)·simple_box 에 박혀도 무력화.
@@ -3049,6 +3071,66 @@ def _build_slide_user_prompt(
                 '],'
                 '"shapes":[{"type":"text","x":0.9,"y":7.7,"w":10,"h":0.4,'
                 '"text":"우선순위 4분면 평가","size":14,"weight":700,"color":"#1A1A1A"}]}'
+            )
+        elif item.viz_pattern == "funnel":
+            # Spec D-Build-PresetFunnel — 계단형 rect 압축 흐름 (수량 감소 깔때기).
+            # 거버닝 블록(eyebrow+메인 형광+서브)·단계 좌표는 _build_preset_funnel 가 자동.
+            # ★ 본 spec 단계: 화이트리스트 미연결 → 본 분기는 실제 LLM 입력에 도달 0건.
+            # 빈 페이지 방지: 백업 text 도형 함께 채우게 강제(rect/박스/이미지 절대 X).
+            parts.append(
+                "[비박스 레이아웃 — funnel (계단형 압축 흐름)]\n"
+                "단계별로 폭이 좁아지는 직사각형(계단형)으로 수량 압축을 시각화하는 레이아웃.\n"
+                "각 단계의 너비가 점점 작아져 '많이 → 적게' 흐름이 한눈에 보임.\n"
+                "\n"
+                "★ 채우는 법 — 각 단계(stage):\n"
+                "  · label: 단계 이름 (예: \"1차 모집\", \"본선 진출\", \"결승 선발\").\n"
+                "  · value: 단계 수치 (예: \"200팀\", \"50팀\", \"10팀\"). 강력 권장 — funnel 본질이 수량 압축.\n"
+                "  · desc: 단계별 기준/부연 (선택, 한 줄, 25자 이내).\n"
+                "  · accent: 최종(가장 좁은) 단계 1곳만 true — 최종 강조.\n"
+                "\n"
+                "★ 거버닝 블록 (4종 공통 헬퍼 — eyebrow + 메인 형광 + 서브):\n"
+                "  · \"title\" (필수): 메인 거버닝. outline 의 governing_main 그대로 박아라.\n"
+                "  · \"title_runs\" (선택): 핵심 명사구 1곳만 형광 강조 (D-Build-TextRunsInject 정합).\n"
+                "    예: [{\"t\":\"앞부분 \"},{\"t\":\"핵심 명사구\",\"accent\":true},{\"t\":\" 뒷부분\"}]\n"
+                "  · \"subtitle\" (선택): 서브 거버닝. 정량 수치 (' / ' 구분 0~2개).\n"
+                "  · \"eyebrow\" (선택): 좌상단 메타 라벨.\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "funnel"  (필수)\n'
+                '  · "stages": [{"label":"...(필수)","value":"...","desc":"...","accent":bool}, ...]\n'
+                "    (정확히 3~5개. label 필수. value 강력 권장.)\n"
+                '  · "title" (필수, 거버닝) / "title_runs" / "subtitle" / "eyebrow" (선택)\n'
+                "  → 단계별 rect 좌표·너비 감소·라벨은 코드가 자동 배치한다.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
+                "    절대 금지: rect / 박스 / 이미지 / 도형(type='text' 외).\n"
+                "    계단형 rect 는 코드가 자동으로 그린다.\n"
+                "    백업으로 넣을 것 (text 만): 제목 + 각 단계 label+value 텍스트 정도.\n"
+                "  ★ preset='funnel' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
+                "  ★ stages 3개 미만 또는 5개 초과 시도 박스로 회귀 — 3~5 범위 엄수.\n"
+                "\n"
+                "★ 다른 패턴과 구분:\n"
+                "  · 시간/순차 흐름 → timeline (각 단계 동일 비중)\n"
+                "  · 균등 단계 (4단계 흐름) → horizontal_process / process\n"
+                "  · 2축 평가 → matrix\n"
+                "  · funnel 은 \"수량이 줄어드는 압축\" 일 때 — 단계마다 숫자가 줄어드는 게 본질.\n"
+                "\n"
+                "★ 완성 예시 (이 구조 그대로 따라):\n"
+                '{"preset":"funnel",'
+                '"eyebrow":"Ⅱ. 사업 운영 · 모집 설계",'
+                '"title":"200팀 공모에서 결승 10팀까지 4단계 압축 선발",'
+                '"title_runs":['
+                '{"t":"200팀 공모에서 결승 10팀까지 "},'
+                '{"t":"4단계 압축 선발","accent":true}'
+                '],'
+                '"subtitle":"전국 공모 / 최종 1대 20 경쟁률",'
+                '"stages":['
+                '{"label":"1차 모집","value":"200팀","desc":"전국 공모, 온라인 접수","accent":false},'
+                '{"label":"서류 통과","value":"50팀","desc":"심사 4단계 정량 평가","accent":false},'
+                '{"label":"본선 진출","value":"30팀","desc":"현장 발표 평가","accent":false},'
+                '{"label":"결승 선발","value":"10팀","desc":"최종 우승팀 후보","accent":true}'
+                '],'
+                '"shapes":[{"type":"text","x":0.9,"y":7.7,"w":10,"h":0.4,'
+                '"text":"200팀에서 결승 10팀 선발","size":14,"weight":700,"color":"#1A1A1A"}]}'
             )
         elif item.viz_pattern == "quad":
             # Spec D-Build-PresetQuad — 색면 4분할(흑/백/흑/백 세로 면).

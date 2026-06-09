@@ -2833,7 +2833,7 @@ def _build_slide_user_prompt(
                 '                    다른 페이지 거버닝과 똑같은 부분 강조 — 전체 강조 X.\n'
                 '                  ★ title_runs 의 모든 t 를 이으면 title 과 정확히 같아야 한다.\n'
                 '                  ★ 핵심이 애매하면 title_runs 생략 (text_runs 없는 일반 거버닝 fallback, 형광 없음).\n'
-                '                  ★ theme=dark 시 accent 부분만 #9CFF00 자동 적용. theme=light 면 형광 없음(정상).\n'
+                '                  ★ theme=dark 시 accent 부분만 #FFFF00 자동 적용. theme=light 면 형광 없음(정상).\n'
                 '  · "steps": [{"label": 짧은 단계명(선택, 예 "STEP 01"),\n'
                 '               "head": 단계 제목(필수, ★ 1줄 / 25자 이내 권장 — 길면 줄바꿈으로 박스 초과),\n'
                 '               "desc": 한 줄 설명(선택, ★ Spec D-Fix-TimelineGoverningFollowup —\n'
@@ -3174,7 +3174,7 @@ def _build_slide_user_prompt(
                 "  · title (필수): 메인 거버닝 1줄 (흰 글자, 중앙 정렬). 25~35자 권장.\n"
                 "  · title_accent (선택, ★ 형광 강조 2줄): title 의 핵심 키워드 부분을 별도 분리.\n"
                 "    예: title = \"200팀에서 결승 10팀까지\" / title_accent = \"4단계 압축 선발\"\n"
-                "    → 형광(#9CFF00) 으로 2줄째에 중앙 정렬 박힘. 10~20자 권장.\n"
+                "    → 형광(#FFFF00) 으로 2줄째에 중앙 정렬 박힘. 10~20자 권장.\n"
                 "    ★ title_runs 사용 X — title_accent 키로 별도 분리 (theme=light 에서도 형광 보장).\n"
                 "  · subtitle (선택): 서브 거버닝 (정량 수치, 옅은 회색).\n"
                 "  · eyebrow (선택): 좌상단 메타 라벨.\n"
@@ -3317,7 +3317,7 @@ def _build_slide_user_prompt(
 
     # Spec D-Build-TextRunsInject (1-d-②v2) — 다크 형광 강조 안내 v2.
     # 1-d-②(7d5e226) 의 두 문제 수정:
-    #   (1) 색/배경 설명("검정 배경+흰 글씨", "형광 그린 #9CFF00") 제거 →
+    #   (1) 색/배경 설명("검정 배경+흰 글씨", "형광 그린 #FFFF00") 제거 →
     #       LLM 이 글자색을 #FFFFFF 등으로 직접 지정하지 못하게(매핑이 자동 처리).
     #       기존 v1 에서 LLM 이 흰색 직접 지정 → 매핑이 #FFFFFF(text)→#1A1A1A 로 뒤집어
     #       표지/간지 큰 글자가 검정 배경에 검정 글씨가 되는 회귀 발생.

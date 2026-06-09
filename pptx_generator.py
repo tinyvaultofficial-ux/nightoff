@@ -1592,7 +1592,7 @@ def _add_text(slide, x, y, w, h, text, *,
 
     Spec D-Build-TextRunsRender (1-d-①): text_runs 가 있으면 부분 강조 경로.
       형식: [{"t":"...", "accent":bool?}, ...]
-      run 단위로 색 분기 — accent=True && theme=='dark' 만 형광(#9CFF00), 그 외 일반 color.
+      run 단위로 색 분기 — accent=True && theme=='dark' 만 형광(#FFFF00), 그 외 일반 color.
       ★ text_runs 없음/빈 list → 기존 경로 가드 (비트 단위 무변경 / 한 글자도 안 건드림).
       ★ text 필드는 fallback 으로 유지 — text_runs 미지원/디버깅용. 새 경로는 text 무시.
       ★ segment 의 "t" 안에 \\n 이 있으면: split 후 각 \\n 경계마다 paragraph 분리,
@@ -1675,9 +1675,9 @@ def _add_text(slide, x, y, w, h, text, *,
                 run.font.bold = weight_norm >= 600
                 if italic:
                     run.font.italic = True
-                # ★ 색 결정 — accent && dark 만 형광(#9CFF00). 라이트는 accent 무시 → 일반 color.
+                # ★ 색 결정 — accent && dark 만 형광(#FFFF00). 라이트는 accent 무시 → 일반 color.
                 if seg["accent"] and theme == "dark":
-                    seg_color = "#9CFF00"
+                    seg_color = "#FFFF00"
                 else:
                     seg_color = color
                 run.font.color.rgb = _hex_to_rgb(_map_color(seg_color, "text", theme))
@@ -2662,7 +2662,7 @@ def _build_preset_split(slide_data):
 #   - subtitle 있음        → (..., 2.5)             (서브 끝 2.4 + 여유 0.1)
 #   - subtitle 없음        → (..., 2.1)             (메인 끝 2.0 + 여유 0.1, 본문 영역 확장)
 # 형광: title_runs 가 list 이고 비어있지 않으면 title 도형의 text_runs 키로 박음
-#   → _add_text(L1638~) 의 run 단위 색 분기 → accent && theme=='dark' 만 #9CFF00.
+#   → _add_text(L1638~) 의 run 단위 색 분기 → accent && theme=='dark' 만 #FFFF00.
 #   유효하지 않으면 text_runs 키 자체 누락 → 일반 거버닝 fallback (형광 없음, 안전).
 # ★ timeline 은 본 헬퍼 사용 X — 이미 자체 거버닝 처리(D-Fix-TimelineGoverning*) 잘 동작 중.
 #   본 헬퍼는 신규 4종(matrix/funnel/donut/venn) 만 호출.
@@ -2765,7 +2765,7 @@ def _build_preset_timeline(slide_data):
         #   timeline 도 같은 방식: LLM 이 SLIDE 출력에 slide_data["title_runs"] 키로 segment 직접 결정.
         #     [{"t":"앞부분 "},{"t":"핵심 명사구","accent":true},{"t":" 뒷부분"}]
         #   title_runs 유효(list + 비어있지 않음) → title 도형의 text_runs 키로 그대로 박음
-        #     → dispatch(L2040) → _add_text(L1638) → run 단위 색 분기 → accent && dark 만 #9CFF00.
+        #     → dispatch(L2040) → _add_text(L1638) → run 단위 색 분기 → accent && dark 만 #FFFF00.
         #   title_runs 없음/빈 list/비-list → text_runs 키 자체 누락 → _add_text L1690 기존 경로 →
         #     일반 거버닝 fallback (형광 없음, 거버닝 자체는 28pt 로 표시 — 안전).
         #   ★ size 28 / 좌표 (y=0.8, h=1.2, top=2.4, area_top=2.7) 무변경 — 단계 분포 0 영향.
@@ -3087,7 +3087,7 @@ def _build_preset_circles(slide_data):
 # 원 형광 (theme): preset 함수는 theme 인자 받지 않음(circles/timeline 동일).
 #   accent 분면 fill=#1A1A1A (검정 강조), 비강조 분면 fill=#CCCCCC (옅은 회색).
 #   _map_color 가 theme=dark 시 fill role 다크 매핑 자동(#1A1A1A → 흰 / #CCCCCC → 어두운 회색) →
-#   라이트/다크 모두 자연스러운 강조 대비 보장. 형광(#9CFF00)은 text_runs 분기에서만 사용.
+#   라이트/다크 모두 자연스러운 강조 대비 보장. 형광(#FFFF00)은 text_runs 분기에서만 사용.
 def _build_preset_matrix(slide_data):
     # ① 거버닝 헬퍼 — eyebrow + 메인(형광) + 서브
     shapes, _hdr_area_top = _build_governing_block(slide_data)
@@ -3347,10 +3347,10 @@ def _build_preset_funnel(slide_data):
 #   거버닝을 함수 안에서 직접 그림.
 #
 # ★ 형광 처리 (theme=light 우회): title_runs 안 씀.
-#   _add_text 의 accent 분기(L1679)는 `accent && theme=='dark'` 일 때만 #9CFF00 적용 →
+#   _add_text 의 accent 분기(L1679)는 `accent && theme=='dark'` 일 때만 #FFFF00 적용 →
 #   theme=light 면 형광 X. 본 preset 은 검정 배경이라 light 에서도 형광 필요.
-#   → 형광 키워드(title_accent)를 별도 text 도형 + color="#9CFF00" 직접 지정.
-#   _map_color(#9CFF00, "text", *) 는 DARK_MAP 에 매핑 없음 → light/dark 모두 형광 그대로.
+#   → 형광 키워드(title_accent)를 별도 text 도형 + color="#FFFF00" 직접 지정.
+#   _map_color(#FFFF00, "text", *) 는 DARK_MAP 에 매핑 없음 → light/dark 모두 형광 그대로.
 #
 # ★ z-order (shapes 리스트 순서 = 렌더 순서, 먼저 = 아래):
 #   ① 검정 rect → ② eyebrow → ③ 메인 1줄 → ④ 메인 2줄(형광) → ⑤ subtitle
@@ -3364,7 +3364,7 @@ def _build_preset_funnel(slide_data):
 # 입력 스키마:
 #   slide_data["eyebrow"]      = "위 메타 라벨" (선택, color #999999)
 #   slide_data["title"]        = "메인 거버닝 1줄 (흰 글자)" (필수)
-#   slide_data["title_accent"] = "형광 키워드 2줄 (#9CFF00 직접)" (선택)
+#   slide_data["title_accent"] = "형광 키워드 2줄 (#FFFF00 직접)" (선택)
 #   slide_data["subtitle"]     = "서브 거버닝" (선택, color #999999)
 #   slide_data["left"]         = {"head"(필수), "body"} (필수)
 #   slide_data["right"]        = {"head"(필수), "body"} (필수)
@@ -3422,14 +3422,14 @@ def _build_preset_hsplit_top(slide_data):
         "align": "center", "valign": "middle",
     })
 
-    # ④ 메인 거버닝 2줄 (형광 키워드, 선택, #9CFF00 직접 — text_runs 안 씀, theme 우회)
+    # ④ 메인 거버닝 2줄 (형광 키워드, 선택, #FFFF00 직접 — text_runs 안 씀, theme 우회)
     #   _map_color 가 DARK_MAP 미매핑 색은 통과 → light/dark 모두 형광 유지.
     if title_accent:
         shapes.append({
             "type": "text",
             "x": 0, "y": 1.7, "w": W, "h": 0.7,
             "text": title_accent,
-            "size": 28, "weight": 800, "color": "#9CFF00",
+            "size": 28, "weight": 800, "color": "#FFFF00",
             "align": "center", "valign": "middle",
         })
 

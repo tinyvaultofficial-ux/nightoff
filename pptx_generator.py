@@ -3302,24 +3302,28 @@ def _build_preset_funnel(slide_data):
         y = area_top + i * step_h
 
         # rect (계단형 — 단계 사이 여백 0.1"(상하 0.05) 두기)
-        rect_fill = "#1A1A1A" if v["accent"] else "#CCCCCC"
+        # Spec D-Fix-FunnelStepBoxUniform — accent 분기 제거, 모든 단계 흰 면+검정 테두리 통일.
+        #   stroke 1.5 = circles(L2986) / horizontal_process(L2272) 패턴 정합.
+        #   dark 모드: #FFFFFF(fill) → #0A0A0A 배경 일치(자연스럽게 묻힘) +
+        #              #1A1A1A(stroke/text) → #FFFFFF 반전 → 윤곽선 박스 + 흰 글자 (split 패턴).
+        #   v["accent"] 입력 자체는 보존 (스키마 호환) — 색 분기에서만 사용 X.
         shapes.append({
             "type": "rect",
             "x": x, "y": y + 0.05,
             "w": w, "h": step_h - 0.1,
-            "fill": rect_fill,
-            "stroke": None,
+            "fill": "#FFFFFF",
+            "stroke": "#1A1A1A",
+            "stroke_width": 1.5,
         })
 
-        # 라벨 + value 결합 — rect 안 중앙 (accent 검정 → 흰 글자 / 비강조 회색 → 검정 글자)
-        text_color = "#FFFFFF" if v["accent"] else "#1A1A1A"
+        # 라벨 + value 결합 — rect 안 중앙 (모든 단계 검정 글자 통일).
         label_str = v["label"] + " " + v["value"] if v["value"] else v["label"]
         shapes.append({
             "type": "text",
             "x": x, "y": y + 0.05,
             "w": w, "h": step_h - 0.1,
             "text": label_str,
-            "size": 14, "weight": 700, "color": text_color,
+            "size": 14, "weight": 700, "color": "#1A1A1A",
             "align": "center", "valign": "middle",
         })
 

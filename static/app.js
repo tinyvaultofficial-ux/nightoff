@@ -992,10 +992,14 @@ function renderLanding() {
       proposals: "10건", best: false },
   ];
   const FEATURES = [
+    { label: "편집 가능한 PPTX" },
     { label: "RFP 분석" },
+    { label: "발주처 분석" },
+    { label: "다양한 레이아웃" },
+    { label: "전략 대화 AI" },
+    { label: "국내 제안서 표준 형식" },
     { label: "산출내역서" },
     { label: "자체 검증" },
-    { label: "발주처 분석" },
   ];
 
   wrap.appendChild(h("section", { class: "landing-pricing" }, [

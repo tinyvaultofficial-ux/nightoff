@@ -793,6 +793,12 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
                        ⚠ 부적합: 순차 단계(흐름) → timeline / 좌우 대비 → split·asymmetric /
                               role=support
                        ※ 순차 흐름이면 timeline, 좌우 대비면 split. 원 3~4개 권장(최대 4).
+  · matrix           — 2축(X·Y)으로 4분면 매핑 (우선순위 평가, 효과×난이도 등)
+                       ★ 적합: 위치가 정보 / 두 기준으로 분류 / 최우선 분면 1곳 강조
+                              (예: 효과×난이도 평가, 중요도×긴급도, 영향×실현가능성)
+                       ⚠ 부적합: 축 없는 단순 4개 나열 → quad / 순차 흐름 → process /
+                              role=support
+                       ※ 평가·매핑·우선순위면 matrix, 단순 나열이면 quad. 4분면 모두 채울 것.
   · quad             — 대등한 핵심 요소 4개를 색면으로 나란히 (4대 전략/4대 요소)
                        ★ 적합: role=body 페이지의 "대등한 4요소를 색면 대비로 임팩트 있게"
                               (예: 4대 전략 축, 4단계 깔때기, 4대 솔루션, 4대 차별점)
@@ -2500,6 +2506,21 @@ async def generate_outline(
                     it.get("page"), _rl_cc, _st_cc,
                 )
                 viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
+        # ★ Spec D-Build-PresetMatrix — matrix 가드 (circles/hsplit/zigzag/asymmetric 과 동일 강도).
+        #   matrix = "2축(X·Y) 4분면 매핑 (우선순위 평가, 효과×난이도)"이므로 role=body 페이지에만 적합.
+        #   hero(컨셉/표지)·support(예산/일정/조직)·simple_box 에 박혀도 무력화.
+        #   ★ 본 spec 단계: 화이트리스트(_VIZ_PATTERN_SAFE) 에 "matrix" 미추가 → 본 가드 분기는
+        #     viz_pattern_raw 가 화이트리스트에서 ""로 fallback 된 후라 진입 0건. 4종(matrix/funnel/
+        #     donut/venn) 완성 후 별도 spec 으로 화이트리스트 켜면 본 가드가 실제 작동 시작.
+        elif viz_pattern == "matrix":
+            _rl_mx = str(it.get("role", "")).strip().lower()
+            _st_mx = str(it.get("slide_type", "")).strip().lower()
+            if _rl_mx != "body" or _st_mx == "hero":
+                log.info(
+                    "D-Build-PresetMatrixGuard 강등 p=%s role=%s slide_type=%s",
+                    it.get("page"), _rl_mx, _st_mx,
+                )
+                viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
         # ★ Spec D-Build-PresetQuad — quad 가드 (circles/hsplit/zigzag/asymmetric 과 동일 강도).
         #   quad = "대등한 핵심 요소 4개 색면 4분할(흑/백/흑/백)"이므로 role=body 페이지에만 적합.
         #   hero(컨셉/표지)·support(예산/일정/조직)·simple_box 에 박혀도 무력화.
@@ -2957,6 +2978,77 @@ def _build_slide_user_prompt(
                 '],'
                 '"shapes":[{"type":"text","x":0.9,"y":7.4,"w":10,"h":0.6,'
                 '"text":"4대 핵심 지표","size":18,"weight":700,"color":"#1A1A1A"}]}'
+            )
+        elif item.viz_pattern == "matrix":
+            # Spec D-Build-PresetMatrix — 2축(X·Y) 4분면 매핑 (우선순위 평가).
+            # 거버닝 블록(eyebrow+메인 형광+서브)·축·4분면 좌표는 _build_preset_matrix 가 자동.
+            # ★ 본 spec 단계: 화이트리스트 미연결 → 본 분기는 실제 LLM 입력에 도달 0건.
+            #   4종 완성 후 화이트리스트 켜면 본 가이드가 실제 작동 시작 (안전망).
+            # 빈 페이지 방지: 백업 text 도형 함께 채우게 강제(rect/박스/이미지 절대 X).
+            parts.append(
+                "[비박스 레이아웃 — matrix (2축 4분면 매핑)]\n"
+                "두 개의 축(X·Y)으로 영역을 4분면으로 나누고, 각 분면에 항목을 배치하는 레이아웃.\n"
+                "위치 자체가 정보 — 어느 분면에 들어가느냐가 의미.\n"
+                "\n"
+                "★ 채우는 법:\n"
+                "  · axis_x / axis_y: 각 축의 양끝 라벨 (예: [\"低\", \"高\"]).\n"
+                "  · axis_x_label / axis_y_label: 축 본명 (예: \"난이도\", \"효과\"). 선택.\n"
+                "  · quadrants: 4분면 (정확히 4개 — tl/tr/bl/br).\n"
+                "    - pos: \"tl\" 좌상(X低 Y高) / \"tr\" 우상(X高 Y高) / \"bl\" 좌하(X低 Y低) / \"br\" 우하(X高 Y低)\n"
+                "    - title: 분면 핵심 한 줄 (10~15자, 명사형)\n"
+                "    - desc: 짧은 부연 (선택, 한 줄 25자 이내)\n"
+                "    - accent: 최우선 분면 1곳만 true (다중 시 첫 1개만 유지됨)\n"
+                "\n"
+                "★ 거버닝 블록 (4종 공통 헬퍼 — eyebrow + 메인 형광 + 서브):\n"
+                "  · \"title\" (필수): 메인 거버닝. outline 의 governing_main 그대로 박아라.\n"
+                "  · \"title_runs\" (선택): 핵심 명사구 1곳만 형광 강조 (D-Build-TextRunsInject 정합).\n"
+                "    예: [{\"t\":\"앞부분 \"},{\"t\":\"핵심 명사구\",\"accent\":true},{\"t\":\" 뒷부분\"}]\n"
+                "  · \"subtitle\" (선택): 서브 거버닝. 정량 수치 (' / ' 구분 0~2개, 각 25자 이내).\n"
+                "    outline 의 governing_sub 그대로.\n"
+                "  · \"eyebrow\" (선택): 좌상단 메타 라벨.\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "matrix"  (필수)\n'
+                '  · "axis_x": ["低", "高"]  (필수, 양끝 라벨)\n'
+                '  · "axis_y": ["低", "高"]  (필수, 양끝 라벨)\n'
+                '  · "axis_x_label": "난이도" / "axis_y_label": "효과"  (선택, 축 본명)\n'
+                '  · "quadrants": [{"pos":"tl|tr|bl|br","title":"...","desc":"...","accent":bool}, ...]\n'
+                "    (정확히 4개, pos 4종 모두 등장)\n"
+                '  · "title" (필수, 거버닝) / "title_runs" / "subtitle" / "eyebrow" (선택)\n'
+                "  → 축/4분면 원·텍스트 좌표는 코드가 자동 배치한다.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
+                "    절대 금지: rect / 박스 / 이미지 / 도형(type='text' 외).\n"
+                "    축 선·4분면 원은 코드가 자동으로 그린다.\n"
+                "    백업으로 넣을 것 (text 만): 제목 + 각 분면 title 텍스트 정도.\n"
+                "  ★ preset='matrix' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
+                "  ★ quadrants 4개 미달 (3개 이하) 시도 박스로 회귀 — 4개 모두 채울 것.\n"
+                "\n"
+                "★ 다른 패턴과 구분:\n"
+                "  · 축 없는 단순 4개 나열 → quad (색면 4분할)\n"
+                "  · 순차 단계 흐름 → timeline / process\n"
+                "  · 좌우 대비 → split / asymmetric\n"
+                "  · matrix 는 \"두 축으로 분류·평가·우선순위 매핑\" 할 때.\n"
+                "\n"
+                "★ 완성 예시 (이 구조 그대로 따라):\n"
+                '{"preset":"matrix",'
+                '"eyebrow":"Ⅱ. 추진 전략 · 우선순위 평가",'
+                '"title":"효과 大 난이도 小 구간을 최우선 실행 영역으로",'
+                '"title_runs":['
+                '{"t":"효과 大 난이도 小 구간을 "},'
+                '{"t":"최우선 실행 영역","accent":true},'
+                '{"t":"으로"}'
+                '],'
+                '"subtitle":"총 12개 과제 / 4분면 분포 5·3·3·1",'
+                '"axis_x":["低","高"],"axis_y":["低","高"],'
+                '"axis_x_label":"난이도","axis_y_label":"효과",'
+                '"quadrants":['
+                '{"pos":"tl","title":"빠른 성과 구간","desc":"즉시 착수 가능 5개","accent":false},'
+                '{"pos":"tr","title":"최우선 실행 영역","desc":"역량 집중 투입 3개","accent":true},'
+                '{"pos":"bl","title":"후순위 검토","desc":"중장기 재평가 3개","accent":false},'
+                '{"pos":"br","title":"중장기 과제","desc":"단계적 검토 필요 1개","accent":false}'
+                '],'
+                '"shapes":[{"type":"text","x":0.9,"y":7.7,"w":10,"h":0.4,'
+                '"text":"우선순위 4분면 평가","size":14,"weight":700,"color":"#1A1A1A"}]}'
             )
         elif item.viz_pattern == "quad":
             # Spec D-Build-PresetQuad — 색면 4분할(흑/백/흑/백 세로 면).

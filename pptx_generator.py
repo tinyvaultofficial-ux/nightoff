@@ -3337,6 +3337,156 @@ def _build_preset_funnel(slide_data):
     return shapes
 
 
+# ─── Spec D-Build-PresetHsplitTop — hsplit_top (위 검정 거버닝 + 아래 흰 좌우 2항목) ─
+# split (세로 좌우 색면 2분할) 의 가로 비대칭 버전 — 위 1/3 검정 색면 + 아래 2/3 흰 바탕.
+# 위 검정 영역: 중앙 정렬 거버닝 (eyebrow + 메인 1줄 + 형광 2줄 + subtitle).
+# 아래 흰 영역: 좌/우 2항목 (각 head + body), 선·라벨·구분선 없음 (위치로만 구분).
+#
+# ★ 본 preset 은 거버닝 헬퍼 _build_governing_block 사용 X —
+#   헬퍼는 흰 배경·검정 글자·좌측 정렬 가정. 본 preset 은 검정 배경·흰 글자·중앙 정렬 →
+#   거버닝을 함수 안에서 직접 그림.
+#
+# ★ 형광 처리 (theme=light 우회): title_runs 안 씀.
+#   _add_text 의 accent 분기(L1679)는 `accent && theme=='dark'` 일 때만 #9CFF00 적용 →
+#   theme=light 면 형광 X. 본 preset 은 검정 배경이라 light 에서도 형광 필요.
+#   → 형광 키워드(title_accent)를 별도 text 도형 + color="#9CFF00" 직접 지정.
+#   _map_color(#9CFF00, "text", *) 는 DARK_MAP 에 매핑 없음 → light/dark 모두 형광 그대로.
+#
+# ★ z-order (shapes 리스트 순서 = 렌더 순서, 먼저 = 아래):
+#   ① 검정 rect → ② eyebrow → ③ 메인 1줄 → ④ 메인 2줄(형광) → ⑤ subtitle
+#   → ⑥ 좌 head → ⑦ 좌 body → ⑧ 우 head → ⑨ 우 body
+#
+# ★ dark 자동 반전 (split 패턴 정합):
+#   #1A1A1A(fill) ↔ #FFFFFF(text) 자동 반전 → light "검정 면+흰 글자" ↔ dark "흰 면+검정 글자".
+#   #999999(text), #1A1A1A(text), #444444(text) 도 DARK_MAP 매핑으로 안전.
+#   subtitle #999999 채택 (#CCCCCC 는 DARK_MAP 매핑 없어 dark 흰 면 위 가독성 약함).
+#
+# 입력 스키마:
+#   slide_data["eyebrow"]      = "위 메타 라벨" (선택, color #999999)
+#   slide_data["title"]        = "메인 거버닝 1줄 (흰 글자)" (필수)
+#   slide_data["title_accent"] = "형광 키워드 2줄 (#9CFF00 직접)" (선택)
+#   slide_data["subtitle"]     = "서브 거버닝" (선택, color #999999)
+#   slide_data["left"]         = {"head"(필수), "body"} (필수)
+#   slide_data["right"]        = {"head"(필수), "body"} (필수)
+# 안전망:
+#   - title 누락 → 빈 list (거버닝 본질)
+#   - left/right 둘 중 하나라도 dict 아니거나 head 누락 → 빈 list (좌우 비교 본질)
+def _build_preset_hsplit_top(slide_data):
+    title = str(slide_data.get("title", "")).strip()
+    if not title:
+        return []   # 거버닝 본질 — title 없으면 미성립
+
+    left  = slide_data.get("left")  or {}
+    right = slide_data.get("right") or {}
+    if not isinstance(left, dict) or not isinstance(right, dict):
+        return []
+    l_head = str(left.get("head", "")).strip()
+    r_head = str(right.get("head", "")).strip()
+    if not l_head or not r_head:
+        return []   # 좌우 비교 본질 — 둘 다 head 필수
+
+    eyebrow      = str(slide_data.get("eyebrow", "")).strip()
+    title_accent = str(slide_data.get("title_accent", "")).strip()
+    subtitle     = str(slide_data.get("subtitle", "")).strip()
+    l_body = str(left.get("body", "")).strip()
+    r_body = str(right.get("body", "")).strip()
+
+    W, H = 11.69, 8.27
+    BLACK_H = H / 3  # 2.7567 — 위 검정 영역 정확히 1/3
+
+    shapes = []
+
+    # ① 검정 색면 rect (가장 먼저 = z-order 맨 아래)
+    shapes.append({
+        "type": "rect",
+        "x": 0, "y": 0, "w": W, "h": BLACK_H,
+        "fill": "#1A1A1A",
+    })
+
+    # ② eyebrow (선택, 검정 영역 안 중앙 정렬, 옅은 회색)
+    if eyebrow:
+        shapes.append({
+            "type": "text",
+            "x": 0, "y": 0.5, "w": W, "h": 0.4,
+            "text": eyebrow,
+            "size": 11, "weight": 400, "color": "#999999",
+            "align": "center", "valign": "top",
+        })
+
+    # ③ 메인 거버닝 1줄 (필수, 흰 글자, 중앙)
+    shapes.append({
+        "type": "text",
+        "x": 0, "y": 1.0, "w": W, "h": 0.7,
+        "text": title,
+        "size": 28, "weight": 800, "color": "#FFFFFF",
+        "align": "center", "valign": "middle",
+    })
+
+    # ④ 메인 거버닝 2줄 (형광 키워드, 선택, #9CFF00 직접 — text_runs 안 씀, theme 우회)
+    #   _map_color 가 DARK_MAP 미매핑 색은 통과 → light/dark 모두 형광 유지.
+    if title_accent:
+        shapes.append({
+            "type": "text",
+            "x": 0, "y": 1.7, "w": W, "h": 0.7,
+            "text": title_accent,
+            "size": 28, "weight": 800, "color": "#9CFF00",
+            "align": "center", "valign": "middle",
+        })
+
+    # ⑤ subtitle (선택, 검정 영역 끝쪽, #999999 — dark 가독성 위해 #CCC 회피)
+    if subtitle:
+        shapes.append({
+            "type": "text",
+            "x": 0, "y": 2.40, "w": W, "h": 0.3,
+            "text": subtitle,
+            "size": 13, "weight": 500, "color": "#999999",
+            "align": "center", "valign": "top",
+        })
+
+    # ⑥~⑨ 아래 흰 영역 좌/우 2항목 (선·구분선 없음, 위치로만 구분)
+    #   좌측: x=0.7, w=4.8 / 우측: x=6.2, w=4.8 / 사이 0.7" 시각 호흡
+    LX, LW = 0.7, 4.8
+    RX, RW = 6.2, 4.8
+
+    # ⑥ 좌 head
+    shapes.append({
+        "type": "text",
+        "x": LX, "y": 3.3, "w": LW, "h": 0.8,
+        "text": l_head,
+        "size": 22, "weight": 800, "color": "#1A1A1A",
+        "align": "left", "valign": "top",
+    })
+    # ⑦ 좌 body
+    if l_body:
+        shapes.append({
+            "type": "text",
+            "x": LX, "y": 4.2, "w": LW, "h": 3.0,
+            "text": l_body,
+            "size": 14, "weight": 400, "color": "#444444",
+            "align": "left", "valign": "top",
+        })
+
+    # ⑧ 우 head
+    shapes.append({
+        "type": "text",
+        "x": RX, "y": 3.3, "w": RW, "h": 0.8,
+        "text": r_head,
+        "size": 22, "weight": 800, "color": "#1A1A1A",
+        "align": "left", "valign": "top",
+    })
+    # ⑨ 우 body
+    if r_body:
+        shapes.append({
+            "type": "text",
+            "x": RX, "y": 4.2, "w": RW, "h": 3.0,
+            "text": r_body,
+            "size": 14, "weight": 400, "color": "#444444",
+            "align": "left", "valign": "top",
+        })
+
+    return shapes
+
+
 # ─── Spec D-Build-PresetQuad — quad (색면 4분할 흑/백/흑/백) 레이아웃 프리셋 ────
 # split(2분할) 의 확장: 세로 4면을 흑/백/흑/백으로 번갈아 칠하고,
 # 각 면 안에 keyword(상단 라벨) + head(메인) + desc(부연)를 가운데정렬.
@@ -3877,6 +4027,19 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
             # matrix/circles/quad 와 동일 패턴 — 성공 시 preset 만, 실패/예외 시 LLM 백업.
             try:
                 preset_shapes = _build_preset_funnel(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "hsplit_top":
+            # Spec D-Build-PresetHsplitTop — 가로 비대칭 2분할 (위 검정 거버닝 + 아래 흰 좌우 2항목).
+            # ★ 본 spec 단계: 코드만 등록 + viz_pattern 화이트리스트 미연결 (LLM 미선택 보장).
+            #   matrix/funnel 와 동일 — 완성 후 별도 spec 으로 한꺼번에 켤 것.
+            # split 가로 비대칭 버전 — 성공 시 preset 만, 실패/예외 시 LLM 백업.
+            try:
+                preset_shapes = _build_preset_hsplit_top(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

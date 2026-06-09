@@ -806,6 +806,12 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
                               role=support
                        ※ 수량이 줄어드는 압축이면 funnel, 시간 흐름이면 timeline.
                           단계 3~5개, 각 단계 수치(value) 강력 권장.
+  · hsplit_top       — 가로 비대칭 2분할 (위 검정 거버닝 강조 + 아래 흰 좌우 2항목)
+                       ★ 적합: 강한 거버닝 임팩트 + 좌우 핵심 2축 본문
+                              (예: 전략 선언 + 2대 역량, 비전 선언 + 좌우 핵심 메시지)
+                       ⚠ 부적합: 세로 색면 대비 → split / 4항목 → quad /
+                              role=support
+                       ※ 검정 거버닝 강조 + 흰 본문 좌우 2항목. left/right 양쪽 head 필수.
   · quad             — 대등한 핵심 요소 4개를 색면으로 나란히 (4대 전략/4대 요소)
                        ★ 적합: role=body 페이지의 "대등한 4요소를 색면 대비로 임팩트 있게"
                               (예: 4대 전략 축, 4단계 깔때기, 4대 솔루션, 4대 차별점)
@@ -2549,6 +2555,21 @@ async def generate_outline(
                     it.get("page"), _rl_fn, _st_fn,
                 )
                 viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
+        # ★ Spec D-Build-PresetHsplitTop — hsplit_top 가드 (matrix/funnel 와 동일 강도).
+        #   hsplit_top = "위 검정 거버닝 + 아래 흰 좌우 2항목 (강한 임팩트)"이므로 role=body 만 적합.
+        #   hero(컨셉/표지)·support(예산/일정/조직)·simple_box 에 박혀도 무력화.
+        #   ★ 본 spec 단계: 화이트리스트(_VIZ_PATTERN_SAFE) 에 "hsplit_top" 미추가 → 본 가드 분기는
+        #     viz_pattern_raw 가 화이트리스트에서 ""로 fallback 된 후라 진입 0건. 완성 후
+        #     별도 spec 으로 화이트리스트 켜면 본 가드가 실제 작동 시작.
+        elif viz_pattern == "hsplit_top":
+            _rl_ht = str(it.get("role", "")).strip().lower()
+            _st_ht = str(it.get("slide_type", "")).strip().lower()
+            if _rl_ht != "body" or _st_ht == "hero":
+                log.info(
+                    "D-Build-PresetHsplitTopGuard 강등 p=%s role=%s slide_type=%s",
+                    it.get("page"), _rl_ht, _st_ht,
+                )
+                viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
         # ★ Spec D-Build-PresetQuad — quad 가드 (circles/hsplit/zigzag/asymmetric 과 동일 강도).
         #   quad = "대등한 핵심 요소 4개 색면 4분할(흑/백/흑/백)"이므로 role=body 페이지에만 적합.
         #   hero(컨셉/표지)·support(예산/일정/조직)·simple_box 에 박혀도 무력화.
@@ -3137,6 +3158,66 @@ def _build_slide_user_prompt(
                 '],'
                 '"shapes":[{"type":"text","x":0.9,"y":7.7,"w":10,"h":0.4,'
                 '"text":"200팀에서 결승 10팀 선발","size":14,"weight":700,"color":"#1A1A1A"}]}'
+            )
+        elif item.viz_pattern == "hsplit_top":
+            # Spec D-Build-PresetHsplitTop — 가로 비대칭 2분할 (위 검정 거버닝 + 아래 흰 좌우 2항목).
+            # 거버닝(헬퍼 X)·검정 색면·형광·좌우 2항목 좌표는 _build_preset_hsplit_top 가 자동.
+            # ★ 본 spec 단계: 화이트리스트 미연결 → 본 분기는 실제 LLM 입력에 도달 0건.
+            # 빈 페이지 방지: 백업 text 도형 함께 채우게 강제(rect/박스/이미지 절대 X).
+            parts.append(
+                "[비박스 레이아웃 — hsplit_top (위 검정 거버닝 + 아래 흰 좌우 2항목)]\n"
+                "위 1/3 영역은 검정 색면 + 중앙 정렬 거버닝 (흰 글자 + 형광 키워드).\n"
+                "아래 2/3 영역은 흰 바탕에 좌/우 2항목 (선·구분선·라벨 없이 위치로만 구분).\n"
+                "강한 거버닝 임팩트 + 좌우 핵심 2축 본문 구조.\n"
+                "\n"
+                "★ 채우는 법 — 위 검정 거버닝 영역:\n"
+                "  · title (필수): 메인 거버닝 1줄 (흰 글자, 중앙 정렬). 25~35자 권장.\n"
+                "  · title_accent (선택, ★ 형광 강조 2줄): title 의 핵심 키워드 부분을 별도 분리.\n"
+                "    예: title = \"200팀에서 결승 10팀까지\" / title_accent = \"4단계 압축 선발\"\n"
+                "    → 형광(#9CFF00) 으로 2줄째에 중앙 정렬 박힘. 10~20자 권장.\n"
+                "    ★ title_runs 사용 X — title_accent 키로 별도 분리 (theme=light 에서도 형광 보장).\n"
+                "  · subtitle (선택): 서브 거버닝 (정량 수치, 옅은 회색).\n"
+                "  · eyebrow (선택): 좌상단 메타 라벨.\n"
+                "\n"
+                "★ 채우는 법 — 아래 흰 좌우 2항목:\n"
+                "  · left.head (필수): 좌 항목 제목 (10~15자, 명사형).\n"
+                "  · left.body (선택): 좌 항목 본문 문단 (2~4줄, 50~150자).\n"
+                "  · right.head (필수): 우 항목 제목.\n"
+                "  · right.body (선택): 우 항목 본문 문단.\n"
+                "  ★ 선·라벨·구분선 절대 추가 X — 위치로만 좌/우 구분.\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "hsplit_top"  (필수)\n'
+                '  · "title": "...(필수, 흰 1줄)"\n'
+                '  · "title_accent": "...(선택, 형광 2줄, 핵심 키워드)"\n'
+                '  · "subtitle": "...(선택)"\n'
+                '  · "eyebrow": "...(선택)"\n'
+                '  · "left":  {"head":"...(필수)","body":"..."}\n'
+                '  · "right": {"head":"...(필수)","body":"..."}\n'
+                "  → 검정 색면·중앙 거버닝·좌우 2항목 좌표는 코드가 자동 배치한다.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
+                "    절대 금지: rect / 박스 / 이미지 / 도형(type='text' 외).\n"
+                "    검정 색면은 코드가 자동으로 그린다.\n"
+                "    백업으로 넣을 것 (text 만): 제목 + 좌우 head 텍스트 정도.\n"
+                "  ★ preset='hsplit_top' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
+                "  ★ title 누락 / left.head 누락 / right.head 누락 시도 박스로 회귀 — 모두 채울 것.\n"
+                "\n"
+                "★ 다른 패턴과 구분:\n"
+                "  · 세로 색면 좌우 대비 → split / asymmetric\n"
+                "  · 4항목 → quad / matrix\n"
+                "  · 수치 강조 → quant / circles\n"
+                "  · hsplit_top 은 \"강한 거버닝 임팩트 + 좌우 2축 본문\" 일 때.\n"
+                "\n"
+                "★ 완성 예시 (이 구조 그대로 따라):\n"
+                '{"preset":"hsplit_top",'
+                '"eyebrow":"Ⅱ. 추진 방안 · 핵심 역량",'
+                '"title":"200팀 공모에서 결승 10팀까지",'
+                '"title_accent":"4단계 압축 선발",'
+                '"subtitle":"전국 공모 / 최종 1대 20 경쟁률",'
+                '"left":{"head":"체계적 모집","body":"전국 단위 온라인 공모전을 통해 다양한 장르의 200팀 후보를 확보한다. 지역·연령·장르별 다양성도 동시에 고려해 균형 잡힌 풀을 구성한다."},'
+                '"right":{"head":"공정한 평가","body":"4단계 정량 평가로 객관성을 확보한다. 음악성·완성도·대중성을 별도 지표로 분리하고, 외부 전문가 패널 평가를 결합해 편향을 차단한다."},'
+                '"shapes":[{"type":"text","x":0.9,"y":7.7,"w":10,"h":0.4,'
+                '"text":"체계적 모집과 공정한 평가","size":14,"weight":700,"color":"#1A1A1A"}]}'
             )
         elif item.viz_pattern == "quad":
             # Spec D-Build-PresetQuad — 색면 4분할(흑/백/흑/백 세로 면).

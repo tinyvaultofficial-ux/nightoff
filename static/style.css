@@ -4030,7 +4030,7 @@ input.locked-by-env::placeholder {
 /* Hero */
 .landing-hero {
   flex: 1;
-  padding: 80px 24px 100px;
+  padding: 64px 24px 80px;
 }
 .landing-hero-inner {
   max-width: 880px; margin: 0 auto;
@@ -4056,7 +4056,7 @@ input.locked-by-env::placeholder {
 .landing-hero-sub {
   font-size: 19px; color: var(--fg-2);
   line-height: 1.6;
-  margin: 0 0 48px;
+  margin: 0 0 40px;
 }
 .landing-cta-btn {
   display: inline-flex; align-items: center; justify-content: center;
@@ -4302,7 +4302,7 @@ input.locked-by-env::placeholder {
   font-size: 16px;
   color: var(--fg-2);
   text-align: center;
-  margin: 0 0 48px;
+  margin: 0 0 40px;
   letter-spacing: -0.005em;
   font-weight: 500;
 }
@@ -4316,7 +4316,7 @@ input.locked-by-env::placeholder {
     color-mix(in oklab, var(--accent, #FF8E5C) 5%, #fff) 100%);
   border-top: 1px solid color-mix(in oklab, var(--primary) 12%, transparent);
   border-bottom: 1px solid color-mix(in oklab, var(--primary) 12%, transparent);
-  padding: 80px 24px;
+  padding: 64px 24px;
 }
 .landing-trust-inner { max-width: 1100px; margin: 0 auto; }
 .landing-trust-grid {
@@ -4369,7 +4369,7 @@ input.locked-by-env::placeholder {
    Features 섹션 — 번호 라벨 + 강조 카드
    ============================================================ */
 .landing-features {
-  padding: 96px 24px;
+  padding: 76px 24px;
   background: #fff;
 }
 .landing-features-inner { max-width: 1100px; margin: 0 auto; }
@@ -4428,7 +4428,7 @@ input.locked-by-env::placeholder {
 
 /* Bottom CTA */
 .landing-bottom-cta {
-  padding: 80px 24px 60px;
+  padding: 64px 24px 48px;
   text-align: center;
   background: linear-gradient(180deg, transparent 0%, var(--primary-soft) 100%);
 }
@@ -4445,7 +4445,7 @@ input.locked-by-env::placeholder {
 
 /* ── 가격 섹션 (Spec D-Fix-20) ────────────────────────────── */
 .landing-pricing {
-  padding: 96px 24px;
+  padding: 76px 24px;
   background: var(--bg-2, #FAFAFA);
 }
 .landing-pricing-inner {
@@ -4595,7 +4595,7 @@ input.locked-by-env::placeholder {
 
 /* ── 비교 섹션 (Spec D-Fix-27 Stage A / D-Fix-30 폰트 ↑) ──────────── */
 .landing-compare {
-  padding: 96px 24px;
+  padding: 76px 24px;
   background: var(--bg-2, #FAFAFA);
 }
 .landing-compare-inner {

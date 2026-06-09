@@ -66,7 +66,7 @@ EXPORTS_DIR = Path(_exports_env) if _exports_env else (BASE_DIR / "_private_expo
 EXPORTS_PPTX_DIR = EXPORTS_DIR / "pptx"
 EXPORTS_PREVIEW_DIR = EXPORTS_DIR / "preview"
 
-MODEL_DEFAULT = "claude-sonnet-4-5-20250929"
+MODEL_DEFAULT = "claude-opus-4-8"
 MODEL_FAST = "claude-haiku-4-5-20251001"
 
 # 크레딧 정책 — 단일 진실원 (Step 2-A: 단위 단순화)

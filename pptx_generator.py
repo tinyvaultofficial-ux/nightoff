@@ -3230,6 +3230,113 @@ def _build_preset_matrix(slide_data):
     return shapes
 
 
+# ─── Spec D-Build-PresetFunnel — funnel (계단형 rect 압축 흐름) 레이아웃 프리셋 ──
+# 본문 영역 5.0"(y=2.5~7.5) 안에 N(3~5) 단계를 균등 세로 분배.
+# 각 단계는 직사각형(rect)이고 위→아래로 너비가 선형 감소 → "수량 압축" 의미 시각화.
+# ★ 사다리꼴(polygon/TRAPEZOID) 도형은 운영 dispatch 분기에 없음 → rect 계단형으로 근사.
+# 거버닝 블록은 _build_governing_block 헬퍼 호출 — eyebrow + 메인 형광 + 서브 거버닝.
+# ★ funnel 도 matrix 와 동일하게 area_top 2.5 고정 (서브 유무와 무관하게 단계 위치 안정).
+# 입력 스키마 (거버닝 4키 + funnel 고유 1키):
+#   slide_data["eyebrow"]    = (선택, 헬퍼 처리)
+#   slide_data["title"]      = (필수, 헬퍼 처리, 형광 가능)
+#   slide_data["title_runs"] = (선택, 헬퍼 처리 — 메인 거버닝 형광 segment)
+#   slide_data["subtitle"]   = (선택, 헬퍼 처리)
+#   slide_data["stages"]     = [{"label"(필수),"value","desc","accent":bool}, ...] (필수, 3~5개)
+# 안전망 (엄격):
+#   - stages list 아님            → 빈 list (preset 미성립 → LLM 백업)
+#   - label 정제 후 N < 3 or > 5  → 빈 list
+#   - accent 다중                 → 첫 1개만 유지 (matrix 패턴 정합)
+# 원 강조 (theme): preset 함수는 theme 인자 받지 않음 (matrix/circles/timeline 동일).
+#   accent 단계 fill=#1A1A1A (검정), 비강조 단계 fill=#CCCCCC (옅은 회색) — matrix 정합.
+#   _map_color 가 theme=dark 시 fill role 자동 다크 매핑 → 라이트/다크 모두 자연스러운 강조 대비.
+def _build_preset_funnel(slide_data):
+    # ① 거버닝 헬퍼 — eyebrow + 메인(형광) + 서브 (matrix 와 동일 호출)
+    shapes, _hdr_area_top = _build_governing_block(slide_data)
+    # ★ funnel 도 area_top 2.5 고정 (matrix D3 정합 — 서브 유무 무관)
+    area_top = 2.5
+    area_bot = 7.5
+
+    # ② stages 정제 (horizontal_process L2237-2250 패턴 + matrix 정합)
+    stages_raw = slide_data.get("stages") or []
+    if not isinstance(stages_raw, list):
+        return []
+    valid = []
+    for s in stages_raw:
+        if not isinstance(s, dict):
+            continue
+        label = str(s.get("label", "")).strip()
+        if not label:
+            continue  # label 필수 — strip 후 빈 것 건너뜀
+        valid.append({
+            "label":  label,
+            "value":  str(s.get("value", "")).strip(),
+            "desc":   str(s.get("desc", "")).strip(),
+            "accent": bool(s.get("accent", False)),
+        })
+    N = len(valid)
+    if N < 3 or N > 5:
+        return []  # funnel 본질 다단계 (3~5) — 범위 밖이면 미성립
+
+    # ③ accent 1곳만 유지 (matrix 패턴 정합 — 다중 시 첫 1개)
+    seen = False
+    for v in valid:
+        if v["accent"]:
+            if seen:
+                v["accent"] = False
+            else:
+                seen = True
+
+    # ④ 계단형 rect 좌표 (진단 확정 표)
+    top_w = 6.0          # 최상단 단계 너비
+    bot_w = 2.0          # 최하단 단계 너비
+    center_axis = 4.0    # 사다리꼴 중앙축 (좌측 매트릭스 영역 0.5~7.5 의 중심)
+    step_h = (area_bot - area_top) / N
+    desc_x = 7.7         # 우측 부연 영역 시작
+    desc_w = 3.8
+
+    for i, v in enumerate(valid):
+        # 단계 i 중심 비율 t = (i+0.5)/N 로 너비 선형 보간
+        t = (i + 0.5) / N
+        w = top_w + (bot_w - top_w) * t
+        x = center_axis - w / 2
+        y = area_top + i * step_h
+
+        # rect (계단형 — 단계 사이 여백 0.1"(상하 0.05) 두기)
+        rect_fill = "#1A1A1A" if v["accent"] else "#CCCCCC"
+        shapes.append({
+            "type": "rect",
+            "x": x, "y": y + 0.05,
+            "w": w, "h": step_h - 0.1,
+            "fill": rect_fill,
+            "stroke": None,
+        })
+
+        # 라벨 + value 결합 — rect 안 중앙 (accent 검정 → 흰 글자 / 비강조 회색 → 검정 글자)
+        text_color = "#FFFFFF" if v["accent"] else "#1A1A1A"
+        label_str = v["label"] + " " + v["value"] if v["value"] else v["label"]
+        shapes.append({
+            "type": "text",
+            "x": x, "y": y + 0.05,
+            "w": w, "h": step_h - 0.1,
+            "text": label_str,
+            "size": 14, "weight": 700, "color": text_color,
+            "align": "center", "valign": "middle",
+        })
+
+        # 우측 부연 (선택, desc 있을 때만) — matrix 의 분면 부연과 동일 톤
+        if v["desc"]:
+            shapes.append({
+                "type": "text",
+                "x": desc_x, "y": y + 0.05,
+                "w": desc_w, "h": step_h - 0.1,
+                "text": v["desc"],
+                "size": 11, "weight": 400, "color": "#666666",
+                "align": "left", "valign": "middle",
+            })
+
+    return shapes
+
+
 # ─── Spec D-Build-PresetQuad — quad (색면 4분할 흑/백/흑/백) 레이아웃 프리셋 ────
 # split(2분할) 의 확장: 세로 4면을 흑/백/흑/백으로 번갈아 칠하고,
 # 각 면 안에 keyword(상단 라벨) + head(메인) + desc(부연)를 가운데정렬.
@@ -3757,6 +3864,19 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
             # circles/quad 와 동일 패턴 — 성공 시 preset 만(겹침 차단), 실패/예외 시 LLM 백업.
             try:
                 preset_shapes = _build_preset_matrix(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "funnel":
+            # Spec D-Build-PresetFunnel — 계단형 rect 압축 흐름 (수량 감소 깔때기).
+            # ★ 본 spec 단계: 코드만 등록 + viz_pattern 화이트리스트 미연결 (LLM 미선택 보장).
+            #   matrix 와 동일 — 4종(matrix/funnel/donut/venn) 완성 후 별도 spec 으로 한꺼번에 켤 것.
+            # matrix/circles/quad 와 동일 패턴 — 성공 시 preset 만, 실패/예외 시 LLM 백업.
+            try:
+                preset_shapes = _build_preset_funnel(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

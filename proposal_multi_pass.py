@@ -2443,7 +2443,7 @@ async def generate_outline(
         _VIZ_PATTERN_SAFE = {"2col", "cards3", "process", "before_after", "quant", "cards_grid",
                              "text_quote", "text_declaration", "split", "timeline", "asymmetric",
                              "zigzag", "hsplit", "circles", "quad",
-                             "matrix", "funnel", "hsplit_top"}
+                             "matrix", "funnel", "hsplit_top", "hero_cards"}
         viz_pattern_raw = str(it.get("viz_pattern", "")).strip().lower()
         viz_pattern = viz_pattern_raw if viz_pattern_raw in _VIZ_PATTERN_SAFE else ""
         # ★ Spec D-Fix-NarrativeGuard — text 위계는 hero/support/simple_box 페이지에 배정 X.

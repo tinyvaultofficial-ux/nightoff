@@ -3421,6 +3421,11 @@ def _build_preset_funnel(slide_data):
     desc_x = 7.7         # 우측 부연 영역 시작
     desc_w = 3.8
 
+    # 미매핑 회색 농담 5단계 (DARK_MAP 매핑 0건, light/dark 동일 출력).
+    # 밝은(#8A8A8A) → 어두운(#4A4A4A): 깔때기가 핵심으로 좁아질수록 진하게 강조.
+    # N range 3~5 보장(L3404) 이라 인덱스 안전 — 명시 안전망 STAGE_FILL_COLORS[-1] fallback.
+    STAGE_FILL_COLORS = ["#8A8A8A", "#7A7A7A", "#6A6A6A", "#5A5A5A", "#4A4A4A"]
+
     for i, v in enumerate(valid):
         # 단계 i 중심 비율 t = (i+0.5)/N 로 너비 선형 보간
         t = (i + 0.5) / N
@@ -3429,28 +3434,29 @@ def _build_preset_funnel(slide_data):
         y = area_top + i * step_h
 
         # rect (계단형 — 단계 사이 여백 0.1"(상하 0.05) 두기)
-        # Spec D-Fix-FunnelStepBoxUniform — accent 분기 제거, 모든 단계 흰 면+검정 테두리 통일.
-        #   stroke 1.5 = circles(L2986) / horizontal_process(L2272) 패턴 정합.
-        #   dark 모드: #FFFFFF(fill) → #0A0A0A 배경 일치(자연스럽게 묻힘) +
-        #              #1A1A1A(stroke/text) → #FFFFFF 반전 → 윤곽선 박스 + 흰 글자 (split 패턴).
+        # Spec D-Build-FunnelStepGradient — 단계별 회색 농담 차등 (솔리드 회색 fill, 테두리 X).
+        #   fill: STAGE_FILL_COLORS[i] (미매핑 회색 농담, 밝은 → 어두운).
+        #     light/dark 동일 출력 (DARK_MAP 매핑 0건) — 농담 차이로 단계 진행 시각화.
+        #   stroke=None: 테두리 제거, 솔리드 회색 박스 (회색 면 자체로 박스 경계 표현).
+        #   stroke_width 는 stroke None 일 때 의미 없으나 입력 무시되므로 그대로 둬도 무방.
         #   v["accent"] 입력 자체는 보존 (스키마 호환) — 색 분기에서만 사용 X.
         shapes.append({
             "type": "rect",
             "x": x, "y": y + 0.05,
             "w": w, "h": step_h - 0.1,
-            "fill": "#FFFFFF",
-            "stroke": "#1A1A1A",
+            "fill": STAGE_FILL_COLORS[i] if i < len(STAGE_FILL_COLORS) else STAGE_FILL_COLORS[-1],
+            "stroke": None,
             "stroke_width": 1.5,
         })
 
-        # 라벨 + value 결합 — rect 안 중앙 (모든 단계 검정 글자 통일).
+        # 라벨 + value 결합 — rect 안 중앙 (회색 면 위 흰 글자, 미매핑 → light/dark 동일).
         label_str = v["label"] + " " + v["value"] if v["value"] else v["label"]
         shapes.append({
             "type": "text",
             "x": x, "y": y + 0.05,
             "w": w, "h": step_h - 0.1,
             "text": label_str,
-            "size": 14, "weight": 700, "color": "#1A1A1A",
+            "size": 14, "weight": 700, "color": "#FEFEFE",
             "align": "center", "valign": "middle",
         })
 

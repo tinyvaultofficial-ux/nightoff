@@ -818,6 +818,14 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
                        ⚠ 부적합: 2개 대비 → split / 수치는 circles / 순차 흐름은 timeline /
                               role=support
                        ※ 2개 대비는 split, 수치는 circles, 순차는 timeline. 4개 권장(2~4 가능).
+  · hero_cards       — 상단 거버닝 히어로(중앙 큰 제목) + 하단 카드 2~4개 가로 배치.
+                       각 카드 = 라벨 배지(선택) + 제목(필수) + 짧은 구분선 + 설명(선택).
+                       ★ 적합: 핵심 메시지를 큰 거버닝으로 선언하고 그 아래 2~4개 핵심 축/전략/
+                              경험을 카드로 병렬 제시 (예: 컨셉 선언 + 핵심 가치 3종,
+                              전략 개요 + 4대 추진 축, 메인 메시지 + 차별점 3가지)
+                       ⚠ 부적합: 5개 이상 항목 / 순서·흐름이 본질(process·timeline) /
+                              비교표가 핵심 / role=support
+                       ※ 거버닝이 페이지의 주장이고 카드는 그 주장을 받치는 병렬 항목. 2~4개 권장.
 
 ★ 컨셉 슬로건 페이지는 별도 hero 페이지(카탈로그 11번)가 담당.
   text_* 키로 컨셉 슬로건을 만들지 말 것 — 컨셉 슬로건은 80~90pt 거대 슬로건 hero,
@@ -2582,6 +2590,21 @@ async def generate_outline(
                     it.get("page"), _rl_qd, _st_qd,
                 )
                 viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
+        # ★ Spec D-Build-PresetHeroCards — hero_cards 가드 (matrix/funnel/hsplit_top 와 동일 강도).
+        #   hero_cards = "상단 거버닝 히어로 + 하단 카드 2~4개 가로 배치"이므로 role=body 만 적합.
+        #   hero(컨셉/표지)·support(예산/일정/조직)·simple_box 에 박혀도 무력화.
+        #   ★ 본 spec 단계: 화이트리스트(_VIZ_PATTERN_SAFE) 에 "hero_cards" 미추가 → 본 가드 분기는
+        #     viz_pattern_raw 가 화이트리스트에서 ""로 fallback 된 후라 진입 0건. 다음 spec 으로
+        #     화이트리스트 켜면 본 가드가 실제 작동 시작.
+        elif viz_pattern == "hero_cards":
+            _rl_hc = str(it.get("role", "")).strip().lower()
+            _st_hc = str(it.get("slide_type", "")).strip().lower()
+            if _rl_hc != "body" or _st_hc == "hero":
+                log.info(
+                    "D-Build-PresetHeroCardsGuard 강등 p=%s role=%s slide_type=%s",
+                    it.get("page"), _rl_hc, _st_hc,
+                )
+                viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
         # Spec D-Fix-BodyRole-1 — role 화이트리스트 (body/support/"" 만 허용).
         # outline AI 가 임의 값을 박으면 ""로 강등 (식별 누락 → 무영향 fallback).
         _ROLE_SAFE = {"body", "support", ""}
@@ -3266,6 +3289,62 @@ def _build_slide_user_prompt(
                 '],'
                 '"shapes":[{"type":"text","x":0.9,"y":7.4,"w":10,"h":0.6,'
                 '"text":"인지 → 관심 → 참여 → 전환","size":18,"weight":700,"color":"#1A1A1A"}]}'
+            )
+        elif item.viz_pattern == "hero_cards":
+            # Spec D-Build-PresetHeroCards — 상단 거버닝 히어로 + 하단 카드 2~4개 가로.
+            # 좌표·배경·배지·카드·구분선·화살표는 _build_preset_hero_cards 가 자동 배치.
+            # ★ 본 spec 단계: 화이트리스트 미연결 → 본 분기는 실제 LLM 입력에 도달 0건.
+            #   완성 후 화이트리스트 켜면 본 가이드가 실제 작동 시작 (안전망).
+            # 빈 페이지 방지: 백업 text 도형 함께 채우게 강제(rect/박스/이미지 절대 X).
+            parts.append(
+                "[비박스 레이아웃 — hero_cards (상단 거버닝 히어로 + 하단 카드 2~4개)]\n"
+                "상단 검정 밴드에 중앙 정렬 큰 거버닝(흰 글자, 핵심 명사구만 형광 노랑) +\n"
+                "거버닝 아래 작은 ↓ 화살표 + 하단 흰 영역에 카드 2~4개 가로 배치.\n"
+                "각 카드 = 위 배지 라벨(선택) + 본체 안에 제목 + 짧은 구분선 + 설명(선택).\n"
+                "\n"
+                "★ 채우는 법:\n"
+                "  · title (필수): 페이지의 주장/선언 — 25~40자 권장. 큰 거버닝으로 한가운데 박힘.\n"
+                "  · title_runs (선택, 형광): 거버닝 안 핵심 명사구 1곳만 노랑.\n"
+                "  · 각 card (item):\n"
+                "    - label (선택): 카드 위에 박힐 짧은 배지 (예: \"01\", \"전략 1\", \"VALUE\"). 6자 이내.\n"
+                "    - head (필수): 카드 제목 한 줄 (10~15자, 명사형).\n"
+                "    - desc (선택): 카드 본문 한 줄 (25~40자 권장). 없으면 카드가 더 짧게 자동.\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "hero_cards"  (필수)\n'
+                '  · "title" (필수) — 상단 거버닝 메시지\n'
+                '  · "title_runs" (선택) — title 의 형광 강조 segment (D-Build-TextRunsInject 정합):\n'
+                '      [{"t":"앞부분 "},{"t":"핵심 명사구","accent":true},{"t":" 뒷부분"}]\n'
+                '      ★ accent:true 한 곳만, 모든 t 를 이으면 title 과 정확히 일치, 애매하면 생략.\n'
+                '      ★ theme=dark 시 accent 부분만 #FFFF00 자동 적용 (light 면 형광 없음, 정상).\n'
+                '  · "eyebrow" (선택) — 상단 메타 라벨 (옅은 회색, 검정 밴드 안 상단)\n'
+                '  · "items": [{"label": "배지(선택)", "head": "제목(필수)", "desc": "설명(선택)"}, ...]\n'
+                "    (2~4개 권장, 최대 4 — 5개 이상은 잘림 / 1개 미만이면 빈 페이지로 fallback)\n"
+                "  → 좌표·배경·카드·배지·화살표·색은 코드가 자동 배치한다.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
+                "    절대 금지: rect / 박스 / 이미지 / 도형(type='text' 외).\n"
+                "    배경·카드·배지·화살표는 코드가 자동으로 그린다.\n"
+                "    백업으로 넣을 것 (text 만): 제목 + 각 카드 head 텍스트 정도. preset 처리 실패 대비용.\n"
+                "  ★ preset='hero_cards' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
+                "\n"
+                "★ 다른 패턴과 구분:\n"
+                "  · 순차 단계(흐름) → timeline / process\n"
+                "  · 2축 평가 → matrix / 단순 4분할 → quad\n"
+                "  · 수치 원형 → circles\n"
+                "  · hero_cards 는 \"강한 거버닝 메시지 + 그 주장을 받치는 병렬 카드 2~4개\" 일 때.\n"
+                "\n"
+                "★ 완성 예시 (이 구조 그대로 따라):\n"
+                '{"preset":"hero_cards",'
+                '"eyebrow":"Ⅰ. 사업 이해 · 핵심 가치",'
+                '"title":"세 가지 핵심 가치로 사업의 차별성을 완성한다",'
+                '"title_runs":[{"t":"세 가지 "},{"t":"핵심 가치","accent":true},{"t":"로 사업의 차별성을 완성한다"}],'
+                '"items":['
+                '{"label":"VALUE 01","head":"체계적 운영","desc":"4단계 표준 프로세스로 안정적 산출물 보장"},'
+                '{"label":"VALUE 02","head":"전문 인력","desc":"분야별 10년 이상 베테랑이 핵심 역할 수행"},'
+                '{"label":"VALUE 03","head":"데이터 기반","desc":"정량 지표 추적으로 사업 성과를 실시간 측정"}'
+                '],'
+                '"shapes":[{"type":"text","x":0.9,"y":7.7,"w":10,"h":0.4,'
+                '"text":"3대 핵심 가치","size":14,"weight":700,"color":"#1A1A1A"}]}'
             )
         else:
             parts.append(

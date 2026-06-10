@@ -3084,6 +3084,114 @@ def _build_preset_circles(slide_data):
     return shapes
 
 
+# ─── Spec D-Build-PresetHeroCards — hero_cards (상단 거버닝 히어로 + 카드 N개) ────
+# 상단 검정 밴드(거버닝 중앙정렬, title_runs 노랑 호환) + 거버닝 아래 ↓ 화살표 +
+# 하단 흰 영역에 카드 N개(2~4, 5+ cap) 가로 배치.
+# 각 카드 = 위 배지 라벨(선택) + 카드 본체(살짝 둥근 rect) 안에 제목 + 짧은 구분선 + 설명.
+# circles 패턴 정합: 배경 2분할 + 거버닝 중앙정렬 + items 가로 분배 + 묶음 세로 중앙 +
+# title_runs 직접 처리(_build_governing_block 헬퍼 X — 검정 밴드 안 흰 거버닝 자체 처리).
+# 입력 스키마:
+#   slide_data["eyebrow"]    = "상단 메타 라벨"               (선택)
+#   slide_data["title"]      = "상단 거버닝 메시지"           (필수)
+#   slide_data["title_runs"] = 형광 segment list             (선택, accent:true 1곳)
+#   slide_data["items"]      = [{"label"(선택 배지), "head"(필수), "desc"(선택)}, ...]
+#                              (2~4 권장, 5+ cap, 0개 → 빈 리스트 fallback)
+# 안전망 (엄격): items list 아님 / 모든 item.head 누락 → 빈 리스트 반환 (preset 미성립 → LLM 백업).
+# 색 정합 (circles 흰 함정 회피 — DARK_MAP 미매핑/자연매핑):
+#   검정 배경 #1B1B1B / 흰 배경 #FEFEFE / 카드 fill #FBFBFB (미매핑) /
+#   카드 stroke #DDDDDD (stroke role 자연 매핑 → dark #2A2A2A).
+#   글자 #FEFEFE / #1B1B1B / #999999(eyebrow) / #5A5A5A(desc) 미매핑 회색.
+# ★ 1 단계: 코드만 등록 — viz_pattern 화이트리스트 미연결 (다음 spec 으로 켤 것).
+def _build_preset_hero_cards(slide_data):
+    eyebrow = str(slide_data.get("eyebrow", "")).strip()
+    title   = str(slide_data.get("title", "")).strip()
+    items_raw = slide_data.get("items") or []
+    if not isinstance(items_raw, list):
+        return []
+    items = []
+    for it in items_raw:
+        if not isinstance(it, dict):
+            continue
+        head = str(it.get("head", "")).strip()
+        if not head:
+            continue
+        items.append({
+            "label": str(it.get("label", "")).strip(),
+            "head": head,
+            "desc": str(it.get("desc", "")).strip(),
+        })
+    items = items[:4]  # 5+ cap (circles 패턴 정합)
+    if not items:
+        return []
+    W, H = 11.69, 8.27
+    shapes = []
+    # ① 배경 2장 (z-order 최하단, circles 정합) — 검정 밴드 2.6" + 흰 영역 5.67". 미매핑 색.
+    shapes.append({"type":"rect","x":0,"y":0,"w":11.69,"h":2.6,"fill":"#1B1B1B"})
+    shapes.append({"type":"rect","x":0,"y":2.6,"w":11.69,"h":5.67,"fill":"#FEFEFE"})
+    # ② eyebrow (선택) — 검정 밴드 안 중앙정렬
+    if eyebrow:
+        shapes.append({"type":"text","x":0,"y":0.5,"w":11.69,"h":0.4,"text":eyebrow,"size":11,"weight":400,"color":"#999999","align":"center","valign":"top"})
+    # ③ title (선택) — 검정 밴드 안 중앙정렬, title_runs 형광 호환 (circles 패턴 정합).
+    #   timeline _build_governing_block L2691-2701 패턴: title_runs list → text_runs 키.
+    #   accent 세그먼트는 _add_text L1679 분기에서 dark 시 #FFFF00 자동 처리 → 추가 코드 X.
+    if title:
+        title_shape = {"type":"text","x":0,"y":1.0,"w":11.69,"h":1.0,"text":title,"size":28,"weight":800,"color":"#FEFEFE","align":"center","valign":"middle"}
+        title_runs_raw = slide_data.get("title_runs")
+        if isinstance(title_runs_raw, list) and title_runs_raw:
+            title_shape["text_runs"] = title_runs_raw
+        shapes.append(title_shape)
+    # ④ ↓ 화살표 (검정 밴드 안 하단 중앙) — arrow type, 가로중앙 W/2, y=2.05~2.45 (검정밴드 하단부)
+    shapes.append({"type":"arrow","x1":W/2,"y1":2.05,"x2":W/2,"y2":2.45,"color":"#FEFEFE","width":1.5})
+    # ⑤ 카드 가로 분배 — circles 정합 (margin + gap) + card_w cap 3.2 (n=2 너무 안 넓어지게)
+    margin = 0.9
+    usable = W - margin * 2  # 9.89
+    n = len(items)
+    gap_min = 0.4
+    if n == 1:
+        card_w = min(usable, 3.2)
+    else:
+        card_w_raw = (usable - gap_min * (n - 1)) / n
+        card_w = min(card_w_raw, 3.2)
+    # cap 발동 시 묶음 너비 < usable → 좌우 중앙 정렬로 시작 x 재계산
+    total_w = card_w * n + gap_min * (n - 1)
+    start_x = margin + (usable - total_w) / 2
+    # ⑥ 카드 묶음 세로 중앙 (흰 영역 5.67 안) — circles block_h 패턴 정합. desc 유무로 카드 h 가변.
+    has_desc = any(it["desc"] for it in items)
+    has_label = any(it["label"] for it in items)
+    card_h = 2.6 if has_desc else 1.8
+    badge_h = 0.4
+    badge_pad = 0.1
+    block_h = (badge_h + badge_pad if has_label else 0) + card_h
+    block_top = (5.67 - block_h) / 2 + 2.6
+    card_y = block_top + (badge_h + badge_pad if has_label else 0)
+    badge_y = block_top
+    # ⑦ 각 카드 그리기 (배지(선택) → 본체 → 제목 → 구분선 → 설명(선택))
+    for i, it in enumerate(items):
+        cx = start_x + i * (card_w + gap_min)
+        cx_center = cx + card_w / 2
+        # ⑦-a 배지 라벨 (label 있을 때) — 카드 가로중앙, 살짝 둥근 검정 rect + 흰 글자.
+        if it["label"]:
+            badge_w = 1.4
+            badge_x = cx_center - badge_w / 2
+            shapes.append({"type":"rect","x":badge_x,"y":badge_y,"w":badge_w,"h":badge_h,"fill":"#1B1B1B","radius":0.06})
+            shapes.append({"type":"text","x":badge_x,"y":badge_y,"w":badge_w,"h":badge_h,"text":it["label"],"size":11,"weight":700,"color":"#FEFEFE","align":"center","valign":"middle"})
+        # ⑦-b 카드 본체 — 살짝 둥근(radius 0.08), fill #FBFBFB(미매핑 옅은 회색) + stroke #DDDDDD(자연 매핑).
+        shapes.append({"type":"rect","x":cx,"y":card_y,"w":card_w,"h":card_h,"fill":"#FBFBFB","stroke":"#DDDDDD","stroke_width":1,"radius":0.08})
+        # ⑦-c 제목 (head) — 카드 상단, #1B1B1B, size 16, weight 800, center
+        head_y = card_y + 0.3
+        shapes.append({"type":"text","x":cx,"y":head_y,"w":card_w,"h":0.5,"text":it["head"],"size":16,"weight":800,"color":"#1B1B1B","align":"center","valign":"top"})
+        # ⑦-d 짧은 구분선 (line) — 제목 아래 가로중앙 짧게, #1B1B1B
+        sep_w = 0.6
+        sep_y = head_y + 0.6
+        shapes.append({"type":"line","x1":cx_center - sep_w/2,"y1":sep_y,"x2":cx_center + sep_w/2,"y2":sep_y,"color":"#1B1B1B","width":1})
+        # ⑦-e 설명 (desc, 선택) — 구분선 아래, #5A5A5A(미매핑 회색), size 11, weight 400, center
+        if it["desc"]:
+            desc_y = sep_y + 0.15
+            desc_h = card_y + card_h - desc_y - 0.2  # 카드 하단까지 여유 0.2"
+            shapes.append({"type":"text","x":cx + 0.15,"y":desc_y,"w":card_w - 0.3,"h":desc_h,"text":it["desc"],"size":11,"weight":400,"color":"#5A5A5A","align":"center","valign":"top"})
+    return shapes
+
+
 # ─── Spec D-Build-PresetMatrix — matrix (2축 4분면 매핑) 레이아웃 프리셋 ─────────
 # 본문 영역 7.0" × 5.0" (좌측 매트릭스 + 우측 시각 여백 4.0") 안에 X·Y 두 축 + 4분면 매핑.
 # 거버닝 블록은 _build_governing_block 헬퍼 호출 — eyebrow + 메인 형광 + 서브 거버닝.
@@ -4074,6 +4182,19 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
             # split 의 확장 — circles/hsplit/zigzag/asymmetric/timeline/split 과 동일 패턴.
             try:
                 preset_shapes = _build_preset_quad(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "hero_cards":
+            # Spec D-Build-PresetHeroCards — 상단 거버닝 히어로 + 하단 카드 N개(2~4).
+            # ★ 본 spec 단계: 코드만 등록 + viz_pattern 화이트리스트 미연결 (LLM 미선택 보장).
+            #   matrix/funnel/hsplit_top 와 동일 — 별도 spec 으로 한꺼번에 켤 것.
+            # circles 와 동일 패턴 — 성공 시 preset 만, 실패/예외 시 LLM 백업.
+            try:
+                preset_shapes = _build_preset_hero_cards(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

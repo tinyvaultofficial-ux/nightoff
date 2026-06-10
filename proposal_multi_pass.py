@@ -3002,6 +3002,10 @@ def _build_slide_user_prompt(
                 "    (3~4개 권장, 최대 4 — 5개 이상은 잘림)\n"
                 "  · (선택) \"eyebrow\" — 좌상단 메타 라벨\n"
                 "  · (선택) \"title\"   — 상단 페이지 제목\n"
+                "  · (선택) \"title_runs\" — title 의 형광 강조 segment (D-Build-TextRunsInject 정합):\n"
+                "      [{\"t\":\"앞부분 \"},{\"t\":\"핵심 명사구\",\"accent\":true},{\"t\":\" 뒷부분\"}]\n"
+                "      ★ accent:true 한 곳만, 모든 t 를 이으면 title 과 정확히 일치, 애매하면 생략.\n"
+                "      ★ theme=dark 시 accent 부분만 #FFFF00 자동 적용 (light 면 형광 없음, 정상).\n"
                 "  → 좌표·원·폰트·정렬은 코드가 자동 배치한다.\n"
                 "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
                 "    절대 금지: rect / 박스 / 이미지 / 도형(type='text' 외).\n"
@@ -3019,6 +3023,7 @@ def _build_slide_user_prompt(
                 '{"preset":"circles",'
                 '"eyebrow":"Ⅰ. 사업 이해 · 핵심 목표 지표",'
                 '"title":"4대 핵심 지표로 검증하는 사업 성과",'
+                '"title_runs":[{"t":"4대 "},{"t":"핵심 지표","accent":true},{"t":"로 검증하는 사업 성과"}],'
                 '"items":['
                 '{"value":"1,200만","label":"월 노출 수","desc":"포털·SNS·배너 통합 도달"},'
                 '{"value":"200팀","label":"참가자 모집","desc":"지상파 광고로 D-60까지 확보"},'

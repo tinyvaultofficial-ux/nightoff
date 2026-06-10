@@ -5719,6 +5719,7 @@ async function runMultiPassProposal({ convId, pages, asstEl, bubble, progress, b
   let failCount = 0;
   let outlineLines = [];
   let outlineList = [];   // [{page, section, governing, status}]
+  let outline = null;     // 페이지 재생성 모달용 — SSE outline_done 에서 채움. hook(L5921) 으로 전달.
   let slidesStart = 0;
   let finalDone = false;
 
@@ -5828,6 +5829,7 @@ async function runMultiPassProposal({ convId, pages, asstEl, bubble, progress, b
         outlineList = (ev.outline || []).map(o => ({
           page: o.page, section: o.section, governing: o.governing, status: "pending",
         }));
+        outline = Array.isArray(ev.outline) ? ev.outline : null;
         slidesStart = Date.now();
         progress.el.classList.remove("indeterminate");
         sectionEl.textContent = `목차 작성 완료 — 슬라이드 ${totalSlides}장 병렬 작성 시작`;

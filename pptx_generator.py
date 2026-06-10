@@ -3037,31 +3037,50 @@ def _build_preset_circles(slide_data):
         return []
     W, H = 11.69, 8.27
     shapes = []
+    # ① 배경 2장 (z-order 최하단) — 상단 검정 밴드 2.6" + 하단 흰 영역 5.67"
+    #    흰 함정 회피: #1B1B1B / #FEFEFE 모두 DARK_MAP 미매핑 → light/dark 그대로 통과
+    shapes.append({"type":"rect","x":0,"y":0,"w":11.69,"h":2.6,"fill":"#1B1B1B"})
+    shapes.append({"type":"rect","x":0,"y":2.6,"w":11.69,"h":5.67,"fill":"#FEFEFE"})
+    # ② eyebrow (선택) — 검정 밴드 안 중앙 정렬
     if eyebrow:
-        shapes.append({"type":"text","x":0.9,"y":0.5,"w":9.89,"h":0.4,"text":eyebrow,"size":11,"weight":400,"color":"#BBBBBB","align":"left","valign":"top"})
-    top = 1.1
+        shapes.append({"type":"text","x":0,"y":0.5,"w":11.69,"h":0.4,"text":eyebrow,"size":11,"weight":400,"color":"#999999","align":"center","valign":"top"})
+    # ③ title (선택) — 검정 밴드 안 중앙 정렬, title_runs 형광 호환
+    #    timeline _build_governing_block L2691-2701 패턴 정합: title_runs list 면 text_runs 키로 박음.
+    #    accent 세그먼트는 _add_text(L1679)가 dark 에서 #FFFF00 자동 처리 → 본 함수 추가 코드 X.
     if title:
-        shapes.append({"type":"text","x":0.9,"y":1.0,"w":10.0,"h":0.9,"text":title,"size":26,"weight":800,"color":"#1A1A1A","align":"left","valign":"top"})
-        top = 2.4
+        title_shape = {"type":"text","x":0,"y":1.05,"w":11.69,"h":1.2,"text":title,"size":28,"weight":800,"color":"#FEFEFE","align":"center","valign":"top"}
+        title_runs_raw = slide_data.get("title_runs")
+        if isinstance(title_runs_raw, list) and title_runs_raw:
+            title_shape["text_runs"] = title_runs_raw
+        shapes.append(title_shape)
+    # ④ 원 영역 — 흰 영역(y=2.6~8.27, h=5.67) 안에서 세로 중앙 배치
+    #    묶음 높이 = circle_d + (label gap+h) + (desc gap+h). label/desc 유무로 가변.
     n = len(items)
     circle_d = 2.0
     margin = 0.9
     usable = W - margin * 2
     gap = (usable - circle_d * n) / (n - 1) if n > 1 else 0
-    circle_y = top + 1.0
+    has_label = any(it["label"] for it in items)
+    has_desc  = any(it["desc"]  for it in items)
+    block_h = circle_d  # 2.0
+    if has_label:
+        block_h += 0.4 + 0.5  # circle→label gap + label h
+    if has_desc:
+        block_h += (0.05 if has_label else 0.4) + 1.0  # label→desc gap(또는 circle→desc) + desc h
+    circle_y = (5.67 - block_h) / 2 + 2.6
     cy_center = circle_y + circle_d / 2
     for i, it in enumerate(items):
         cx = margin + i * (circle_d + gap)
-        shapes.append({"type":"circle","x":cx,"y":circle_y,"w":circle_d,"h":circle_d,"fill":"none","stroke":"#1A1A1A","stroke_width":1.5})
+        shapes.append({"type":"circle","x":cx,"y":circle_y,"w":circle_d,"h":circle_d,"fill":"none","stroke":"#1B1B1B","stroke_width":1.5})
         vlen = len(it["value"])
         vsize = 30 if vlen <= 4 else (22 if vlen <= 7 else 16)
-        shapes.append({"type":"text","x":cx,"y":cy_center - 0.45,"w":circle_d,"h":0.9,"text":it["value"],"size":vsize,"weight":800,"color":"#1A1A1A","align":"center","valign":"middle"})
+        shapes.append({"type":"text","x":cx,"y":cy_center - 0.45,"w":circle_d,"h":0.9,"text":it["value"],"size":vsize,"weight":800,"color":"#1B1B1B","align":"center","valign":"middle"})
         ty = circle_y + circle_d + 0.4
         if it["label"]:
-            shapes.append({"type":"text","x":cx - 0.3,"y":ty,"w":circle_d + 0.6,"h":0.5,"text":it["label"],"size":14,"weight":700,"color":"#1A1A1A","align":"center","valign":"top"})
+            shapes.append({"type":"text","x":cx - 0.3,"y":ty,"w":circle_d + 0.6,"h":0.5,"text":it["label"],"size":14,"weight":700,"color":"#1B1B1B","align":"center","valign":"top"})
             ty += 0.55
         if it["desc"]:
-            shapes.append({"type":"text","x":cx - 0.3,"y":ty,"w":circle_d + 0.6,"h":1.0,"text":it["desc"],"size":11,"weight":400,"color":"#666666","align":"center","valign":"top"})
+            shapes.append({"type":"text","x":cx - 0.3,"y":ty,"w":circle_d + 0.6,"h":1.0,"text":it["desc"],"size":11,"weight":400,"color":"#5A5A5A","align":"center","valign":"top"})
     return shapes
 
 

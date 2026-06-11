@@ -4676,6 +4676,10 @@ async function renderChat(cid, convId) {
         h("span", { class: "ap-dl-label" }, "PPTX 다운로드"),
       ]),
       h("p", { class: "ap-dl-hint" }, "바로 편집·제출할 수 있는 .pptx"),
+      h("p", { class: "ap-dl-hint" }, [
+        "📥 폰트가 깨져 보이나요? ",
+        h("a", { href: "/faq#paperlogy", target: "_blank" }, "폰트 설치 안내"),
+      ]),
       h("div", { class: "ap-divider" },
         h("span", {}, "이 제안서로 더 할 수 있어요")),
       h("div", { class: "ap-cards" }, [

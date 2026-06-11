@@ -1991,6 +1991,15 @@ def privacy_page():
     return FileResponse(str(p), media_type="text/html")
 
 
+@app.get("/faq")
+def faq_page():
+    """FAQ 페이지 (정적 HTML, terms/privacy 와 동일 패턴 · 인증 면제)."""
+    p = STATIC_DIR / "faq.html"
+    if not p.exists():
+        raise HTTPException(404, "faq page not found")
+    return FileResponse(str(p), media_type="text/html")
+
+
 # ---- 어드민 대시보드 (Phase 2 단계 3) ----
 # /admin 영역 admin.html 정적 서빙. 인증 영역 클라이언트 (admin.js) 영역
 # JWT 영역 fetch /api/admin/* 호출 → 401 영역 /login redirect / 403 영역 권한 X 안내.

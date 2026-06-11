@@ -1046,11 +1046,11 @@ function renderLanding() {
 
         // 기능 행 — FEATURE_GROUPS 카테고리별 그룹화 (각 그룹: 카테고리 헤더 1행 + 그룹 안 기능 N행)
         ...FEATURE_GROUPS.flatMap(g => [
-          // 카테고리 헤더 행 (4 셀 — 라벨 셀 + 플랜 3 빈 셀, 그리드 4컬럼 유지)
-          h("div", { class: "pt-cell pt-row-label pt-feature-category" }, g.category),
-          ...TIERS.map(t => h("div", {
-            class: `pt-cell pt-feature-category ${t.best ? "pt-best" : ""}`,
-          }, "")),
+          // 카테고리 헤더 행 — span 1줄 (grid-column: 1 / -1 전체 가로지름)
+          h("div", {
+            class: "pt-cell pt-feature-category",
+            style: "grid-column: 1 / -1",
+          }, g.category),
           // 그룹 안 기능 행들 (라벨 + 플랜별 ✅ — 전 플랜 풀기능, 차등 없음)
           ...g.items.flatMap(item => [
             h("div", { class: "pt-cell pt-row-label pt-feature-label" }, item),

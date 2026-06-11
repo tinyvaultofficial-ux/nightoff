@@ -694,6 +694,16 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     ("users",         "trial_used_at",          "TEXT DEFAULT ''"),     # KST 사용 시각
     ("users",         "phone_verified_at",      "TEXT DEFAULT ''"),     # SMS 인증 완료 시각
     ("users",         "phone_verified_number",  "TEXT DEFAULT ''"),     # 정규화된 11자 (010xxxxxxxx)
+    # ───────── Spec D-Build-MarketingConsent (2026-06-11) — 동의 시각 보관 (법적 증빙 + 정통망법) ─────────
+    # 가입 시점 INSERT 영역 채움. 기존 사용자는 DEFAULT '' 유지 (영업 무중단, 영향 0).
+    # · terms_agreed_at     = 약관 동의 시각 (필수 동의이므로 가입 시 항상 ISO timestamp 채워짐)
+    # · privacy_agreed_at   = 개인정보 동의 시각 (필수 동의 — 동일)
+    # · marketing_agreed_at = 마케팅 수신동의 시각 (선택 동의 — true일 때만 timestamp, false면 '')
+    # 정기 레터 수신자 쿼리: WHERE marketing_agreed_at != '' AND deleted_at = '' AND is_active = 1
+    # 수신거부(unsubscribe) / 발송 이력 / 정기 레터 발송 함수는 별도 spec.
+    ("users",         "terms_agreed_at",        "TEXT DEFAULT ''"),
+    ("users",         "privacy_agreed_at",      "TEXT DEFAULT ''"),
+    ("users",         "marketing_agreed_at",    "TEXT DEFAULT ''"),
 ]
 
 
@@ -4518,6 +4528,8 @@ class RegisterIn(BaseModel):
     # Spec D-Fix-7 (5/18) — 약관 동의 (법적 필수, 일반 공개 전 critical)
     terms_agreed: bool = False
     privacy_agreed: bool = False
+    # Spec D-Build-MarketingConsent (2026-06-11) — 마케팅 수신동의 (정통망법: 선택, 미체크 가능, 거부해도 가입 가능)
+    marketing_agreed: bool = False
 
 
 class LoginIn(BaseModel):
@@ -4563,15 +4575,21 @@ def api_auth_register(body: RegisterIn, request: Request):
         prop_q, conv_q = _get_initial_quota()
 
         # 신규 사용자 INSERT (Spec D-Fix-8 — email_verified=0 명시 + 토큰 영역)
+        # Spec D-Build-MarketingConsent (2026-06-11) — 동의 시각 3개 저장:
+        #   terms / privacy 는 게이트 검증 통과(true)이므로 항상 now_iso 채움.
+        #   marketing 은 선택 — true 면 now_iso, false 면 '' (수신거부 사용자 식별 가능).
+        marketing_agreed_at_val = now_iso if body.marketing_agreed else ""
         uid = uuid.uuid4().hex[:12]
         db.execute(
             "INSERT INTO users(id, email, company, password_hash, role, is_active, last_login, "
             "                  monthly_proposal_quota, monthly_conversation_quota, "
             "                  email_verified, verification_token, verification_token_expires_at, "
-            "                  last_verification_sent_at) "
-            "VALUES(?, ?, ?, ?, ?, 1, datetime('now','localtime'), ?, ?, 0, ?, ?, ?)",
+            "                  last_verification_sent_at, "
+            "                  terms_agreed_at, privacy_agreed_at, marketing_agreed_at) "
+            "VALUES(?, ?, ?, ?, ?, 1, datetime('now','localtime'), ?, ?, 0, ?, ?, ?, ?, ?, ?)",
             (uid, email, company, pw_hash, "user", prop_q, conv_q,
-             verification_token, token_expires_at, now_iso),
+             verification_token, token_expires_at, now_iso,
+             now_iso, now_iso, marketing_agreed_at_val),
         )
 
     # Spec D-Fix-8 — 인증 메일 발송 (graceful fallback — 실패해도 가입 성공)

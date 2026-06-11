@@ -982,24 +982,19 @@ function renderLanding() {
   // ── 가격 (Spec D-Fix-21: 3 티어 비교 표)
   const TIERS = [
     { name: "스타터", en: "Starter", emoji: "🌱",
-      promo: "31만원", regular: "40만원", discount: "-22.5%", unit: "20만원",
+      promo: "31만원", regular: "36만원", discount: "-15%",
       proposals: "2건", best: false },
     { name: "프로", en: "Pro", emoji: "🚀",
-      promo: "79만원", regular: "100만원", discount: "-21%", unit: "20만원",
+      promo: "64만원", regular: "85만원", discount: "-25%",
       proposals: "5건", best: true },
     { name: "비즈니스", en: "Business", emoji: "💎",
-      promo: "151만원", regular: "200만원", discount: "-24.5%", unit: "20만원",
+      promo: "132만원", regular: "165만원", discount: "-20%",
       proposals: "10건", best: false },
   ];
-  const FEATURES = [
-    { label: "편집 가능한 PPTX" },
-    { label: "RFP 분석" },
-    { label: "발주처 분석" },
-    { label: "다양한 레이아웃" },
-    { label: "전략 대화 AI" },
-    { label: "국내 제안서 표준 형식" },
-    { label: "산출내역서" },
-    { label: "자체 검증" },
+  const FEATURE_GROUPS = [
+    { category: "AI 분석",     items: ["RFP 분석", "발주처 분석", "전략 대화 AI"] },
+    { category: "제안서 생성", items: ["편집 가능한 PPTX", "다양한 레이아웃", "국내 제안서 표준 형식"] },
+    { category: "검증·산출",   items: ["자체 검증", "산출내역서"] },
   ];
 
   wrap.appendChild(h("section", { class: "landing-pricing" }, [
@@ -1008,7 +1003,7 @@ function renderLanding() {
       h("h2", { class: "landing-section-title" }, "요금제(plans)"),
       // Spec D-Fix-40: lead 자리 → 상단 띠 대체 (프로모션 자료 강조)
       h("div", { class: "landing-pricing-promo" }, [
-        h("div", { class: "landing-pricing-promo-title" }, "🎉 공식 런칭 기념 / 첫 6개월 한정 특가"),
+        h("div", { class: "landing-pricing-promo-title" }, "🎉 공식 런칭 기념 / 3개월 한정 특가"),
         h("div", { class: "landing-pricing-promo-sub" }, "지금 가입하면 정가 대비 최대 25% 절약"),
       ]),
 
@@ -1049,19 +1044,20 @@ function renderLanding() {
           h("span", { class: "pt-usage-meta" }, "(50매 기준)"),
         ])),
 
-        // 단가 행
-        h("div", { class: "pt-cell pt-row-label" }, "제안서 단가"),
-        ...TIERS.map(t => h("div", { class: `pt-cell ${t.best ? "pt-best" : ""}` }, [
-          h("span", { class: "pt-unit-amount" }, `${t.unit}/건`),
-          h("span", { class: "pt-unit-meta" }, "(정가 기준)"),
-        ])),
-
-        // 기능 행 4개
-        ...FEATURES.flatMap(f => [
-          h("div", { class: "pt-cell pt-row-label pt-feature-label" }, f.label),
+        // 기능 행 — FEATURE_GROUPS 카테고리별 그룹화 (각 그룹: 카테고리 헤더 1행 + 그룹 안 기능 N행)
+        ...FEATURE_GROUPS.flatMap(g => [
+          // 카테고리 헤더 행 (4 셀 — 라벨 셀 + 플랜 3 빈 셀, 그리드 4컬럼 유지)
+          h("div", { class: "pt-cell pt-row-label pt-feature-category" }, g.category),
           ...TIERS.map(t => h("div", {
-            class: `pt-cell pt-feature ${t.best ? "pt-best" : ""}`,
-          }, "✅")),
+            class: `pt-cell pt-feature-category ${t.best ? "pt-best" : ""}`,
+          }, "")),
+          // 그룹 안 기능 행들 (라벨 + 플랜별 ✅ — 전 플랜 풀기능, 차등 없음)
+          ...g.items.flatMap(item => [
+            h("div", { class: "pt-cell pt-row-label pt-feature-label" }, item),
+            ...TIERS.map(t => h("div", {
+              class: `pt-cell pt-feature ${t.best ? "pt-best" : ""}`,
+            }, "✅")),
+          ]),
         ]),
 
         // CTA 행

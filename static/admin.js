@@ -762,26 +762,17 @@ const settingsState = {
 // 정책값 영역 라벨 / 단위 매핑 (사용자 영역 영역 영역 영역).
 // 신규 정책값 추가 시 영역 영역 영역 영역 영역 fallback (key 그대로 표시).
 const POLICY_META = {
-  package_price: {
-    label: "월 패키지 가격",
-    suffix: "원",
-    type: "number",
-    min: 0,
-    desc: "월 정기 결제 영역 사용자 영역 청구 영역 (예: 380000 = 38만원)",
-  },
+  // ⚠ 옛 유령 정책 (코드 0 사용) — POLICY_META + HIDDEN_POLICY_KEYS 둘 다 정합 유지:
+  //   package_price       (결제 미연동, 단일 380000 잔존)
+  //   monthly_conversations (sentinel 999999, 코드 path 미사용)
+  //   trial_credits        (5000 시드, 자동 부여 로직 부재)
+  //   → DB row 는 보존 (이번 spec: UI 표시만 정리), 결제 연동 spec 시 DB 정리.
   monthly_proposals: {
-    label: "월 제안서 크레딧",
+    label: "신규 가입 크레딧 (월 리셋)",
     suffix: "크레딧",
     type: "number",
     min: 0,
-    desc: "월 1회 결제 시 사용자에게 지급되는 제안서 크레딧 (1페이지 = 100 크레딧, 예: 25000 = 250페이지)",
-  },
-  monthly_conversations: {
-    label: "월 대화 (미사용 — 무제한)",
-    suffix: "sentinel",
-    type: "number",
-    min: 0,
-    desc: "대화는 무제한 정책이라 코드에서 사용 안 함 (999999 sentinel 유지). 변경 시 UI 만 영향, 백엔드 차감 X.",
+    desc: "신규 가입 시 부여 + 매월 1일 리셋되는 quota. 1페이지=100크레딧. 예: 500 = 5페이지 분량",
   },
 
   // ───────── Phase 1-A-3 — 무료체험 정책 메타데이터 (Phase 1-E 일부) ─────────
@@ -792,13 +783,6 @@ const POLICY_META = {
     type: "select",
     options: ["Y", "N"],
     desc: "전체 무료체험 ON/OFF — 'Y' 활성 / 'N' 비활성. 사고/어뷰징 시 즉시 'N' 으로 비활성화 가능 (Phase 1-B/C/D endpoint 가 본 정책 참조).",
-  },
-  trial_credits: {
-    label: "무료체험 크레딧",
-    suffix: "크레딧",
-    type: "number",
-    min: 0,
-    desc: "활성화 시 부여 크레딧 (1페이지 = 100 크레딧, 5000 = 50페이지). 활성화 시점에만 적용 — 이미 활성화한 사용자에게 소급 X.",
   },
   trial_sms_max_per_day: {
     label: "일일 SMS 발송 한도 (전체)",
@@ -865,13 +849,18 @@ function renderSettingsForm() {
     return;
   }
 
+  // 옛 유령 정책 (코드 0 사용) — UI 표시에서 명시 제거 (DB row 는 보존).
+  // POLICY_META 에서 빼는 것만으론 fallback 루프 (아래) 가 settingsState 의 키를
+  // 무조건 ordered 에 추가해서 UI 에 노출됨 → 본 set 으로 명시 skip.
+  const HIDDEN_POLICY_KEYS = new Set(["package_price", "monthly_conversations", "trial_credits"]);
+
   // POLICY_META 영역 정의 영역 정책값 우선 + 그 외 영역 fallback 영역
   const ordered = [];
   for (const key of Object.keys(POLICY_META)) {
     if (settingsState.byKey[key]) ordered.push(settingsState.byKey[key]);
   }
   for (const s of settingsState.settings) {
-    if (!POLICY_META[s.key]) ordered.push(s);  // 신규 정책 영역 fallback
+    if (!POLICY_META[s.key] && !HIDDEN_POLICY_KEYS.has(s.key)) ordered.push(s);  // 신규 정책 fallback (HIDDEN 제외)
   }
 
   const rows = ordered.map((s) => {

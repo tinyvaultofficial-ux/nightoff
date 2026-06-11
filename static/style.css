@@ -4445,7 +4445,7 @@ input.locked-by-env::placeholder {
 
 /* ── 가격 섹션 (Spec D-Fix-20) ────────────────────────────── */
 .landing-pricing {
-  padding: 76px 24px;
+  padding: 56px 24px;
   background: var(--bg-2, #FAFAFA);
 }
 .landing-pricing-inner {
@@ -4465,7 +4465,7 @@ input.locked-by-env::placeholder {
   box-shadow: 0 6px 20px -10px rgba(124,58,237,0.08);
 }
 .pt-cell {
-  padding: 18px 20px;
+  padding: 14px 20px;
   border-top: 1px solid var(--border);
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
@@ -4473,7 +4473,7 @@ input.locked-by-env::placeholder {
   font-size: 14px; color: var(--fg);
   gap: 4px;
 }
-.pt-cell.pt-header { border-top: 0; padding: 32px 20px 24px; position: relative; }
+.pt-cell.pt-header { border-top: 0; padding: 24px 20px 16px; position: relative; }
 .pt-row-label {
   font-weight: 600;
   color: var(--fg-2);
@@ -4498,7 +4498,7 @@ input.locked-by-env::placeholder {
 }
 
 /* 플랜 헤더 */
-.pt-plan-emoji { font-size: 32px; margin-bottom: 6px; }
+.pt-plan-emoji { font-size: 26px; margin-bottom: 4px; }
 .pt-plan-name {
   display: flex; flex-direction: column; gap: 2px;
   margin: 0;
@@ -4537,6 +4537,17 @@ input.locked-by-env::placeholder {
 /* 기능 행 */
 .pt-feature-label { font-size: 13px; }
 .pt-feature { font-size: 18px; }
+
+/* 기능 카테고리 헤더 행 — 3 그룹 구분 (작은 폰트 + 굵게 + 음영) */
+.pt-feature-category {
+  padding: 8px 20px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--fg-2);
+  background: color-mix(in oklab, var(--primary) 5%, #fff);
+  letter-spacing: 0.02em;
+}
+.pt-feature-category.pt-row-label { align-items: flex-start; text-align: left; }
 
 /* CTA */
 .pt-cta-cell { padding: 22px 16px; }

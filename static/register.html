@@ -65,6 +65,10 @@
             <input type="checkbox" id="privacy_agreed" required />
             <span><a href="/privacy" target="_blank">개인정보처리방침</a>에 동의합니다 (필수)</span>
           </label>
+          <label class="auth-terms-label">
+            <input type="checkbox" id="marketing_agreed" />
+            <span>(선택) NightOff의 새 기능과 유용한 정보를 이메일로 받아볼게요.</span>
+          </label>
         </div>
         <button type="submit" class="auth-btn" id="submit-btn" disabled>가입하고 시작하기</button>
         <div class="auth-error" id="error-msg"></div>
@@ -118,7 +122,7 @@
         const r = await fetch("/api/auth/register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password, company, terms_agreed, privacy_agreed }),
+          body: JSON.stringify({ email, password, company, terms_agreed, privacy_agreed, marketing_agreed: document.getElementById("marketing_agreed").checked }),
         });
         const data = await r.json().catch(() => ({}));
         if (!r.ok) {

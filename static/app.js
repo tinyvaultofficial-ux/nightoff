@@ -1096,9 +1096,11 @@ function renderLanding() {
     }),
   ]));
 
-  // ── 푸터 (Spec D-Fix-20: 사업자 정보 추가)
+  // ── 푸터 (Spec D-Fix-20: 사업자 정보 추가 / Spec FAQ-Build: 자주 묻는 질문 링크 추가)
   wrap.appendChild(h("footer", { class: "landing-footer" }, [
     h("div", { class: "landing-footer-row" }, [
+      h("a", { href: "/faq" }, "자주 묻는 질문"),
+      h("span", { class: "lf-sep" }, "·"),
       h("a", { href: "/terms" }, "이용약관"),
       h("span", { class: "lf-sep" }, "·"),
       h("a", { href: "/privacy" }, "개인정보처리방침"),

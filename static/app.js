@@ -3322,18 +3322,27 @@ function openClosingNoticesModal(notices) {
 
 // ---------- 📑 샘플 위젯 (Spec C-3 / C-5 톤 / D-Fix-4 실 데이터 / D-Fix-5 자동 롤링) ----------
 // 대시보드 우측 35% 영역. SAMPLE_POOL 영역 데이터 자동 롤링 (6초) + 도트 네비.
-// 데이터: 실 데이터 2건 (112의 날 기념식 / 세계유산축전).
+// 데이터: 실 데이터 2건 (행사 — 위드펫스타 / 홍보·마케팅 — 명소발굴).
 // 클릭: openSampleModal → PDF iframe 미리보기 + sticky CTA bar (/client/new).
 // hover: 자동 롤링 일시정지 (Hero / 마감 임박 패턴 정합).
 const SAMPLE_POOL = [
   {
-    id: "sample-pet",
+    id: "sample-event",
     title: "2026 위드펫스타 제2회 동물보호의 날 축제",
     agency: "부산광역시",
     domain: "행사 대행",
     budget: 0,
-    pdfUrl: "/static/samples/sample-pet.pdf",
-    thumbnailUrl: "/static/samples/sample-pet-thumb.png",
+    pdfUrl: "/static/samples/sample-event.pdf",
+    thumbnailUrl: "/static/samples/sample-event-thumb.png",
+  },
+  {
+    id: "sample-marketing",
+    title: "대한민국 명소발굴 홍보마케팅",
+    agency: "한국관광공사",
+    domain: "홍보·마케팅",
+    budget: 0,
+    pdfUrl: "/static/samples/sample-marketing.pdf",
+    thumbnailUrl: "/static/samples/sample-marketing-thumb.png",
   },
 ];
 

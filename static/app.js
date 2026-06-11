@@ -5198,7 +5198,7 @@ async function renderChat(cid, convId) {
 
   shell.appendChild(h("div", { class: "chat-input-wrap" }, [
     h("div", { class: "chat-input-container" }, [ta, sendBtn, stopBtn]),
-    h("p", { class: "chat-hint" }, "발주처 정보 · RFP 과업 · RAG 스타일 신호가 자동으로 들어가요"),
+    h("p", { class: "chat-hint" }, "NightOff가 만든 초안입니다. 제출 전 내용을 확인해 주세요."),
   ]));
 
   // On load, re-render assistant messages to parse any embedded proposal markup

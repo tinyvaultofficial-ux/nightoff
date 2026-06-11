@@ -1677,7 +1677,7 @@ def _add_text(slide, x, y, w, h, text, *,
                     run.font.italic = True
                 # ★ 색 결정 — accent && dark 만 형광(#FFFF00). 라이트는 accent 무시 → 일반 color.
                 if seg["accent"] and theme == "dark":
-                    seg_color = "#FFFF00"
+                    seg_color = "#A78BFA"
                 else:
                     seg_color = color
                 run.font.color.rgb = _hex_to_rgb(_map_color(seg_color, "text", theme))
@@ -3566,7 +3566,7 @@ def _build_preset_hsplit_top(slide_data):
             "type": "text",
             "x": 0, "y": 1.7, "w": W, "h": 0.7,
             "text": title_accent,
-            "size": 28, "weight": 800, "color": "#FFFF00",
+            "size": 28, "weight": 800, "color": "#A78BFA",
             "align": "center", "valign": "middle",
         })
 

@@ -48,7 +48,7 @@ THEMES: dict[str, dict[str, str]] = {
         "LINE":        "#2A2A2A",   # 구분선·테두리 (검정 위에서 보이는 어두운 선)
         "PANEL_FILL":  "#FFFFFF",   # 흰 면 (다크 바탕에서 강조)
         "PANEL_FG":    "#1A1A1A",   # 흰 면 위 검정 글씨
-        "ACCENT":      "#FFFF00",   # 형광 초록 강조 (다크 테마 시그니처)
+        "ACCENT":      "#A78BFA",   # 브랜드 보라 강조 (다크 테마 시그니처)
     },
 }
 

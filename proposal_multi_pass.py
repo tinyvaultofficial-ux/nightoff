@@ -2857,7 +2857,7 @@ def _build_slide_user_prompt(
                 '                    다른 페이지 거버닝과 똑같은 부분 강조 — 전체 강조 X.\n'
                 '                  ★ title_runs 의 모든 t 를 이으면 title 과 정확히 같아야 한다.\n'
                 '                  ★ 핵심이 애매하면 title_runs 생략 (text_runs 없는 일반 거버닝 fallback, 형광 없음).\n'
-                '                  ★ theme=dark 시 accent 부분만 #FFFF00 자동 적용. theme=light 면 형광 없음(정상).\n'
+                '                  ★ theme=dark 시 accent 부분만 #A78BFA 자동 적용. theme=light 면 형광 없음(정상).\n'
                 '  · "steps": [{"label": 짧은 단계명(선택, 예 "STEP 01"),\n'
                 '               "head": 단계 제목(필수, ★ 1줄 / 25자 이내 권장 — 길면 줄바꿈으로 박스 초과),\n'
                 '               "desc": 한 줄 설명(선택, ★ Spec D-Fix-TimelineGoverningFollowup —\n'
@@ -3029,7 +3029,7 @@ def _build_slide_user_prompt(
                 "  · (선택) \"title_runs\" — title 의 형광 강조 segment (D-Build-TextRunsInject 정합):\n"
                 "      [{\"t\":\"앞부분 \"},{\"t\":\"핵심 명사구\",\"accent\":true},{\"t\":\" 뒷부분\"}]\n"
                 "      ★ accent:true 한 곳만, 모든 t 를 이으면 title 과 정확히 일치, 애매하면 생략.\n"
-                "      ★ theme=dark 시 accent 부분만 #FFFF00 자동 적용 (light 면 형광 없음, 정상).\n"
+                "      ★ theme=dark 시 accent 부분만 #A78BFA 자동 적용 (light 면 형광 없음, 정상).\n"
                 "  → 좌표·원·폰트·정렬은 코드가 자동 배치한다.\n"
                 "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
                 "    절대 금지: rect / 박스 / 이미지 / 도형(type='text' 외).\n"
@@ -3203,7 +3203,7 @@ def _build_slide_user_prompt(
                 "  · title (필수): 메인 거버닝 1줄 (흰 글자, 중앙 정렬). 25~35자 권장.\n"
                 "  · title_accent (선택, ★ 형광 강조 2줄): title 의 핵심 키워드 부분을 별도 분리.\n"
                 "    예: title = \"200팀에서 결승 10팀까지\" / title_accent = \"4단계 압축 선발\"\n"
-                "    → 형광(#FFFF00) 으로 2줄째에 중앙 정렬 박힘. 10~20자 권장.\n"
+                "    → 형광(#A78BFA) 으로 2줄째에 중앙 정렬 박힘. 10~20자 권장.\n"
                 "    ★ title_runs 사용 X — title_accent 키로 별도 분리 (theme=light 에서도 형광 보장).\n"
                 "  · subtitle (선택): 서브 거버닝 — 메인 보조 (의미 있는 수치 또는 보충 설명, 옅은 회색). 억지 수치 X.\n"
                 "  · eyebrow (선택): 좌상단 메타 라벨.\n"
@@ -3317,7 +3317,7 @@ def _build_slide_user_prompt(
                 '  · "title_runs" (선택) — title 의 형광 강조 segment (D-Build-TextRunsInject 정합):\n'
                 '      [{"t":"앞부분 "},{"t":"핵심 명사구","accent":true},{"t":" 뒷부분"}]\n'
                 '      ★ accent:true 한 곳만, 모든 t 를 이으면 title 과 정확히 일치, 애매하면 생략.\n'
-                '      ★ theme=dark 시 accent 부분만 #FFFF00 자동 적용 (light 면 형광 없음, 정상).\n'
+                '      ★ theme=dark 시 accent 부분만 #A78BFA 자동 적용 (light 면 형광 없음, 정상).\n'
                 '  · "eyebrow" (선택) — 상단 메타 라벨 (옅은 회색, 검정 밴드 안 상단)\n'
                 '  · "items": [{"label": "배지(선택)", "head": "제목(필수)", "desc": "설명(선택)"}, ...]\n'
                 "    (2~4개 권장, 최대 4 — 5개 이상은 잘림 / 1개 미만이면 빈 페이지로 fallback)\n"

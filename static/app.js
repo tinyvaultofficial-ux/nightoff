@@ -983,13 +983,13 @@ function renderLanding() {
   const TIERS = [
     { name: "스타터", en: "Starter", emoji: "🌱",
       promo: "31만원", regular: "36만원", discount: "-15%",
-      proposals: "2건", best: false },
+      credits: "14,000", conversion: "50매 제안서 약 2건 분량", best: false },
     { name: "프로", en: "Pro", emoji: "🚀",
       promo: "64만원", regular: "85만원", discount: "-25%",
-      proposals: "5건", best: true },
+      credits: "30,000", conversion: "50매 제안서 약 6건 분량", best: true },
     { name: "비즈니스", en: "Business", emoji: "💎",
       promo: "132만원", regular: "165만원", discount: "-20%",
-      proposals: "10건", best: false },
+      credits: "62,000", conversion: "50매 제안서 약 12건 분량", best: false },
   ];
   const FEATURE_GROUPS = [
     { category: "AI 분석",     items: ["RFP 분석", "발주처 분석", "전략 대화 AI"] },
@@ -1037,11 +1037,11 @@ function renderLanding() {
           ]),
         ])),
 
-        // 사용량 행
-        h("div", { class: "pt-cell pt-row-label" }, "월 제안서"),
+        // 사용량 행 — 제공 크레딧 + 플랜별 환산 보조 문구
+        h("div", { class: "pt-cell pt-row-label" }, "제공 크레딧"),
         ...TIERS.map(t => h("div", { class: `pt-cell ${t.best ? "pt-best" : ""}` }, [
-          h("span", { class: "pt-usage-amount" }, t.proposals),
-          h("span", { class: "pt-usage-meta" }, "(50매 기준)"),
+          h("span", { class: "pt-usage-amount" }, t.credits + " 크레딧"),
+          h("span", { class: "pt-usage-meta" }, t.conversion),
         ])),
 
         // 기능 행 — FEATURE_GROUPS 카테고리별 그룹화 (각 그룹: 카테고리 헤더 1행 + 그룹 안 기능 N행)

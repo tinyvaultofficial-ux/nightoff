@@ -44,6 +44,7 @@ const ICO = {
   search: `<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>`,
   check: `<polyline points="20 6 9 17 4 12"/>`,
   alert: `<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>`,
+  help: `<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>`,
   printer: `<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>`,
   save: `<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>`,
   eye: `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`,
@@ -679,6 +680,17 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
           }, children);
         })(),
       ] : []),
+      // Spec D-Build-FaqSidebarLink (2026-06-13) — 자주 묻는 질문 (FAQ) 영구 진입점.
+      // 모든 페이지 공통 노출 · admin/일반 양쪽 동일 (role 분기 위 배치) · 같은 탭 이동(/faq).
+      // ICO.help (Feather help-circle) + iconHtml 헬퍼 — 설정/마이페이지/로그아웃 SVG 패턴 정합.
+      h("button", {
+        class: "sidebar-footer-btn",
+        title: "자주 묻는 질문",
+        onclick: () => { location.href = "/faq"; },
+      }, [
+        h("span", { class: "sidebar-footer-btn-icon", html: iconHtml("help", 16) }),
+        h("span", {}, "자주 묻는 질문"),
+      ]),
       // Spec D-Fix-10 (5/19) — 어드민/일반 분기:
       //   어드민 (role==="admin") → 기존 설정 모달 (openSettings, settings-modal)
       //   일반 사용자             → 마이페이지 링크 (/account.html, frontend role 첫 사용 사례)

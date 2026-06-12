@@ -704,6 +704,11 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     ("users",         "terms_agreed_at",        "TEXT DEFAULT ''"),
     ("users",         "privacy_agreed_at",      "TEXT DEFAULT ''"),
     ("users",         "marketing_agreed_at",    "TEXT DEFAULT ''"),
+    # ───────── Spec D-Build-Nickname (2026-06-11) — 공개 식별자 (게시판 작성자명 등 활용 예정) ─────────
+    # 가입 시점 INSERT 영역 필수 입력 + 유니크(LOWER) + 금칙어 + 길이/문자 검증.
+    # 기존 사용자 (출시 전이라 0건 예상) 는 DEFAULT '' 유지 — 빈 값은 유니크 검사 제외 (부분 인덱스).
+    # 유니크 보장: 앱 레벨 SELECT (친화적 에러) + 부분 unique 인덱스 (race condition 안전망, _migrate_db 영역).
+    ("users",         "nickname",               "TEXT DEFAULT ''"),
 ]
 
 
@@ -779,6 +784,16 @@ def _migrate_db() -> dict:
             db.execute("CREATE INDEX IF NOT EXISTS idx_clients_user ON clients(user_id)")
         except Exception as e:
             log.warning("idx_clients_user 생성 스킵: %s", e)
+        # Spec D-Build-Nickname (2026-06-11) — 닉네임 부분 unique 인덱스 (LOWER + WHERE 빈 값 제외).
+        # 앱 레벨 SELECT 가 primary, 본 인덱스는 race condition 안전망 (동시 가입 사고 방지).
+        # SQLite + PostgreSQL 양쪽 호환 (둘 다 partial expression index 지원).
+        try:
+            db.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_nickname_unique "
+                "ON users(LOWER(nickname)) WHERE nickname != ''"
+            )
+        except Exception as e:
+            log.warning("idx_users_nickname_unique 생성 스킵: %s", e)
     return {"added": added, "skipped": skipped, "failed": failed}
 
 
@@ -1061,6 +1076,53 @@ _PASSWORD_POLICY_RE = re.compile(r"^(?=.*[A-Za-z])(?=.*\d).{8,}$")
 # 이메일 형식 — 단순 validation
 _EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
 
+# Spec D-Build-Nickname (2026-06-11) — 닉네임 규칙
+#   · 길이 2~12자
+#   · 허용 문자: 완성형 한글(가-힣) + 영문 대소문자 + 숫자
+#   · 자음/모음 단독(ㄱㄴ ㅏㅑ) / 공백 / 특수문자 / 이모지 자동 차단
+_NICKNAME_RE = re.compile(r"^[가-힣A-Za-z0-9]{2,12}$")
+
+# 닉네임 금칙어 — 명백한 비속어/성적 단어 + 시스템 사칭 방지.
+# 비교 시 닉네임을 lower() 후 substring 매칭 → 변형 회피 시도(대소문자 섞기 등) 자동 차단.
+# 핵심만 (오탐 방지 위해 광범위하게 X). 신고 누적 시 별 spec 으로 확장.
+BANNED_NICKNAME_WORDS = [
+    # 한국어 명백한 욕설/성적 단어
+    "씨발", "시발", "씨바", "시바",
+    "새끼", "쌔끼",
+    "좆", "좇", "존나",
+    "보지", "자지", "섹스", "야동",
+    "병신", "븅신",
+    "지랄", "닥쳐",
+    # 영어 비속어/성적 단어 (명백·짧은 substring 오탐 낮은 것)
+    "fuck", "shit", "cunt", "bitch",
+    "pussy", "asshole", "whore", "porn",
+    "nigger", "retard",
+    # 시스템 사칭 방지
+    "admin", "administrator", "root",
+    "운영자", "관리자", "어드민",
+    "nightoff",
+]
+
+
+def _validate_nickname(nickname: str) -> str:
+    """닉네임 검증 — 길이/문자/금칙어 검사.
+
+    반환: 정제된 닉네임 (앞뒤 공백 제거). 위반 시 HTTPException(400).
+    유니크 검사는 별도 (DB 의존, 호출처 책임).
+    """
+    if not nickname or not nickname.strip():
+        raise HTTPException(400, "닉네임을 입력해주세요.")
+    nick = nickname.strip()
+    if not (2 <= len(nick) <= 12):
+        raise HTTPException(400, "닉네임은 2~12자로 입력해주세요.")
+    if not _NICKNAME_RE.match(nick):
+        raise HTTPException(400, "닉네임은 한글, 영문, 숫자만 사용할 수 있습니다.")
+    nick_lower = nick.lower()
+    for word in BANNED_NICKNAME_WORDS:
+        if word in nick_lower:
+            raise HTTPException(400, "사용할 수 없는 닉네임입니다.")
+    return nick
+
 
 def _jwt_secret() -> str:
     """JWT_SECRET env 필수 — 부재 시 startup 단계에서 에러."""
@@ -1109,7 +1171,7 @@ def get_current_user(creds: Optional[HTTPAuthorizationCredentials] = Depends(_se
         raise HTTPException(401, "토큰이 만료되었거나 유효하지 않아요. 다시 로그인해 주세요.")
     with get_db() as db:
         row = db.execute(
-            "SELECT id, email, role, is_active, deleted_at FROM users WHERE id=?",
+            "SELECT id, email, role, is_active, deleted_at, nickname FROM users WHERE id=?",
             (user_id,),
         ).fetchone()
     if not row or not row["is_active"]:
@@ -4539,6 +4601,8 @@ class RegisterIn(BaseModel):
     privacy_agreed: bool = False
     # Spec D-Build-MarketingConsent (2026-06-11) — 마케팅 수신동의 (정통망법: 선택, 미체크 가능, 거부해도 가입 가능)
     marketing_agreed: bool = False
+    # Spec D-Build-Nickname (2026-06-11) — 공개 식별자 (필수, 유니크, 금칙어 필터, 향후 게시판 작성자명)
+    nickname: str = ""
 
 
 class LoginIn(BaseModel):
@@ -4565,6 +4629,8 @@ def api_auth_register(body: RegisterIn, request: Request):
     # Spec D-Fix-7 (5/18) — 약관 동의 검증 (법적 필수)
     if not body.terms_agreed or not body.privacy_agreed:
         raise HTTPException(400, "이용약관과 개인정보처리방침에 모두 동의해주세요.")
+    # Spec D-Build-Nickname (2026-06-11) — 닉네임 검증 (길이/문자/금칙어)
+    nick = _validate_nickname(body.nickname)
 
     # Spec D-Fix-8 (5/18) — 인증 토큰 영역 신규 (UUID + 24h 만료)
     verification_token = uuid.uuid4().hex
@@ -4576,6 +4642,17 @@ def api_auth_register(body: RegisterIn, request: Request):
         existing = db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
         if existing:
             raise HTTPException(409, "이미 가입된 이메일이에요. 로그인해 주세요.")
+
+        # Spec D-Build-Nickname (2026-06-11) — 닉네임 유니크 검사 (대소문자 무시).
+        # 빈 값('') row 는 검사 제외 — 부분 unique 인덱스 (idx_users_nickname_unique) 와 동일 조건.
+        # 탈퇴(deleted_at 비어있지 않음) row 의 닉네임은 점유 해제 — 재가입자가 재사용 가능.
+        existing_nick = db.execute(
+            "SELECT id FROM users WHERE LOWER(nickname)=LOWER(?) AND nickname!='' "
+            "AND (deleted_at IS NULL OR deleted_at='')",
+            (nick,),
+        ).fetchone()
+        if existing_nick:
+            raise HTTPException(400, "이미 사용 중인 닉네임입니다.")
 
         # bcrypt hash
         pw_hash = _bcrypt.hashpw(pw.encode("utf-8"), _bcrypt.gensalt(rounds=BCRYPT_ROUNDS)).decode("utf-8")
@@ -4590,13 +4667,13 @@ def api_auth_register(body: RegisterIn, request: Request):
         marketing_agreed_at_val = now_iso if body.marketing_agreed else ""
         uid = uuid.uuid4().hex[:12]
         db.execute(
-            "INSERT INTO users(id, email, company, password_hash, role, is_active, last_login, "
+            "INSERT INTO users(id, email, company, nickname, password_hash, role, is_active, last_login, "
             "                  monthly_proposal_quota, monthly_conversation_quota, "
             "                  email_verified, verification_token, verification_token_expires_at, "
             "                  last_verification_sent_at, "
             "                  terms_agreed_at, privacy_agreed_at, marketing_agreed_at) "
-            "VALUES(?, ?, ?, ?, ?, 1, datetime('now','localtime'), ?, ?, 0, ?, ?, ?, ?, ?, ?)",
-            (uid, email, company, pw_hash, "user", prop_q, conv_q,
+            "VALUES(?, ?, ?, ?, ?, ?, 1, datetime('now','localtime'), ?, ?, 0, ?, ?, ?, ?, ?, ?)",
+            (uid, email, company, nick, pw_hash, "user", prop_q, conv_q,
              verification_token, token_expires_at, now_iso,
              now_iso, now_iso, marketing_agreed_at_val),
         )
@@ -4857,6 +4934,8 @@ def api_auth_me(user: dict = Depends(get_current_user)):
             "id": user["id"],
             "email": user["email"],
             "role": user["role"],
+            # Spec D-Build-Nickname (2026-06-11) — 공개 식별자. 기존 사용자(컬럼 추가 전 가입) 는 빈 문자열.
+            "nickname": user.get("nickname", "") or "",
             "quota": {
                 "proposal_remaining": prop_remaining,
                 "proposal_total": prop_total,

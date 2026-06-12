@@ -2713,9 +2713,13 @@ async function renderDashboard() {
 
   // Spec C-4 (5/18): 헤더 미니멀화 — h1 시간대별 메시지만, p 제거.
   //   "대시보드" 워딩 폐기 + p 부제 제거. getTimeBasedGreeting() 함수 본문 무변경.
+  // Spec D-Build-Nickname (2026-06-11): 닉네임 있으면 "○○님, " prefix. 없으면 그대로 (기존 사용자 영향 0).
+  const _nick = (window.__nightoff_user && window.__nightoff_user.nickname) || "";
+  const _greeting = getTimeBasedGreeting();
+  const _headerText = _nick ? `${_nick}님, ${_greeting}` : _greeting;
   main.appendChild(h("header", { class: "main-header" }, [
     h("div", {}, [
-      h("h1", {}, getTimeBasedGreeting()),
+      h("h1", {}, _headerText),
     ]),
     // "+ 새 과업" 버튼은 사이드바 상단으로 단일화됨 (이중 진입점 제거).
   ]));

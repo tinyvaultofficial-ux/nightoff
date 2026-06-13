@@ -1620,12 +1620,12 @@ orientation 엄격 규칙 (Spec D-Fix-Orient):
   "orientation": "landscape|portrait",
   "page_limit": 숫자 또는 null,
   "submission_format": "제출 형식 설명",
-  "key_requirements": ["핵심 요구사항 5-8개 (과업 + 제안 요구사항 통합)"],
+  "key_requirements": ["RFP에 명시된 핵심 요구사항 (필수/권장 구분, 빠짐없이) — 자세한 원칙은 스키마 아래 ⚠ key_requirements 추출 원칙 참고"],
   "evaluation_criteria": [{"item": "평가항목", "weight": "배점"}],
   "proposal_outline_items": ["RFP에 제안서 작성 항목/목차가 명시된 경우 그 항목명을 순서대로. 없으면 빈 배열 [] (Spec D-Fix-Weight)"],
   "deliverables": ["산출물 목록"],
   "pt_schedule": "PT/심사 일정 텍스트",
-  "risk_points": ["리스크/주의사항 3-5개"],
+  "risk_points": ["RFP에서 파악되는 리스크·주의사항 (개수 제한 없음, 없으면 빈 배열)"],
   "summary": "전체 3문장 요약",
   "qualifications": {
     "legal":       ["법적 자격 — 사업자 등록 / 업종 / 인허가 등 (RFP에 명시된 것만)"],
@@ -1643,6 +1643,19 @@ orientation 엄격 규칙 (Spec D-Fix-Orient):
     "budget_period":  "예산 적용 기간 (예: '2026 회계연도') — null 가능"
   }
 }
+
+⚠ key_requirements 추출 원칙 — **요구사항 누락 방지 (Spec D-Fix-RecallKeyReqs, 2026-06-13)**:
+- RFP에 명시된 **과업 요구사항** (과업지시서의 사업 수행 요구) **과 제안서 작성 요구사항** (제안요청서의 작성 항목) 을 **빠짐없이** 추출. 개수 제한 없음.
+- 비슷한 항목을 임의로 묶지 마라. RFP가 별개로 명시한 것은 별개 항목으로 분리.
+  (예: "안전관리"로 한 줄 묶지 말고 "안전관리 계획 / 비상 연락망 / 기상 단계별 대응 / 보험 가입" 4개로 분리)
+- RFP가 "필수 / 반드시 포함 / 의무 / 강제" 라벨한 항목은 앞에 **[필수]**, 그 외(권장·고려 등)는 **[권장]** 을 붙인다.
+  RFP가 라벨 미명시면 평가 배점·문맥 가중을 보고 추정 (배점 큼·"반드시"류 어휘·평가 항목 직결 → [필수]).
+- 각 항목은 **한 줄 (50자 내외)** 로 간결하게. 원문 표현 살리되 군더더기 제거.
+- RFP에 **없는 요구사항을 추측·생성하지 마라** (precision 보호). 명시된 것만.
+- 예시:
+  · "[필수] 안전관리 계획 — 비상연락망·기상 단계별 대응·보험 가입"
+  · "[필수] 행사 진행 인력 운영 계획 (직급별 역할 명시)"
+  · "[권장] 사후 만족도 조사 방안"
 
 ⚠ qualifications 추출 원칙:
 - RFP/공고문에 **명시된 영역만** 추출. 추측·일반 상식 금지.
@@ -4089,15 +4102,16 @@ def _run_rfp_aggregate(cid: str) -> dict:
     try:
         client = require_client()
         prompt = RFP_ANALYSIS_PROMPT.replace("{RFP_TEXT}", combined)
-        # Spec D-Fix-RFPFulltextCap — max_tokens 4000 → 8000.
-        # 입력 RFP cap 이 45K → 150K (3.3x) 로 늘어나면서 분석 추출 항목 (key_requirements 5-8개,
-        # evaluation_criteria, proposal_outline_items, deliverables, risk_points 3-5개,
-        # qualifications 5 카테고리, quantitative_locks 6 키 — main.py:1520-1559 스키마) 도
-        # 늘어날 수 있음. 4000 토큰 안에서 JSON 잘림 위험 회피용 안전 마진.
-        # 비용 영향: output token 만, input 무관. 분석 4 endpoint 모두 동일 영향.
+        # Spec D-Fix-RFPFulltextCap — max_tokens 4000 → 8000 (히스토리).
+        # Spec D-Fix-RecallKeyReqs (2026-06-13) — max_tokens 8000 → 12000.
+        # 사유: key_requirements 5-8개 상한 제거 + [필수]/[권장] prefix + 50자 내외 가이드 / risk_points 상한 제거 →
+        #       추출 항목 수가 늘어남 (특히 큰 RFP). 8000 안에서 JSON 잘림 위험 회피용 안전 마진 확보.
+        #       비용 영향: output token 만 (input 무관). 분석 4 endpoint 모두 동일 영향.
+        # 전형 출력 (이전 ~2,034자 ≈ 1.5K~3K 토큰) + 신 가이드 확장분 (~1K~2K 토큰 추정) →
+        #       12000 안 안전 마진 충분 (★ 실측 권장).
         resp = client.messages.create(
             model=get_setting("model", MODEL_DEFAULT),
-            max_tokens=8000,
+            max_tokens=12000,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = _extract_text_from_resp(resp)

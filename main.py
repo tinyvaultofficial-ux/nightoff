@@ -2075,6 +2075,27 @@ def faq_page():
     return FileResponse(str(p), media_type="text/html")
 
 
+# ---- SEO: robots.txt + sitemap.xml (정적 파일 서빙 · 인증 면제) ----
+# Spec D-Fix-SEONoscript (2026-06-13) — 검색 봇 크롤 가이드 + 공개 정적 페이지 사이트맵.
+# 봇 노출 가치 페이지만 sitemap 등록: /, /faq, /terms, /privacy (로그인 후 앱은 제외).
+@app.get("/robots.txt")
+def robots_txt():
+    """검색 봇 크롤 가이드 (정적, 인증 면제)."""
+    p = STATIC_DIR / "robots.txt"
+    if not p.exists():
+        raise HTTPException(404, "robots.txt not found")
+    return FileResponse(str(p), media_type="text/plain")
+
+
+@app.get("/sitemap.xml")
+def sitemap_xml():
+    """사이트맵 (정적, 인증 면제). 공개 정적 페이지만 포함 — 인증 필요 페이지(대시보드 등) 제외."""
+    p = STATIC_DIR / "sitemap.xml"
+    if not p.exists():
+        raise HTTPException(404, "sitemap.xml not found")
+    return FileResponse(str(p), media_type="application/xml")
+
+
 # ---- 어드민 대시보드 (Phase 2 단계 3) ----
 # /admin 영역 admin.html 정적 서빙. 인증 영역 클라이언트 (admin.js) 영역
 # JWT 영역 fetch /api/admin/* 호출 → 401 영역 /login redirect / 403 영역 권한 X 안내.

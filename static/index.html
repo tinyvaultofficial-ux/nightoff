@@ -38,6 +38,39 @@
 <body>
   <div id="app-root" class="app-shell"></div>
 
+  <!-- Spec D-Fix-SEONoscript (2026-06-13): 봇 / JS 비활성 환경 본문 카피 노출.
+       JS 활성 시 브라우저가 noscript 통째 숨김 → 사용자에겐 안 보임. app.js 렌더와 0 충돌.
+       카피는 app.js renderLanding (L800-869) 원문 그대로 (클로킹 방지 — 봇 ↔ 사용자 동일).
+       가격(TIERS)은 변동성 ↑ 으로 본 블록 제외 — 약관 옛가격 사태 재발 방지. -->
+  <noscript>
+    <article style="max-width: 760px; margin: 40px auto; padding: 24px; font-family: 'Paperlogy', 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif; line-height: 1.7; color: #1A1A1A;">
+      <p style="font-size: 14px; color: #6B46E5; margin: 0 0 8px;">B2G·B2B 행사기획 / 홍보마케팅 제안서 자동화 AI</p>
+      <h1 style="font-size: 32px; font-weight: 900; margin: 0 0 12px; letter-spacing: -0.5px;">밤새지 말자고 만들었습니다</h1>
+      <p style="font-size: 18px; color: #444; margin: 0 0 8px;">기획자가 만든, 기획자만을 위한 제안서 AI</p>
+      <p style="font-size: 16px; color: #666; margin: 0 0 32px;">RFP 한 장이면 10분 만에 초안</p>
+
+      <h2 style="font-size: 20px; font-weight: 700; margin: 32px 0 12px;">주요 기능</h2>
+      <ul style="font-size: 15px; line-height: 1.85; color: #333; padding-left: 22px; margin: 0 0 24px;">
+        <li>제안서 생성 및 분석 — RFP 한 장으로 시작</li>
+        <li>업계 최신 뉴스 자동 수집 — 관련 뉴스 매일 자동 업데이트</li>
+        <li>나라장터 D-7 자동 매칭 — 임박 공고 놓치지 마세요</li>
+        <li>실제 NightOff 결과물 미리보기 — RFP 넣으면 이렇게 나와요</li>
+        <li>편집 가능한 PPTX (이미지 X, 실제 PowerPoint 파일)</li>
+        <li>RFP 심층 분석 (요구사항·평가기준·자격요건 추출)</li>
+        <li>국내 제안서 표준 형식 (5부 구조)</li>
+        <li>맞춤형 산출내역서 (예산 범위 자동 산정)</li>
+        <li>제안서 자체 검증 (평가위원 시각 예상 점수)</li>
+      </ul>
+
+      <p style="font-size: 13px; color: #999; margin: 24px 0 16px;">※ 본 페이지는 자바스크립트가 필요합니다. 정상 이용을 위해 활성화해 주세요.</p>
+      <p style="font-size: 14px; color: #666;">
+        <a href="/faq" style="color: #6B46E5; text-decoration: underline;">자주 묻는 질문</a> ·
+        <a href="/terms" style="color: #6B46E5; text-decoration: underline;">이용약관</a> ·
+        <a href="/privacy" style="color: #6B46E5; text-decoration: underline;">개인정보처리방침</a>
+      </p>
+    </article>
+  </noscript>
+
   <!-- 햄버거 (좁은 화면에서만 보임) -->
   <button id="nav-toggle" class="nav-toggle" aria-label="메뉴" aria-expanded="false">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

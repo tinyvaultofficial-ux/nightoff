@@ -854,15 +854,13 @@ function renderLanding() {
   // ── 비교 섹션 (Spec D-Fix-27 Stage A + Stage B)
   // 다른 LLM 과의 차이점을 랜딩 전면에 박기. "어 같은 RFP 인데 진짜 다르네" 인지 유도.
   // Stage B: 도구 이름 마스킹 처리 + 클로드 → 감마AI 교체 (D-Fix-27) / 캔O 라벨 갱신 (D-Fix-36).
-  const COMPARE_HEADERS = ["젠스OO", "챗GOO", "캔O", "NightOff"];
+  const COMPARE_HEADERS = ["젠스OO", "챗지OO", "감마OO", "NightOff"];
   const COMPARE_ROWS = [
     { item: "풀 컬러 디자인", values: ["✅", "⚠️", "✅", "❌"],
-      nightoffNote: "흑백 초안 (70%)" },
-    { item: "정렬 (행과 열)", values: ["❌", "❌", "❌", "⚠️"],
-      nightoffNote: "조정 필요" },
-    { item: "구체적 표현", values: ["❌", "❌", "❌", "✅"] },
-    { item: "편집 가능한 PPTX", values: ["💰", "❌", "✅", "✅"] },
-    { item: "RFP 심층 분석", values: ["⚠️", "❌", "❌", "✅"] },
+      nightoffNote: "블랙 기반 초안" },
+    { item: "RFP 요구사항 정확 반영", values: ["⚠️", "❌", "❌", "✅"] },
+    { item: "편집 가능한 실제 PPTX", values: ["💰", "❌", "⚠️", "✅"] },
+    { item: "RFP 심층 분석", values: ["❌", "❌", "❌", "✅"] },
     { item: "국내 제안서 표준 형식", values: ["❌", "❌", "❌", "✅"] },
     { item: "맞춤형 산출내역서", values: ["❌", "❌", "❌", "✅"] },
     { item: "제안서 자체 검증", values: ["❌", "❌", "❌", "✅"] },
@@ -889,19 +887,19 @@ function renderLanding() {
           }),
         ]),
         h("div", { class: "lc-capture" }, [
-          h("div", { class: "lc-capture-label" }, "챗GOO"),
+          h("div", { class: "lc-capture-label" }, "챗지OO"),
           h("img", {
             src: "/static/img/compare/chatgpt.png",
-            alt: "챗GOO 결과 캡처",
+            alt: "챗지OO 결과 캡처",
             class: "lc-capture-img",
             loading: "lazy",
           }),
         ]),
         h("div", { class: "lc-capture" }, [
-          h("div", { class: "lc-capture-label" }, "캔O"),
+          h("div", { class: "lc-capture-label" }, "감마OO"),
           h("img", {
             src: "/static/img/compare/gamma.png",
-            alt: "캔O 결과 캡처",
+            alt: "감마OO 결과 캡처",
             class: "lc-capture-img",
             loading: "lazy",
           }),

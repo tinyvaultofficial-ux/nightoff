@@ -923,10 +923,12 @@ function renderLanding() {
           class: `ct-cell ct-header ${i === 3 ? "ct-nightoff ct-nightoff-header" : ""}`,
         }, header)),
         // 본문 행들
-        ...COMPARE_ROWS.flatMap(row => [
+        // Spec D-Fix-NightoffBoxClose (2026-06-14): 마지막 행 NightOff 셀에 ct-nightoff-last-row 추가
+        // → 보라 박스 하단 명시 닫기 (border-radius + overflow:hidden 코너 클립 대응 안전망).
+        ...COMPARE_ROWS.flatMap((row, ridx) => [
           h("div", { class: "ct-cell ct-row-label" }, row.item),
           ...row.values.map((v, i) => h("div", {
-            class: `ct-cell ${i === 3 ? "ct-nightoff" : ""}`,
+            class: `ct-cell ${i === 3 ? "ct-nightoff" : ""}${(i === 3 && ridx === COMPARE_ROWS.length - 1) ? " ct-nightoff-last-row" : ""}`,
           }, [
             h("span", { class: "ct-mark" }, v),
             (i === 3 && row.nightoffNote)
@@ -1071,9 +1073,11 @@ function renderLanding() {
         ]),
 
         // CTA 행
+        // Spec D-Fix-NightoffBoxClose (2026-06-14): CTA 행 BEST 셀에 pt-best-last-row 추가
+        // → BEST(Pro, 가운데 컬럼)가 :last-child 로 못 잡혀 하단 보더 0 이던 결함 해소.
         h("div", { class: "pt-cell pt-row-label" }, ""),
         ...TIERS.map(t => h("div", {
-          class: `pt-cell pt-cta-cell ${t.best ? "pt-best" : ""}`,
+          class: `pt-cell pt-cta-cell ${t.best ? "pt-best pt-best-last-row" : ""}`,
         }, [
           h("button", {
             class: `btn ${t.best ? "btn-primary" : "btn-ghost"} pt-cta-btn`,

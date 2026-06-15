@@ -4609,7 +4609,7 @@ input.locked-by-env::placeholder {
 
 /* ── 비교 섹션 (Spec D-Fix-27 Stage A / D-Fix-30 폰트 ↑) ──────────── */
 .landing-compare {
-  padding: 76px 24px;
+  padding: 52px 24px;
   background: var(--bg-2, #FAFAFA);
 }
 .landing-compare-inner {
@@ -4635,7 +4635,7 @@ input.locked-by-env::placeholder {
 /* 캡처 갤러리 — 4열 grid (Spec D-Fix-29 Stage A 균등 → D-Fix-31 +15% 비대칭)
    일반 3장 ~275px / NightOff ~316px / 41px 차이 — "아주 조금" 두각. */
 .landing-compare-gallery {
-  margin-top: 40px;
+  margin-top: 28px;
   display: grid;
   grid-template-columns: 1fr 1fr 1fr 1.15fr;
   gap: 20px;
@@ -4645,7 +4645,7 @@ input.locked-by-env::placeholder {
   background: #1F1F1F;
   border-radius: 12px;
   overflow: hidden;
-  aspect-ratio: 4/3;
+  aspect-ratio: 16/9;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -4703,7 +4703,7 @@ input.locked-by-env::placeholder {
 
 /* 비교 표 — D-Fix-21 가격 표 패턴 정합 (5 컬럼) */
 .compare-table {
-  margin-top: 48px;
+  margin-top: 28px;
   display: grid;
   grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr;
   background: #fff;
@@ -4714,7 +4714,7 @@ input.locked-by-env::placeholder {
   text-align: left;
 }
 .ct-cell {
-  padding: 16px 18px;
+  padding: 10px 18px;
   border-top: 1px solid var(--border, #DDD);
   display: flex;
   flex-direction: column;
@@ -4727,7 +4727,7 @@ input.locked-by-env::placeholder {
 }
 .ct-cell.ct-header {
   border-top: 0;
-  padding: 22px 18px;
+  padding: 14px 18px;
   font-weight: 700;
   font-size: 16px;
 }
@@ -4872,7 +4872,7 @@ input.locked-by-env::placeholder {
     border-radius: 12px;
   }
   .ct-cell {
-    padding: 12px 14px;
+    padding: 8px 12px;
     font-size: 14px;
     flex-direction: row;
     justify-content: space-between;
@@ -4880,7 +4880,7 @@ input.locked-by-env::placeholder {
     gap: 8px;
   }
   .ct-cell.ct-header {
-    padding: 16px 16px;
+    padding: 12px 16px;
     font-size: 15px;
     flex-direction: column;
     text-align: center;

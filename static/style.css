@@ -4460,7 +4460,9 @@ input.locked-by-env::placeholder {
   grid-template-columns: 1.2fr 1fr 1fr 1fr;
   background: #fff;
   border: 1px solid var(--border);
-  border-radius: 20px;
+  /* Spec D-Fix-NightoffBoxClose (2026-06-14): 라운드 20 → 12. 비교표와 정합 + BEST 컬럼
+     하단 보라 보더(.pt-best-last-row)가 코너 클립으로 잘려 보이는 위험 완화. */
+  border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 6px 20px -10px rgba(124,58,237,0.08);
 }
@@ -4489,6 +4491,9 @@ input.locked-by-env::placeholder {
   border-right: 2px solid var(--primary);
 }
 .pt-header.pt-best { border-top: 3px solid var(--primary); }
+/* Spec D-Fix-NightoffBoxClose (2026-06-14): BEST(Pro) 가 가운데 컬럼이라 :last-child 로
+   매칭 불가 → 렌더 시점 CTA 행 BEST 셀에 pt-best-last-row 강제 부여 → 하단 보더 명시 닫기. */
+.pt-best-last-row { border-bottom: 2px solid var(--primary); }
 .pt-best-badge {
   position: absolute; top: 10px; right: 12px;
   background: var(--primary); color: var(--primary-fg);
@@ -4708,7 +4713,9 @@ input.locked-by-env::placeholder {
   grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr;
   background: #fff;
   border: 1px solid var(--border, #DDD);
-  border-radius: 20px;
+  /* Spec D-Fix-NightoffBoxClose (2026-06-14): 라운드 20 → 12. 우하단 코너 클립으로
+     NightOff 보라 보더 하단이 잘려 보이던 문제 완화. */
+  border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 6px 20px -10px rgba(0,0,0,0.06);
   text-align: left;
@@ -4746,6 +4753,11 @@ input.locked-by-env::placeholder {
 }
 /* 마지막 행 NightOff 셀 하단 보더 (Spec D-Fix-31c) — 구조 변경 시 재검토 */
 .ct-nightoff:last-child {
+  border-bottom: 2px solid var(--primary);
+}
+/* Spec D-Fix-NightoffBoxClose (2026-06-14): 명시 클래스로 마지막 행 NightOff 셀 하단 닫기.
+   :last-child 와 동일 효과지만 행 추가/순서 변경에도 안전 (렌더 시점 i===3 + 마지막 행 강제 부여). */
+.ct-nightoff-last-row {
   border-bottom: 2px solid var(--primary);
 }
 .ct-nightoff-header {

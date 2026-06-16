@@ -101,10 +101,17 @@
     h2.faq-category {
       font-size: 19px; font-weight: 700; margin: 36px 0 14px;
       color: #1A1A1A; letter-spacing: -0.3px;
+      border-left: 4px solid #6B46E5;
+      padding-left: 12px;
     }
     details.faq-item {
       border-bottom: 1px solid #E5E5E5;
-      padding: 4px 0;
+      padding: 4px 14px;
+      transition: background .15s ease;
+    }
+    details.faq-item[open] {
+      background: #F5F0FF;
+      border-radius: 8px;
     }
     summary.faq-question {
       cursor: pointer; user-select: none; list-style: none;
@@ -118,7 +125,7 @@
       content: " ▾"; float: right; color: #6B46E5; margin-left: 12px;
     }
     details.faq-item:not([open]) summary.faq-question::after {
-      content: " ▸"; float: right; color: #999; margin-left: 12px;
+      content: " ▸"; float: right; color: #6B46E5; margin-left: 12px;
     }
     .faq-answer { padding: 0 0 16px; }
     .faq-answer p {

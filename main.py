@@ -559,6 +559,40 @@ def init_db() -> None:
                 ('trial_sms_max_per_day',        '500'),
                 ('trial_sms_max_per_phone_day',  '5'),
                 ('trial_sms_max_per_ip_day',     '10');
+
+            -- 자사 회사 정보 (정량서류 자동화 1차 · 1 사용자 = 1 회사, 1:1)
+            -- Spec D-Build-OurCompany-1
+            CREATE TABLE IF NOT EXISTS our_company (
+                user_id           TEXT PRIMARY KEY,
+                -- 핵심 (A · 성격상 필수이나 DB는 빈값 허용)
+                company_name      TEXT DEFAULT '',
+                biz_no            TEXT DEFAULT '',
+                ceo_name          TEXT DEFAULT '',
+                ceo_birth         TEXT DEFAULT '',
+                address           TEXT DEFAULT '',
+                phone             TEXT DEFAULT '',
+                email             TEXT DEFAULT '',
+                -- 자주 쓰임 (B · 선택)
+                corp_no           TEXT DEFAULT '',
+                fax               TEXT DEFAULT '',
+                biz_type          TEXT DEFAULT '',
+                biz_item          TEXT DEFAULT '',
+                founded_year      TEXT DEFAULT '',
+                capital_krw       INTEGER DEFAULT 0,
+                employee_count    INTEGER DEFAULT 0,
+                -- 심화 (C · 선택)
+                history_text      TEXT DEFAULT '',
+                business_text     TEXT DEFAULT '',
+                credit_grade      TEXT DEFAULT '',
+                contact_name      TEXT DEFAULT '',
+                contact_phone     TEXT DEFAULT '',
+                -- 가변 확장 (1차 미사용, 컬럼만 확보)
+                extra_json        TEXT DEFAULT '{}',
+                -- 메타
+                created_at        TEXT DEFAULT (datetime('now','localtime')),
+                updated_at        TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
         """)
 
         # 구버전 competitors 테이블 흔적 제거 (있으면)
@@ -2261,6 +2295,33 @@ class ClientIn(BaseModel):
 
 class ChatIn(BaseModel):
     message: str
+
+
+# Spec D-Build-OurCompany-1 — 자사 회사정보 입력 (정량서류 자동화 1차, 1 사용자 = 1 회사, 1:1).
+# 모든 필드 기본값(Optional) — 부분 저장 허용("A만 채워도 저장"). 형식 검증 X (1차).
+class OurCompanyIn(BaseModel):
+    # 핵심 (A)
+    company_name: str = ""
+    biz_no: str = ""
+    ceo_name: str = ""
+    ceo_birth: str = ""
+    address: str = ""
+    phone: str = ""
+    email: str = ""
+    # 자주 쓰임 (B)
+    corp_no: str = ""
+    fax: str = ""
+    biz_type: str = ""
+    biz_item: str = ""
+    founded_year: str = ""
+    capital_krw: int = 0
+    employee_count: int = 0
+    # 심화 (C)
+    history_text: str = ""
+    business_text: str = ""
+    credit_grade: str = ""
+    contact_name: str = ""
+    contact_phone: str = ""
 
 
 
@@ -4982,6 +5043,61 @@ def api_auth_me(user: dict = Depends(get_current_user)):
 
 
 # ---------- /api/me/* — 사용자 본인 영역 메타 (UI 상태 등) ----------
+
+# Spec D-Build-OurCompany-1 — 자사 회사정보 조회/저장 (정량서류 자동화 1차).
+# 1 사용자 = 1 회사 (PK = user_id). UPSERT. DELETE 불필요 (회원 탈퇴 시 CASCADE).
+@app.get("/api/me/company")
+def api_my_company_get(user: dict = Depends(get_current_user)):
+    with get_db() as db:
+        row = db.execute(
+            "SELECT * FROM our_company WHERE user_id=?",
+            (user["id"],),
+        ).fetchone()
+    if not row:
+        return {"company": None}     # 미입력 = None (프론트 빈 폼)
+    d = dict(row)
+    d.pop("user_id", None)
+    return {"company": d}
+
+
+@app.put("/api/me/company")
+def api_my_company_upsert(body: OurCompanyIn, user: dict = Depends(get_current_user)):
+    with get_db() as db:
+        db.execute(
+            "INSERT INTO our_company("
+            "  user_id, company_name, biz_no, ceo_name, ceo_birth, address, phone, email,"
+            "  corp_no, fax, biz_type, biz_item, founded_year, capital_krw, employee_count,"
+            "  history_text, business_text, credit_grade, contact_name, contact_phone,"
+            "  updated_at"
+            ") VALUES("
+            "  ?,?,?,?,?,?,?,?,"
+            "  ?,?,?,?,?,?,?,"
+            "  ?,?,?,?,?,"
+            "  datetime('now','localtime')"
+            ") ON CONFLICT(user_id) DO UPDATE SET "
+            "  company_name=excluded.company_name, biz_no=excluded.biz_no,"
+            "  ceo_name=excluded.ceo_name, ceo_birth=excluded.ceo_birth,"
+            "  address=excluded.address, phone=excluded.phone, email=excluded.email,"
+            "  corp_no=excluded.corp_no, fax=excluded.fax,"
+            "  biz_type=excluded.biz_type, biz_item=excluded.biz_item,"
+            "  founded_year=excluded.founded_year, capital_krw=excluded.capital_krw,"
+            "  employee_count=excluded.employee_count,"
+            "  history_text=excluded.history_text, business_text=excluded.business_text,"
+            "  credit_grade=excluded.credit_grade, contact_name=excluded.contact_name,"
+            "  contact_phone=excluded.contact_phone,"
+            "  updated_at=excluded.updated_at",
+            (
+                user["id"], body.company_name, body.biz_no, body.ceo_name, body.ceo_birth,
+                body.address, body.phone, body.email,
+                body.corp_no, body.fax, body.biz_type, body.biz_item,
+                body.founded_year, body.capital_krw, body.employee_count,
+                body.history_text, body.business_text, body.credit_grade,
+                body.contact_name, body.contact_phone,
+            ),
+        )
+    return {"ok": True}
+
+
 @app.get("/api/me/chat-intro-status")
 def api_me_chat_intro_status(user: dict = Depends(get_current_user)):
     """채팅 첫 진입 안내 팝업 노출 여부. INTEGER 0/1 → bool 변환.

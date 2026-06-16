@@ -18,7 +18,7 @@
       color: #1F1147;
     }
     .account-page {
-      max-width: 480px;
+      max-width: 640px;
       margin: 40px auto;
       padding: 40px 36px;
       background: white;
@@ -62,7 +62,7 @@
     }
     .account-btn-back {
       padding: 11px 20px;
-      background: #6E56CF;
+      background: #6B46E5;
       color: white;
       border: 0;
       border-radius: 10px;
@@ -86,6 +86,33 @@
     .account-withdraw-link:hover {
       color: #E74C3C;
     }
+    /* Spec D-Build-OurCompany-2 — 회사 정보 폼 */
+    .account-company-section { margin-top: 24px; text-align: left; }
+    .account-company-title { font-size: 16px; font-weight: 700; margin: 0 0 4px; color: #1F1147; }
+    .account-company-desc { font-size: 13px; color: #6B6B6B; margin: 0 0 16px; }
+    .company-acc { border: 1px solid #E5E5E5; border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
+    .company-acc-title { cursor: pointer; padding: 12px 16px; font-size: 14px; font-weight: 600; color: #1F1147; list-style: none; border-left: 3px solid #6B46E5; }
+    .company-acc[open] .company-acc-title { background: #F5F0FF; }
+    .company-acc-title::-webkit-details-marker { display: none; }
+    .company-acc-hint { font-size: 12px; font-weight: 400; color: #999; margin-left: 4px; }
+    .company-acc-body { padding: 14px 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+    .company-field { display: flex; flex-direction: column; }
+    .company-field label { font-size: 12px; color: #666; margin-bottom: 5px; }
+    .company-field input, .company-field textarea {
+      padding: 10px 12px; font-size: 14px; border: 1px solid #DDD; border-radius: 8px;
+      background: #FAFAFA; font-family: inherit; color: #1F1147; outline: none;
+    }
+    .company-field input:focus, .company-field textarea:focus { border-color: #6B46E5; background: #fff; }
+    .company-field textarea { resize: vertical; }
+    .company-field:has(textarea) { grid-column: 1 / -1; }
+    .account-btn-save {
+      margin-top: 8px; width: 100%; padding: 12px; font-size: 15px; font-weight: 600;
+      color: #fff; background: #6B46E5; border: none; border-radius: 10px; cursor: pointer;
+      font-family: inherit;
+    }
+    .account-btn-save:hover { background: #5A37D4; }
+    .account-btn-save:disabled { opacity: 0.6; cursor: default; }
+    @media (max-width: 560px) { .company-acc-body { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -96,6 +123,107 @@
       <p class="account-info-label">이메일</p>
       <p class="account-info-value" id="user-email">불러오는 중…</p>
     </div>
+
+    <section class="account-company-section">
+      <h2 class="account-company-title">🏢 우리 회사 정보</h2>
+      <p class="account-company-desc">한 번 입력해두면 과업마다 제출서류에 채워 넣습니다.</p>
+
+      <details class="company-acc" open>
+        <summary class="company-acc-title">핵심 정보</summary>
+        <div class="company-acc-body">
+          <div class="company-field">
+            <label for="fld-company_name">상호(법인명)</label>
+            <input id="fld-company_name" type="text" autocomplete="off">
+          </div>
+          <div class="company-field">
+            <label for="fld-biz_no">사업자등록번호</label>
+            <input id="fld-biz_no" type="text" placeholder="000-00-00000" autocomplete="off">
+          </div>
+          <div class="company-field">
+            <label for="fld-ceo_name">대표자명</label>
+            <input id="fld-ceo_name" type="text" autocomplete="off">
+          </div>
+          <div class="company-field">
+            <label for="fld-ceo_birth">대표자 생년월일</label>
+            <input id="fld-ceo_birth" type="text" placeholder="YYYY-MM-DD" autocomplete="off">
+          </div>
+          <div class="company-field">
+            <label for="fld-address">주소(소재지)</label>
+            <input id="fld-address" type="text" autocomplete="off">
+          </div>
+          <div class="company-field">
+            <label for="fld-phone">대표전화</label>
+            <input id="fld-phone" type="text" placeholder="02-0000-0000" autocomplete="off">
+          </div>
+          <div class="company-field">
+            <label for="fld-email">이메일</label>
+            <input id="fld-email" type="text" autocomplete="off">
+          </div>
+        </div>
+      </details>
+
+      <details class="company-acc">
+        <summary class="company-acc-title">자주 쓰는 정보 <span class="company-acc-hint">선택</span></summary>
+        <div class="company-acc-body">
+          <div class="company-field">
+            <label for="fld-corp_no">법인등록번호</label>
+            <input id="fld-corp_no" type="text" autocomplete="off">
+          </div>
+          <div class="company-field">
+            <label for="fld-fax">팩스</label>
+            <input id="fld-fax" type="text" autocomplete="off">
+          </div>
+          <div class="company-field">
+            <label for="fld-biz_type">업태</label>
+            <input id="fld-biz_type" type="text" autocomplete="off">
+          </div>
+          <div class="company-field">
+            <label for="fld-biz_item">종목</label>
+            <input id="fld-biz_item" type="text" autocomplete="off">
+          </div>
+          <div class="company-field">
+            <label for="fld-founded_year">설립연도</label>
+            <input id="fld-founded_year" type="text" placeholder="YYYY" autocomplete="off">
+          </div>
+          <div class="company-field">
+            <label for="fld-capital_krw">자본금(원)</label>
+            <input id="fld-capital_krw" type="number" min="0" autocomplete="off">
+          </div>
+          <div class="company-field">
+            <label for="fld-employee_count">임직원 수</label>
+            <input id="fld-employee_count" type="number" min="0" autocomplete="off">
+          </div>
+        </div>
+      </details>
+
+      <details class="company-acc">
+        <summary class="company-acc-title">심화 정보 <span class="company-acc-hint">선택</span></summary>
+        <div class="company-acc-body">
+          <div class="company-field">
+            <label for="fld-history_text">주요 연혁</label>
+            <textarea id="fld-history_text" rows="3"></textarea>
+          </div>
+          <div class="company-field">
+            <label for="fld-business_text">주요 사업내용</label>
+            <textarea id="fld-business_text" rows="3"></textarea>
+          </div>
+          <div class="company-field">
+            <label for="fld-credit_grade">신용평가등급</label>
+            <input id="fld-credit_grade" type="text" autocomplete="off">
+          </div>
+          <div class="company-field">
+            <label for="fld-contact_name">담당자명</label>
+            <input id="fld-contact_name" type="text" autocomplete="off">
+          </div>
+          <div class="company-field">
+            <label for="fld-contact_phone">담당자 연락처</label>
+            <input id="fld-contact_phone" type="text" autocomplete="off">
+          </div>
+        </div>
+      </details>
+
+      <button id="company-save-btn" class="account-btn-save" type="button">저장</button>
+    </section>
 
     <div class="account-actions">
       <a href="/" class="account-btn-back">← 대시보드로</a>
@@ -139,6 +267,70 @@
         console.error("Failed to load user info:", err);
       }
     })();
+
+    // Spec D-Build-OurCompany-2 — 회사 정보 폼 GET prefill + 전체 PUT
+    const FIELDS = [
+      "company_name","biz_no","ceo_name","ceo_birth","address","phone","email",
+      "corp_no","fax","biz_type","biz_item","founded_year","capital_krw","employee_count",
+      "history_text","business_text","credit_grade","contact_name","contact_phone"
+    ];
+    const INT_FIELDS = ["capital_krw","employee_count"];
+
+    async function loadCompany() {
+      const token = localStorage.getItem("nightoff_jwt");
+      if (!token) return;
+      try {
+        const r = await fetch("/api/me/company", {
+          headers: { "Authorization": `Bearer ${token}` },
+        });
+        if (r.status === 401) {
+          localStorage.removeItem("nightoff_jwt");
+          window.location.href = "/login.html"; return;
+        }
+        if (!r.ok) return;
+        const { company } = await r.json();
+        if (!company) return;                       // 미입력 사용자 = 빈 폼 유지
+        FIELDS.forEach(f => {
+          const el = document.getElementById("fld-" + f);
+          if (el != null && company[f] != null) el.value = company[f];
+        });
+      } catch (e) { /* 네트워크 실패 시 빈 폼 유지 */ }
+    }
+
+    async function saveCompany() {
+      const token = localStorage.getItem("nightoff_jwt");
+      if (!token) { window.location.href = "/login.html"; return; }
+      const btn = document.getElementById("company-save-btn");
+      const body = {};
+      FIELDS.forEach(f => {
+        const el = document.getElementById("fld-" + f);
+        let v = el ? el.value.trim() : "";
+        if (INT_FIELDS.includes(f)) v = parseInt(v || "0", 10) || 0;
+        body[f] = v;                                // 전체 필드 항상 전송 (PUT = 전체 덮어쓰기)
+      });
+      btn.disabled = true; const orig = btn.textContent; btn.textContent = "저장 중...";
+      try {
+        const r = await fetch("/api/me/company", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify(body),
+        });
+        if (r.status === 401) {
+          localStorage.removeItem("nightoff_jwt");
+          window.location.href = "/login.html"; return;
+        }
+        if (r.ok) { alert("회사 정보가 저장됐어요."); }
+        else if (r.status === 422) { alert("입력 형식을 확인해 주세요. (자본금·임직원 수는 숫자)"); }
+        else { alert("저장에 실패했어요. 잠시 후 다시 시도해 주세요."); }
+      } catch (e) {
+        alert("서버에 연결할 수 없어요. 네트워크를 확인해 주세요.");
+      } finally {
+        btn.disabled = false; btn.textContent = orig;
+      }
+    }
+
+    document.getElementById("company-save-btn").addEventListener("click", saveCompany);
+    loadCompany();
   </script>
 </body>
 </html>

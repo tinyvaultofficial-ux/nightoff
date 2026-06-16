@@ -1384,7 +1384,7 @@ const HERO_5_SLIDES = [
     badge: { label: "곧 출시", emoji: "🚧" },
     title: "2D + 3D 디자인 패키지, 곧 출시!",
     titleBrand: null,
-    description: "행사장 조감도? 부스 배치도?\n이제 AI가 알아서 그려드려요.\n디자이너 없이도 평가위원이 놀랄 비주얼이 완성됩니다.",
+    description: "키비주얼과 행사장 조감도, 부스 배치도까지\n검증된 NightOff 전속 디자이너가 직접 완성해드립니다.",
     tone: "pink",
     illustration: "🎨",
     accentDetail: "squares",

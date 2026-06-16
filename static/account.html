@@ -98,11 +98,11 @@
     .company-acc-body { padding: 14px 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
     .company-field { display: flex; flex-direction: column; }
     .company-field label { font-size: 12px; color: #666; margin-bottom: 5px; }
-    .company-field input, .company-field textarea {
+    .company-field input, .company-field textarea, .company-field select {
       padding: 10px 12px; font-size: 14px; border: 1px solid #DDD; border-radius: 8px;
       background: #FAFAFA; font-family: inherit; color: #1F1147; outline: none;
     }
-    .company-field input:focus, .company-field textarea:focus { border-color: #6B46E5; background: #fff; }
+    .company-field input:focus, .company-field textarea:focus, .company-field select:focus { border-color: #6B46E5; background: #fff; }
     .company-field textarea { resize: vertical; }
     .company-field:has(textarea) { grid-column: 1 / -1; }
     .account-btn-save {
@@ -209,7 +209,26 @@
           </div>
           <div class="company-field">
             <label for="fld-credit_grade">신용평가등급</label>
-            <input id="fld-credit_grade" type="text" autocomplete="off">
+            <select id="fld-credit_grade">
+              <option value="">선택 안 함</option>
+              <option value="AAA">AAA</option>
+              <option value="AA+">AA+</option>
+              <option value="AA0">AA0</option>
+              <option value="AA-">AA-</option>
+              <option value="A+">A+</option>
+              <option value="A0">A0</option>
+              <option value="A-">A-</option>
+              <option value="BBB+">BBB+</option>
+              <option value="BBB0">BBB0</option>
+              <option value="BBB-">BBB-</option>
+              <option value="BB+">BB+</option>
+              <option value="BB0">BB0</option>
+              <option value="BB-">BB-</option>
+              <option value="B+">B+</option>
+              <option value="B0">B0</option>
+              <option value="B-">B-</option>
+              <option value="CCC+ 이하">CCC+ 이하</option>
+            </select>
           </div>
           <div class="company-field">
             <label for="fld-contact_name">담당자명</label>

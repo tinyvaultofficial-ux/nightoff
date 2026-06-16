@@ -324,7 +324,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       </div>
       <div class="lf-row">
         <span>서울특별시 관악구 조원로33길 30, 400호</span>
-        <span>문의 <a href="mailto:lcw0411@hanmail.net">lcw0411@hanmail.net</a></span>
+        <span>문의 <a href="mailto:awc@creworth.com">awc@creworth.com</a></span>
       </div>
       <div class="lf-row">
         <a href="/terms">이용약관</a>

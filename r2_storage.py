@@ -419,6 +419,27 @@ def download_to_buffer(key: str):
         return None
 
 
+def delete_object(key: str) -> bool:
+    """단일 객체를 R2 에서 삭제 (멱등 — 없는 키도 성공).
+
+    Args:
+      key: R2 객체 키 (예: "company-docs/{user_id}/{doc_id}_{name}.pdf").
+    Returns:
+      성공 True / 실패·미설정 False (예외 전파 X — upload_one 패턴 정합).
+    """
+    if not _is_configured() or not _BOTO3_AVAILABLE:
+        return False
+    bucket = os.environ["R2_BUCKET_NAME"]
+    try:
+        client = _client()
+        client.delete_object(Bucket=bucket, Key=key)
+        log.info("R2 삭제 · s3://%s/%s", bucket, key)
+        return True
+    except (BotoCoreError, ClientError, Exception) as e:
+        log.warning("R2 delete 실패 (%s): %s", key, e)
+        return False
+
+
 def status() -> dict:
     """진단용 — 현재 R2 설정 / 캐시 상태."""
     cache = _local_cache_dir()

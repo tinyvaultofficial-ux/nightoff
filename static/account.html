@@ -147,6 +147,18 @@
     .docs-item-btn:hover { border-color: #6B46E5; color: #6B46E5; }
     .docs-item-btn.danger:hover { border-color: #E74C3C; color: #E74C3C; }
     .docs-empty { font-size: 13px; color: #999; padding: 8px 0; }
+    /* Spec D-Build-CompanyDocs-2b — 안심 문구 + 추출 채우기 */
+    .docs-privacy-note {
+      display: flex; gap: 10px; align-items: flex-start;
+      background: #F5F0FF; border-radius: 10px; padding: 12px 14px; margin-bottom: 16px;
+    }
+    .docs-privacy-icon { font-size: 16px; line-height: 1.5; flex-shrink: 0; }
+    .docs-privacy-text { font-size: 12px; color: #1F1147; line-height: 1.7; }
+    .docs-privacy-text b { color: #6B46E5; font-weight: 700; }
+    .docs-item-btn.primary { border-color: #6B46E5; color: #6B46E5; }
+    .docs-item-btn.primary:hover { background: #6B46E5; color: #fff; }
+    .docs-item-btn:disabled { opacity: 0.6; cursor: default; }
+    .field-filled { border-color: #6B46E5 !important; background: #F5F0FF !important; transition: background .3s, border-color .3s; }
   </style>
 </head>
 <body>
@@ -281,6 +293,14 @@
     <section class="account-docs-section">
       <h2 class="account-docs-title">📁 보관 서류</h2>
       <p class="account-docs-desc">자주 제출하는 증빙서류를 보관해두면, 과업마다 필요한 것을 골라 묶어드립니다.</p>
+
+      <div class="docs-privacy-note">
+        <span class="docs-privacy-icon">🔒</span>
+        <div class="docs-privacy-text">
+          올려주신 서류는 <b>본인만 접근할 수 있는 저장소</b>에 보관되며, 회사정보를 읽는 용도로만 사용됩니다.
+          AI 학습에 사용되지 않고, 언제든 삭제할 수 있어요.
+        </div>
+      </div>
 
       <div class="docs-upload-row">
         <select id="docs-type-select" class="docs-type-select">
@@ -447,18 +467,23 @@
         const item = document.createElement("div");
         item.className = "docs-item";
         const typeLabel = d.doc_type ? d.doc_type + " · " : "";
+        const fillBtn = d.doc_type === "사업자등록증"
+          ? '<button class="docs-item-btn primary" data-act="fill">회사정보 채우기</button>'
+          : '';
         item.innerHTML =
           '<div class="docs-item-info">' +
             '<div class="docs-item-name"></div>' +
             '<div class="docs-item-meta">' + typeLabel + (d.filetype||"") + " · " + fmtSize(d.filesize||0) + '</div>' +
           '</div>' +
-          '<div class="docs-item-actions">' +
+          '<div class="docs-item-actions">' + fillBtn +
             '<button class="docs-item-btn" data-act="dl">내려받기</button>' +
             '<button class="docs-item-btn danger" data-act="del">삭제</button>' +
           '</div>';
         item.querySelector(".docs-item-name").textContent = d.filename || "(이름 없음)";
         item.querySelector('[data-act="dl"]').addEventListener("click", () => downloadDoc(d.id));
         item.querySelector('[data-act="del"]').addEventListener("click", () => deleteDoc(d.id, d.filename));
+        const fb = item.querySelector('[data-act="fill"]');
+        if (fb) fb.addEventListener("click", () => fillFromDoc(d.id, fb));
         list.appendChild(item);
       });
     }
@@ -539,6 +564,73 @@
       ["dragleave","drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
       drop.addEventListener("drop", e => { if (e.dataTransfer.files[0]) uploadDoc(e.dataTransfer.files[0]); });
     })();
+
+    // Spec D-Build-CompanyDocs-2b — 추출 → 폼 채우기 (자동 저장 X, 고객이 기존 저장 버튼으로 저장)
+    const EXTRACT_MAP = {
+      company_name: "fld-company_name",
+      biz_no: "fld-biz_no",
+      ceo_name: "fld-ceo_name",
+      address: "fld-address",
+      corp_no: "fld-corp_no",
+      biz_type: "fld-biz_type",
+      biz_item: "fld-biz_item",
+      founded_year: "fld-founded_year",
+    };
+
+    async function fillFromDoc(docId, btn) {
+      const token = docsToken();
+      if (!token) { location.href = "/login.html"; return; }
+      const orig = btn.textContent;
+      btn.disabled = true; btn.textContent = "읽는 중...";
+      try {
+        const r = await fetch(`/api/me/company-docs/${docId}/extract`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${token}` },
+        });
+        if (r.status === 401) { localStorage.removeItem(DOCS_TOKEN_KEY); location.href = "/login.html"; return; }
+        if (r.status === 400) { alert("이미지(JPG·PNG)나 PDF만 정보를 읽을 수 있어요."); return; }
+        if (!r.ok) { alert("서류를 읽는 데 실패했어요. 잠시 후 다시 시도하거나 직접 입력해 주세요."); return; }
+        const { extracted } = await r.json();
+        if (!extracted) { alert("읽어온 정보가 없어요. 직접 입력해 주세요."); return; }
+
+        // 폼에 채우기 — 값 있는 칸만 (빈 값으로 기존 입력 덮지 않음)
+        let filledCount = 0;
+        const filledIds = [];
+        Object.keys(EXTRACT_MAP).forEach(k => {
+          const v = (extracted[k] || "").trim();
+          if (!v) return;
+          const el = document.getElementById(EXTRACT_MAP[k]);
+          if (!el) return;
+          el.value = v;
+          filledIds.push(EXTRACT_MAP[k]);
+          filledCount++;
+        });
+
+        // 채워진 칸이 접힌 B 아코디언 안이면 펼치기
+        if (filledIds.some(id => ["fld-corp_no","fld-biz_type","fld-biz_item","fld-founded_year"].includes(id))) {
+          const accs = document.querySelectorAll(".company-acc");
+          accs.forEach(a => { if (a.querySelector("#fld-biz_type")) a.setAttribute("open",""); });
+        }
+
+        // 하이라이트
+        filledIds.forEach(id => {
+          const el = document.getElementById(id);
+          if (el) { el.classList.add("field-filled"); setTimeout(() => el.classList.remove("field-filled"), 2500); }
+        });
+
+        if (filledCount > 0) {
+          alert(`서류에서 ${filledCount}개 항목을 읽어 회사 정보에 채웠어요.\n값이 맞는지 확인하고, 아래 '저장' 버튼을 눌러 저장해 주세요.`);
+          const sec = document.querySelector(".account-company-section");
+          if (sec) sec.scrollIntoView({ behavior: "smooth", block: "start" });
+        } else {
+          alert("서류에서 회사 정보를 찾지 못했어요. 직접 입력해 주세요.");
+        }
+      } catch (e) {
+        alert("서버에 연결할 수 없어요. 네트워크를 확인해 주세요.");
+      } finally {
+        btn.disabled = false; btn.textContent = orig;
+      }
+    }
 
     loadDocs();
   </script>

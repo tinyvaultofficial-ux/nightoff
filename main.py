@@ -43,6 +43,8 @@ log = logging.getLogger("nightoff")
 # Max file size for uploads (50MB)
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024
 ALLOWED_UPLOAD_EXTS = {".pdf", ".doc", ".docx", ".txt", ".md", ".hwp", ".hwpx"}
+# 보관 서류 전용 (이미지 포함 — 사업자등록증 등은 사진이 흔함). Spec D-Build-CompanyDocs-1a.
+ALLOWED_DOC_EXTS = {".pdf", ".jpg", ".jpeg", ".png", ".doc", ".docx", ".hwp", ".hwpx"}
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -593,6 +595,22 @@ def init_db() -> None:
                 updated_at        TEXT DEFAULT (datetime('now','localtime')),
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             );
+
+            -- 자사 보관 서류 (정량서류 자동화 조각 3 · 1 사용자 = N 서류)
+            -- Spec D-Build-CompanyDocs-1a
+            CREATE TABLE IF NOT EXISTS our_company_docs (
+                id          TEXT PRIMARY KEY,
+                user_id     TEXT NOT NULL,
+                doc_type    TEXT DEFAULT '',
+                filename    TEXT NOT NULL,
+                r2_key      TEXT NOT NULL,
+                filetype    TEXT DEFAULT '',
+                filesize    INTEGER DEFAULT 0,
+                note        TEXT DEFAULT '',
+                created_at  TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_oc_docs_user ON our_company_docs(user_id, created_at DESC);
         """)
 
         # 구버전 competitors 테이블 흔적 제거 (있으면)
@@ -5095,6 +5113,92 @@ def api_my_company_upsert(body: OurCompanyIn, user: dict = Depends(get_current_u
                 body.contact_name, body.contact_phone,
             ),
         )
+    return {"ok": True}
+
+
+# Spec D-Build-CompanyDocs-1a — 자사 보관 서류 R2 저장 (정량서류 자동화 조각 3).
+# 1 사용자 = N 서류. R2 영구 저장 (로컬 임시 → R2 → 로컬 unlink).
+@app.post("/api/me/company-docs/upload")
+async def api_company_docs_upload(
+    file: UploadFile = File(...),
+    doc_type: str = Form(""),
+    user: dict = Depends(get_current_user),
+):
+    content = await read_and_validate_upload(file, allowed_exts=ALLOWED_DOC_EXTS)
+    safe_name = re.sub(r"[^\w\.\-가-힣]", "_", file.filename or "doc")
+    doc_id = uuid.uuid4().hex[:12]
+    suffix = ("." + safe_name.rsplit(".", 1)[-1]) if "." in safe_name else ""
+    # 1) 로컬 임시 저장
+    tmp_path = UPLOADS_DIR / f"company_{user['id']}_{doc_id}_{safe_name}"
+    tmp_path.write_bytes(content)
+    # 2) R2 업로드
+    r2_key = f"company-docs/{user['id']}/{doc_id}_{safe_name}"
+    import r2_storage
+    if not r2_storage.upload_one(tmp_path, r2_key):
+        tmp_path.unlink(missing_ok=True)
+        raise HTTPException(500, "파일 저장에 실패했어요. 잠시 후 다시 시도해 주세요.")
+    # 3) 로컬 임시 삭제
+    tmp_path.unlink(missing_ok=True)
+    # 4) DB INSERT
+    with get_db() as db:
+        db.execute(
+            "INSERT INTO our_company_docs(id, user_id, doc_type, filename, r2_key, filetype, filesize) "
+            "VALUES(?,?,?,?,?,?,?)",
+            (doc_id, user["id"], doc_type, file.filename or safe_name, r2_key,
+             suffix.lstrip(".").upper(), len(content)),
+        )
+    return {"ok": True, "id": doc_id, "filename": file.filename or safe_name, "filesize": len(content)}
+
+
+@app.get("/api/me/company-docs")
+def api_company_docs_list(user: dict = Depends(get_current_user)):
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT id, doc_type, filename, filetype, filesize, note, created_at "
+            "FROM our_company_docs WHERE user_id=? ORDER BY created_at DESC",
+            (user["id"],),
+        ).fetchall()
+    return {"docs": [dict(r) for r in rows]}
+
+
+@app.get("/api/me/company-docs/{doc_id}/download")
+def api_company_docs_download(doc_id: str, user: dict = Depends(get_current_user)):
+    with get_db() as db:
+        row = db.execute(
+            "SELECT filename, r2_key FROM our_company_docs WHERE id=? AND user_id=?",
+            (doc_id, user["id"]),
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "서류를 찾을 수 없습니다.")
+    import r2_storage
+    buf = r2_storage.download_to_buffer(row["r2_key"])
+    if buf is None:
+        raise HTTPException(404, "파일을 찾지 못했어요.")
+    from urllib.parse import quote
+    cd_name = quote(row["filename"])
+    return StreamingResponse(
+        buf,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{cd_name}"},
+    )
+
+
+@app.delete("/api/me/company-docs/{doc_id}")
+def api_company_docs_delete(doc_id: str, user: dict = Depends(get_current_user)):
+    with get_db() as db:
+        row = db.execute(
+            "SELECT r2_key FROM our_company_docs WHERE id=? AND user_id=?",
+            (doc_id, user["id"]),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "서류를 찾을 수 없습니다.")
+        if row["r2_key"]:
+            try:
+                import r2_storage
+                r2_storage.delete_object(row["r2_key"])
+            except Exception as e:
+                log.warning("R2 삭제 실패 (무시): %s", e)
+        db.execute("DELETE FROM our_company_docs WHERE id=?", (doc_id,))
     return {"ok": True}
 
 

@@ -113,6 +113,40 @@
     .account-btn-save:hover { background: #5A37D4; }
     .account-btn-save:disabled { opacity: 0.6; cursor: default; }
     @media (max-width: 560px) { .company-acc-body { grid-template-columns: 1fr; } }
+    /* Spec D-Build-CompanyDocs-1b — 보관 서류 섹션 */
+    .account-docs-section { margin-top: 24px; text-align: left; }
+    .account-docs-title { font-size: 16px; font-weight: 700; margin: 0 0 4px; color: #1F1147; }
+    .account-docs-desc { font-size: 13px; color: #666; margin: 0 0 16px; }
+    .docs-upload-row { margin-bottom: 10px; }
+    .docs-type-select {
+      padding: 10px 12px; font-size: 14px; border: 1px solid #DDD; border-radius: 8px;
+      background: #FAFAFA; font-family: inherit; color: #1F1147; outline: none; width: 100%;
+    }
+    .docs-type-select:focus { border-color: #6B46E5; background: #fff; }
+    .docs-drop-area {
+      border: 1.5px dashed #DDD; border-radius: 10px; padding: 24px; text-align: center;
+      cursor: pointer; transition: border-color .15s, background .15s; background: #FAFAFA;
+    }
+    .docs-drop-area.over { border-color: #6B46E5; background: #F5F0FF; }
+    .docs-drop-inner { display: flex; flex-direction: column; gap: 4px; }
+    .docs-drop-text { font-size: 14px; color: #1F1147; }
+    .docs-drop-hint { font-size: 12px; color: #999; }
+    .docs-list { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .docs-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 12px; border: 1px solid #E5E5E5; border-radius: 10px; background: #fff;
+    }
+    .docs-item-info { flex: 1; min-width: 0; }
+    .docs-item-name { font-size: 14px; color: #1F1147; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .docs-item-meta { font-size: 12px; color: #999; margin-top: 2px; }
+    .docs-item-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .docs-item-btn {
+      font-size: 12px; padding: 5px 10px; border-radius: 8px; cursor: pointer;
+      border: 1px solid #DDD; background: #fff; color: #1F1147; font-family: inherit;
+    }
+    .docs-item-btn:hover { border-color: #6B46E5; color: #6B46E5; }
+    .docs-item-btn.danger:hover { border-color: #E74C3C; color: #E74C3C; }
+    .docs-empty { font-size: 13px; color: #999; padding: 8px 0; }
   </style>
 </head>
 <body>
@@ -244,6 +278,36 @@
       <button id="company-save-btn" class="account-btn-save" type="button">저장</button>
     </section>
 
+    <section class="account-docs-section">
+      <h2 class="account-docs-title">📁 보관 서류</h2>
+      <p class="account-docs-desc">자주 제출하는 증빙서류를 보관해두면, 과업마다 필요한 것을 골라 묶어드립니다.</p>
+
+      <div class="docs-upload-row">
+        <select id="docs-type-select" class="docs-type-select">
+          <option value="">서류 종류 선택</option>
+          <option value="사업자등록증">사업자등록증</option>
+          <option value="법인인감증명서">법인인감증명서</option>
+          <option value="법인등기부등본">법인등기부등본</option>
+          <option value="경쟁입찰참가등록증">경쟁입찰참가등록증</option>
+          <option value="중소기업확인서">중소기업확인서</option>
+          <option value="신용평가등급확인서">신용평가등급확인서</option>
+          <option value="국세·지방세 납세증명서">국세·지방세 납세증명서</option>
+          <option value="4대보험 완납증명서">4대보험 완납증명서</option>
+          <option value="기타">기타</option>
+        </select>
+      </div>
+
+      <div id="docs-drop-area" class="docs-drop-area">
+        <input id="docs-file-input" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.hwp,.hwpx" style="display:none;">
+        <div class="docs-drop-inner">
+          <span class="docs-drop-text">파일을 끌어다 놓거나 클릭해 선택</span>
+          <span class="docs-drop-hint">PDF · JPG · PNG · DOC · HWP · 최대 50MB</span>
+        </div>
+      </div>
+
+      <div id="docs-list" class="docs-list"><!-- JS가 채움 --></div>
+    </section>
+
     <div class="account-actions">
       <a href="/" class="account-btn-back">← 대시보드로</a>
       <a href="/withdraw.html" class="account-withdraw-link">회원 탈퇴</a>
@@ -350,6 +414,133 @@
 
     document.getElementById("company-save-btn").addEventListener("click", saveCompany);
     loadCompany();
+
+    // Spec D-Build-CompanyDocs-1b — 보관 서류 업로드/리스트/다운로드/삭제
+    const DOCS_TOKEN_KEY = "nightoff_jwt";
+    let docsCache = [];
+
+    function docsToken() { return localStorage.getItem(DOCS_TOKEN_KEY); }
+    function fmtSize(n) {
+      if (n >= 1024*1024) return (n/1024/1024).toFixed(1) + "MB";
+      if (n >= 1024) return Math.round(n/1024) + "KB";
+      return n + "B";
+    }
+
+    async function loadDocs() {
+      const token = docsToken();
+      if (!token) return;
+      try {
+        const r = await fetch("/api/me/company-docs", { headers: { "Authorization": `Bearer ${token}` } });
+        if (r.status === 401) { localStorage.removeItem(DOCS_TOKEN_KEY); location.href = "/login.html"; return; }
+        if (!r.ok) return;
+        const { docs } = await r.json();
+        docsCache = docs || [];
+        renderDocs();
+      } catch (e) { /* 무시 */ }
+    }
+
+    function renderDocs() {
+      const list = document.getElementById("docs-list");
+      if (!docsCache.length) { list.innerHTML = '<div class="docs-empty">아직 보관된 서류가 없어요.</div>'; return; }
+      list.innerHTML = "";
+      docsCache.forEach(d => {
+        const item = document.createElement("div");
+        item.className = "docs-item";
+        const typeLabel = d.doc_type ? d.doc_type + " · " : "";
+        item.innerHTML =
+          '<div class="docs-item-info">' +
+            '<div class="docs-item-name"></div>' +
+            '<div class="docs-item-meta">' + typeLabel + (d.filetype||"") + " · " + fmtSize(d.filesize||0) + '</div>' +
+          '</div>' +
+          '<div class="docs-item-actions">' +
+            '<button class="docs-item-btn" data-act="dl">내려받기</button>' +
+            '<button class="docs-item-btn danger" data-act="del">삭제</button>' +
+          '</div>';
+        item.querySelector(".docs-item-name").textContent = d.filename || "(이름 없음)";
+        item.querySelector('[data-act="dl"]').addEventListener("click", () => downloadDoc(d.id));
+        item.querySelector('[data-act="del"]').addEventListener("click", () => deleteDoc(d.id, d.filename));
+        list.appendChild(item);
+      });
+    }
+
+    async function uploadDoc(file) {
+      const token = docsToken();
+      if (!token) { location.href = "/login.html"; return; }
+      const docType = document.getElementById("docs-type-select").value;
+      if (!docType) { alert("서류 종류를 먼저 선택해 주세요."); return; }
+
+      // 중복 체크 — 같은 doc_type 이미 있으면 교체 확인 ("기타"는 제외)
+      if (docType !== "기타") {
+        const existing = docsCache.find(d => d.doc_type === docType);
+        if (existing) {
+          if (!confirm(`이미 '${docType}'가 보관돼 있어요. 새 파일로 교체할까요?`)) return;
+          await deleteDoc(existing.id, null, true);  // silent
+        }
+      }
+
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("doc_type", docType);
+      try {
+        const r = await fetch("/api/me/company-docs/upload", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${token}` },  // Content-Type 자동(multipart)
+          body: fd,
+        });
+        if (r.status === 401) { localStorage.removeItem(DOCS_TOKEN_KEY); location.href = "/login.html"; return; }
+        if (r.status === 400) { alert("이 형식은 올릴 수 없어요. (PDF·JPG·PNG·DOC·HWP, 50MB 이하)"); return; }
+        if (!r.ok) { alert("업로드에 실패했어요. 잠시 후 다시 시도해 주세요."); return; }
+        await loadDocs();
+      } catch (e) {
+        alert("서버에 연결할 수 없어요. 네트워크를 확인해 주세요.");
+      }
+    }
+
+    function downloadDoc(id) {
+      const token = docsToken();
+      if (!token) { location.href = "/login.html"; return; }
+      // 인증 헤더가 필요하므로 fetch → blob → 임시 링크 클릭
+      fetch(`/api/me/company-docs/${id}/download`, { headers: { "Authorization": `Bearer ${token}` } })
+        .then(r => { if (!r.ok) throw new Error(); return r.blob().then(b => ({ b, r })); })
+        .then(({ b, r }) => {
+          const cd = r.headers.get("Content-Disposition") || "";
+          let name = "download";
+          const m = cd.match(/filename\*=UTF-8''([^;]+)/);
+          if (m) name = decodeURIComponent(m[1]);
+          const url = URL.createObjectURL(b);
+          const a = document.createElement("a");
+          a.href = url; a.download = name; document.body.appendChild(a); a.click();
+          a.remove(); URL.revokeObjectURL(url);
+        })
+        .catch(() => alert("내려받기에 실패했어요."));
+    }
+
+    async function deleteDoc(id, filename, silent) {
+      const token = docsToken();
+      if (!token) { location.href = "/login.html"; return; }
+      if (!silent && !confirm(`'${filename || "이 서류"}'를 삭제할까요?`)) return;
+      try {
+        const r = await fetch(`/api/me/company-docs/${id}`, {
+          method: "DELETE", headers: { "Authorization": `Bearer ${token}` },
+        });
+        if (r.status === 401) { localStorage.removeItem(DOCS_TOKEN_KEY); location.href = "/login.html"; return; }
+        if (!silent) { if (r.ok) await loadDocs(); else alert("삭제에 실패했어요."); }
+      } catch (e) { if (!silent) alert("서버에 연결할 수 없어요."); }
+    }
+
+    // 드래그앤드롭 + 파일선택 바인딩
+    (function bindDocsUpload() {
+      const drop = document.getElementById("docs-drop-area");
+      const input = document.getElementById("docs-file-input");
+      if (!drop || !input) return;
+      drop.addEventListener("click", () => input.click());
+      input.addEventListener("change", () => { if (input.files[0]) { uploadDoc(input.files[0]); input.value = ""; } });
+      ["dragenter","dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
+      ["dragleave","drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
+      drop.addEventListener("drop", e => { if (e.dataTransfer.files[0]) uploadDoc(e.dataTransfer.files[0]); });
+    })();
+
+    loadDocs();
   </script>
 </body>
 </html>

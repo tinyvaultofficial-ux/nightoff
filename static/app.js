@@ -486,6 +486,7 @@ const routes = [
   { re: /^\/client\/new$/, handler: () => renderClientForm("create") },
   { re: /^\/client\/([^/]+)\/edit$/, handler: (m) => renderClientForm("edit", m[1]) },
   { re: /^\/client\/([^/]+)\/chat\/([^/]+)$/, handler: (m) => renderChat(m[1], m[2]) },
+  { re: /^\/client\/([^/]+)\/submission-docs$/, handler: (m) => renderClientSubmissionDocs(m[1]) },
   { re: /^\/client\/([^/]+)$/, handler: (m) => renderClientDetail(m[1]) },
 ];
 
@@ -3865,6 +3866,55 @@ function renderSubdocRow(d, ownedDocs, company) {
 }
 
 
+// Spec D-Build-SubmissionDocs-Route: 제출서류 가이드 전용 화면 (조각 B)
+// 분석 화면(renderClientDetail)에서 진입. 그릇만 — 본문은 기존 renderSubmissionDocsSection 재활용.
+async function renderClientSubmissionDocs(cid) {
+  const root = $("#app-root");
+  root.innerHTML = "";
+  root.appendChild(await renderSidebar("clients", cid));
+  const main = h("main", { class: "main" });
+  root.appendChild(main);
+
+  let client = null;
+  try {
+    client = await api.get(`/api/clients/${cid}`);
+  } catch (e) {
+    console.error("[renderClientSubmissionDocs] api/clients/:cid failed:", e);
+    if (e?.status === 404) {
+      toast("과업을 찾지 못했어요", "error");
+      navigate("/");
+      return;
+    }
+    main.appendChild(h("div", {
+      style: "padding: 60px 28px; text-align: center; max-width: 640px; margin: 0 auto;",
+    }, [
+      h("h2", { style: "margin: 0 0 8px; font-size: 18px; font-weight: 700;" }, "과업 정보를 불러오지 못했어요"),
+      h("p", { class: "muted small", style: "margin: 0 0 16px;" }, e?.message || String(e)),
+      h("div", { style: "display: flex; gap: 10px; justify-content: center;" }, [
+        h("button", { class: "btn btn-primary", onclick: () => renderClientSubmissionDocs(cid) }, "다시 시도"),
+        h("button", { class: "btn btn-outline", onclick: () => navigate(`/client/${cid}`) }, "과업 화면으로"),
+      ]),
+    ]));
+    return;
+  }
+
+  main.appendChild(h("header", { class: "main-header" }, [
+    h("div", {}, [
+      h("h1", {}, "📑 제출서류 가이드"),
+      h("p", {}, client.name || ""),
+    ]),
+  ]));
+
+  const content = h("div", { class: "main-content", style: "max-width: 1100px;" });
+  main.appendChild(content);
+
+  content.appendChild(h("a", { class: "back-link", href: `/client/${cid}`, "data-link": "" }, [
+    icon("arrowL", 14), document.createTextNode("과업 화면으로"),
+  ]));
+
+  content.appendChild(await renderSubmissionDocsSection(cid, client));
+}
+
 async function renderClientDetail(cid) {
   const root = $("#app-root");
   root.innerHTML = "";
@@ -3947,6 +3997,13 @@ async function renderClientDetail(cid) {
   stack.appendChild(rfpSec);
   stack.appendChild(qualSec);
   stack.appendChild(submissionSec);               // 자격 다음(발주처 앞)
+  // Spec D-Build-SubmissionDocs-Route: 전용 화면 진입 링크 (조각 D 에서 정리 예정)
+  stack.appendChild(h("a", {
+    class: "btn btn-outline btn-tiny",
+    href: `/client/${cid}/submission-docs`,
+    "data-link": "",
+    style: "align-self:flex-start;",
+  }, "📑 제출서류 가이드 전체 화면으로 보기"));
   stack.appendChild(intelSec);
 
   // 4️⃣ — 핵심 CTA 묶음 (대화 시작 + PT 연습 + 자체 검증)

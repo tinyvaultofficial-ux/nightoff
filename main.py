@@ -5275,6 +5275,78 @@ def api_company_docs_download(doc_id: str, user: dict = Depends(get_current_user
     )
 
 
+# Spec E-Build-CompanyDocsZip-Backend — 보유 증빙 묶음 다운로드 (2단계)
+# 프론트가 화면에서 "✓ 보유" 매칭한 doc_ids 를 보내면, user 소유분만 R2 에서 받아 zip 스트리밍.
+# 매칭(SUBDOC_SYNONYMS) 은 프론트가 책임 — 백엔드는 ownership·용량 가드 + 묶기만.
+class CompanyDocsZipIn(BaseModel):
+    doc_ids: list[str]
+    zip_name: Optional[str] = None
+
+
+@app.post("/api/me/company-docs/zip")
+def api_company_docs_zip(body: CompanyDocsZipIn, user: dict = Depends(get_current_user)):
+    doc_ids = [d for d in (body.doc_ids or []) if d]
+    if not doc_ids:
+        raise HTTPException(400, "선택된 서류가 없습니다")
+
+    # user 소유분만 조회 (id IN, ownership 가드)
+    placeholders = ",".join(["?"] * len(doc_ids))
+    with get_db() as db:
+        rows = db.execute(
+            f"SELECT id, filename, r2_key, filesize FROM our_company_docs "
+            f"WHERE user_id=? AND id IN ({placeholders})",
+            (user["id"], *doc_ids),
+        ).fetchall()
+    rows = [dict(r) for r in rows]
+    if not rows:
+        raise HTTPException(404, "다운로드할 서류를 찾을 수 없습니다")
+
+    # 합산 크기 가드 (메모리 보호) — 200MB
+    MAX_ZIP_BYTES = 200 * 1024 * 1024
+    total = sum((r.get("filesize") or 0) for r in rows)
+    if total > MAX_ZIP_BYTES:
+        raise HTTPException(413, "묶음 용량이 너무 큽니다. 서류를 나눠서 받아주세요")
+
+    # R2 에서 받아 zip (메모리)
+    import io
+    import zipfile
+    import r2_storage
+    out = io.BytesIO()
+    used_names: set[str] = set()
+    added = 0
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+        for i, r in enumerate(rows):
+            buf = r2_storage.download_to_buffer(r["r2_key"])
+            if buf is None:
+                continue  # 누락 파일 silent skip — 일부만 묶여도 다운로드되게
+            # 파일명 충돌 방지
+            name = r["filename"] or f"document_{i+1}"
+            if name in used_names:
+                name = f"{i+1:02d}_{name}"
+            used_names.add(name)
+            zf.writestr(name, buf.getvalue())
+            added += 1
+
+    if added == 0:
+        raise HTTPException(404, "다운로드할 수 있는 파일이 없습니다")
+
+    out.seek(0)
+    # zip 파일명 (선택 — 미지정 시 기본값)
+    raw_name = (body.zip_name or "제출증빙").strip() or "제출증빙"
+    if not raw_name.lower().endswith(".zip"):
+        raw_name += ".zip"
+    from urllib.parse import quote
+    cd_name = quote(raw_name)
+    return StreamingResponse(
+        out,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{cd_name}",
+            "X-Zip-Count": str(added),
+        },
+    )
+
+
 @app.delete("/api/me/company-docs/{doc_id}")
 def api_company_docs_delete(doc_id: str, user: dict = Depends(get_current_user)):
     with get_db() as db:

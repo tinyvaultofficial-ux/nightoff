@@ -3706,13 +3706,17 @@ function mapFillField(fieldLabel, company) {
 }
 
 async function renderSubmissionDocsSection(cid, client) {
-  if (!client || !client.has_rfp) return document.createDocumentFragment();
-
-  const [submission, companyDocsResp, companyResp] = await Promise.all([
+  // Spec D-Fix-SubmissionGuide-Gard — 단건 GET /api/clients/{cid} 응답엔 has_rfp 필드 없음 →
+  // /api/clients/{cid}/rfp (응답에 has_rfp 있음) 로 판단. renderRfpSection 패턴 정합.
+  const [rfpResp, submission, companyDocsResp, companyResp] = await Promise.all([
+    api.get(`/api/clients/${cid}/rfp`).catch(() => ({ has_rfp: false })),
     api.get(`/api/clients/${cid}/submission-docs`).catch(() => ({ docs: null })),
     api.get(`/api/me/company-docs`).catch(() => ({ docs: [] })),
     api.get(`/api/me/company`).catch(() => ({ company: null })),
   ]);
+
+  // RFP 없으면 섹션 숨김
+  if (!rfpResp || !rfpResp.has_rfp) return document.createDocumentFragment();
 
   const ownedDocs = companyDocsResp?.docs || [];
   const company = companyResp?.company || null;

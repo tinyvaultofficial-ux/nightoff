@@ -5387,6 +5387,10 @@ input.locked-by-env::placeholder {
   border-color: #9D8AE6;
   box-shadow: 0 4px 14px rgba(110, 86, 207, .12);
 }
+/* Spec D-Build-SubmissionDocs-Relocate (조각 D) — 부각된 제출서류 가이드 CTA */
+.action-panel .ap-card.featured { border:1px solid #6B46E5; background:#F5F0FF; }
+.action-panel .ap-card.featured:hover { border-color:#6B46E5; box-shadow:0 4px 14px rgba(107,70,229,.18); }
+.action-panel .ap-card.featured .ap-card-title { color:#1F1147; }
 .action-panel .ap-card-head {
   display: flex; align-items: center; gap: 8px;
 }

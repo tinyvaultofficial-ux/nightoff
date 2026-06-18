@@ -324,6 +324,15 @@ def init_db() -> None:
                 FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
             );
 
+            -- 자동 추출 제출서류 목록 (정량서류 자동화 조각 4 · 1 client = 1 결과, 1:1)
+            -- Spec D-Build-SubmissionDocs-1
+            CREATE TABLE IF NOT EXISTS submission_docs (
+                client_id   TEXT PRIMARY KEY,
+                docs_json   TEXT DEFAULT '{}',
+                updated_at  TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+            );
+
             -- 발주처 성향 (RFP + 대화에서 추출된 인사이트 축적)
             CREATE TABLE IF NOT EXISTS client_profiles (
                 client_id        TEXT PRIMARY KEY,
@@ -1763,6 +1772,56 @@ project_domain 판단 기준 (본문 키워드·어휘 우선):
 ---
 
 JSON:"""
+
+
+# Spec D-Build-SubmissionDocs-1 — 제출서류 추출 (Sonnet 직접, 누락 방지).
+SUBMISSION_DOCS_PROMPT = """당신은 한국 공공조달 입찰 서류 전문가입니다.
+아래 RFP(제안요청서·과업지시서·공고문) 전문을 읽고, 이 입찰에 **제출해야 하는 서류**를 빠짐없이 추출하세요.
+
+[가장 중요한 원칙]
+- 누락은 치명적입니다. 입찰자가 서류 하나라도 빠뜨리면 탈락합니다. RFP에 언급된 제출 서류를 하나도 빠짐없이 찾으세요.
+- 동시에, RFP에 근거가 없는 서류를 지어내지 마세요. 본문에 명시되거나 별지 양식으로 첨부된 것만 포함합니다.
+- "제출서류", "구비서류", "첨부서류", "제출목록", "별지", "서식", "양식", "참가신청", "자격요건 증빙" 등으로 언급된 모든 항목을 살피세요.
+- 제안서(기술/가격 제안서) 본문 자체는 제외하고, 그 외 함께 제출하는 행정·증빙·서식 서류만 추출합니다.
+
+[각 서류 분류 기준]
+- type "기입형": 입찰자가 양식에 값을 직접 채우는 서류 (입찰참가신청서, 일반현황 등)
+- type "보유형": 발급기관에서 떼어 첨부하는 증빙 (사업자등록증, 인감증명서, 등기부등본, 납세증명서, 신용평가등급확인서 등)
+- type "서약형": 회사명·날짜·서명만 넣는 서약·확약 서류 (청렴계약이행서약서, 보안서약서 등)
+
+[출력 형식]
+아래 JSON만 출력하세요. 설명·코드펜스 없이 JSON만.
+{
+  "title": "사업/과업명",
+  "organization": "발주처(수요기관)",
+  "submission_method": "제출 방식 (예: 나라장터 온라인 / 방문 / 우편)",
+  "submission_deadline": "제출 마감 일시 (RFP에 있으면 YYYY-MM-DD HH:MM, 없으면 빈 문자열)",
+  "submission_place": "제출처/담당부서 (있으면)",
+  "docs": [
+    {
+      "name": "서류명 (RFP 표기 그대로, 예: 사업자등록증명원)",
+      "type": "기입형 | 보유형 | 서약형",
+      "attachment_no": "별지/서식 번호 (있으면, 예: 별지 제2호 서식, 없으면 빈 문자열)",
+      "count": "필요 부수 (예: 1부 / 원본 1부·사본 2부, 없으면 빈 문자열)",
+      "fill_fields": ["기입형일 때 채워야 하는 항목들 (예: 상호, 사업자등록번호, 대표자명). 보유형/서약형이면 빈 배열"],
+      "issuer": "보유형일 때 발급기관 (예: 나라장터, 국세청, 신용평가기관. 아니면 빈 문자열)",
+      "due": "유효기간 요건 (예: 최근 3개월 이내 발급. 없으면 빈 문자열)",
+      "note": "특이사항/비고 (원본대조필 날인, 직인 날인 등. 없으면 빈 문자열)",
+      "required": "필수 | 해당시 (조건부) "
+    }
+  ]
+}
+
+[추출 원칙]
+- name: RFP에 적힌 명칭을 최대한 그대로. 약칭이 있으면 정식 명칭 우선.
+- fill_fields: 기입형 서류에서 입찰자가 채워야 할 항목을 RFP 양식 기준으로. 모르면 합리적으로 일반 항목(상호·사업자번호·대표자·주소·연락처 등) 추정하되 과하지 않게.
+- attachment_no, count, due, note, issuer, submission_*: RFP에 명시된 경우만. 없으면 빈 문자열("").
+- required: 모든 입찰자가 내야 하면 "필수", 특정 조건(중소기업만 등)에서만 내면 "해당시".
+- docs는 RFP에 나온 순서 또는 논리적 순서로 정렬.
+
+[RFP 전문]
+{RFP_TEXT}
+"""
 
 
 REFERENCE_SUMMARY_PROMPT = """아래 문서를 제안서 작성의 스타일 레퍼런스로 분석하세요.
@@ -4195,6 +4254,8 @@ def _run_rfp_aggregate(cid: str) -> dict:
             db.execute("DELETE FROM rfp_aggregated WHERE client_id=?", (cid,))
             # 발주처 들여다보기 (client_intel) 도 함께 정리 — RFP 0 건 시 stale intel 잔존 방지
             db.execute("DELETE FROM client_intel WHERE client_id=?", (cid,))
+            # Spec D-Build-SubmissionDocs-1 — 제출서류 결과도 RFP 0 건 시 무효 → 정리
+            db.execute("DELETE FROM submission_docs WHERE client_id=?", (cid,))
         return {}
 
     # 역할별 텍스트 조합 — Spec D-Fix-RFPFulltextCap.
@@ -6776,6 +6837,69 @@ def api_client_intel_rebuild(cid: str, user: dict = Depends(get_current_user)):
         _verify_client_owned_by_user(db, cid, user["id"])
     intel = _run_client_intel(cid)
     return {"intel": intel}
+
+
+# Spec D-Build-SubmissionDocs-1 — 제출서류 추출 + 조회 (정량서류 자동화 조각 4).
+# RFP 텍스트 (_get_raw_rfp_text) 를 Sonnet 에 보내 JSON 추출 → submission_docs UPSERT.
+@app.post("/api/clients/{cid}/submission-docs/extract")
+def api_submission_docs_extract(cid: str, user: dict = Depends(get_current_user)):
+    with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
+
+    combined = _get_raw_rfp_text(cid, max_chars=150000)
+    if not combined:
+        raise HTTPException(400, "먼저 RFP 파일을 업로드해 주세요.")
+
+    client = require_client()
+    prompt = SUBMISSION_DOCS_PROMPT.replace("{RFP_TEXT}", combined)
+    try:
+        resp = client.messages.create(
+            model="claude-sonnet-4-6",          # ★ Sonnet 직접 — 누락 방지(get_setting 우회)
+            max_tokens=8000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = _extract_text_from_resp(resp)
+        if not raw:
+            raise ValueError("AI가 빈 응답을 반환했어요.")
+        raw = re.sub(r"^```(?:json)?\s*", "", raw)
+        raw = re.sub(r"\s*```$", "", raw)
+        docs = json.loads(raw)
+    except anthropic.APIError as e:
+        log.warning("제출서류 추출 Anthropic 오류 (%s): %s", cid, e)
+        raise HTTPException(502, "제출서류 분석에 실패했어요. 잠시 후 다시 시도해 주세요.")
+    except (json.JSONDecodeError, ValueError) as e:
+        log.warning("제출서류 추출 파싱 실패 (%s): %s", cid, e)
+        raise HTTPException(502, "분석 결과를 이해하지 못했어요. 다시 시도해 주세요.")
+
+    if not isinstance(docs, dict):
+        raise HTTPException(502, "분석 결과를 이해하지 못했어요.")
+
+    with get_db() as db:
+        db.execute(
+            "INSERT INTO submission_docs(client_id,docs_json,updated_at) "
+            "VALUES(?,?,datetime('now','localtime')) "
+            "ON CONFLICT(client_id) DO UPDATE SET "
+            "  docs_json=excluded.docs_json, updated_at=excluded.updated_at",
+            (cid, json.dumps(docs, ensure_ascii=False)),
+        )
+    return {"ok": True, "docs": docs}
+
+
+@app.get("/api/clients/{cid}/submission-docs")
+def api_submission_docs_get(cid: str, user: dict = Depends(get_current_user)):
+    with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
+        row = db.execute(
+            "SELECT docs_json, updated_at FROM submission_docs WHERE client_id=?",
+            (cid,),
+        ).fetchone()
+    if not row:
+        return {"docs": None, "updated_at": None}
+    try:
+        docs = json.loads(row["docs_json"] or "{}")
+    except Exception:
+        docs = {}
+    return {"docs": docs, "updated_at": row["updated_at"]}
 
 
 # ---------------------------------------------------------------------------

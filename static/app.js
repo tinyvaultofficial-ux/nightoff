@@ -3834,7 +3834,8 @@ async function renderSubmissionDocsSection(cid, client) {
         btn.disabled = true; btn.textContent = "분석 중… (최대 1분)";
         try {
           await api.post(`/api/clients/${cid}/submission-docs/extract`, {}, { timeoutMs: 180000 });
-          renderClientDetail(cid);
+          // Spec D-Fix-SubmissionDocs-Rerender — 추출 완료 후 전용 화면 재렌더 (분석 화면으로 튕기지 않게)
+          renderClientSubmissionDocs(cid);
         } catch (err) {
           toast(err.message || "분석에 실패했어요", "error");
           btn.disabled = false; btn.textContent = "제출서류 분석하기";
@@ -3957,7 +3958,8 @@ async function renderSubmissionDocsSection(cid, client) {
       btn.disabled = true; btn.textContent = "다시 분석 중…";
       try {
         await api.post(`/api/clients/${cid}/submission-docs/extract`, {}, { timeoutMs: 180000 });
-        renderClientDetail(cid);
+        // Spec D-Fix-SubmissionDocs-Rerender — 추출 완료 후 전용 화면 재렌더 (분석 화면으로 튕기지 않게)
+        renderClientSubmissionDocs(cid);
       } catch (err) {
         toast(err.message || "분석 실패", "error");
         btn.disabled = false; btn.textContent = "다시 분석";

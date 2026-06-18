@@ -7170,3 +7170,34 @@ body.landing-fullscreen .nav-backdrop {
 .subdoc-fill-label { color:#666; min-width:96px; flex-shrink:0; }
 .subdoc-fill-value { color:#1F1147; font-weight:600; }
 .subdoc-fill-empty { color:#999; }
+
+/* Spec D-Build-SubmissionDocs-Grid (조각 C-1) — 요약 바 + 그룹 + 2열 카드 그리드 */
+.subdoc-summary { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
+.subdoc-summary-item { flex:1; min-width:80px; background:#FAFAFA; border:1px solid #E5E5E5; border-radius:10px; padding:12px; text-align:center; }
+.subdoc-summary-num { display:block; font-size:22px; font-weight:700; color:#1F1147; }
+.subdoc-summary-num.ok   { color:#1B7A43; }
+.subdoc-summary-num.warn { color:#A05200; }
+.subdoc-summary-num.fill { color:#6B46E5; }
+.subdoc-summary-label { font-size:12px; color:#666; }
+
+.subdoc-group { margin-bottom:16px; }
+.subdoc-group-head { cursor:pointer; display:flex; justify-content:space-between; align-items:center; padding:10px 4px; list-style:none; border-bottom:2px solid #F5F0FF; }
+.subdoc-group-head::-webkit-details-marker { display:none; }
+.subdoc-group-title { font-size:15px; font-weight:700; color:#1F1147; }
+.subdoc-group-count { font-size:12px; color:#999; }
+
+.subdoc-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; padding-top:12px; }
+@media (max-width:720px) { .subdoc-grid { grid-template-columns:1fr; } }
+
+.subdoc-card { border:1px solid #E5E5E5; border-radius:10px; background:#fff; overflow:hidden; }
+.subdoc-card.open { border-color:#6B46E5; }
+.subdoc-card-head { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; padding:12px 14px; cursor:pointer; }
+.subdoc-card-head:hover { background:#FAFAFA; }
+.subdoc-card-name-wrap { display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; min-width:0; }
+.subdoc-card-name { font-size:14px; font-weight:700; color:#1F1147; }
+.subdoc-card-badges { display:flex; gap:4px; flex-shrink:0; flex-wrap:wrap; justify-content:flex-end; }
+.subdoc-chip { font-size:11px; border-radius:5px; padding:2px 7px; white-space:nowrap; }
+.subdoc-chip.ok   { color:#1B7A43; background:#E8F5EC; }
+.subdoc-chip.warn { color:#A05200; background:#FFF3E0; }
+.subdoc-card-detail { padding:0 14px 14px; }
+.subdoc-card-detail.hidden { display:none; }

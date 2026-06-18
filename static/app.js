@@ -3706,6 +3706,99 @@ function mapFillField(fieldLabel, company) {
   return { label: fieldLabel, value: "", field: null };  // 매핑 안 된 항목
 }
 
+// ─── Spec D-Build-SubmissionDocs-Grid — category 그룹 + 카드 그리드 (조각 C-1) ───
+// 5그룹 순서·라벨·기본접힘. category 없는 옛 데이터는 "기타" 로 fallback.
+const SUBDOC_GROUP_ORDER = [
+  { key: "입찰참가", label: "① 입찰 참가",     defaultOpen: true },
+  { key: "자격증빙", label: "② 자격 증빙",     defaultOpen: true },
+  { key: "제안서",   label: "③ 제안서 관련",   defaultOpen: true },
+  { key: "계약시",   label: "④ 계약 시 제출", defaultOpen: false },
+  { key: "기타",     label: "⑤ 기타",          defaultOpen: true },
+];
+
+// 카드/요약 상태 판정 (renderSubdocRow 매칭 기준과 동일)
+function subdocStatus(d, ownedDocs) {
+  if (d.type === "보유형") {
+    const t = matchOwnedDocType(d.name);
+    return (t && ownedDocs.find(o => o.doc_type === t)) ? "owned" : "needPrepare";
+  }
+  return "fill";  // 기입형·서약형 = 작성 필요
+}
+
+function renderSubdocCard(d, ownedDocs, company) {
+  const card = h("div", { class: "subdoc-card" });
+
+  // 요약 헤더 — 항상 보임 / 클릭 시 디테일 토글
+  const head = h("div", { class: "subdoc-card-head" });
+  const nameWrap = h("div", { class: "subdoc-card-name-wrap" });
+  nameWrap.appendChild(h("span", { class: "subdoc-card-name" }, d.name || "(서류명 미상)"));
+  if (d.attachment_no) nameWrap.appendChild(h("span", { class: "subdoc-attach" }, d.attachment_no));
+  head.appendChild(nameWrap);
+
+  const badgeWrap = h("div", { class: "subdoc-card-badges" });
+  if (d.type) badgeWrap.appendChild(h("span", { class: "subdoc-tag" }, d.type));
+  const st = subdocStatus(d, ownedDocs);
+  if (st === "owned")            badgeWrap.appendChild(h("span", { class: "subdoc-chip ok" }, "✓ 보유"));
+  else if (st === "needPrepare") badgeWrap.appendChild(h("span", { class: "subdoc-chip warn" }, "발급 필요"));
+  head.appendChild(badgeWrap);
+  card.appendChild(head);
+
+  // 디테일 — 기본 숨김, 클릭 시 토글
+  const detail = h("div", { class: "subdoc-card-detail hidden" });
+  renderSubdocDetail(detail, d, ownedDocs, company);
+  card.appendChild(detail);
+
+  head.addEventListener("click", () => {
+    detail.classList.toggle("hidden");
+    card.classList.toggle("open");
+  });
+  return card;
+}
+
+// 디테일 내용 (기존 renderSubdocRow 의 디테일 로직 이식 — 매칭/채울값/서약 안내)
+function renderSubdocDetail(detail, d, ownedDocs, company) {
+  const metaParts = [];
+  if (d.count) metaParts.push(d.count);
+  if (d.due)   metaParts.push(d.due);
+  if (d.note)  metaParts.push(d.note);
+  if (metaParts.length) {
+    detail.appendChild(h("div", { class: "subdoc-meta-line small muted" }, metaParts.join(" · ")));
+  }
+
+  if (d.type === "보유형") {
+    const t = matchOwnedDocType(d.name);
+    const owned = t ? ownedDocs.find(o => o.doc_type === t) : null;
+    if (owned) {
+      detail.appendChild(h("div", { class: "subdoc-status subdoc-status-ok" }, `✓ 보관함에 있어요 (${owned.filename})`));
+    } else {
+      const issuer = d.issuer ? ` · ${d.issuer}에서 발급` : "";
+      detail.appendChild(h("div", { class: "subdoc-status subdoc-status-warn" }, `발급 필요${issuer}`));
+    }
+  } else if (d.type === "기입형") {
+    const fields = Array.isArray(d.fill_fields) ? d.fill_fields : [];
+    if (fields.length) {
+      const fillBox = h("div", { class: "subdoc-fill" });
+      fillBox.appendChild(h("div", { class: "subdoc-fill-title small muted" }, "넣을 값"));
+      // 동의어 keys 가 같은 회사정보 field 로 collapse 되는 중복 방지 (조각 5 dedup 패턴 그대로)
+      const seen = new Set();
+      fields.forEach(f => {
+        const { label, value, field } = mapFillField(f, company);
+        const key = field || ("raw:" + normalizeSubdoc(label));
+        if (seen.has(key)) return;
+        seen.add(key);
+        const item = h("div", { class: "subdoc-fill-item" });
+        item.appendChild(h("span", { class: "subdoc-fill-label" }, label));
+        item.appendChild(h("span", { class: value ? "subdoc-fill-value" : "subdoc-fill-empty" },
+          value || (company ? "—" : "회사정보 등록 후 표시")));
+        fillBox.appendChild(item);
+      });
+      detail.appendChild(fillBox);
+    }
+  } else if (d.type === "서약형") {
+    detail.appendChild(h("div", { class: "subdoc-status subdoc-status-info" }, "회사명·날짜·서명을 넣어 제출하는 서약 서류예요."));
+  }
+}
+
 async function renderSubmissionDocsSection(cid, client) {
   // Spec D-Fix-SubmissionGuide-Gard — 단건 GET /api/clients/{cid} 응답엔 has_rfp 필드 없음 →
   // /api/clients/{cid}/rfp (응답에 has_rfp 있음) 로 판단. renderRfpSection 패턴 정합.
@@ -3777,10 +3870,51 @@ async function renderSubmissionDocsSection(cid, client) {
     ]));
   }
 
-  // 서류 목록
-  const list = h("div", { class: "subdoc-list" });
-  cached.docs.forEach(d => list.appendChild(renderSubdocRow(d, ownedDocs, company)));
-  body.appendChild(list);
+  // ── 요약 바 (전체 / 보유 / 발급 / 작성)
+  const counts = { owned: 0, needPrepare: 0, fill: 0 };
+  cached.docs.forEach(d => { counts[subdocStatus(d, ownedDocs)]++; });
+  const summary = h("div", { class: "subdoc-summary" }, [
+    h("div", { class: "subdoc-summary-item" }, [
+      h("span", { class: "subdoc-summary-num" },    String(cached.docs.length)),
+      h("span", { class: "subdoc-summary-label" },  "전체"),
+    ]),
+    h("div", { class: "subdoc-summary-item" }, [
+      h("span", { class: "subdoc-summary-num ok" }, String(counts.owned)),
+      h("span", { class: "subdoc-summary-label" }, "보관함 보유"),
+    ]),
+    h("div", { class: "subdoc-summary-item" }, [
+      h("span", { class: "subdoc-summary-num warn" }, String(counts.needPrepare)),
+      h("span", { class: "subdoc-summary-label" }, "발급 준비"),
+    ]),
+    h("div", { class: "subdoc-summary-item" }, [
+      h("span", { class: "subdoc-summary-num fill" }, String(counts.fill)),
+      h("span", { class: "subdoc-summary-label" }, "작성 필요"),
+    ]),
+  ]);
+  body.appendChild(summary);
+
+  // ── 그룹별 분류 (category 없거나 GROUP_ORDER 에 없는 값은 "기타" 로 fallback)
+  const grouped = {};
+  cached.docs.forEach(d => {
+    const known = SUBDOC_GROUP_ORDER.find(x => x.key === d.category);
+    const g = known ? d.category : "기타";
+    (grouped[g] = grouped[g] || []).push(d);
+  });
+
+  SUBDOC_GROUP_ORDER.forEach(group => {
+    const items = grouped[group.key] || [];
+    if (!items.length) return;  // 빈 그룹 숨김
+    const det = h("details", { class: "subdoc-group" });
+    if (group.defaultOpen) det.setAttribute("open", "");
+    det.appendChild(h("summary", { class: "subdoc-group-head" }, [
+      h("span", { class: "subdoc-group-title" }, group.label),
+      h("span", { class: "subdoc-group-count" }, `${items.length}건`),
+    ]));
+    const grid = h("div", { class: "subdoc-grid" });
+    items.forEach(d => grid.appendChild(renderSubdocCard(d, ownedDocs, company)));
+    det.appendChild(grid);
+    body.appendChild(det);
+  });
 
   // 다시 분석 버튼
   body.appendChild(h("button", {

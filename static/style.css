@@ -7198,7 +7198,7 @@ body.landing-fullscreen .nav-backdrop {
 .subdoc-card-head { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; padding:12px 14px; cursor:pointer; }
 .subdoc-card-head:hover { background:#FAFAFA; }
 .subdoc-card-name-wrap { display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; min-width:0; }
-.subdoc-card-name { font-size:14px; font-weight:700; color:#1F1147; }
+.subdoc-card-name { font-size:14px; font-weight:600; color:#1F1147; }
 .subdoc-card-badges { display:flex; gap:4px; flex-shrink:0; flex-wrap:wrap; justify-content:flex-end; }
 .subdoc-chip { font-size:11px; border-radius:5px; padding:2px 7px; white-space:nowrap; }
 .subdoc-chip.ok   { color:#1B7A43; background:#E8F5EC; }

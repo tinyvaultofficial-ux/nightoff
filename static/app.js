@@ -3968,71 +3968,6 @@ async function renderSubmissionDocsSection(cid, client) {
   return card;
 }
 
-function renderSubdocRow(d, ownedDocs, company) {
-  const row = h("div", { class: "subdoc-row" });
-
-  // 헤더: 이름 + 별지번호 + 타입/필수 뱃지
-  const head = h("div", { class: "subdoc-row-head" });
-  const titleWrap = h("div", { class: "subdoc-name-wrap" });
-  titleWrap.appendChild(h("span", { class: "subdoc-name" }, d.name || "(서류명 미상)"));
-  if (d.attachment_no) titleWrap.appendChild(h("span", { class: "subdoc-attach" }, d.attachment_no));
-  head.appendChild(titleWrap);
-
-  const badges = h("div", { class: "subdoc-badges" });
-  if (d.type) badges.appendChild(h("span", { class: "subdoc-tag" }, d.type));
-  if (d.required === "해당시") badges.appendChild(h("span", { class: "subdoc-tag subdoc-tag-cond" }, "해당시"));
-  head.appendChild(badges);
-  row.appendChild(head);
-
-  // 메타 줄 (부수·유효기간·비고)
-  const metaParts = [];
-  if (d.count) metaParts.push(d.count);
-  if (d.due) metaParts.push(d.due);
-  if (d.note) metaParts.push(d.note);
-  if (metaParts.length) row.appendChild(h("div", { class: "subdoc-meta-line small muted" }, metaParts.join(" · ")));
-
-  // 상태/안내 영역 — type별
-  if (d.type === "보유형") {
-    const matchedType = matchOwnedDocType(d.name);
-    const owned = matchedType ? ownedDocs.find(o => o.doc_type === matchedType) : null;
-    if (owned) {
-      row.appendChild(h("div", { class: "subdoc-status subdoc-status-ok" }, `✓ 보관함에 있어요 (${owned.filename})`));
-    } else {
-      const issuer = d.issuer ? ` · ${d.issuer}에서 발급` : "";
-      row.appendChild(h("div", { class: "subdoc-status subdoc-status-warn" }, `⚠ 준비 필요${issuer}`));
-    }
-  } else if (d.type === "기입형") {
-    const fields = Array.isArray(d.fill_fields) ? d.fill_fields : [];
-    if (fields.length) {
-      const fillBox = h("div", { class: "subdoc-fill" });
-      fillBox.appendChild(h("div", { class: "subdoc-fill-title small muted" }, "넣을 값"));
-      // Spec D-Fix-SubmissionGuide-FillDedup — 동의어 keys 가 같은 회사정보 field 로 collapse 되면 중복 표시 발생.
-      // 매핑된 field(회사정보 컬럼) 또는 정규화된 raw label 기준으로 Set dedup.
-      const seen = new Set();
-      fields.forEach(f => {
-        const { label, value, field } = mapFillField(f, company);
-        const key = field || ("raw:" + normalizeSubdoc(label));
-        if (seen.has(key)) return;
-        seen.add(key);
-        const item = h("div", { class: "subdoc-fill-item" });
-        item.appendChild(h("span", { class: "subdoc-fill-label" }, label));
-        if (value) {
-          item.appendChild(h("span", { class: "subdoc-fill-value" }, value));
-        } else {
-          item.appendChild(h("span", { class: "subdoc-fill-empty" }, company ? "—" : "회사정보 등록 후 표시"));
-        }
-        fillBox.appendChild(item);
-      });
-      row.appendChild(fillBox);
-    }
-  } else if (d.type === "서약형") {
-    row.appendChild(h("div", { class: "subdoc-status subdoc-status-info" }, "회사명·날짜·서명을 넣어 제출하는 서약 서류예요."));
-  }
-
-  return row;
-}
-
-
 // Spec D-Build-SubmissionDocs-Route: 제출서류 가이드 전용 화면 (조각 B)
 // 분석 화면(renderClientDetail)에서 진입. 그릇만 — 본문은 기존 renderSubmissionDocsSection 재활용.
 async function renderClientSubmissionDocs(cid) {
@@ -4154,23 +4089,16 @@ async function renderClientDetail(cid) {
   //  📋 대화 기록
   // ── 대화 기억 (renderMemorySection / nuance_memories) 은 Spec 1 (5/16) 폐기 — Intel/RFP 가 커버
   // ── 과업 성향 (renderProfileSection / client_profiles) 은 Spec 2 (5/16) 폐기 — Intel/RFP 가 충분
-  const [rfpSec, qualSec, intelSec, historySec, submissionSec] = await Promise.all([
+  // Spec D-Build-SubmissionDocs-Relocate (조각 D) — 제출서류 가이드는 사후 CTA(.ap-cards)에서
+  // 전용 화면(/client/:cid/submission-docs)으로 진입. 분석 화면 섹션·임시 진입 링크 제거.
+  const [rfpSec, qualSec, intelSec, historySec] = await Promise.all([
     renderRfpSection(cid),
     renderQualificationsSection(cid),
     renderClientIntelSection(cid, client),
     renderConvHistorySection(cid),
-    renderSubmissionDocsSection(cid, client),   // Spec D-Build-SubmissionGuide-1
   ]);
   stack.appendChild(rfpSec);
   stack.appendChild(qualSec);
-  stack.appendChild(submissionSec);               // 자격 다음(발주처 앞)
-  // Spec D-Build-SubmissionDocs-Route: 전용 화면 진입 링크 (조각 D 에서 정리 예정)
-  stack.appendChild(h("a", {
-    class: "btn btn-outline btn-tiny",
-    href: `/client/${cid}/submission-docs`,
-    "data-link": "",
-    style: "align-self:flex-start;",
-  }, "📑 제출서류 가이드 전체 화면으로 보기"));
   stack.appendChild(intelSec);
 
   // 4️⃣ — 핵심 CTA 묶음 (대화 시작 + PT 연습 + 자체 검증)
@@ -5141,6 +5069,18 @@ async function renderChat(cid, convId) {
       h("div", { class: "ap-divider" },
         h("span", {}, "이 제안서로 더 할 수 있어요")),
       h("div", { class: "ap-cards" }, [
+        // Spec D-Build-SubmissionDocs-Relocate (조각 D) — 부각된 제출서류 가이드 CTA (전용 화면 진입)
+        h("button", {
+          class: "ap-card featured",
+          onclick: () => navigate(`/client/${cid}/submission-docs`),
+        }, [
+          h("div", { class: "ap-card-head" }, [
+            h("span", { class: "ap-card-emoji" }, "📑"),
+            h("span", { class: "ap-card-title" }, "제출서류 가이드"),
+            h("span", { class: "ap-card-tag" }, "준비"),
+          ]),
+          h("p", { class: "ap-card-desc" }, "RFP에 필요한 제출서류를 빠짐없이 정리하고, 우리 회사 보유 여부와 채울 값까지 한눈에"),
+        ]),
         h("button", {
           class: "ap-card",
           onclick: () => openAuditModal(convId),

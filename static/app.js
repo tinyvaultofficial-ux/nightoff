@@ -3725,10 +3725,12 @@ function subdocStatus(d, ownedDocs) {
   return "fill";  // 기입형·서약형 = 작성 필요
 }
 
-function renderSubdocCard(d, ownedDocs, company) {
-  const card = h("div", { class: "subdoc-card" });
+// Spec D-Build-SubmissionDocs-Drawer (조각 C-2) — 카드 클릭 시 인라인 아코디언 대신 우측 드로어를 연다.
+// openDrawer 는 호출부(renderSubmissionDocsSection)에서 클로저로 공유.
+function renderSubdocCard(d, ownedDocs, company, openDrawer) {
+  const card = h("div", { class: "subdoc-card clickable" });
 
-  // 요약 헤더 — 항상 보임 / 클릭 시 디테일 토글
+  // 요약 헤더 — 항상 보임 / 카드 전체가 클릭 가능
   const head = h("div", { class: "subdoc-card-head" });
   const nameWrap = h("div", { class: "subdoc-card-name-wrap" });
   nameWrap.appendChild(h("span", { class: "subdoc-card-name" }, d.name || "(서류명 미상)"));
@@ -3743,15 +3745,7 @@ function renderSubdocCard(d, ownedDocs, company) {
   head.appendChild(badgeWrap);
   card.appendChild(head);
 
-  // 디테일 — 기본 숨김, 클릭 시 토글
-  const detail = h("div", { class: "subdoc-card-detail hidden" });
-  renderSubdocDetail(detail, d, ownedDocs, company);
-  card.appendChild(detail);
-
-  head.addEventListener("click", () => {
-    detail.classList.toggle("hidden");
-    card.classList.toggle("open");
-  });
+  card.addEventListener("click", () => openDrawer(d, ownedDocs, company));
   return card;
 }
 
@@ -3893,6 +3887,45 @@ async function renderSubmissionDocsSection(cid, client) {
   ]);
   body.appendChild(summary);
 
+  // ── 드로어 (Spec D-Build-SubmissionDocs-Drawer, 조각 C-2) — 화면당 1개, 카드들이 클로저로 공유
+  const drawerBackdrop = h("div", { class: "subdoc-drawer-backdrop hidden" });
+  const drawer = h("aside", { class: "subdoc-drawer hidden" });
+  const drawerHead = h("div", { class: "subdoc-drawer-head" });
+  const drawerBody = h("div", { class: "subdoc-drawer-body" });
+  const drawerClose = h("button", { class: "subdoc-drawer-close", html: "&times;", "aria-label": "닫기" });
+  drawerHead.appendChild(drawerClose);
+  drawer.appendChild(drawerHead);
+  drawer.appendChild(drawerBody);
+  function escHandler(e) { if (e.key === "Escape") closeDrawer(); }
+  function openDrawer(d, ownedDocs, company) {
+    drawerHead.innerHTML = "";
+    const titleWrap = h("div", { class: "subdoc-drawer-title-wrap" });
+    titleWrap.appendChild(h("h3", { class: "subdoc-drawer-title" }, d.name || "(서류명 미상)"));
+    const sub = [];
+    if (d.attachment_no) sub.push(d.attachment_no);
+    if (d.type) sub.push(d.type);
+    if (sub.length) titleWrap.appendChild(h("p", { class: "subdoc-drawer-sub small muted" }, sub.join(" · ")));
+    drawerHead.appendChild(titleWrap);
+    drawerHead.appendChild(drawerClose);
+    drawerBody.innerHTML = "";
+    renderSubdocDetail(drawerBody, d, ownedDocs, company);
+    drawerBackdrop.classList.remove("hidden");
+    drawer.classList.remove("hidden");
+    requestAnimationFrame(() => { drawer.classList.add("open"); drawerBackdrop.classList.add("open"); });
+    document.addEventListener("keydown", escHandler);
+  }
+  function closeDrawer() {
+    document.removeEventListener("keydown", escHandler);
+    drawer.classList.remove("open");
+    drawerBackdrop.classList.remove("open");
+    setTimeout(() => { drawer.classList.add("hidden"); drawerBackdrop.classList.add("hidden"); }, 220);
+  }
+  drawerClose.addEventListener("click", closeDrawer);
+  drawerBackdrop.addEventListener("click", closeDrawer);
+  // 카드 트리에 부착 — 화면 전환 시 root.innerHTML="" 로 자연 정리. position:fixed 라 위치 영향 없음.
+  card.appendChild(drawerBackdrop);
+  card.appendChild(drawer);
+
   // ── 그룹별 분류 (category 없거나 GROUP_ORDER 에 없는 값은 "기타" 로 fallback)
   const grouped = {};
   cached.docs.forEach(d => {
@@ -3911,7 +3944,7 @@ async function renderSubmissionDocsSection(cid, client) {
       h("span", { class: "subdoc-group-count" }, `${items.length}건`),
     ]));
     const grid = h("div", { class: "subdoc-grid" });
-    items.forEach(d => grid.appendChild(renderSubdocCard(d, ownedDocs, company)));
+    items.forEach(d => grid.appendChild(renderSubdocCard(d, ownedDocs, company, openDrawer)));
     det.appendChild(grid);
     body.appendChild(det);
   });

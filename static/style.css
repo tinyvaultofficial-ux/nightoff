@@ -7201,3 +7201,26 @@ body.landing-fullscreen .nav-backdrop {
 .subdoc-chip.warn { color:#A05200; background:#FFF3E0; }
 .subdoc-card-detail { padding:0 14px 14px; }
 .subdoc-card-detail.hidden { display:none; }
+
+/* Spec D-Build-SubmissionDocs-Drawer (조각 C-2) — 우측 슬라이드 드로어 */
+.subdoc-drawer-backdrop { position:fixed; inset:0; background:rgba(31,17,71,0.25); z-index:1000; opacity:0; transition:opacity .2s; }
+.subdoc-drawer-backdrop.open { opacity:1; }
+.subdoc-drawer-backdrop.hidden { display:none; }
+.subdoc-drawer {
+  position:fixed; top:0; right:0; height:100vh; width:420px; max-width:92vw;
+  background:#fff; z-index:1001; box-shadow:-8px 0 32px rgba(0,0,0,0.12);
+  transform:translateX(100%); transition:transform .22s ease; overflow-y:auto;
+  display:flex; flex-direction:column;
+}
+.subdoc-drawer.open { transform:translateX(0); }
+.subdoc-drawer.hidden { display:none; }
+.subdoc-drawer-head { position:relative; padding:24px 24px 16px; border-bottom:1px solid #E5E5E5; }
+.subdoc-drawer-title { font-size:17px; font-weight:700; color:#1F1147; margin:0 28px 4px 0; line-height:1.4; }
+.subdoc-drawer-sub { margin:0; }
+.subdoc-drawer-close { position:absolute; top:18px; right:18px; width:30px; height:30px; border:none; background:transparent; font-size:26px; line-height:1; color:#999; cursor:pointer; border-radius:8px; }
+.subdoc-drawer-close:hover { background:#FAFAFA; color:#1F1147; }
+.subdoc-drawer-body { padding:20px 24px; flex:1; }
+@media (max-width:560px) { .subdoc-drawer { width:100%; max-width:100%; } }
+
+.subdoc-card.clickable { cursor:pointer; transition:border-color .15s, box-shadow .15s; }
+.subdoc-card.clickable:hover { border-color:#6B46E5; box-shadow:0 2px 8px rgba(107,70,229,0.08); }

@@ -7144,3 +7144,29 @@ body.landing-fullscreen .nav-backdrop {
   .dashboard-intro-item-desc { font-size: 13.5px; }
   .dashboard-intro-cta-bar { padding: 16px 24px 24px; }
 }
+
+/* Spec D-Build-SubmissionGuide-1 — 제출서류 가이드 (정량서류 자동화 조각 5) */
+.subdoc-meta { background:#FAFAFA; border-radius:8px; padding:10px 12px; margin-bottom:4px; display:flex; flex-direction:column; gap:3px; }
+.subdoc-hint { background:#F5F0FF; border-radius:8px; padding:10px 12px; font-size:13px; color:#1F1147; line-height:1.6; }
+.subdoc-link { color:#6B46E5; font-weight:700; text-decoration:none; }
+.subdoc-link:hover { text-decoration:underline; }
+.subdoc-list { display:flex; flex-direction:column; gap:10px; }
+.subdoc-row { border:1px solid #E5E5E5; border-radius:10px; padding:12px 14px; }
+.subdoc-row-head { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+.subdoc-name-wrap { display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; }
+.subdoc-name { font-size:14px; font-weight:700; color:#1F1147; }
+.subdoc-attach { font-size:11px; color:#6B46E5; background:#F5F0FF; border-radius:5px; padding:2px 6px; }
+.subdoc-badges { display:flex; gap:4px; flex-shrink:0; }
+.subdoc-tag { font-size:11px; color:#666; background:#F2F2F2; border-radius:5px; padding:2px 8px; }
+.subdoc-tag-cond { color:#A06A00; background:#FFF3E0; }
+.subdoc-meta-line { margin-top:6px; }
+.subdoc-status { margin-top:8px; font-size:13px; padding:6px 10px; border-radius:7px; }
+.subdoc-status-ok { color:#1B7A43; background:#E8F5EC; }
+.subdoc-status-warn { color:#A05200; background:#FFF3E0; }
+.subdoc-status-info { color:#1F1147; background:#FAFAFA; }
+.subdoc-fill { margin-top:8px; background:#FAFAFA; border-radius:8px; padding:8px 10px; }
+.subdoc-fill-title { margin-bottom:4px; }
+.subdoc-fill-item { display:flex; gap:8px; padding:2px 0; font-size:13px; }
+.subdoc-fill-label { color:#666; min-width:96px; flex-shrink:0; }
+.subdoc-fill-value { color:#1F1147; font-weight:600; }
+.subdoc-fill-empty { color:#999; }

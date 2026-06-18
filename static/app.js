@@ -3651,6 +3651,210 @@ async function renderClientForm(mode, id = null) {
 }
 
 // ---------- Client Detail ----------
+// ─── Spec D-Build-SubmissionGuide-1 — 제출서류 가이드 (정량서류 자동화 조각 5) ───
+// 추출 API(조각 4) + 보관함(조각 3) + 회사정보(조각 1·2) 를 한 화면에서 합침.
+
+// 제출서류명 → 보관함 doc_type 동의어 사전 (보관함 9종 기준)
+const SUBDOC_SYNONYMS = {
+  "사업자등록증": ["사업자등록증", "사업자등록증명원", "사업자 등록증", "사업자등록증사본"],
+  "법인인감증명서": ["법인인감증명서", "인감증명서", "법인 인감증명서"],
+  "법인등기부등본": ["법인등기부등본", "등기부등본", "법인등기사항전부증명서", "등기사항전부증명서"],
+  "경쟁입찰참가등록증": ["경쟁입찰참가등록증", "입찰참가등록증", "경쟁입찰참가자격등록증"],
+  "중소기업확인서": ["중소기업확인서", "중소기업 확인서", "소기업확인서"],
+  "신용평가등급확인서": ["신용평가등급확인서", "신용평가확인서", "기업신용평가", "신용등급확인서"],
+  "국세·지방세 납세증명서": ["국세·지방세 납세증명서", "납세증명서", "국세납세증명서", "지방세납세증명서", "국세 및 지방세 납세증명서"],
+  "4대보험 완납증명서": ["4대보험 완납증명서", "4대보험완납증명서", "사회보험완납증명서", "4대 사회보험 완납증명서"],
+};
+
+function normalizeSubdoc(s) {
+  return (s || "").replace(/[\s·\-()]/g, "").toLowerCase();
+}
+function matchOwnedDocType(submissionName) {
+  const n = normalizeSubdoc(submissionName);
+  for (const [docType, syns] of Object.entries(SUBDOC_SYNONYMS)) {
+    if (syns.some(syn => {
+      const ns = normalizeSubdoc(syn);
+      return n.includes(ns) || ns.includes(n);
+    })) return docType;
+  }
+  return null;
+}
+
+// 기입형 fill_field 라벨 → 회사정보(our_company) 필드 매핑
+const SUBDOC_FILL_MAP = [
+  { keys: ["상호", "법인명", "회사명", "업체명"], field: "company_name", label: "상호" },
+  { keys: ["사업자등록번호", "사업자번호"], field: "biz_no", label: "사업자등록번호" },
+  { keys: ["법인등록번호"], field: "corp_no", label: "법인등록번호" },
+  { keys: ["대표자", "대표이사", "성명", "대표자명"], field: "ceo_name", label: "대표자명" },
+  { keys: ["생년월일"], field: "ceo_birth", label: "대표자 생년월일" },
+  { keys: ["주소", "소재지", "사업장"], field: "address", label: "주소" },
+  { keys: ["전화", "연락처", "대표전화"], field: "phone", label: "전화" },
+  { keys: ["팩스"], field: "fax", label: "팩스" },
+  { keys: ["이메일", "전자우편"], field: "email", label: "이메일" },
+  { keys: ["업태"], field: "biz_type", label: "업태" },
+  { keys: ["종목"], field: "biz_item", label: "종목" },
+];
+function mapFillField(fieldLabel, company) {
+  const n = normalizeSubdoc(fieldLabel);
+  for (const m of SUBDOC_FILL_MAP) {
+    if (m.keys.some(k => n.includes(normalizeSubdoc(k)))) {
+      const val = company ? (company[m.field] || "") : "";
+      return { label: m.label, value: val };
+    }
+  }
+  return { label: fieldLabel, value: "" };
+}
+
+async function renderSubmissionDocsSection(cid, client) {
+  if (!client || !client.has_rfp) return document.createDocumentFragment();
+
+  const [submission, companyDocsResp, companyResp] = await Promise.all([
+    api.get(`/api/clients/${cid}/submission-docs`).catch(() => ({ docs: null })),
+    api.get(`/api/me/company-docs`).catch(() => ({ docs: [] })),
+    api.get(`/api/me/company`).catch(() => ({ company: null })),
+  ]);
+
+  const ownedDocs = companyDocsResp?.docs || [];
+  const company = companyResp?.company || null;
+  const cached = submission?.docs;
+
+  const card = h("div", { class: "card" });
+  card.appendChild(h("div", { class: "card-head" }, [
+    h("div", { class: "card-title-row" }, [
+      h("div", { class: "card-title-icon" }, "📑"),
+      h("div", {}, [
+        h("h3", { class: "card-title" }, "제출서류 가이드"),
+        h("p", { class: "card-subtitle" }, "이 입찰에 필요한 서류와, 무엇을 어떻게 준비할지 알려드려요."),
+      ]),
+    ]),
+  ]));
+  const body = h("div", { class: "card-body row-gap-12" });
+  card.appendChild(body);
+
+  // ── 초기 상태: 추출 캐시 없음 → 분석 버튼
+  if (!cached || !Array.isArray(cached.docs) || cached.docs.length === 0) {
+    body.appendChild(h("p", { class: "muted small" },
+      "RFP를 분석해 제출해야 할 서류 목록을 정리해 드려요. 빠진 서류 없이 한눈에 확인할 수 있어요."));
+    body.appendChild(h("button", {
+      class: "btn btn-primary",
+      onclick: async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true; btn.textContent = "분석 중… (최대 1분)";
+        try {
+          await api.post(`/api/clients/${cid}/submission-docs/extract`, {}, { timeoutMs: 180000 });
+          renderClientDetail(cid);
+        } catch (err) {
+          toast(err.message || "분석에 실패했어요", "error");
+          btn.disabled = false; btn.textContent = "제출서류 분석하기";
+        }
+      },
+    }, "제출서류 분석하기"));
+    return card;
+  }
+
+  // ── 결과 상태: 메타 + 목록 + 매칭
+  const meta = cached;
+  if (meta.submission_method || meta.submission_deadline || meta.submission_place) {
+    const metaBox = h("div", { class: "subdoc-meta" });
+    if (meta.submission_method)   metaBox.appendChild(h("div", { class: "small" }, [h("span", { class: "muted" }, "제출 방식: "), document.createTextNode(meta.submission_method)]));
+    if (meta.submission_deadline) metaBox.appendChild(h("div", { class: "small" }, [h("span", { class: "muted" }, "마감: "), document.createTextNode(meta.submission_deadline)]));
+    if (meta.submission_place)    metaBox.appendChild(h("div", { class: "small" }, [h("span", { class: "muted" }, "제출처: "), document.createTextNode(meta.submission_place)]));
+    body.appendChild(metaBox);
+  }
+
+  // 회사정보/보관함 비었으면 안내 배너 (2상태 — 미끼)
+  const companyEmpty = !company || !company.company_name;
+  if (companyEmpty || ownedDocs.length === 0) {
+    body.appendChild(h("div", { class: "subdoc-hint" }, [
+      h("span", {}, "💡 "),
+      document.createTextNode("마이페이지에 회사 정보와 자주 쓰는 서류를 등록해두면, 각 서류에 넣을 값과 보유 여부까지 자동으로 채워드려요. "),
+      h("a", { href: "/account.html", class: "subdoc-link" }, "회사 정보 등록하기"),
+    ]));
+  }
+
+  // 서류 목록
+  const list = h("div", { class: "subdoc-list" });
+  cached.docs.forEach(d => list.appendChild(renderSubdocRow(d, ownedDocs, company)));
+  body.appendChild(list);
+
+  // 다시 분석 버튼
+  body.appendChild(h("button", {
+    class: "btn btn-outline btn-tiny",
+    onclick: async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true; btn.textContent = "다시 분석 중…";
+      try {
+        await api.post(`/api/clients/${cid}/submission-docs/extract`, {}, { timeoutMs: 180000 });
+        renderClientDetail(cid);
+      } catch (err) {
+        toast(err.message || "분석 실패", "error");
+        btn.disabled = false; btn.textContent = "다시 분석";
+      }
+    },
+  }, "다시 분석"));
+
+  return card;
+}
+
+function renderSubdocRow(d, ownedDocs, company) {
+  const row = h("div", { class: "subdoc-row" });
+
+  // 헤더: 이름 + 별지번호 + 타입/필수 뱃지
+  const head = h("div", { class: "subdoc-row-head" });
+  const titleWrap = h("div", { class: "subdoc-name-wrap" });
+  titleWrap.appendChild(h("span", { class: "subdoc-name" }, d.name || "(서류명 미상)"));
+  if (d.attachment_no) titleWrap.appendChild(h("span", { class: "subdoc-attach" }, d.attachment_no));
+  head.appendChild(titleWrap);
+
+  const badges = h("div", { class: "subdoc-badges" });
+  if (d.type) badges.appendChild(h("span", { class: "subdoc-tag" }, d.type));
+  if (d.required === "해당시") badges.appendChild(h("span", { class: "subdoc-tag subdoc-tag-cond" }, "해당시"));
+  head.appendChild(badges);
+  row.appendChild(head);
+
+  // 메타 줄 (부수·유효기간·비고)
+  const metaParts = [];
+  if (d.count) metaParts.push(d.count);
+  if (d.due) metaParts.push(d.due);
+  if (d.note) metaParts.push(d.note);
+  if (metaParts.length) row.appendChild(h("div", { class: "subdoc-meta-line small muted" }, metaParts.join(" · ")));
+
+  // 상태/안내 영역 — type별
+  if (d.type === "보유형") {
+    const matchedType = matchOwnedDocType(d.name);
+    const owned = matchedType ? ownedDocs.find(o => o.doc_type === matchedType) : null;
+    if (owned) {
+      row.appendChild(h("div", { class: "subdoc-status subdoc-status-ok" }, `✓ 보관함에 있어요 (${owned.filename})`));
+    } else {
+      const issuer = d.issuer ? ` · ${d.issuer}에서 발급` : "";
+      row.appendChild(h("div", { class: "subdoc-status subdoc-status-warn" }, `⚠ 준비 필요${issuer}`));
+    }
+  } else if (d.type === "기입형") {
+    const fields = Array.isArray(d.fill_fields) ? d.fill_fields : [];
+    if (fields.length) {
+      const fillBox = h("div", { class: "subdoc-fill" });
+      fillBox.appendChild(h("div", { class: "subdoc-fill-title small muted" }, "넣을 값"));
+      fields.forEach(f => {
+        const { label, value } = mapFillField(f, company);
+        const item = h("div", { class: "subdoc-fill-item" });
+        item.appendChild(h("span", { class: "subdoc-fill-label" }, label));
+        if (value) {
+          item.appendChild(h("span", { class: "subdoc-fill-value" }, value));
+        } else {
+          item.appendChild(h("span", { class: "subdoc-fill-empty" }, company ? "—" : "회사정보 등록 후 표시"));
+        }
+        fillBox.appendChild(item);
+      });
+      row.appendChild(fillBox);
+    }
+  } else if (d.type === "서약형") {
+    row.appendChild(h("div", { class: "subdoc-status subdoc-status-info" }, "회사명·날짜·서명을 넣어 제출하는 서약 서류예요."));
+  }
+
+  return row;
+}
+
+
 async function renderClientDetail(cid) {
   const root = $("#app-root");
   root.innerHTML = "";
@@ -3723,14 +3927,16 @@ async function renderClientDetail(cid) {
   //  📋 대화 기록
   // ── 대화 기억 (renderMemorySection / nuance_memories) 은 Spec 1 (5/16) 폐기 — Intel/RFP 가 커버
   // ── 과업 성향 (renderProfileSection / client_profiles) 은 Spec 2 (5/16) 폐기 — Intel/RFP 가 충분
-  const [rfpSec, qualSec, intelSec, historySec] = await Promise.all([
+  const [rfpSec, qualSec, intelSec, historySec, submissionSec] = await Promise.all([
     renderRfpSection(cid),
     renderQualificationsSection(cid),
     renderClientIntelSection(cid, client),
     renderConvHistorySection(cid),
+    renderSubmissionDocsSection(cid, client),   // Spec D-Build-SubmissionGuide-1
   ]);
   stack.appendChild(rfpSec);
   stack.appendChild(qualSec);
+  stack.appendChild(submissionSec);               // 자격 다음(발주처 앞)
   stack.appendChild(intelSec);
 
   // 4️⃣ — 핵심 CTA 묶음 (대화 시작 + PT 연습 + 자체 검증)

@@ -160,6 +160,10 @@
     .docs-item-btn:disabled { opacity: 0.6; cursor: default; }
     .field-filled { border-color: #6B46E5 !important; background: #F5F0FF !important; transition: background .3s, border-color .3s; }
   </style>
+  <!-- Spec Fix-AccountFont — style.css 의 @font-face 'Paperlogy' 9개 활성화 (SPA 폰트 일치).
+       account.html 자체 클래스는 모두 account-*/company-*/docs-* prefix 라 충돌 0.
+       인라인 <style> 이 cascade 마지막 → 기존 디자인 보존, 폰트만 정상 매핑. -->
+  <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
   <div class="account-page">

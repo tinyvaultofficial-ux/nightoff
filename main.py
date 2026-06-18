@@ -1511,6 +1511,27 @@ def _extract_text_from_resp(resp) -> str:
     return "".join(parts).strip()
 
 
+# Spec D-Build-CompanyDocs-2a — 확장자 → Claude content 블록 (PDF/이미지만).
+def _doc_to_claude_block(filename: str, data_b64: str):
+    """확장자 → Claude messages content 블록 (PDF/이미지만). 그 외 None."""
+    ext = filename.lower().rsplit(".", 1)[-1] if "." in (filename or "") else ""
+    if ext == "pdf":
+        return {
+            "type": "document",
+            "source": {"type": "base64", "media_type": "application/pdf", "data": data_b64},
+        }
+    media = {
+        "jpg": "image/jpeg", "jpeg": "image/jpeg",
+        "png": "image/png", "gif": "image/gif", "webp": "image/webp",
+    }.get(ext)
+    if not media:
+        return None
+    return {
+        "type": "image",
+        "source": {"type": "base64", "media_type": media, "data": data_b64},
+    }
+
+
 # ---------------------------------------------------------------------------
 # System prompts
 # ---------------------------------------------------------------------------
@@ -5200,6 +5221,78 @@ def api_company_docs_delete(doc_id: str, user: dict = Depends(get_current_user))
                 log.warning("R2 삭제 실패 (무시): %s", e)
         db.execute("DELETE FROM our_company_docs WHERE id=?", (doc_id,))
     return {"ok": True}
+
+
+# Spec D-Build-CompanyDocs-2a — 보관 서류 OCR 회사정보 추출 (Haiku, JSON 반환).
+# 저장 X — 프론트가 폼에 채우고 고객 확인 후 기존 PUT /api/me/company 로 저장.
+@app.post("/api/me/company-docs/{doc_id}/extract")
+def api_company_docs_extract(doc_id: str, user: dict = Depends(get_current_user)):
+    # 1. DB 조회 (ownership)
+    with get_db() as db:
+        row = db.execute(
+            "SELECT filename, r2_key FROM our_company_docs WHERE id=? AND user_id=?",
+            (doc_id, user["id"]),
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "서류를 찾을 수 없습니다.")
+
+    # 2. R2 다운로드 → base64
+    import r2_storage, base64
+    buf = r2_storage.download_to_buffer(row["r2_key"])
+    if buf is None:
+        raise HTTPException(404, "파일을 찾지 못했어요.")
+    data_b64 = base64.b64encode(buf.read()).decode("ascii")
+
+    # 3. 확장자 → Claude 블록 (PDF/이미지만)
+    block = _doc_to_claude_block(row["filename"], data_b64)
+    if block is None:
+        raise HTTPException(400, "이미지(JPG·PNG)나 PDF만 정보를 읽을 수 있어요.")
+
+    # 4. Claude 호출 (Haiku, 직접) — JSON만 추출
+    client = require_client()
+    instruction = (
+        "첨부된 서류는 한국 사업자등록증 등 회사 증빙 서류다. "
+        "여기서 회사 정보를 추출해 아래 형식의 JSON으로만 답하라. "
+        "찾을 수 없는 값은 빈 문자열로 둔다. 설명·코드펜스 없이 JSON만 출력하라.\n"
+        '{"company_name":"","biz_no":"","corp_no":"","ceo_name":"",'
+        '"address":"","biz_type":"","biz_item":"","founded_year":""}\n'
+        "- company_name: 상호(법인명)\n"
+        "- biz_no: 사업자등록번호 (000-00-00000 형식 그대로)\n"
+        "- corp_no: 법인등록번호 (있으면)\n"
+        "- ceo_name: 대표자명\n"
+        "- address: 사업장 주소\n"
+        "- biz_type: 업태\n"
+        "- biz_item: 종목\n"
+        "- founded_year: 개업연월일의 연도 4자리 (있으면)"
+    )
+    try:
+        resp = client.messages.create(
+            model=MODEL_FAST,                    # Haiku
+            max_tokens=2000,
+            messages=[{
+                "role": "user",
+                "content": [block, {"type": "text", "text": instruction}],
+            }],
+        )
+        raw = _extract_text_from_resp(resp)
+        if not raw:
+            raise ValueError("AI가 빈 응답을 반환했어요.")
+        raw = re.sub(r"^```(?:json)?\s*", "", raw)
+        raw = re.sub(r"\s*```$", "", raw)
+        data = json.loads(raw)
+    except anthropic.APIError as e:
+        log.warning("회사정보 추출 Anthropic 오류 (%s): %s", doc_id, e)
+        raise HTTPException(502, "서류를 읽는 데 실패했어요. 잠시 후 다시 시도해 주세요.")
+    except (json.JSONDecodeError, ValueError) as e:
+        log.warning("회사정보 추출 파싱 실패 (%s): %s", doc_id, e)
+        raise HTTPException(502, "서류 내용을 이해하지 못했어요. 다시 시도하거나 직접 입력해 주세요.")
+
+    # 5. 추출 데이터만 반환 (저장 X — 프론트가 폼에 채우고 고객 확인 후 PUT)
+    if not isinstance(data, dict):
+        raise HTTPException(502, "서류 내용을 이해하지 못했어요.")
+    allowed = {"company_name", "biz_no", "corp_no", "ceo_name", "address", "biz_type", "biz_item", "founded_year"}
+    extracted = {k: (str(data.get(k, "")).strip()) for k in allowed}
+    return {"ok": True, "extracted": extracted}
 
 
 @app.get("/api/me/chat-intro-status")

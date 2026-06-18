@@ -3927,6 +3927,65 @@ async function renderSubmissionDocsSection(cid, client) {
   card.appendChild(drawerBackdrop);
   card.appendChild(drawer);
 
+  // ── 보유 증빙 묶음 다운로드 버튼 (Spec E-Build-CompanyDocsZip-Frontend, 2단계)
+  //  화면에서 "✓ 보유"로 매칭된 보관함 doc_id 를 모아 POST /api/me/company-docs/zip
+  //  → zip 스트리밍 받아 a.download 트리거. owned 0 개면 버튼 자체 숨김.
+  const ownedMatches = [];
+  cached.docs.forEach(d => {
+    if (d.type !== "보유형") return;
+    const t = matchOwnedDocType(d.name);
+    const owned = t ? ownedDocs.find(o => o.doc_type === t) : null;
+    if (owned) ownedMatches.push(owned);
+  });
+  const uniqueOwnedIds = [...new Set(ownedMatches.map(o => o.id))];
+  if (uniqueOwnedIds.length > 0) {
+    const zipBtnLabel = `📥 보유 증빙 ${uniqueOwnedIds.length}개 묶음 다운로드`;
+    const zipBtn = h("button", {
+      class: "btn btn-primary",
+      style: "margin-bottom:16px; align-self:flex-start;",
+    }, zipBtnLabel);
+    zipBtn.addEventListener("click", async () => {
+      zipBtn.disabled = true;
+      zipBtn.textContent = "묶는 중…";
+      try {
+        // _call(api.post) 은 blob 응답 미지원(JSON/text 만) → fetch 직접 호출 + getToken()
+        const tok = getToken();
+        const resp = await fetch("/api/me/company-docs/zip", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${tok}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            doc_ids: uniqueOwnedIds,
+            zip_name: `${(client && client.name) ? client.name : "제출"}_증빙`,
+          }),
+        });
+        if (!resp.ok) {
+          let msg = "다운로드에 실패했어요";
+          try { const j = await resp.json(); if (j && j.detail) msg = String(j.detail); } catch (e) {}
+          throw new Error(msg);
+        }
+        const blob = await resp.blob();
+        const cd = resp.headers.get("Content-Disposition") || "";
+        let fname = "제출증빙.zip";
+        const m = cd.match(/filename\*=UTF-8''([^;]+)/);
+        if (m) { try { fname = decodeURIComponent(m[1]); } catch (e) {} }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = fname;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        toast(e.message || "다운로드에 실패했어요", "error");
+      } finally {
+        zipBtn.disabled = false;
+        zipBtn.textContent = zipBtnLabel;
+      }
+    });
+    body.appendChild(zipBtn);
+  }
+
   // ── 그룹별 분류 (category 없거나 GROUP_ORDER 에 없는 값은 "기타" 로 fallback)
   const grouped = {};
   cached.docs.forEach(d => {

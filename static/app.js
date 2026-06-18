@@ -3699,10 +3699,10 @@ function mapFillField(fieldLabel, company) {
   for (const m of SUBDOC_FILL_MAP) {
     if (m.keys.some(k => n.includes(normalizeSubdoc(k)))) {
       const val = company ? (company[m.field] || "") : "";
-      return { label: m.label, value: val };
+      return { label: m.label, value: val, field: m.field };
     }
   }
-  return { label: fieldLabel, value: "" };
+  return { label: fieldLabel, value: "", field: null };  // 매핑 안 된 항목
 }
 
 async function renderSubmissionDocsSection(cid, client) {
@@ -3838,8 +3838,14 @@ function renderSubdocRow(d, ownedDocs, company) {
     if (fields.length) {
       const fillBox = h("div", { class: "subdoc-fill" });
       fillBox.appendChild(h("div", { class: "subdoc-fill-title small muted" }, "넣을 값"));
+      // Spec D-Fix-SubmissionGuide-FillDedup — 동의어 keys 가 같은 회사정보 field 로 collapse 되면 중복 표시 발생.
+      // 매핑된 field(회사정보 컬럼) 또는 정규화된 raw label 기준으로 Set dedup.
+      const seen = new Set();
       fields.forEach(f => {
-        const { label, value } = mapFillField(f, company);
+        const { label, value, field } = mapFillField(f, company);
+        const key = field || ("raw:" + normalizeSubdoc(label));
+        if (seen.has(key)) return;
+        seen.add(key);
         const item = h("div", { class: "subdoc-fill-item" });
         item.appendChild(h("span", { class: "subdoc-fill-label" }, label));
         if (value) {

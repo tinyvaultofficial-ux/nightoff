@@ -7966,15 +7966,39 @@ def _proposal_to_audit_text(proposal: dict) -> str:
         === p2 목차 ===
         ...
     """
-    lines = [f"제목: {proposal.get('title', '')}"]
-    for s in proposal.get("slides", []):
+    # Spec Fix-AuditDefensive — 비정상 구조(slide/shapes/text 가 dict/list/숫자/None 등)도 안전 처리.
+    # 출력 형식("제목:" / "=== p{page} {section} ===" / 본문 라인) 은 기존 그대로 보존.
+    if not isinstance(proposal, dict):
+        return ""
+    title = proposal.get("title", "")
+    title_s = title if isinstance(title, str) else str(title)
+    lines = [f"제목: {title_s}"]
+    slides = proposal.get("slides")
+    if not isinstance(slides, list):
+        return "\n".join(lines)
+    for s in slides:
+        if not isinstance(s, dict):
+            continue
         page = s.get("page", "?")
         section = s.get("section", "")
-        lines.append(f"\n=== p{page} {section} ===")
-        for sh in s.get("shapes", []):
-            text = (sh.get("text") or "").strip()
-            if text:
-                lines.append(text)
+        section_s = section if isinstance(section, str) else str(section)
+        lines.append(f"\n=== p{page} {section_s} ===")
+        shapes = s.get("shapes")
+        if not isinstance(shapes, list):
+            continue
+        for sh in shapes:
+            if not isinstance(sh, dict):
+                continue
+            text = sh.get("text")
+            if isinstance(text, str):
+                t = text.strip()
+            elif text is None:
+                t = ""
+            else:
+                # list/dict/숫자 등 — 깨진 데이터라도 audit 진행되게 문자열화.
+                t = str(text).strip()
+            if t:
+                lines.append(t)
     return "\n".join(lines)
 
 
@@ -8018,16 +8042,19 @@ def api_proposals_audit(body: AuditIn, user: dict = Depends(get_current_user)):
     # 3. 프롬프트 만들기 — Spec D-Fix-16: truncation 확장 + 제안서는 텍스트로 압축
     # 기존 [:12000] 영역 30 페이지 제안서 (~250KB) 중 1-2 페이지만 전달 버그 fix.
     # 좌표/사이즈/색상 제거 + 60K 안전망 → Sonnet 4.5 context (200K) 적정 활용.
-    rfp_text = json.dumps(rfp_json, ensure_ascii=False)[:20000]
-    proposal_text = _proposal_to_audit_text(proposal)[:60000]
-    prompt = (
-        PROPOSAL_AUDIT_PROMPT
-        .replace("{RFP_TEXT}", rfp_text)
-        .replace("{PROPOSAL_JSON}", proposal_text)
-    )
-
-    # 4. Claude 호출
+    # Spec Fix-AuditDefensive — 프롬프트 구성 + Claude 호출 전체를 try 안으로.
+    # _proposal_to_audit_text 자체가 비정상 구조에 안전하나, 그 외 깜빡 못한 예외도 명시 detail 로.
+    raw = ""
     try:
+        rfp_text = json.dumps(rfp_json, ensure_ascii=False)[:20000]
+        proposal_text = _proposal_to_audit_text(proposal)[:60000]
+        prompt = (
+            PROPOSAL_AUDIT_PROMPT
+            .replace("{RFP_TEXT}", rfp_text)
+            .replace("{PROPOSAL_JSON}", proposal_text)
+        )
+
+        # 4. Claude 호출
         client = require_client()
         resp = client.messages.create(
             model=get_setting("model", MODEL_DEFAULT),
@@ -8045,11 +8072,16 @@ def api_proposals_audit(body: AuditIn, user: dict = Depends(get_current_user)):
         if not json_match:
             raise HTTPException(502, "AI 응답에서 JSON 을 찾지 못했어요.")
         result = json.loads(json_match.group(0))
+    except HTTPException:
+        raise  # 명시 502/400/404 detail 보존
     except anthropic.APIError as e:
         raise HTTPException(502, translate_anthropic_error(e))
     except json.JSONDecodeError as e:
         log.warning("audit JSON 파싱 실패: %s · 원본: %s", e, raw[:300])
         raise HTTPException(502, "검증 결과를 이해하지 못했어요. 다시 시도해 주세요.")
+    except Exception as e:
+        log.warning("audit 처리 중 예외: %s: %s", type(e).__name__, e)
+        raise HTTPException(500, "제안서 검증 중 문제가 발생했어요. 잠시 후 다시 시도해 주세요")
 
     # 5. 결과 검증 (필수 필드 체크)
     if not isinstance(result, dict):

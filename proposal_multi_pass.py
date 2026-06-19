@@ -1345,6 +1345,21 @@ outline 단계에서 자동 삽입된 placeholder 슬라이드는 이 형식으�
 - 도형 수: 5~10 개. 빈 공간 풍부.
 - 매칭 UI / 클릭 hook 없음 (베타 출시 후 검토).
 
+[사용자 placeholder 슬라이드 가이드 — 산출내역 / 소요예산 명세 (Spec Preset-Fix-BudgetPlaceholder)]
+산출내역(분야별 사업비 배분·단가·소요예산 명세)은 회사·입찰가마다 다른 사용자(PM) 영역이다.
+NightOff 는 금액·항목을 지어내지 않는다. RFP 목차가 산출내역을 요구하면 그 슬라이드는
+다음 placeholder 형식으로 (디자이너 placeholder 패턴과 동일):
+- 흑백 박스 (가로 8~10 인치 × 세로 4~5 인치, 슬라이드 중앙)
+- 박스 안 자리 텍스트 (Paperlogy 6SemiBold, 28~36pt): "[산출내역 작성 자리]"
+- 박스 밑 메타 (Paperlogy 3Light, 11~13pt #999): "귀사 견적·소요예산 입력 영역"
+- 도형 수: 5~10 개. 빈 공간 풍부.
+★ 금지: 분야별 배분 항목 (기획/무대/홍보/안전/관리비 등) 을 지어내 나열하거나,
+   금액을 임의로 채우거나 "OOO원" / "—" / "협의 후 결정" 으로 비워 어정쩡하게 두는 것.
+   통째 placeholder 한 장으로 깔끔하게.
+★ RFP 가 산출내역을 목차에 요구하지 않으면 — 이 슬라이드를 만들지 마라 (억지 생성 X).
+★ 큰 총액 (quantitative_locks.budget_amount) 은 표지 부속·개요 등 다른 자리에서
+   RFP 사실로 그대로 인용 가능 — 본 가이드는 "산출내역 슬라이드" 한 장만 placeholder 화.
+
 [거버닝 메시지 원칙 — outline 단계에서 분리 결정, SLIDE pass 는 그대로 사용]
 ★ 모든 본문 페이지에 적용. 일부 페이지만 분리 X — 모든 페이지 강제.
 ★ outline 단계에서 메인 / 서브 결정 → user prompt 안 [메인 거버닝] / [서브 거버닝] 으로 inject.
@@ -1445,6 +1460,14 @@ outline 단계에서 자동 삽입된 placeholder 슬라이드는 이 형식으�
 - 시각화: 보고 단계 / 평가 항목표 / 개선 계획 flow
 - 분량: 3~5줄
 - JSON: flow steps / evaluation table rows / action items + timeline
+
+Ⅴ.8 산출내역 / 소요예산  (RFP 목차 요구 시에만, Spec Preset-Fix-BudgetPlaceholder)
+- 본질: 회사가 견적·원가를 직접 작성할 영역 → placeholder 처리
+  (위 [사용자 placeholder 슬라이드 가이드 — 산출내역 / 소요예산 명세] 참조)
+- 총액이 RFP 에 명시돼 있어도, 분야별 배분·단가는 사용자 몫 → 통째 placeholder 1 장
+- 시각화: 흑백 박스 1개 + 자리 텍스트 + 메타 (분야별 항목 나열·임의 금액 절대 X)
+- 분량: 박스 1 + 텍스트 2~3 (placeholder 정체성 — 빈 공간 풍부)
+- ★ RFP 가 산출내역을 목차에 요구하지 않으면 생성하지 않음 (Ⅴ 압축 원칙 정합)
 
 [★ 절대 원칙 — Ⅴ 부문 적용]
 각 Ⅴ 항목을 다룰 때는 위 "본질 + 시각화 패턴 + 분량" 가이드를 따르되,

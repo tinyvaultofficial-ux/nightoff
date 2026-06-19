@@ -3095,6 +3095,87 @@ def _build_preset_circles(slide_data):
     return shapes
 
 
+# ─── Spec Preset-New-Triad — triad (좌 거버닝 + 우 원 3 + 실선 + 하단 라벨/설명) ──
+# 비대칭 입체 골격. 좌측 거버닝 (governing_block 패턴 — eyebrow + title + subtitle, w 축소)
+# + 우측 원(이미지 placeholder) 3개 + 각 원 → 라벨 실선 연결 + 하단 라벨/설명 2단.
+# 입력 스키마:
+#   slide_data["eyebrow"]    = "좌상단 메타 라벨"        (선택)
+#   slide_data["title"]      = "좌측 거버닝 메시지"      (필수)
+#   slide_data["title_runs"] = 형광 segment list        (선택, accent 1곳)
+#   slide_data["subtitle"]   = "서브 거버닝"            (선택)
+#   slide_data["items"]      = [{"label","desc"}, ...]  (3 cap — 원 안 placeholder 이므로 value 키 없음)
+# 안전망 (엄격): items list 아님 / 모든 item.label·desc 누락 → 빈 리스트 반환 (preset 미성립 → LLM 백업).
+# 색 정합 (운영 흑백 6색 — DARK_MAP 자연 매핑):
+#   거버닝 #1A1A1A / #444444 / #BBBBBB / 원 placeholder #ECECEC fill + #CCCCCC stroke
+#   (_add_image_placeholder L1808 정합) / 실선 #DDDDDD / 라벨 #1A1A1A / desc #555555.
+# theme 인자 안 받음 — circles 정합 (_add_* helper 내부 _map_color 자동 변환에 위임).
+# ★ 1 단계: 코드 + dispatch 만 등록 — viz_pattern 화이트리스트 미연결 (다음 spec 으로 켤 것).
+def _build_preset_triad(slide_data):
+    eyebrow  = str(slide_data.get("eyebrow", "")).strip()
+    title    = str(slide_data.get("title", "")).strip()
+    subtitle = str(slide_data.get("subtitle", "")).strip()
+    items_raw = slide_data.get("items") or []
+    if not isinstance(items_raw, list):
+        return []
+    items = []
+    for it in items_raw:
+        if not isinstance(it, dict):
+            continue
+        items.append({
+            "label": str(it.get("label", it.get("head", ""))).strip(),
+            "desc":  str(it.get("desc", "")).strip(),
+        })
+    items = items[:3]
+    if not items or not any(it["label"] or it["desc"] for it in items):
+        return []
+    W, H = 11.69, 8.27
+    shapes = []
+
+    # ── ① 좌측 거버닝 영역 (x 0.5 ~ 4.8) — governing_block 패턴, w 축소
+    gov_w = 4.3
+    if eyebrow:
+        shapes.append({"type":"text","x":0.5,"y":0.5,"w":gov_w,"h":0.4,
+                       "text":eyebrow,"size":11,"weight":400,"color":"#BBBBBB","align":"left","valign":"top"})
+    if title:
+        t = {"type":"text","x":0.5,"y":2.2,"w":gov_w,"h":3.0,
+             "text":title,"size":28,"weight":800,"color":"#1A1A1A","align":"left","valign":"top"}
+        tr = slide_data.get("title_runs")
+        if isinstance(tr, list) and tr:
+            t["text_runs"] = tr
+        shapes.append(t)
+    if subtitle:
+        shapes.append({"type":"text","x":0.5,"y":5.0,"w":gov_w,"h":1.0,
+                       "text":subtitle,"size":14,"weight":500,"color":"#444444","align":"left","valign":"top"})
+
+    # ── ② 우측 3요소 영역 (x 5.3 ~ 11.2) — 셀 균등 분배, 셀당 원+선+라벨+desc 수직 스택
+    area_x0, area_x1 = 5.3, 11.2
+    n = len(items)
+    cell_w = (area_x1 - area_x0) / n
+    circle_d = 1.5
+    cy = 3.1                       # 원 top
+    cy_center = cy + circle_d / 2
+    label_y = 5.4
+    for i, it in enumerate(items):
+        cell_x = area_x0 + cell_w * i
+        cx = cell_x + cell_w / 2   # 셀 가로 중앙
+        # 원 (이미지 placeholder — _add_image_placeholder 색 정합: 회색 fill + stroke + 안내문)
+        shapes.append({"type":"circle","x":cx - circle_d / 2,"y":cy,"w":circle_d,"h":circle_d,
+                       "fill":"#ECECEC","stroke":"#CCCCCC","stroke_width":0.75})
+        shapes.append({"type":"text","x":cx - circle_d / 2,"y":cy_center - 0.2,"w":circle_d,"h":0.4,
+                       "text":"이미지","size":11,"weight":400,"color":"#888888","align":"center","valign":"middle"})
+        # 실선 연결 (원 하단 → 라벨 위) — 점선 인프라 없음, 1단계는 실선 (zigzag L2961 / hero_cards L3197 정합)
+        shapes.append({"type":"line","x1":cx,"y1":cy + circle_d,"x2":cx,"y2":label_y - 0.1,
+                       "color":"#DDDDDD","width":1})
+        # 하단 라벨 (size 14 / 700 / #1A1A1A) + desc (size 12 / 400 / #555555) — 2단 (circles 정합)
+        if it["label"]:
+            shapes.append({"type":"text","x":cell_x,"y":label_y,"w":cell_w,"h":0.5,
+                           "text":it["label"],"size":14,"weight":700,"color":"#1A1A1A","align":"center","valign":"top"})
+        if it["desc"]:
+            shapes.append({"type":"text","x":cell_x,"y":label_y + 0.55,"w":cell_w,"h":1.5,
+                           "text":it["desc"],"size":12,"weight":400,"color":"#555555","align":"center","valign":"top"})
+    return shapes
+
+
 # ─── Spec D-Build-PresetHeroCards — hero_cards (상단 거버닝 히어로 + 카드 N개) ────
 # 상단 검정 밴드(거버닝 중앙정렬, title_runs 노랑 호환) + 거버닝 아래 ↓ 화살표 +
 # 하단 흰 영역에 카드 N개(2~4, 5+ cap) 가로 배치.
@@ -4212,6 +4293,18 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
             # circles 와 동일 패턴 — 성공 시 preset 만, 실패/예외 시 LLM 백업.
             try:
                 preset_shapes = _build_preset_hero_cards(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "triad":
+            # Spec Preset-New-Triad — 좌 거버닝 + 우 원 3 + 실선 + 하단 라벨/설명 (비대칭 입체).
+            # ★ 본 spec 단계: 코드 + dispatch 만 등록 + viz_pattern 화이트리스트 미연결.
+            # circles/hero_cards 와 동일 패턴 — 성공 시 preset 만, 실패/예외 시 LLM 백업.
+            try:
+                preset_shapes = _build_preset_triad(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

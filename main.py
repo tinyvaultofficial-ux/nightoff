@@ -6980,21 +6980,32 @@ RESEARCH_PROMPT = """당신은 공공 제안서 작성을 돕는 리서처다. �
 1. 이 과업의 핵심 소재·주제에 관한 사실 (인물·테마·지역 특성 등 — RFP 에서 핵심 소재를 스스로 파악해 검색)
 2. 지난 회차/유사 사업의 실제 현황 (작년에 어땠는지 — 규모·구성·평가, 검색으로 확인되는 것만)
 3. 발주처·지역의 관련 정책·맥락 (검색으로 확인되는 공개 사실)
+4. 이 과업의 차별화에 도움 될 "발상 재료" (사실이 아니라 영감용 · Spec A2-Build-ResearchInspiration)
+{DOMAIN_RESEARCH_HINT}
+   - 유사 분야 국내 행사·사업의 실제 사례 (구체 명칭·운영 방식 — 검색으로 확인되는 것)
+   - 이 과업 핵심 소재의 콘텐츠화 가능한 면모·일화
+   - 유사 규모/공간/대상 행사의 성공적 운영 방식
+   ※ "이색" 보다 "핏" 이 우선 — 억지로 동떨어진 사례 가져오지 마라.
+   ※ 이건 사실이 아니라 발상 단서다. 출처가 불명확해도 "참고 사례" 로 둘 수 있으나,
+     특정 수치·성과를 사실처럼 단정하지는 마라.
 
 [★ 절대 원칙]
 - web_search 로 실제 확인된 사실만 적어라. 검색에 안 나오면 그 항목은 비워라 (추측 금지).
 - 출처가 불확실하면 적지 마라. "아마 ~일 것이다" 는 금지.
 - 수치는 검색으로 확인된 것만, 출처와 함께. 확인 안 되면 비워라.
+- inspiration(발상 재료) 은 "사실" 이 아니라 "영감" 이다. 제안서가 이걸 사실로
+  단정 인용하지 않도록, '참고 사례' 임이 드러나게 적어라. 성과 수치 단정 금지.
 
 [출력 — JSON 만, 다른 말 없이]
 {
   "subject_facts": ["확인된 사실 (각 50자 이내)"],
   "past_editions": ["지난 회차/유사 사업 현황 (각 50자 이내)"],
   "context": ["발주처·지역 관련 맥락 (각 50자 이내)"],
+  "inspiration": ["발상 단서 (각 60자 이내, '○○ 사례: 이런 방식' 식으로 참고 사례임이 드러나게)"],
   "summary": "리서치 요약 (3문장 이내)",
   "sources": ["참고한 출처 URL 이나 출처명"]
 }
-subject_facts 최대 8개 / past_editions 최대 6개 / context 최대 5개.
+subject_facts 최대 8개 / past_editions 최대 6개 / context 최대 5개 / inspiration 최대 6개.
 검색 결과가 거의 없으면 빈 배열로 두고 summary 에 "충분한 공개 정보를 찾지 못함" 이라 적어라.
 JSON 만 출력, 다른 설명 없음.
 
@@ -7037,7 +7048,11 @@ def _run_proposal_research(cid: str) -> dict:
               .replace("{ORGANIZATION}", organization)
               .replace("{DOMAIN_LABEL}", domain_label)
               .replace("{TARGET_AUDIENCE}", target_audience)
-              .replace("{SUMMARY}", summary[:1500]))  # summary 길면 자름
+              .replace("{SUMMARY}", summary[:1500])  # summary 길면 자름
+              # Spec A2-Build-ResearchInspiration — 분야별 발상 가이드 자리.
+              # A-2 는 일반 가이드. A-3 에서 _format_domain_research_hint(domain) 호출로 교체 예정.
+              .replace("{DOMAIN_RESEARCH_HINT}",
+                       "   (이 분야 특성에 맞는 발상 재료를 폭넓게 — 단 핏 우선)"))
 
     log.info("과업 리서치 시작 · project=%r · org=%r · domain=%r",
              project_title[:40], organization[:40], domain_label[:20])
@@ -7115,6 +7130,7 @@ def _run_proposal_research(cid: str) -> dict:
             research.get("subject_facts")
             or research.get("past_editions")
             or research.get("context")
+            or research.get("inspiration")   # Spec A2-Build-ResearchInspiration — 영감만 모이고 사실 비어도 통과
             or (research.get("summary") or "").strip()
         )
         if not has_any:

@@ -2497,15 +2497,26 @@ def _narrative_declaration(slide_data: dict) -> list:
         "size": 44, "weight": 700, "color": "#1A1A1A",
         "align": "center", "valign": "middle",
     })
-    # 근거 (선택 / 최대 3개) — "— " 접두 / 0.68 간격
-    y = 4.7
+    # 근거 (선택 / 최대 3개) — Spec Preset-Fix-Declaration A안:
+    #   옅은 테두리 박스 + 왼쪽 정렬 + em-dash 접두 제거 (박스가 구분 역할 대체).
+    #   box_h 0.75 (16pt 2줄 + 여유 0.24") / gap 0.9 (박스 사이 0.15" 여백) / y 4.6 시작.
+    #   3 박스 끝 = 4.6 + 2*0.9 + 0.75 = 7.15 → 하단(8.27) 여유 1.12".
+    y = 4.6
+    box_h = 0.75
+    gap = 0.9
     for i, g in enumerate(grounds):
+        gy = y + i * gap
+        # 옅은 테두리 박스 — 근거 구분
         shapes.append({
-            "type": "text",
-            "x": 1.2, "y": y + i * 0.68, "w": 9.29, "h": 0.6,
-            "text": "— " + g,
+            "type": "rect", "x": 1.2, "y": gy, "w": 9.29, "h": box_h,
+            "fill": "none", "stroke": "#DDDDDD", "stroke_width": 1,
+        })
+        # 근거 텍스트 — 왼쪽 정렬 + 박스 안 패딩(좌 0.25")
+        shapes.append({
+            "type": "text", "x": 1.45, "y": gy, "w": 8.79, "h": box_h,
+            "text": g,
             "size": 16, "weight": 400, "color": "#555555",
-            "align": "center", "valign": "middle",
+            "align": "left", "valign": "middle",
         })
     return shapes
 

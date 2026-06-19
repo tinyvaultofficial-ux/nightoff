@@ -382,6 +382,15 @@ def init_db() -> None:
                 FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
             );
 
+            -- 과업 리서치 — RFP 업로드 시 web_search 로 모은 "검증된 외부 사실"
+            -- (Spec A1-Build-ResearchPipeline). client_intel 패턴 그대로.
+            CREATE TABLE IF NOT EXISTS proposal_research (
+                client_id     TEXT PRIMARY KEY,
+                research_json TEXT DEFAULT '{}',
+                updated_at    TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+            );
+
             -- 베타 초대 코드 (admin 발급, 사용자 register 시 검증 후 사용 처리)
             CREATE TABLE IF NOT EXISTS invite_codes (
                 code        TEXT PRIMARY KEY,
@@ -3954,6 +3963,22 @@ async def api_proposals_generate_multipass(
     except Exception:
         intel_block = ""
 
+    # Spec A1-Build-ResearchPipeline — 과업 리서치 블록 (intel_block 패턴)
+    # extra_block 슬롯에 주입. error 만 있거나 비면 "" 로 두고 기존 동작 유지.
+    research_block = ""
+    try:
+        with get_db() as db:
+            research_row = db.execute(
+                "SELECT research_json FROM proposal_research WHERE client_id=?",
+                (client_id,),
+            ).fetchone()
+        if research_row:
+            research_obj = json.loads(research_row["research_json"] or "{}")
+            if research_obj and not research_obj.get("error"):
+                research_block = "[과업 리서치]\n" + json.dumps(research_obj, ensure_ascii=False, indent=2)
+    except Exception:
+        research_block = ""
+
     # 대화 히스토리 블록 — outline pass 영역 inject (NightOff 서비스 본질 영역).
     # ⚠ 영역 호출 시점 — "✨ 제안서 생성 시작" user 메시지 INSERT 영역 영역 호출 →
     #    helper 영역 영역 영역 메시지 영역 영역 (content 매칭). 정합 확인됨.
@@ -3996,7 +4021,7 @@ async def api_proposals_generate_multipass(
                 rag_for_slide=_rag_for_slide,
                 intel_block=intel_block,
                 conversation_block=conversation_block,
-                extra_block="",
+                extra_block=research_block,   # Spec A1-Build-ResearchPipeline — [과업 리서치] 주입 (빈 문자열이면 기존과 동일)
                 concurrency=5,
                 model=model,
                 pages_override=pages_override,   # Step 2 — 사용자가 모달에서 선택한 페이지 수
@@ -4511,7 +4536,14 @@ async def api_rfp_upload_single(
     except Exception as e:
         log.warning("발주처 정보 자동 수집 실패: %s", e)
         intel = {"error": str(e)[:200]}
-    return {"ok": True, "file": info, "analysis": analysis, "intel": intel}
+    # 갈래 3: 과업 리서치 자동 수집 (Spec A1-Build-ResearchPipeline · 실패해도 분석은 유지)
+    research = {}
+    try:
+        research = _run_proposal_research(cid)
+    except Exception as e:
+        log.warning("과업 리서치 자동 수집 실패: %s", e)
+        research = {"error": str(e)[:200]}
+    return {"ok": True, "file": info, "analysis": analysis, "intel": intel, "research": research}
 
 
 @app.post("/api/clients/{cid}/rfp/upload")
@@ -4553,7 +4585,14 @@ async def api_rfp_upload_multi(
     except Exception as e:
         log.warning("발주처 정보 자동 수집 실패: %s", e)
         intel = {"error": str(e)[:200]}
-    return {"ok": True, "files": saved, "analysis": analysis, "intel": intel}
+    # 갈래 3: 과업 리서치 자동 수집 (Spec A1-Build-ResearchPipeline · 실패해도 분석은 유지)
+    research = {}
+    try:
+        research = _run_proposal_research(cid)
+    except Exception as e:
+        log.warning("과업 리서치 자동 수집 실패: %s", e)
+        research = {"error": str(e)[:200]}
+    return {"ok": True, "files": saved, "analysis": analysis, "intel": intel, "research": research}
 
 
 @app.get("/api/clients/{cid}/rfp")
@@ -4602,7 +4641,14 @@ def api_rfp_update_role(cid: str, fid: str, body: RfpRoleUpdate, user: dict = De
     except Exception as e:
         log.warning("발주처 정보 자동 수집 실패 (PATCH): %s", e)
         intel = {"error": str(e)[:200]}
-    return {"ok": True, "analysis": analysis, "intel": intel}
+    # 갈래 3: 과업 리서치 갱신 (Spec A1-Build-ResearchPipeline · PATCH role 변경 후)
+    research = {}
+    try:
+        research = _run_proposal_research(cid)
+    except Exception as e:
+        log.warning("과업 리서치 자동 수집 실패 (PATCH): %s", e)
+        research = {"error": str(e)[:200]}
+    return {"ok": True, "analysis": analysis, "intel": intel, "research": research}
 
 
 @app.delete("/api/clients/{cid}/rfp/files/{fid}")
@@ -6911,6 +6957,206 @@ def api_client_intel_get(cid: str, user: dict = Depends(get_current_user)):
     except Exception:
         intel = {}
     return {"intel": intel, "updated_at": row["updated_at"]}
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Spec A1-Build-ResearchPipeline — 과업 리서치 (검증된 외부 사실 수집)
+# _run_client_intel 패턴 복제. 차이: 검색 키가 organization 1개가 아니라
+# RFP 분석 전체를 주고 LLM 이 web_search 를 자율 호출 → JSON 수집.
+# B 가드(Spec B-Build-QualitativeHallucinationGuard)의 [과업 리서치] 블록을
+# 실제로 채운다. 실패해도 생성은 RFP 만으로 정상 진행 (intel 패턴 동일).
+# ─────────────────────────────────────────────────────────────────────
+RESEARCH_PROMPT = """당신은 공공 제안서 작성을 돕는 리서처다. 아래 RFP 분석을 보고, 이 과업에 대해
+제안서 작성에 필요한 "검증된 외부 사실"을 web_search 로 직접 찾아 정리하라.
+
+[과업 정보]
+- 사업명: {PROJECT_TITLE}
+- 발주처: {ORGANIZATION}
+- 분야: {DOMAIN_LABEL}
+- 대상: {TARGET_AUDIENCE}
+- RFP 요약: {SUMMARY}
+
+[검색해서 알아낼 것 — web_search 도구를 적극 사용]
+1. 이 과업의 핵심 소재·주제에 관한 사실 (인물·테마·지역 특성 등 — RFP 에서 핵심 소재를 스스로 파악해 검색)
+2. 지난 회차/유사 사업의 실제 현황 (작년에 어땠는지 — 규모·구성·평가, 검색으로 확인되는 것만)
+3. 발주처·지역의 관련 정책·맥락 (검색으로 확인되는 공개 사실)
+
+[★ 절대 원칙]
+- web_search 로 실제 확인된 사실만 적어라. 검색에 안 나오면 그 항목은 비워라 (추측 금지).
+- 출처가 불확실하면 적지 마라. "아마 ~일 것이다" 는 금지.
+- 수치는 검색으로 확인된 것만, 출처와 함께. 확인 안 되면 비워라.
+
+[출력 — JSON 만, 다른 말 없이]
+{
+  "subject_facts": ["확인된 사실 (각 50자 이내)"],
+  "past_editions": ["지난 회차/유사 사업 현황 (각 50자 이내)"],
+  "context": ["발주처·지역 관련 맥락 (각 50자 이내)"],
+  "summary": "리서치 요약 (3문장 이내)",
+  "sources": ["참고한 출처 URL 이나 출처명"]
+}
+subject_facts 최대 8개 / past_editions 최대 6개 / context 최대 5개.
+검색 결과가 거의 없으면 빈 배열로 두고 summary 에 "충분한 공개 정보를 찾지 못함" 이라 적어라.
+JSON 만 출력, 다른 설명 없음.
+
+JSON:"""
+
+
+def _run_proposal_research(cid: str) -> dict:
+    """과업 리서치 자동 수집 — Claude + web_search 활용 (_run_client_intel 복제).
+
+    [중요] 검색 키는 organization 1개가 아니라 RFP 분석 전체를 프롬프트에 넘기고
+    LLM 이 web_search 를 자율 호출. 결과는 proposal_research 테이블에 UPSERT.
+    실패해도 제안서 생성은 RFP 만으로 정상 진행 (intel 패턴 동일).
+    """
+    with get_db() as db:
+        client = db.execute("SELECT * FROM clients WHERE id=?", (cid,)).fetchone()
+    if not client:
+        return {}
+    rfp = _get_rfp_aggregated(cid) or {}
+    project_title = (rfp.get("title") or "").strip()
+    organization = (rfp.get("organization") or "").strip()
+    # 폴백: clients.organization 도 시도
+    if not organization:
+        try:
+            organization = (client["organization"] or "").strip()
+        except (KeyError, IndexError):
+            organization = ""
+    domain_label = (rfp.get("project_domain_label") or "").strip()
+    target_audience = (rfp.get("target_audience") or "").strip()
+    summary = (rfp.get("summary") or "").strip()
+
+    # 최소 정보 부재 — 리서치 무의미
+    if not project_title and not organization:
+        return {
+            "error": "RFP 에서 사업명/발주처를 추출하지 못해 리서치를 건너뜁니다. "
+                     "RFP 분석을 먼저 완료해 주세요."
+        }
+
+    prompt = (RESEARCH_PROMPT
+              .replace("{PROJECT_TITLE}", project_title)
+              .replace("{ORGANIZATION}", organization)
+              .replace("{DOMAIN_LABEL}", domain_label)
+              .replace("{TARGET_AUDIENCE}", target_audience)
+              .replace("{SUMMARY}", summary[:1500]))  # summary 길면 자름
+
+    log.info("과업 리서치 시작 · project=%r · org=%r · domain=%r",
+             project_title[:40], organization[:40], domain_label[:20])
+
+    research: dict = {}
+    raw_text = ""
+    stop_reason = None
+    try:
+        api_client = require_client()
+        # max_tokens 6000 — 리서치는 다축이라 intel(4000) 보다 여유. web_search 결과 + JSON.
+        resp = api_client.messages.create(
+            model=get_setting("model", MODEL_DEFAULT),
+            max_tokens=6000,
+            messages=[{"role": "user", "content": prompt}],
+            tools=[WEB_SEARCH_TOOL],
+        )
+        stop_reason = getattr(resp, "stop_reason", None)
+        raw_text = _extract_text_from_resp(resp)
+        log.info("과업 리서치 응답 · stop_reason=%s · text_len=%d", stop_reason, len(raw_text))
+
+        if not raw_text.strip():
+            return {"error": "Claude 응답이 비어있어요 (web_search 검색 결과를 못 찾았을 가능성)"}
+
+        # JSON 추출 — intel 패턴 동일
+        cleaned = raw_text.strip()
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+        json_match = re.search(r"\{[\s\S]*\}", cleaned)
+        if json_match:
+            cleaned = json_match.group(0)
+        else:
+            refusal_keywords = ("죄송", "특정할 수 없", "확인할 수 없", "찾을 수 없", "구체적인")
+            is_refusal = any(k in raw_text for k in refusal_keywords)
+            if is_refusal:
+                log.warning("과업 리서치 평문 거절 응답: %r", raw_text[:200])
+                return {
+                    "error": "AI 가 충분한 공개 정보를 찾지 못했어요. "
+                             f"(과업: '{project_title}')"
+                }
+        research = json.loads(cleaned)
+        if not isinstance(research, dict):
+            return {"error": "응답 형식이 dict 가 아니에요"}
+
+    except json.JSONDecodeError as e:
+        log.warning("과업 리서치 JSON 파싱 실패: %s · stop_reason=%s · text=%r",
+                    e, stop_reason, raw_text[:200])
+        if stop_reason == "max_tokens":
+            err_msg = "응답이 잘렸어요 (max_tokens 부족) — 다시 시도하면 보통 성공해요"
+        else:
+            preview = raw_text.strip()[:80].replace("\n", " ")
+            err_msg = f"AI 응답 형식 오류 — 응답 일부: '{preview}…'"
+        research = {"error": err_msg}
+
+    except anthropic.AuthenticationError:
+        research = {"error": "Anthropic API 키가 유효하지 않아요. 좌하단 설정에서 키를 다시 확인해 주세요."}
+    except anthropic.RateLimitError:
+        research = {"error": "Anthropic API 호출 한도 초과 — 잠시 후 다시 시도해 주세요."}
+    except anthropic.BadRequestError as e:
+        msg = str(e)
+        if "credit balance" in msg.lower() or "billing" in msg.lower():
+            research = {"error": "Anthropic 크레딧 잔액 부족 — console.anthropic.com 에서 확인"}
+        elif "web_search" in msg.lower() or "tool" in msg.lower():
+            research = {"error": f"web_search 도구 사용 불가 — 모델/플랜 확인 필요 ({str(e)[:80]})"}
+        else:
+            research = {"error": f"요청 형식 오류: {str(e)[:100]}"}
+    except (anthropic.APIConnectionError, anthropic.APITimeoutError):
+        research = {"error": "Anthropic 서버와 통신 실패 — 네트워크 또는 API 일시 장애"}
+    except Exception as e:
+        log.exception("과업 리서치 예외 · client=%s", client["name"])
+        research = {"error": f"자동 수집 실패 ({type(e).__name__}: {str(e)[:80]})"}
+
+    # 정상 응답인데 모든 배열이 비어있는 경우 — 검색 결과 부재로 분류
+    if "error" not in research:
+        has_any = bool(
+            research.get("subject_facts")
+            or research.get("past_editions")
+            or research.get("context")
+            or (research.get("summary") or "").strip()
+        )
+        if not has_any:
+            research["error"] = (
+                "과업 관련 공개 정보를 거의 찾지 못했어요. "
+                f"(과업: '{project_title}'). 제안서는 RFP 만으로 정상 생성됩니다."
+            )
+
+    with get_db() as db:
+        db.execute(
+            "INSERT INTO proposal_research(client_id,research_json,updated_at) "
+            "VALUES(?,?,datetime('now','localtime')) "
+            "ON CONFLICT(client_id) DO UPDATE SET "
+            "research_json=excluded.research_json, updated_at=excluded.updated_at",
+            (cid, json.dumps(research, ensure_ascii=False)),
+        )
+    if "error" in research:
+        log.warning("과업 리서치 결과 = error: %s", research["error"])
+    else:
+        log.info("과업 리서치 성공 · subject=%d · past=%d · context=%d",
+                 len(research.get("subject_facts") or []),
+                 len(research.get("past_editions") or []),
+                 len(research.get("context") or []))
+    return research
+
+
+@app.get("/api/clients/{cid}/research")
+def api_proposal_research_get(cid: str, user: dict = Depends(get_current_user)):
+    """과업 리서치 결과 조회 (프론트 확인용 — A-1 골격에선 노출 옵션, 필수 아님)."""
+    with get_db() as db:
+        _verify_client_owned_by_user(db, cid, user["id"])
+        row = db.execute(
+            "SELECT research_json,updated_at FROM proposal_research WHERE client_id=?",
+            (cid,),
+        ).fetchone()
+    if not row:
+        return {"research": {}, "updated_at": None}
+    try:
+        research = json.loads(row["research_json"] or "{}")
+    except Exception:
+        research = {}
+    return {"research": research, "updated_at": row["updated_at"]}
 
 
 @app.post("/api/clients/{cid}/intel/rebuild")

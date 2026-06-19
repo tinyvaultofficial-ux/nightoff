@@ -204,6 +204,53 @@ def _format_domain_tone(domain: str) -> str:
     return "\n".join(lines)
 
 
+# ─── Spec A3-Build-DomainResearchMatrix — 분야별 발상 재료 검색 가이드 ─────────
+# A-2 의 {DOMAIN_RESEARCH_HINT} 자리에 주입. DOMAIN_TONE_MATRIX 패턴 정합.
+# 이번엔 festival(축제) + other(폴백) 만 정의 → 나머지 8 도메인 자동 폴백 (점진 확장).
+DOMAIN_RESEARCH_HINT_MATRIX: dict[str, dict] = {
+    "festival": {
+        "label": "축제·행사·기념식",
+        "search_axes": [
+            "유사 소재·주제·인물 축제의 실제 운영 사례 (무엇을 어떻게 했나)",
+            "이 과업 핵심 소재에서 끌어낼 수 있는 스토리·체험 거리 (소재의 콘텐츠화 가능한 면모)",
+            "넓은 야외·특정 장소를 잘 활용한 행사의 공간 구성 방식",
+            "관람객을 머물게 한 체류·동선 유도 장치 (스탬프투어·코스형 구성 등)",
+            "특정 타깃(젊은층·가족·지역민) 을 끌어들인 참여 유도 방식",
+            "화제가 됐던 독특한 시도·차별화 요소 (신기술 접목·이색 콘텐츠 등)",
+        ],
+        "inspiration_guide": [
+            "유사 축제의 '운영 방식' 에 주목 — 프로그램명 나열이 아니라 '어떻게 진행했나'",
+            "소재를 깊게 파는 각도 (인물 서사·지역 특성·테마 확장) 단서를 모아라",
+        ],
+    },
+    "other": {
+        "label": "일반",
+        "search_axes": [
+            "유사 분야 국내 사업·행사의 실제 운영 사례",
+            "이 과업 핵심 소재·주제의 콘텐츠화 가능한 면모",
+            "유사 규모·대상·목적 사업의 성공적 접근 방식",
+        ],
+        "inspiration_guide": [
+            "핏 맞는 사례 위주 — 억지로 동떨어진 것 가져오지 마라",
+        ],
+    },
+}
+
+
+def _format_domain_research_hint(domain: str) -> str:
+    """project_domain enum (festival 등) → RESEARCH_PROMPT 의 {DOMAIN_RESEARCH_HINT} 자리에 들어갈
+    분야별 발상 재료 검색 가이드 텍스트. DOMAIN_TONE_MATRIX 폴백 패턴 동일.
+    들여쓰기 3칸 — RESEARCH_PROMPT 검색 항목 4번 하위라인과 정렬."""
+    d = DOMAIN_RESEARCH_HINT_MATRIX.get(domain, DOMAIN_RESEARCH_HINT_MATRIX["other"])
+    lines = [f"   [이 분야({d['label']}) 에서 특히 검색할 발상 재료]"]
+    for ax in d["search_axes"]:
+        lines.append(f"   - {ax}")
+    if d.get("inspiration_guide"):
+        for g in d["inspiration_guide"]:
+            lines.append(f"   ※ {g}")
+    return "\n".join(lines)
+
+
 # ─── Phase 1: Outline 시스템 프롬프트 ────────────────────────────────────────
 OUTLINE_SYSTEM_PROMPT = """너는 한국 B2G 공공입찰 제안서의 **목차·구조 설계 전문가** 다.
 

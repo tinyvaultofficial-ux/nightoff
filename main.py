@@ -7033,6 +7033,8 @@ def _run_proposal_research(cid: str) -> dict:
         except (KeyError, IndexError):
             organization = ""
     domain_label = (rfp.get("project_domain_label") or "").strip()
+    # Spec A3-Build-DomainResearchMatrix — project_domain enum (festival 등) — 매트릭스 룩업 키
+    project_domain = (rfp.get("project_domain") or "").strip().lower()
     target_audience = (rfp.get("target_audience") or "").strip()
     summary = (rfp.get("summary") or "").strip()
 
@@ -7043,16 +7045,16 @@ def _run_proposal_research(cid: str) -> dict:
                      "RFP 분석을 먼저 완료해 주세요."
         }
 
+    # Spec A3-Build-DomainResearchMatrix — A-2 일반 가이드 → 도메인별 매트릭스 룩업으로 교체.
+    # festival 만 정식 정의, 나머지 9 도메인은 매트릭스 안 "other" 폴백 (점진 확장).
+    from proposal_multi_pass import _format_domain_research_hint
     prompt = (RESEARCH_PROMPT
               .replace("{PROJECT_TITLE}", project_title)
               .replace("{ORGANIZATION}", organization)
               .replace("{DOMAIN_LABEL}", domain_label)
               .replace("{TARGET_AUDIENCE}", target_audience)
               .replace("{SUMMARY}", summary[:1500])  # summary 길면 자름
-              # Spec A2-Build-ResearchInspiration — 분야별 발상 가이드 자리.
-              # A-2 는 일반 가이드. A-3 에서 _format_domain_research_hint(domain) 호출로 교체 예정.
-              .replace("{DOMAIN_RESEARCH_HINT}",
-                       "   (이 분야 특성에 맞는 발상 재료를 폭넓게 — 단 핏 우선)"))
+              .replace("{DOMAIN_RESEARCH_HINT}", _format_domain_research_hint(project_domain)))
 
     log.info("과업 리서치 시작 · project=%r · org=%r · domain=%r",
              project_title[:40], organization[:40], domain_label[:20])

@@ -885,6 +885,12 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
                        ⚠ 부적합: 5개 이상 항목 / 순서·흐름이 본질(process·timeline) /
                               비교표가 핵심 / role=support
                        ※ 거버닝이 페이지의 주장이고 카드는 그 주장을 받치는 병렬 항목. 2~4개 권장.
+  · triad            — 좌 거버닝 + 우 원(이미지 자리) 3개 + 실선 연결 + 하단 라벨/설명 2단 (비대칭 입체)
+                       ★ 적합: role=body 페이지의 "이미지 자리 3개 + 핵심 메시지"
+                              (예: 3대 추진 축 + 시각 자료, 차별점 3개 + 이미지 예시,
+                                   핵심 가치 3종 + 비주얼 컨셉)
+                       ⚠ 부적합: 수치 강조 → circles / 단순 카드 나열 → cards3 / role=support
+                       ※ 이미지 자리가 본질 + 비대칭 거버닝이면 triad, 수치면 circles, 카드면 cards3. 3개 고정.
 
 ★ 컨셉 슬로건 페이지는 별도 hero 페이지(카탈로그 11번)가 담당.
   text_* 키로 컨셉 슬로건을 만들지 말 것 — 컨셉 슬로건은 80~90pt 거대 슬로건 hero,
@@ -897,7 +903,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
 ② 직전 본문 페이지와 같은 viz_pattern 을 연속 배정 X (반드시 다른 키).
 ③ 페이지 내용이 특정 패턴에 자연스러우면 그것을 우선 선택하되, 다양성을 우선 — 억지로 맞추지 말고 자연스러운 후보 2~3개 중 직전과 다른 것 선택.
 ④ ★ 박스/카드 계열(cards3 / before_after / cards_grid) 합산 cap — 본문 페이지의 40% 이내
-   (예: 본문 20장 → 합 8장 이하). 초과 시 다른 계열(2col / process / quant / text_quote / text_declaration / split / timeline / asymmetric / zigzag / hsplit / circles / matrix / funnel / hsplit_top / quad)로 회전.
+   (예: 본문 20장 → 합 8장 이하). 초과 시 다른 계열(2col / process / quant / text_quote / text_declaration / split / timeline / asymmetric / zigzag / hsplit / circles / matrix / funnel / hsplit_top / quad / hero_cards / triad)로 회전.
    박스 도배 = 단조로움(평가위원 "패턴 하나만 반복" 인식).
 ⑤ ★ AS-IS/TO-BE 비교 cap — 환각 주요 창구 제어 (Spec C-Build-BeforeAfterCap):
    - "기존 vs 제안" / "현재 vs 개선" / "AS-IS vs TO-BE" 구도의 비교 슬라이드
@@ -2572,7 +2578,7 @@ async def generate_outline(
         _VIZ_PATTERN_SAFE = {"2col", "cards3", "process", "before_after", "quant", "cards_grid",
                              "text_quote", "text_declaration", "split", "timeline", "asymmetric",
                              "zigzag", "hsplit", "circles", "quad",
-                             "matrix", "funnel", "hsplit_top", "hero_cards"}
+                             "matrix", "funnel", "hsplit_top", "hero_cards", "triad"}
         viz_pattern_raw = str(it.get("viz_pattern", "")).strip().lower()
         viz_pattern = viz_pattern_raw if viz_pattern_raw in _VIZ_PATTERN_SAFE else ""
         # ★ Spec D-Fix-NarrativeGuard — text 위계는 hero/support/simple_box 페이지에 배정 X.
@@ -2732,6 +2738,18 @@ async def generate_outline(
                 log.info(
                     "D-Build-PresetHeroCardsGuard 강등 p=%s role=%s slide_type=%s",
                     it.get("page"), _rl_hc, _st_hc,
+                )
+                viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
+        # ★ Spec Preset-Connect-Triad — triad 가드 (circles/hero_cards 와 동일 강도).
+        #   triad = "좌 거버닝 + 우 원(이미지 자리) 3개 + 실선 + 하단 라벨/설명 (비대칭 입체)"이므로
+        #   role=body 페이지에만 적합. hero(컨셉/표지)·support(예산/일정/조직)·simple_box 에 박혀도 무력화.
+        elif viz_pattern == "triad":
+            _rl_td = str(it.get("role", "")).strip().lower()
+            _st_td = str(it.get("slide_type", "")).strip().lower()
+            if _rl_td != "body" or _st_td == "hero":
+                log.info(
+                    "Preset-Connect-TriadGuard 강등 p=%s role=%s slide_type=%s",
+                    it.get("page"), _rl_td, _st_td,
                 )
                 viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
         # Spec D-Fix-BodyRole-1 — role 화이트리스트 (body/support/"" 만 허용).
@@ -3475,6 +3493,62 @@ def _build_slide_user_prompt(
                 '],'
                 '"shapes":[{"type":"text","x":0.9,"y":7.7,"w":10,"h":0.4,'
                 '"text":"3대 핵심 가치","size":14,"weight":700,"color":"#1A1A1A"}]}'
+            )
+        elif item.viz_pattern == "triad":
+            # Spec Preset-Connect-Triad — 좌 거버닝 + 우 원(이미지 자리) 3개 + 실선 + 하단 라벨/설명.
+            # 좌측 거버닝/우측 원/실선/라벨/desc 좌표·색은 _build_preset_triad 가 자동 배치.
+            # circles 패턴 정합 — preset 키 박으라는 지시 + 백업 text 도형 강제.
+            # 빈 페이지 방지: 백업 text 도형 함께 채우게 강제(rect/박스/이미지 절대 X).
+            parts.append(
+                "[비박스 레이아웃 — triad (좌 거버닝 + 우 원 3개 + 실선 + 하단 라벨/설명, 비대칭 입체)]\n"
+                "이 페이지는 좌측에 큰 거버닝 메시지, 우측에 원(이미지 자리) 3개 가로 배치 +\n"
+                "각 원 아래로 실선 → 하단에 라벨/설명 2단. 비대칭 구도로 입체감을 만든다.\n"
+                "\n"
+                "★ 채우는 법:\n"
+                "  · 좌측 거버닝 — title(필수, 25~40자 권장), subtitle(선택, 의미 있는 수치 또는 보충 설명), eyebrow(선택).\n"
+                "  · 우측 원 3개 — 원 안은 \"이미지 자리\"(코드가 회색 placeholder 자동 표시).\n"
+                "    ★ 원 안에 텍스트/수치를 넣지 마라 — 그건 circles 의 역할. triad 는 이미지 자리.\n"
+                "  · 각 원 아래 — label(필수, 10~15자 명사형) + desc(선택, 25~40자 한 줄).\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "triad"  (필수)\n'
+                '  · "title" (필수) — 좌측 큰 거버닝 메시지 (outline 의 governing_main 그대로)\n'
+                '  · "title_runs" (선택) — title 의 형광 강조 segment (D-Build-TextRunsInject 정합):\n'
+                '      [{"t":"앞부분 "},{"t":"핵심 명사구","accent":true},{"t":" 뒷부분"}]\n'
+                '      ★ accent:true 한 곳만, 모든 t 를 이으면 title 과 정확히 일치, 애매하면 생략.\n'
+                '      ★ theme=dark 시 accent 부분만 #A78BFA 자동 적용 (light 면 형광 없음, 정상).\n'
+                '  · "subtitle" (선택) — 좌측 서브 거버닝 (의미 있는 수치 또는 보충 설명, 25자 이내 권장)\n'
+                '  · "eyebrow" (선택) — 좌상단 메타 라벨 (옅은 회색)\n'
+                '  · "items": [{"label": "(필수)", "desc": "(선택)"}, ...]\n'
+                "    (정확히 3개 권장 — 4개 이상은 잘림, 1~2개도 동작하지만 비대칭 의도가 약해짐)\n"
+                "    ★ items 에 value/keyword 키 박지 마라 — 원 안은 이미지 자리 (텍스트 X).\n"
+                "  → 좌표·원·실선·폰트·정렬은 코드가 자동 배치한다.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
+                "    절대 금지: rect / 박스 / 이미지 / 원 / 도형(type='text' 외).\n"
+                "    좌측 거버닝·우측 원·실선·하단 라벨은 코드가 자동으로 그린다.\n"
+                "    백업으로 넣을 것 (text 만): 제목 + 각 item label 텍스트 정도. preset 처리 실패 대비용.\n"
+                "  ★ preset='triad' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
+                "\n"
+                "★ 다른 패턴과 구분:\n"
+                "  · 수치 강조(95%·200팀 등) → circles (원 안에 수치)\n"
+                "  · 단순 카드 나열 → cards3 (등분 비교)\n"
+                "  · 상단 거버닝 + 하단 카드 (대칭) → hero_cards\n"
+                "  · 좌우 대등 두 축 → split / asymmetric\n"
+                "  · triad 는 \"이미지 자리 3개 + 좌측 비대칭 거버닝\" 일 때 — 시각 자료 동반 메시지.\n"
+                "\n"
+                "★ 완성 예시 (이 구조 그대로 따라):\n"
+                '{"preset":"triad",'
+                '"eyebrow":"Ⅱ. 추진 전략",'
+                '"title":"감각·참여·지속, 3대 축으로 완성하는 체험 구조",'
+                '"title_runs":[{"t":"감각·참여·지속, "},{"t":"3대 축","accent":true},{"t":"으로 완성하는 체험 구조"}],'
+                '"subtitle":"감각 트리거 / 양방향 운영 / 사후 연계 3-Track",'
+                '"items":['
+                '{"label":"감각 트리거","desc":"공간 진입부터 마무리까지 단계별 오감 자극"},'
+                '{"label":"관객 참여","desc":"실시간 큐레이션과 양방향 운영으로 콘텐츠화"},'
+                '{"label":"지속 관계","desc":"디지털 아카이브와 후속 시리즈로 사후 연계"}'
+                '],'
+                '"shapes":[{"type":"text","x":0.9,"y":7.7,"w":10,"h":0.4,'
+                '"text":"3대 추진 축","size":14,"weight":700,"color":"#1A1A1A"}]}'
             )
         else:
             parts.append(

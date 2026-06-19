@@ -2787,7 +2787,7 @@ def _build_preset_timeline(slide_data):
             title_shape["text_runs"] = title_runs_raw
         shapes.append(title_shape)
         top = 2.4
-    line_x = 1.6
+    line_x = 1.2
     dot_r = 0.04
     # Spec D-Fix-TimelineDotsLine — 마커를 원(circle) → 작은 네모(rect, 한 변 0.1") 로 교체.
     #   box_half 는 박스 한 변의 절반 (= 0.05"). 박스 그릴 때 좌상단 = (line_x - box_half, cy - box_half).
@@ -2806,7 +2806,7 @@ def _build_preset_timeline(slide_data):
         ys = [(area_top + area_bot) / 2]
     else:
         gap = (area_bot - area_top) / (n - 1)
-        gap = min(gap, 1.5)
+        gap = min(gap, 1.2)
         total = gap * (n - 1)
         start = area_top + ((area_bot - area_top) - total) / 2
         ys = [start + i * gap for i in range(n)]

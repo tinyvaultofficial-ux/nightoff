@@ -800,6 +800,8 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
   · cards3        — 3카드 등분 비교 (평행 분류·차별점)
   · process       — 가로 단계 흐름 (절차·추진 단계·일정 흐름)
   · before_after  — Before/After 점층 카드 (도입 효과·개선 사례)
+                    ※ AS-IS(기존/현재) 칸은 [RFP 분석]/[과업 리서치] 에 근거 있을 때만 구체적으로.
+                      없으면 일반적 한계로만, 특정 사실 단정 X. (Spec C-Build-BeforeAfterCap)
   · quant         — 정량 강조 (큰 숫자 + 라벨, KPI·예산·규모)
   · cards_grid    — 카드 그리드 2x3 / 2x4 (팀원·사례·zone 분리)
   · text_quote       — 텍스트 위계형 (큰 인용 + 흐름 1~3 + 결론 / 도식 없음)
@@ -897,11 +899,19 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
 ④ ★ 박스/카드 계열(cards3 / before_after / cards_grid) 합산 cap — 본문 페이지의 40% 이내
    (예: 본문 20장 → 합 8장 이하). 초과 시 다른 계열(2col / process / quant / text_quote / text_declaration / split / timeline / asymmetric / zigzag / hsplit / circles / matrix / funnel / hsplit_top / quad)로 회전.
    박스 도배 = 단조로움(평가위원 "패턴 하나만 반복" 인식).
-⑤ ★ 텍스트 위계 계열(text_quote / text_declaration) — 본문 페이지의 5~15% 권장(최소 1장).
+⑤ ★ AS-IS/TO-BE 비교 cap — 환각 주요 창구 제어 (Spec C-Build-BeforeAfterCap):
+   - "기존 vs 제안" / "현재 vs 개선" / "AS-IS vs TO-BE" 구도의 비교 슬라이드
+     (viz_pattern: before_after, 또는 2col 을 AS-IS/TO-BE 용도로 쓰는 경우 포함)
+     → 전체 outline 안 최대 1장. (불가피하게 강조 필요 시에도 2장 초과 금지.)
+   - 이유: AS-IS(기존 현황) 칸은 출처 없으면 사실을 지어내는 환각 창구다.
+     여러 장이면 근거 없는 현황 단정이 누적된다.
+   - AS-IS/TO-BE 를 여러 번 쓰고 싶으면 — 대신 "우리 제안의 강조" (text_declaration,
+     asymmetric 등) 로 풀어라. 기존을 단정해 깎는 구도를 반복하지 마라.
+⑥ ★ 텍스트 위계 계열(text_quote / text_declaration) — 본문 페이지의 5~15% 권장(최소 1장).
    너무 적으면 단조로움 유지, 15% 초과면 텍스트 과다. 적합 페이지(role=body 전략 선언) 우선.
-⑥ 위험 4종(벤다이어그램 / 2x2 매트릭스 / 수직 타임라인 / 다이어그램+표) 절대 X —
+⑦ 위험 4종(벤다이어그램 / 2x2 매트릭스 / 수직 타임라인 / 다이어그램+표) 절대 X —
    안전 카탈로그 키 밖 값은 코드가 자동 ""로 강등시킴 (배정 무효).
-⑦ 특수 페이지(표지·목차·챕터 divider 5장·마무리)는 "" (배정 안 함).
+⑧ 특수 페이지(표지·목차·챕터 divider 5장·마무리)는 "" (배정 안 함).
 
 [skeleton_id 배정 규칙 — Spec D-Build-SkeletonConnect / Spec D-Fix-SkeletonDiversity]
 운영이 사람이 양질 제안서에서 떠낸 검증된 골격 15종 HTML 을 R2 에서 동기화해뒀다.
@@ -1687,6 +1697,7 @@ callout 박스 | callout      | 2~3.5 × 1~1.5인치      | stroke #1A1A1A
 
 1) AS-IS / TO-BE 비교 — 좌우 2 단 + 가운데 화살표. 적용: 문제→해결, 변화 전후
    ★ 프리셋 옵션 (Spec D-Fix-Preset3): 본 패턴은 slide_data 출력 시 preset='two_column' + columns=[{title, items[]}, {title, items[]}] (정확히 2개 / 좌=AS-IS / 우=TO-BE) 형식 사용 가능 — 코드가 좌우 패널 + 중앙 화살표를 안정 배치 (옵트인 / preset 미지정 시 기존 자율 그대로). 예: {"preset": "two_column", "columns": [{"title": "AS-IS", "items": ["일방 전달", "단기 이벤트"]}, {"title": "TO-BE", "items": ["양방향 참여", "지속 거버넌스"]}]}
+   ※ AS-IS 칸은 [과업 리서치]/[RFP 분석] 사실 우선. 없으면 일반적 한계로. 특정 단정 X. (Spec C-Build-BeforeAfterCap)
 2) 3-4 카드 동등 비교 — 가로 등분, 카드 = 헤더 + 본문 + 결론. 적용: 차별점, 평행 분류
 3) 단계별 프로세스 (가로 흐름) — 단계 5-7 개, 박스 + 화살표. 적용: 추진 절차, 운영 흐름
    ★ 프리셋 옵션 (Spec D-Fix-Preset2): 본 패턴은 slide_data 출력 시 preset='process' + steps=[{label, desc(선택)}] (3~7개) 형식 사용 가능 — 코드가 chevron 을 가로 균등 정렬 (옵트인 / preset 미지정 시 기존 자율 그대로). 예: {"preset": "process", "steps": [{"label": "분석", "desc": "현황 진단"}, {"label": "기획", "desc": "전략 수립"}, {"label": "실행", "desc": "단계별 추진"}]}
@@ -1694,6 +1705,7 @@ callout 박스 | callout      | 2~3.5 × 1~1.5인치      | stroke #1A1A1A
 4) 수직 타임라인 — 좌측 시간/단계 + 우측 상세, 단계 4-6 개. 적용: 일정, 마일스톤
 5) 2x2 매트릭스 / 사분면 — 2 축 분류, 사분면별 텍스트. 적용: SWOT, 포지셔닝
 6) Before / After 점층 카드 — 카드 안 Before → After. 적용: 도입 효과, 개선 사례
+   ※ Before(기존) 칸은 [과업 리서치]/[RFP 분석] 사실 우선. 없으면 일반적 한계로. 특정 단정 X. (Spec C-Build-BeforeAfterCap)
 7) 그리드 (인물/사례 나열) — 2x3 또는 2x4. 적용: 팀원, 유사 실적, 사례
 8) 표지 / 챕터 divider — 큰 헤드라인 + 부제. 챕터 divider 는 "거대 챕터 번호 (Black 200pt+) + 챕터명 (Black 50~70pt)" 만. 하단 미리보기 박스 X (본문 중복 회피). 적용: 표지, 챕터 첫 페이지
 9) 정량 데이터 강조 — 큰 숫자 (Black 80pt+) + 라벨. 적용: 통계, 성과, KPI
@@ -2192,6 +2204,8 @@ outline AI 가 viz_hint 에 자연어 힌트를 박는다. 카탈로그 키로 �
 - "stat / KPI 3~4개 / 큰 숫자 / 정량 강조"        → quant (E)
 - "comparison / AS-IS / TO-BE / 전후 비교"        → 2col (A)
 - "before / after / 도입 효과 / 개선 사례"         → before_after (D)
+  ※ AS-IS/TO-BE 로 매핑 시 — AS-IS 칸 사실은 출처([RFP 분석]/[과업 리서치]) 있는 것만.
+    (Spec C-Build-BeforeAfterCap)
 - "process / 절차 / 추진 단계 / 일정 흐름"         → process (C)
 - "cards 3 / 차별점 / 평행 분류 / 3 항목"          → cards3 (B)
 - "cards 6 / cards_grid / 팀원 / 사례 나열"        → cards_grid (F)

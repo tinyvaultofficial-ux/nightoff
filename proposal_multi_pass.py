@@ -2877,6 +2877,7 @@ def _build_slide_user_prompt(
             parts.append(
                 f"[배정된 레이아웃 패턴] {item.viz_pattern} (텍스트 위계형 — 도식 없음)\n"
                 f"본 페이지는 도형/박스 없이 텍스트 위계만으로 입체감을 만든다. 박스/카드 그리드 절대 금지.\n"
+                f"(단 style='declaration' 의 근거 grounds 는 코드가 옅은 테두리 박스로 자동 구분 — 카드 그리드형 도식은 여전히 금지)\n"
                 f"★ slide JSON 출력에 반드시 다음 키 포함:\n"
                 f'  · "preset": "narrative"  (필수)\n'
                 f'  · "style": "{_style_v}"     (필수)\n'

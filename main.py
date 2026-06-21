@@ -4350,9 +4350,17 @@ def _run_rfp_aggregate(cid: str) -> dict:
         log.exception("RFP 통합 분석 예외")
         analysis = {"error": f"RFP 분석 중 문제가 생겼어요 ({type(e).__name__}: {str(e)[:100]})"}
 
-    # orientation 기본값 강제 — 명시 없으면 무조건 landscape
-    if not analysis.get("orientation") or analysis.get("orientation") not in ("landscape", "portrait"):
-        analysis["orientation"] = "landscape"
+    # Spec Orient-Force-Landscape — 가로 강제 + 원값 보존.
+    # 배경: LLM 이 user_prompt 안 RFP analysis_json 의 orientation=portrait 를 받아
+    #       OUTLINE 출력 slide_width=8.27, slide_height=11.69 박으면 PPTX 캔버스 세로.
+    #       모든 _build_preset_* 함수가 11.69×8.27 가로 좌표 기준 하드코딩이라 깨짐.
+    # 처방: (A) LLM 입력 정화 — orientation 항상 landscape 박음 + 원값 보존 (orientation_rfp).
+    #       (B) OutlineResult 캔버스 가로 하드코딩 (proposal_multi_pass.py:2819-2820) — 100% 보장.
+    #       (C) 세로 RFP 였던 경우 프론트 경고 (static/app.js — orientation_rfp 활용).
+    analysis["orientation_rfp"] = (
+        analysis.get("orientation") if analysis.get("orientation") in ("landscape", "portrait") else ""
+    )
+    analysis["orientation"] = "landscape"  # 무조건 가로 강제
 
     # 에러만 있는 분석(실제 정보 없음)은 DB 저장 시 기존 좋은 분석을 덮어쓰지 않도록 가드.
     # 실제 정보 한 가지라도 있어야 저장 — 실패 시엔 메모리에서만 반환하고 DB 는 그대로.

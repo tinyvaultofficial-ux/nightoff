@@ -4866,6 +4866,8 @@ async function renderRfpSection(cid) {
     ]));
 
     // ── (상단) 배지 3개 — 마감일 / 예산 / 형식
+    // Spec Orient-Force-Landscape — orientation 은 백엔드에서 항상 "landscape" 강제됨.
+    // RFP 원본이 세로였는지는 a.orientation_rfp ("portrait" / "landscape" / "") 로 보존.
     const formatLabel = (a.orientation === "portrait" ? "A4 세로" : "A4 가로")
                        + (a.page_limit ? ` · ${a.page_limit}p` : "");
     result.appendChild(h("div", { class: "rfp-badges", style: "margin-top: 16px;" }, [
@@ -4891,6 +4893,23 @@ async function renderRfpSection(cid) {
         ]),
       ]),
     ]));
+
+    // Spec Orient-Force-Landscape — 세로 RFP 였던 경우 경고 배너 (orientation_rfp 보존값).
+    // NightOff 는 preset 좌표가 전부 A4 가로 기준이라 무조건 가로 강제. 사용자가 인지하도록 안내.
+    if (a.orientation_rfp === "portrait") {
+      result.appendChild(h("div", {
+        style: "margin-top: 12px; padding: 10px 14px; border-radius: 6px; "
+             + "background: #FFF7E6; border: 1px solid #F0C36D; "
+             + "color: #8A5A00; font-size: 13px; line-height: 1.5;"
+      }, [
+        h("strong", {}, "⚠ 형식 안내: "),
+        h("span", {},
+          "이 RFP는 세로(A4 세로) 양식을 명시했으나, "
+          + "NightOff는 가로 최적화 디자인으로 가로(A4 가로)로 생성합니다. "
+          + "제출 규격 확인 후 필요 시 직접 조정하세요."
+        ),
+      ]));
+    }
 
     // ── (중단) 평가 배점 (풀폭) → 그 아래 요구사항 (풀폭) — 1열 스택으로 가독성 ↑
     const middleGrid = h("div", { class: "rfp-grid-stack" });

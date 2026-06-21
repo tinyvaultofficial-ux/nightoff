@@ -3176,6 +3176,141 @@ def _build_preset_triad(slide_data):
     return shapes
 
 
+# ─── Spec Preset-New-StrategyMap — strategy_map (대전략 3 + 하위실행 5, 4단 분할) ──
+# 한 슬라이드에 (상) 거버닝 + (중상) 박스 3 + "+" 결합 + (중하) chevron 5 흐름 + (하) 마무리 거버닝.
+# 대전략 + 하위실행을 한 화면 조망 — 비교적 복잡한 골격 (도형 약 23~28개).
+# 입력 스키마:
+#   slide_data["eyebrow"]      = "상단 메타 라벨"          (선택)
+#   slide_data["title"]        = "상단 메인 거버닝"        (필수)
+#   slide_data["title_runs"]   = 형광 segment list       (선택, accent 1곳)
+#   slide_data["pillars"]      = [{"head"(필수),"desc","caption"}, ...]  (정확히 3개)
+#   slide_data["steps"]        = [{"label"(필수)}, ...]                 (3~6개)
+#   slide_data["footer"]       = "하단 마무리 거버닝"      (선택)
+# 안전망 (엄격): title 없음 / pillars 정확히 3개 아님 / steps 3개 미만 → 빈 list (LLM 백업).
+# 색 정합 (운영 흑백 6색 — DARK_MAP 자연 매핑):
+#   거버닝 #1A1A1A / 박스 fill #FFFFFF + stroke #DDDDDD / chevron stroke #1A1A1A /
+#   "+" #1A1A1A / footer #444444 / caption #999999 / desc #555555.
+# theme 인자 안 받음 — circles/triad 정합 (_add_* helper 내부 _map_color 자동 변환에 위임).
+# 흐름은 chevron 자체가 → 모양이라 화살표(arrow) 별도 없음 — process L2220 패턴 정합.
+# ★ 1 단계: 코드 + dispatch 만 등록 — viz_pattern 화이트리스트 미연결 (다음 spec 으로 켤 것).
+def _build_preset_strategy_map(slide_data):
+    eyebrow = str(slide_data.get("eyebrow", "")).strip()
+    title   = str(slide_data.get("title", "")).strip()
+    footer  = str(slide_data.get("footer", "")).strip()
+    pillars_raw = slide_data.get("pillars") or []
+    steps_raw   = slide_data.get("steps") or []
+    if not title:
+        return []
+    if not isinstance(pillars_raw, list):
+        return []
+    pillars = [p for p in pillars_raw if isinstance(p, dict)][:3]
+    if len(pillars) != 3:
+        return []
+    steps = []
+    for s in (steps_raw if isinstance(steps_raw, list) else []):
+        if isinstance(s, dict):
+            lab = str(s.get("label", "")).strip()
+            if lab:
+                steps.append(lab)
+    steps = steps[:6]
+    if len(steps) < 3:
+        return []
+
+    W, H = 11.69, 8.27
+    margin = 0.9
+    usable = W - 2 * margin
+    shapes = []
+
+    # ── ① 상단 거버닝 (eyebrow + title)
+    if eyebrow:
+        shapes.append({"type":"text","x":margin,"y":0.5,"w":usable,"h":0.4,
+                       "text":eyebrow,"size":11,"weight":400,"color":"#BBBBBB",
+                       "align":"center","valign":"top"})
+    t = {"type":"text","x":margin,"y":0.9,"w":usable,"h":0.9,
+         "text":title,"size":28,"weight":800,"color":"#1A1A1A",
+         "align":"center","valign":"top"}
+    tr = slide_data.get("title_runs")
+    if isinstance(tr, list) and tr:
+        t["text_runs"] = tr
+    shapes.append(t)
+
+    # ── ② 박스 3개 + "+" 결합 (circles/triad 가로 분배 패턴 정합)
+    box_y, box_h = 1.9, 1.9
+    n_p = 3
+    box_w = 2.9
+    gap_p = (usable - box_w * n_p) / (n_p - 1)  # 박스 사이 간격 (= 0.65")
+    for i, p in enumerate(pillars):
+        bx = margin + i * (box_w + gap_p)
+        # 박스 본체
+        shapes.append({"type":"rect","x":bx,"y":box_y,"w":box_w,"h":box_h,
+                       "fill":"#FFFFFF","stroke":"#DDDDDD","stroke_width":1})
+        # head (16/700/#1A1A1A)
+        shapes.append({"type":"text","x":bx + 0.15,"y":box_y + 0.2,"w":box_w - 0.3,"h":0.5,
+                       "text":str(p.get("head","")).strip(),
+                       "size":16,"weight":700,"color":"#1A1A1A",
+                       "align":"center","valign":"top"})
+        # desc (12/400/#555)
+        shapes.append({"type":"text","x":bx + 0.15,"y":box_y + 0.75,"w":box_w - 0.3,"h":box_h - 0.9,
+                       "text":str(p.get("desc","")).strip(),
+                       "size":12,"weight":400,"color":"#555555",
+                       "align":"center","valign":"top"})
+        # caption (박스 밖 아래, 11/400/#999)
+        cap = str(p.get("caption","")).strip()
+        if cap:
+            shapes.append({"type":"text","x":bx,"y":box_y + box_h + 0.1,"w":box_w,"h":0.5,
+                           "text":cap,"size":11,"weight":400,"color":"#999999",
+                           "align":"center","valign":"top"})
+        # "+" 기호 (박스 사이 세로중앙, 마지막 박스 제외 → 2개)
+        if i < n_p - 1:
+            plus_x = bx + box_w
+            shapes.append({"type":"text","x":plus_x,"y":box_y + box_h / 2 - 0.3,"w":gap_p,"h":0.6,
+                           "text":"+","size":32,"weight":800,"color":"#1A1A1A",
+                           "align":"center","valign":"middle"})
+
+    # ── ③ 흐름 — 원(이미지 placeholder) + 화살표 + 라벨 (triad 원 패턴 + arrow 도형 차용)
+    flow_y = 5.2  # 원 top
+    n_s = len(steps)
+    # 원 직경 동적 — n 많아질수록 작게 (가용 영역 안 화살표 공간 확보)
+    if n_s <= 3:
+        circle_d = 1.3
+    elif n_s == 4:
+        circle_d = 1.2
+    elif n_s == 5:
+        circle_d = 1.1
+    else:  # 6
+        circle_d = 0.95
+    # 균등 분배 (원 + 화살표 사이 gap)
+    gap_s = (usable - circle_d * n_s) / (n_s - 1)
+    cy_center = flow_y + circle_d / 2
+    label_y = flow_y + circle_d + 0.15
+    for i, label in enumerate(steps):
+        cell_x = margin + i * (circle_d + gap_s)  # 원 좌측
+        # 원 (이미지 placeholder — triad 색 정합: #ECECEC fill + #CCCCCC stroke)
+        shapes.append({"type":"circle","x":cell_x,"y":flow_y,"w":circle_d,"h":circle_d,
+                       "fill":"#ECECEC","stroke":"#CCCCCC","stroke_width":0.75})
+        # 원 안 안내문 (triad 정합 — 11/400/#888 center)
+        shapes.append({"type":"text","x":cell_x,"y":cy_center - 0.2,"w":circle_d,"h":0.4,
+                       "text":"이미지","size":11,"weight":400,"color":"#888888",
+                       "align":"center","valign":"middle"})
+        # 원 아래 라벨 (14/700/#1A1A1A center)
+        shapes.append({"type":"text","x":cell_x,"y":label_y,"w":circle_d,"h":0.4,
+                       "text":label,"size":14,"weight":700,"color":"#1A1A1A",
+                       "align":"center","valign":"top"})
+        # 화살표 (원 사이 가로, 마지막 제외 = n-1개) — y = 원 세로중앙
+        if i < n_s - 1:
+            x1 = cell_x + circle_d + 0.1                    # 원 우측 + 여유
+            x2 = cell_x + circle_d + gap_s - 0.1            # 다음 원 좌측 - 여유
+            shapes.append({"type":"arrow","x1":x1,"y1":cy_center,"x2":x2,"y2":cy_center,
+                           "color":"#1A1A1A","width":1.5})
+
+    # ── ④ 하단 거버닝 (선택)
+    if footer:
+        shapes.append({"type":"text","x":margin,"y":7.2,"w":usable,"h":0.7,
+                       "text":footer,"size":16,"weight":500,"color":"#444444",
+                       "align":"center","valign":"top"})
+    return shapes
+
+
 # ─── Spec D-Build-PresetHeroCards — hero_cards (상단 거버닝 히어로 + 카드 N개) ────
 # 상단 검정 밴드(거버닝 중앙정렬, title_runs 노랑 호환) + 거버닝 아래 ↓ 화살표 +
 # 하단 흰 영역에 카드 N개(2~4, 5+ cap) 가로 배치.
@@ -4175,6 +4310,18 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
             # circles/hero_cards 와 동일 패턴 — 성공 시 preset 만, 실패/예외 시 LLM 백업.
             try:
                 preset_shapes = _build_preset_triad(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "strategy_map":
+            # Spec Preset-New-StrategyMap — 대전략 박스 3 + "+" + 하위실행 chevron 5 + 4단 분할.
+            # ★ 본 spec 단계: 코드 + dispatch 만 등록 + viz_pattern 화이트리스트 미연결.
+            # circles/triad/hero_cards 와 동일 패턴 — 성공 시 preset 만, 실패/예외 시 LLM 백업.
+            try:
+                preset_shapes = _build_preset_strategy_map(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

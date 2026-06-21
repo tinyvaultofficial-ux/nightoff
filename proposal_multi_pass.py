@@ -2816,8 +2816,12 @@ async def generate_outline(
     return OutlineResult(
         title=str(parsed.get("title", "")).strip(),
         domain=str(parsed.get("domain", "other")).strip(),
-        slide_width=float(parsed.get("slide_width") or 11.69),
-        slide_height=float(parsed.get("slide_height") or 8.27),
+        # ★ Spec Orient-Force-Landscape — 가로 하드코딩 (LLM 출력 무시).
+        #   LLM 이 RFP orientation=portrait 신호로 세로값(8.27/11.69) 박아도 본 강제로
+        #   원천 차단. 모든 _build_preset_* 좌표가 11.69×8.27 가로 기준이라 정합.
+        #   세로 RFP 였음은 analysis["orientation_rfp"] 보존값으로 프론트 경고에서 안내.
+        slide_width=11.69,
+        slide_height=8.27,
         total_slides=total_slides,
         outline=items,
         quantitative_locks=qlocks,

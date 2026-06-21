@@ -884,6 +884,11 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
                                    핵심 가치 3종 + 비주얼 컨셉)
                        ⚠ 부적합: 수치 강조 → circles / 단순 카드 나열 → cards3 / role=support
                        ※ 이미지 자리가 본질 + 비대칭 거버닝이면 triad, 수치면 circles, 카드면 cards3. 3개 고정.
+  · strategy_map     — 상단 거버닝 + 대전략 박스 3개("+") + 하단 실행 흐름 원 5개(→) + 마무리 거버닝
+                       ★ 적합: role=body 페이지의 "대전략 축 3개 + 하위 실행 단계"를 한 화면에 조망
+                              (예: 3대 전략 + 5단계 추진 로드맵, 핵심 축 + 실행 절차)
+                       ⚠ 부적합: 전략/실행 한쪽만 → cards3/process/triad / 정보 적을 때(과밀) / role=support
+                       ※ 대전략+하위실행을 함께 보여줄 때만. 한쪽만이면 더 단순한 패턴.
 
 ★ 컨셉 슬로건 페이지는 별도 hero 페이지(카탈로그 11번)가 담당.
   text_* 키로 컨셉 슬로건을 만들지 말 것 — 컨셉 슬로건은 80~90pt 거대 슬로건 hero,
@@ -896,7 +901,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
 ② 직전 본문 페이지와 같은 viz_pattern 을 연속 배정 X (반드시 다른 키).
 ③ 페이지 내용이 특정 패턴에 자연스러우면 그것을 우선 선택하되, 다양성을 우선 — 억지로 맞추지 말고 자연스러운 후보 2~3개 중 직전과 다른 것 선택.
 ④ ★ 박스/카드 계열(cards3 / before_after / cards_grid) 합산 cap — 본문 페이지의 40% 이내
-   (예: 본문 20장 → 합 8장 이하). 초과 시 다른 계열(2col / process / quant / text_quote / text_declaration / split / timeline / asymmetric / zigzag / hsplit / circles / matrix / hsplit_top / quad / hero_cards / triad)로 회전.
+   (예: 본문 20장 → 합 8장 이하). 초과 시 다른 계열(2col / process / quant / text_quote / text_declaration / split / timeline / asymmetric / zigzag / hsplit / circles / matrix / hsplit_top / quad / hero_cards / triad / strategy_map)로 회전.
    박스 도배 = 단조로움(평가위원 "패턴 하나만 반복" 인식).
 ⑤ ★ AS-IS/TO-BE 비교 cap — 환각 주요 창구 제어 (Spec C-Build-BeforeAfterCap):
    - "기존 vs 제안" / "현재 vs 개선" / "AS-IS vs TO-BE" 구도의 비교 슬라이드
@@ -2572,7 +2577,7 @@ async def generate_outline(
         _VIZ_PATTERN_SAFE = {"2col", "cards3", "process", "before_after", "quant", "cards_grid",
                              "text_quote", "text_declaration", "split", "timeline", "asymmetric",
                              "zigzag", "hsplit", "circles", "quad",
-                             "matrix", "hsplit_top", "hero_cards", "triad"}
+                             "matrix", "hsplit_top", "hero_cards", "triad", "strategy_map"}
         viz_pattern_raw = str(it.get("viz_pattern", "")).strip().lower()
         viz_pattern = viz_pattern_raw if viz_pattern_raw in _VIZ_PATTERN_SAFE else ""
         # ★ Spec D-Fix-NarrativeGuard — text 위계는 hero/support/simple_box 페이지에 배정 X.
@@ -2729,6 +2734,18 @@ async def generate_outline(
                 log.info(
                     "Preset-Connect-TriadGuard 강등 p=%s role=%s slide_type=%s",
                     it.get("page"), _rl_td, _st_td,
+                )
+                viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
+        # ★ Spec Preset-Connect-StrategyMap — strategy_map 가드 (circles/triad/hero_cards 와 동일 강도).
+        #   strategy_map = "대전략 박스 3 + 하위실행 원 5 흐름 (4단 분할)"이므로 role=body 페이지만 적합.
+        #   hero(컨셉/표지)·support(예산/일정/조직)·simple_box 에 박혀도 무력화.
+        elif viz_pattern == "strategy_map":
+            _rl_sm = str(it.get("role", "")).strip().lower()
+            _st_sm = str(it.get("slide_type", "")).strip().lower()
+            if _rl_sm != "body" or _st_sm == "hero":
+                log.info(
+                    "Preset-Connect-StrategyMap 강등 p=%s role=%s st=%s",
+                    it.get("page"), _rl_sm, _st_sm,
                 )
                 viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
         # Spec D-Fix-BodyRole-1 — role 화이트리스트 (body/support/"" 만 허용).
@@ -3468,6 +3485,28 @@ def _build_slide_user_prompt(
                 '],'
                 '"shapes":[{"type":"text","x":0.9,"y":7.7,"w":10,"h":0.4,'
                 '"text":"3대 추진 축","size":14,"weight":700,"color":"#1A1A1A"}]}'
+            )
+        elif item.viz_pattern == "strategy_map":
+            # Spec Preset-Connect-StrategyMap — 상단 박스3 + "+" + 하단 원5 + 화살표 + footer (4단).
+            # 상단/하단 좌표·박스·원·화살표·"+" 모두 _build_preset_strategy_map 가 자동 배치.
+            # circles/triad 패턴 정합 — preset 키 박으라는 지시 + 백업 text 강제.
+            parts.append(
+                "[비박스 레이아웃 — strategy_map (상단 대전략 박스3 + 하단 실행흐름 원5)]\n"
+                "이 페이지는 preset 키로 렌더한다. 아래 스키마로 출력:\n"
+                '  · "preset": "strategy_map"  (필수 — 누락 시 박스로 회귀)\n'
+                '  · "eyebrow": "상단 라벨" (선택)\n'
+                '  · "title": "상단 메인 거버닝" (필수)\n'
+                '  · "pillars": [{"head":"전략명","desc":"내용","caption":"요약"}, ...] (정확히 3개)\n'
+                '  · "steps": [{"label":"단계명"}, ...] (3~6개, 원 안은 이미지 자리)\n'
+                '  · "footer": "하단 마무리 메시지" (선택)\n'
+                "★ pillars는 반드시 3개, steps는 3~6개. 원 안엔 텍스트 넣지 마라(이미지 자리).\n"
+                "★ 완성 예시:\n"
+                '{"preset":"strategy_map","title":"3대 전략으로 실행 체계 가동",'
+                '"pillars":[{"head":"감각 트리거","desc":"단계별 오감 자극","caption":"연령별 체험"},'
+                '{"head":"관객 참여","desc":"양방향 능동 참여","caption":"실시간 큐레이션"},'
+                '{"head":"지속 관계","desc":"아카이브 사후 연계","caption":"후속 시리즈"}],'
+                '"steps":[{"label":"기획"},{"label":"준비"},{"label":"개막"},{"label":"운영"},{"label":"사후"}],'
+                '"footer":"단계별 KPI로 적시 보정"}'
             )
         else:
             parts.append(

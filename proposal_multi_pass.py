@@ -858,13 +858,6 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
                        ⚠ 부적합: 축 없는 단순 4개 나열 → quad / 순차 흐름 → process /
                               role=support
                        ※ 평가·매핑·우선순위면 matrix, 단순 나열이면 quad. 4분면 모두 채울 것.
-  · funnel           — 단계별로 좁아지는 계단형 (모집→선발 압축, 전환율 깔때기)
-                       ★ 적합: 수량이 줄어드는 압축 / 전환 / 선발
-                              (예: 200팀→50→30→10 선발, 인지→관심→구매 전환)
-                       ⚠ 부적합: 시간/순차 흐름 → timeline / 균등 단계 → process /
-                              role=support
-                       ※ 수량이 줄어드는 압축이면 funnel, 시간 흐름이면 timeline.
-                          단계 3~5개, 각 단계 수치(value) 강력 권장.
   · hsplit_top       — 가로 비대칭 2분할 (위 검정 거버닝 강조 + 아래 흰 좌우 2항목)
                        ★ 적합: 강한 거버닝 임팩트 + 좌우 핵심 2축 본문
                               (예: 전략 선언 + 2대 역량, 비전 선언 + 좌우 핵심 메시지)
@@ -903,7 +896,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
 ② 직전 본문 페이지와 같은 viz_pattern 을 연속 배정 X (반드시 다른 키).
 ③ 페이지 내용이 특정 패턴에 자연스러우면 그것을 우선 선택하되, 다양성을 우선 — 억지로 맞추지 말고 자연스러운 후보 2~3개 중 직전과 다른 것 선택.
 ④ ★ 박스/카드 계열(cards3 / before_after / cards_grid) 합산 cap — 본문 페이지의 40% 이내
-   (예: 본문 20장 → 합 8장 이하). 초과 시 다른 계열(2col / process / quant / text_quote / text_declaration / split / timeline / asymmetric / zigzag / hsplit / circles / matrix / funnel / hsplit_top / quad / hero_cards / triad)로 회전.
+   (예: 본문 20장 → 합 8장 이하). 초과 시 다른 계열(2col / process / quant / text_quote / text_declaration / split / timeline / asymmetric / zigzag / hsplit / circles / matrix / hsplit_top / quad / hero_cards / triad)로 회전.
    박스 도배 = 단조로움(평가위원 "패턴 하나만 반복" 인식).
 ⑤ ★ AS-IS/TO-BE 비교 cap — 환각 주요 창구 제어 (Spec C-Build-BeforeAfterCap):
    - "기존 vs 제안" / "현재 vs 개선" / "AS-IS vs TO-BE" 구도의 비교 슬라이드
@@ -2570,15 +2563,16 @@ async def generate_outline(
         gov_sub = [str(s).strip() for s in gov_sub_raw if s and str(s).strip()]
         # Spec D-Fix-LayoutVariety-1 / D-Fix-NarrativeDiversity / D-Build-PresetSplit — 안전 9종 화이트리스트.
         # outline AI 가 위험 4종 또는 임의 값을 박더라도 안전 풀 밖이면 ""로 fallback.
-        # Spec D-Build-PresetAllowlistEnable3 — matrix/funnel/hsplit_top 활성화 (스위치 ON).
-        #   3종은 함수/dispatch/가드/SLIDE 가이드/user prompt 예시 5지점 완성·머지된 상태에서
+        # Spec D-Build-PresetAllowlistEnable3 — matrix/hsplit_top 활성화 (스위치 ON).
+        #   2종은 함수/dispatch/가드/SLIDE 가이드/user prompt 예시 5지점 완성·머지된 상태에서
         #   본 spec 으로 화이트리스트 1지점 추가 = OUTLINE LLM 이 viz_pattern 으로 선택 가능.
-        #   ★ hsplit_top 은 PR(별도 브랜치) 머지 후 6지점 완전 활성 — 본 spec 이 먼저 머지돼도
-        #     dispatch/가드 분기 없어 LLM 이 안 박음(안전). 머지 순서 무관.
+        # ★ Spec Preset-Remove-Funnel — funnel 화이트리스트에서 제거 (옵션 B 완전삭제).
+        #   process 가 균등 단계, timeline 이 순차 흐름 대체 가능. funnel 은 억지 골격 맞춤이
+        #   내용 빈약을 유발해 제거. 함수/dispatch/가드/SLIDE 분기/카탈로그 모두 동시 삭제.
         _VIZ_PATTERN_SAFE = {"2col", "cards3", "process", "before_after", "quant", "cards_grid",
                              "text_quote", "text_declaration", "split", "timeline", "asymmetric",
                              "zigzag", "hsplit", "circles", "quad",
-                             "matrix", "funnel", "hsplit_top", "hero_cards", "triad"}
+                             "matrix", "hsplit_top", "hero_cards", "triad"}
         viz_pattern_raw = str(it.get("viz_pattern", "")).strip().lower()
         viz_pattern = viz_pattern_raw if viz_pattern_raw in _VIZ_PATTERN_SAFE else ""
         # ★ Spec D-Fix-NarrativeGuard — text 위계는 hero/support/simple_box 페이지에 배정 X.
@@ -2672,8 +2666,8 @@ async def generate_outline(
         #   matrix = "2축(X·Y) 4분면 매핑 (우선순위 평가, 효과×난이도)"이므로 role=body 페이지에만 적합.
         #   hero(컨셉/표지)·support(예산/일정/조직)·simple_box 에 박혀도 무력화.
         #   ★ 본 spec 단계: 화이트리스트(_VIZ_PATTERN_SAFE) 에 "matrix" 미추가 → 본 가드 분기는
-        #     viz_pattern_raw 가 화이트리스트에서 ""로 fallback 된 후라 진입 0건. 4종(matrix/funnel/
-        #     donut/venn) 완성 후 별도 spec 으로 화이트리스트 켜면 본 가드가 실제 작동 시작.
+        #     viz_pattern_raw 가 화이트리스트에서 ""로 fallback 된 후라 진입 0건. 완성 후 별도
+        #     spec 으로 화이트리스트 켜면 본 가드가 실제 작동 시작.
         elif viz_pattern == "matrix":
             _rl_mx = str(it.get("role", "")).strip().lower()
             _st_mx = str(it.get("slide_type", "")).strip().lower()
@@ -2683,22 +2677,7 @@ async def generate_outline(
                     it.get("page"), _rl_mx, _st_mx,
                 )
                 viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
-        # ★ Spec D-Build-PresetFunnel — funnel 가드 (matrix 와 동일 강도).
-        #   funnel = "단계별 수량 감소 압축 흐름 (모집→선발, 전환율 깔때기)"이므로 role=body 만 적합.
-        #   hero(컨셉/표지)·support(예산/일정/조직)·simple_box 에 박혀도 무력화.
-        #   ★ 본 spec 단계: 화이트리스트(_VIZ_PATTERN_SAFE) 에 "funnel" 미추가 → 본 가드 분기는
-        #     viz_pattern_raw 가 화이트리스트에서 ""로 fallback 된 후라 진입 0건. 4종 완성 후
-        #     별도 spec 으로 화이트리스트 켜면 본 가드가 실제 작동 시작.
-        elif viz_pattern == "funnel":
-            _rl_fn = str(it.get("role", "")).strip().lower()
-            _st_fn = str(it.get("slide_type", "")).strip().lower()
-            if _rl_fn != "body" or _st_fn == "hero":
-                log.info(
-                    "D-Build-PresetFunnelGuard 강등 p=%s role=%s slide_type=%s",
-                    it.get("page"), _rl_fn, _st_fn,
-                )
-                viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
-        # ★ Spec D-Build-PresetHsplitTop — hsplit_top 가드 (matrix/funnel 와 동일 강도).
+        # ★ Spec D-Build-PresetHsplitTop — hsplit_top 가드 (matrix 와 동일 강도).
         #   hsplit_top = "위 검정 거버닝 + 아래 흰 좌우 2항목 (강한 임팩트)"이므로 role=body 만 적합.
         #   hero(컨셉/표지)·support(예산/일정/조직)·simple_box 에 박혀도 무력화.
         #   ★ 본 spec 단계: 화이트리스트(_VIZ_PATTERN_SAFE) 에 "hsplit_top" 미추가 → 본 가드 분기는
@@ -2725,7 +2704,7 @@ async def generate_outline(
                     it.get("page"), _rl_qd, _st_qd,
                 )
                 viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
-        # ★ Spec D-Build-PresetHeroCards — hero_cards 가드 (matrix/funnel/hsplit_top 와 동일 강도).
+        # ★ Spec D-Build-PresetHeroCards — hero_cards 가드 (matrix/hsplit_top 와 동일 강도).
         #   hero_cards = "상단 거버닝 히어로 + 하단 카드 2~4개 가로 배치"이므로 role=body 만 적합.
         #   hero(컨셉/표지)·support(예산/일정/조직)·simple_box 에 박혀도 무력화.
         #   ★ 본 spec 단계: 화이트리스트(_VIZ_PATTERN_SAFE) 에 "hero_cards" 미추가 → 본 가드 분기는
@@ -3274,66 +3253,6 @@ def _build_slide_user_prompt(
                 '],'
                 '"shapes":[{"type":"text","x":0.9,"y":7.7,"w":10,"h":0.4,'
                 '"text":"우선순위 4분면 평가","size":14,"weight":700,"color":"#1A1A1A"}]}'
-            )
-        elif item.viz_pattern == "funnel":
-            # Spec D-Build-PresetFunnel — 계단형 rect 압축 흐름 (수량 감소 깔때기).
-            # 거버닝 블록(eyebrow+메인 형광+서브)·단계 좌표는 _build_preset_funnel 가 자동.
-            # ★ 본 spec 단계: 화이트리스트 미연결 → 본 분기는 실제 LLM 입력에 도달 0건.
-            # 빈 페이지 방지: 백업 text 도형 함께 채우게 강제(rect/박스/이미지 절대 X).
-            parts.append(
-                "[비박스 레이아웃 — funnel (계단형 압축 흐름)]\n"
-                "단계별로 폭이 좁아지는 직사각형(계단형)으로 수량 압축을 시각화하는 레이아웃.\n"
-                "각 단계의 너비가 점점 작아져 '많이 → 적게' 흐름이 한눈에 보임.\n"
-                "\n"
-                "★ 채우는 법 — 각 단계(stage):\n"
-                "  · label: 단계 이름 (예: \"1차 모집\", \"본선 진출\", \"결승 선발\").\n"
-                "  · value: 단계 수치 (예: \"200팀\", \"50팀\", \"10팀\"). 강력 권장 — funnel 본질이 수량 압축.\n"
-                "  · desc: 단계별 기준/부연 (선택, 한 줄, 25자 이내).\n"
-                "  · accent: 최종(가장 좁은) 단계 1곳만 true — 최종 강조.\n"
-                "\n"
-                "★ 거버닝 블록 (4종 공통 헬퍼 — eyebrow + 메인 형광 + 서브):\n"
-                "  · \"title\" (필수): 메인 거버닝. outline 의 governing_main 그대로 박아라.\n"
-                "  · \"title_runs\" (선택): 핵심 명사구 1곳만 형광 강조 (D-Build-TextRunsInject 정합).\n"
-                "    예: [{\"t\":\"앞부분 \"},{\"t\":\"핵심 명사구\",\"accent\":true},{\"t\":\" 뒷부분\"}]\n"
-                "  · \"subtitle\" (선택): 서브 거버닝. 메인 보조 — 의미 있는 수치 또는 보충 설명 (' / ' 구분 0~2개). 억지 수치 X.\n"
-                "  · \"eyebrow\" (선택): 좌상단 메타 라벨.\n"
-                "\n"
-                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
-                '  · "preset": "funnel"  (필수)\n'
-                '  · "stages": [{"label":"...(필수)","value":"...","desc":"...","accent":bool}, ...]\n'
-                "    (정확히 3~5개. label 필수. value 강력 권장.)\n"
-                '  · "title" (필수, 거버닝) / "title_runs" / "subtitle" / "eyebrow" (선택)\n'
-                "  → 단계별 rect 좌표·너비 감소·라벨은 코드가 자동 배치한다.\n"
-                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
-                "    절대 금지: rect / 박스 / 이미지 / 도형(type='text' 외).\n"
-                "    계단형 rect 는 코드가 자동으로 그린다.\n"
-                "    백업으로 넣을 것 (text 만): 제목 + 각 단계 label+value 텍스트 정도.\n"
-                "  ★ preset='funnel' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
-                "  ★ stages 3개 미만 또는 5개 초과 시도 박스로 회귀 — 3~5 범위 엄수.\n"
-                "\n"
-                "★ 다른 패턴과 구분:\n"
-                "  · 시간/순차 흐름 → timeline (각 단계 동일 비중)\n"
-                "  · 균등 단계 (4단계 흐름) → horizontal_process / process\n"
-                "  · 2축 평가 → matrix\n"
-                "  · funnel 은 \"수량이 줄어드는 압축\" 일 때 — 단계마다 숫자가 줄어드는 게 본질.\n"
-                "\n"
-                "★ 완성 예시 (이 구조 그대로 따라):\n"
-                '{"preset":"funnel",'
-                '"eyebrow":"Ⅱ. 사업 운영 · 모집 설계",'
-                '"title":"200팀 공모에서 결승 10팀까지 4단계 압축 선발",'
-                '"title_runs":['
-                '{"t":"200팀 공모에서 결승 10팀까지 "},'
-                '{"t":"4단계 압축 선발","accent":true}'
-                '],'
-                '"subtitle":"전국 공모 / 최종 1대 20 경쟁률",'
-                '"stages":['
-                '{"label":"1차 모집","value":"200팀","desc":"전국 공모, 온라인 접수","accent":false},'
-                '{"label":"서류 통과","value":"50팀","desc":"심사 4단계 정량 평가","accent":false},'
-                '{"label":"본선 진출","value":"30팀","desc":"현장 발표 평가","accent":false},'
-                '{"label":"결승 선발","value":"10팀","desc":"최종 우승팀 후보","accent":true}'
-                '],'
-                '"shapes":[{"type":"text","x":0.9,"y":7.7,"w":10,"h":0.4,'
-                '"text":"200팀에서 결승 10팀 선발","size":14,"weight":700,"color":"#1A1A1A"}]}'
             )
         elif item.viz_pattern == "hsplit_top":
             # Spec D-Build-PresetHsplitTop — 가로 비대칭 2분할 (위 검정 거버닝 + 아래 흰 좌우 2항목).

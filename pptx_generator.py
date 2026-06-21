@@ -2660,7 +2660,7 @@ def _build_preset_split(slide_data):
 
 
 # ─── Spec D-Build-PresetMatrix — 4종 공통 거버닝 블록 헬퍼 ───────────────────────
-# matrix/funnel/donut/venn 4종이 공유할 거버닝 블록(eyebrow + 메인 거버닝 형광 + 서브 거버닝).
+# matrix 가 사용하는 거버닝 블록(eyebrow + 메인 거버닝 형광 + 서브 거버닝). 추후 donut/venn 도 같은 블록 공유 가능.
 # 좌표/폰트/형광 패턴은 timeline 의 D-Fix-TimelineGoverningPartialAccent /
 #   D-Fix-TimelineGoverningPosition 정합 — 일반 본문 페이지 거버닝 표준 좌표(x=0.5).
 # 입력 스키마 (모두 선택, title 만 필수):
@@ -2676,7 +2676,7 @@ def _build_preset_split(slide_data):
 #   → _add_text(L1638~) 의 run 단위 색 분기 → accent && theme=='dark' 만 #FFFF00.
 #   유효하지 않으면 text_runs 키 자체 누락 → 일반 거버닝 fallback (형광 없음, 안전).
 # ★ timeline 은 본 헬퍼 사용 X — 이미 자체 거버닝 처리(D-Fix-TimelineGoverning*) 잘 동작 중.
-#   본 헬퍼는 신규 4종(matrix/funnel/donut/venn) 만 호출.
+#   본 헬퍼는 matrix 가 호출 (추후 donut/venn 도 같은 블록 공유 가능).
 def _build_governing_block(slide_data):
     eyebrow = str(slide_data.get("eyebrow", "")).strip()
     title = str(slide_data.get("title", "")).strip()
@@ -3449,123 +3449,6 @@ def _build_preset_matrix(slide_data):
     return shapes
 
 
-# ─── Spec D-Build-PresetFunnel — funnel (계단형 rect 압축 흐름) 레이아웃 프리셋 ──
-# 본문 영역 5.0"(y=2.5~7.5) 안에 N(3~5) 단계를 균등 세로 분배.
-# 각 단계는 직사각형(rect)이고 위→아래로 너비가 선형 감소 → "수량 압축" 의미 시각화.
-# ★ 사다리꼴(polygon/TRAPEZOID) 도형은 운영 dispatch 분기에 없음 → rect 계단형으로 근사.
-# 거버닝 블록은 _build_governing_block 헬퍼 호출 — eyebrow + 메인 형광 + 서브 거버닝.
-# ★ funnel 도 matrix 와 동일하게 area_top 2.5 고정 (서브 유무와 무관하게 단계 위치 안정).
-# 입력 스키마 (거버닝 4키 + funnel 고유 1키):
-#   slide_data["eyebrow"]    = (선택, 헬퍼 처리)
-#   slide_data["title"]      = (필수, 헬퍼 처리, 형광 가능)
-#   slide_data["title_runs"] = (선택, 헬퍼 처리 — 메인 거버닝 형광 segment)
-#   slide_data["subtitle"]   = (선택, 헬퍼 처리)
-#   slide_data["stages"]     = [{"label"(필수),"value","desc","accent":bool}, ...] (필수, 3~5개)
-# 안전망 (엄격):
-#   - stages list 아님            → 빈 list (preset 미성립 → LLM 백업)
-#   - label 정제 후 N < 3 or > 5  → 빈 list
-#   - accent 다중                 → 첫 1개만 유지 (matrix 패턴 정합)
-# 원 강조 (theme): preset 함수는 theme 인자 받지 않음 (matrix/circles/timeline 동일).
-#   accent 단계 fill=#1A1A1A (검정), 비강조 단계 fill=#CCCCCC (옅은 회색) — matrix 정합.
-#   _map_color 가 theme=dark 시 fill role 자동 다크 매핑 → 라이트/다크 모두 자연스러운 강조 대비.
-def _build_preset_funnel(slide_data):
-    # ① 거버닝 헬퍼 — eyebrow + 메인(형광) + 서브 (matrix 와 동일 호출)
-    shapes, _hdr_area_top = _build_governing_block(slide_data)
-    # ★ funnel 도 area_top 2.5 고정 (matrix D3 정합 — 서브 유무 무관)
-    area_top = 2.5
-    area_bot = 7.5
-
-    # ② stages 정제 (horizontal_process L2237-2250 패턴 + matrix 정합)
-    stages_raw = slide_data.get("stages") or []
-    if not isinstance(stages_raw, list):
-        return []
-    valid = []
-    for s in stages_raw:
-        if not isinstance(s, dict):
-            continue
-        label = str(s.get("label", "")).strip()
-        if not label:
-            continue  # label 필수 — strip 후 빈 것 건너뜀
-        valid.append({
-            "label":  label,
-            "value":  str(s.get("value", "")).strip(),
-            "desc":   str(s.get("desc", "")).strip(),
-            "accent": bool(s.get("accent", False)),
-        })
-    N = len(valid)
-    if N < 3 or N > 5:
-        return []  # funnel 본질 다단계 (3~5) — 범위 밖이면 미성립
-
-    # ③ accent 1곳만 유지 (matrix 패턴 정합 — 다중 시 첫 1개)
-    seen = False
-    for v in valid:
-        if v["accent"]:
-            if seen:
-                v["accent"] = False
-            else:
-                seen = True
-
-    # ④ 계단형 rect 좌표 (진단 확정 표)
-    top_w = 6.0          # 최상단 단계 너비
-    bot_w = 2.0          # 최하단 단계 너비
-    center_axis = 4.0    # 사다리꼴 중앙축 (좌측 매트릭스 영역 0.5~7.5 의 중심)
-    step_h = (area_bot - area_top) / N
-    desc_x = 7.7         # 우측 부연 영역 시작
-    desc_w = 3.8
-
-    # 미매핑 회색 농담 5단계 (DARK_MAP 매핑 0건, light/dark 동일 출력).
-    # 밝은(#8A8A8A) → 어두운(#4A4A4A): 깔때기가 핵심으로 좁아질수록 진하게 강조.
-    # N range 3~5 보장(L3404) 이라 인덱스 안전 — 명시 안전망 STAGE_FILL_COLORS[-1] fallback.
-    STAGE_FILL_COLORS = ["#8A8A8A", "#7A7A7A", "#6A6A6A", "#5A5A5A", "#4A4A4A"]
-
-    for i, v in enumerate(valid):
-        # 단계 i 중심 비율 t = (i+0.5)/N 로 너비 선형 보간
-        t = (i + 0.5) / N
-        w = top_w + (bot_w - top_w) * t
-        x = center_axis - w / 2
-        y = area_top + i * step_h
-
-        # rect (계단형 — 단계 사이 여백 0.1"(상하 0.05) 두기)
-        # Spec D-Build-FunnelStepGradient — 단계별 회색 농담 차등 (솔리드 회색 fill, 테두리 X).
-        #   fill: STAGE_FILL_COLORS[i] (미매핑 회색 농담, 밝은 → 어두운).
-        #     light/dark 동일 출력 (DARK_MAP 매핑 0건) — 농담 차이로 단계 진행 시각화.
-        #   stroke=None: 테두리 제거, 솔리드 회색 박스 (회색 면 자체로 박스 경계 표현).
-        #   stroke_width 는 stroke None 일 때 의미 없으나 입력 무시되므로 그대로 둬도 무방.
-        #   v["accent"] 입력 자체는 보존 (스키마 호환) — 색 분기에서만 사용 X.
-        shapes.append({
-            "type": "rect",
-            "x": x, "y": y + 0.05,
-            "w": w, "h": step_h - 0.1,
-            "fill": STAGE_FILL_COLORS[i] if i < len(STAGE_FILL_COLORS) else STAGE_FILL_COLORS[-1],
-            "stroke": None,
-            "stroke_width": 1.5,
-        })
-
-        # 라벨 + value 결합 — rect 안 중앙 (회색 면 위 흰 글자, 미매핑 → light/dark 동일).
-        label_str = v["label"] + " " + v["value"] if v["value"] else v["label"]
-        shapes.append({
-            "type": "text",
-            "x": x, "y": y + 0.05,
-            "w": w, "h": step_h - 0.1,
-            "text": label_str,
-            "size": 14, "weight": 700, "color": "#FEFEFE",
-            "align": "center", "valign": "middle",
-        })
-
-        # 우측 부연 (선택, desc 있을 때만) — matrix 의 분면 부연과 동일 톤
-        if v["desc"]:
-            shapes.append({
-                "type": "text",
-                "x": desc_x, "y": y + 0.05,
-                "w": desc_w, "h": step_h - 0.1,
-                "text": v["desc"],
-                "size": 11, "weight": 400, "color": "#666666",
-                "align": "left", "valign": "middle",
-            })
-
-    return shapes
-
-
 # ─── Spec D-Build-PresetHsplitTop — hsplit_top (위 검정 거버닝 + 아래 흰 좌우 2항목) ─
 # split (세로 좌우 색면 2분할) 의 가로 비대칭 버전 — 위 1/3 검정 색면 + 아래 2/3 흰 바탕.
 # 위 검정 영역: 중앙 정렬 거버닝 (eyebrow + 메인 1줄 + 형광 2줄 + subtitle).
@@ -4239,7 +4122,7 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
         elif preset_name == "matrix":
             # Spec D-Build-PresetMatrix — 2축 4분면 매핑 (X·Y + 4분면).
             # ★ 본 spec 단계: 코드만 등록 + viz_pattern 화이트리스트 미연결 (LLM 미선택 보장).
-            #   4종(matrix/funnel/donut/venn) 완성 후 별도 spec 으로 한꺼번에 화이트리스트 켤 것.
+            #   완성 후 별도 spec 으로 화이트리스트 켤 것.
             # circles/quad 와 동일 패턴 — 성공 시 preset 만(겹침 차단), 실패/예외 시 LLM 백업.
             try:
                 preset_shapes = _build_preset_matrix(slide_data)
@@ -4249,23 +4132,10 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
                     shapes = slide_data.get("shapes", [])
             except Exception:
                 shapes = slide_data.get("shapes", [])
-        elif preset_name == "funnel":
-            # Spec D-Build-PresetFunnel — 계단형 rect 압축 흐름 (수량 감소 깔때기).
-            # ★ 본 spec 단계: 코드만 등록 + viz_pattern 화이트리스트 미연결 (LLM 미선택 보장).
-            #   matrix 와 동일 — 4종(matrix/funnel/donut/venn) 완성 후 별도 spec 으로 한꺼번에 켤 것.
-            # matrix/circles/quad 와 동일 패턴 — 성공 시 preset 만, 실패/예외 시 LLM 백업.
-            try:
-                preset_shapes = _build_preset_funnel(slide_data)
-                if preset_shapes:
-                    shapes = preset_shapes
-                else:
-                    shapes = slide_data.get("shapes", [])
-            except Exception:
-                shapes = slide_data.get("shapes", [])
         elif preset_name == "hsplit_top":
             # Spec D-Build-PresetHsplitTop — 가로 비대칭 2분할 (위 검정 거버닝 + 아래 흰 좌우 2항목).
             # ★ 본 spec 단계: 코드만 등록 + viz_pattern 화이트리스트 미연결 (LLM 미선택 보장).
-            #   matrix/funnel 와 동일 — 완성 후 별도 spec 으로 한꺼번에 켤 것.
+            #   matrix 와 동일 — 완성 후 별도 spec 으로 한꺼번에 켤 것.
             # split 가로 비대칭 버전 — 성공 시 preset 만, 실패/예외 시 LLM 백업.
             try:
                 preset_shapes = _build_preset_hsplit_top(slide_data)
@@ -4289,7 +4159,7 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
         elif preset_name == "hero_cards":
             # Spec D-Build-PresetHeroCards — 상단 거버닝 히어로 + 하단 카드 N개(2~4).
             # ★ 본 spec 단계: 코드만 등록 + viz_pattern 화이트리스트 미연결 (LLM 미선택 보장).
-            #   matrix/funnel/hsplit_top 와 동일 — 별도 spec 으로 한꺼번에 켤 것.
+            #   matrix/hsplit_top 와 동일 — 별도 spec 으로 한꺼번에 켤 것.
             # circles 와 동일 패턴 — 성공 시 preset 만, 실패/예외 시 LLM 백업.
             try:
                 preset_shapes = _build_preset_hero_cards(slide_data)

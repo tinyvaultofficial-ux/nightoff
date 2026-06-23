@@ -2452,6 +2452,12 @@ details.audit-block:not([open]) summary.audit-block-label::after { content: " �
   display: grid; place-items: center; padding: 20px; animation: fadeIn .15s ease;
 }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+/* Spec UX-PageTransition — 라우팅 전환 입장 효과. opacity + translate3d slide-up.
+   static/app.js:521 route() 의 #app-root animation 이 본 keyframes 참조. */
+@keyframes pageEnter {
+  from { opacity: 0; transform: translate3d(0, 24px, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
 .modal {
   width: 100%; max-width: 440px; background: #fff; border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg); overflow: hidden;

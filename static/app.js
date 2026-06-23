@@ -508,8 +508,11 @@ function route() {
 
   // D-Fix-Transition: 화면 전환 공통 처리 (모든 navigate / popstate 경유)
   //   ① 스크롤 맨 위 리셋 — window + documentElement + #app-root (채팅 안 컨테이너는 별개 / 무관)
-  //   ② 페이드 200ms 재트리거 — @keyframes fadeIn 재활용 (CSS 추가 0). 이전 animation 제거 + reflow 트리거.
-  //   handler 가 innerHTML 을 갈아끼워도 #app-root 요소 자체에 걸린 animation 은 그대로 작동.
+  //   ② Spec UX-PageTransition — pageEnter 450ms slide-up + ease-out cubic (opacity + translate3d).
+  //     기존 fadeIn 200ms ease 가 짧고 opacity 만이라 "딱딱" 체감 → 강화.
+  //     CSS keyframes 는 static/style.css 의 @keyframes pageEnter 정의 (fadeIn 도 보존, 참조만 교체).
+  //     이전 animation 제거 + reflow 트리거 패턴 그대로 — 빠른 연속 전환에도 매번 새로 시작.
+  //     handler 가 innerHTML 을 갈아끼워도 #app-root 요소 자체에 걸린 animation 은 그대로 작동.
   try {
     window.scrollTo(0, 0);
     document.documentElement.scrollTop = 0;
@@ -518,7 +521,7 @@ function route() {
       _appRoot.scrollTop = 0;
       _appRoot.style.animation = "none";
       void _appRoot.offsetWidth;
-      _appRoot.style.animation = "fadeIn 200ms ease";
+      _appRoot.style.animation = "pageEnter 450ms cubic-bezier(0.16, 1, 0.3, 1)";
     }
   } catch (_e) { /* 전환 안전 — 효과 실패해도 라우팅은 계속 */ }
 

@@ -466,6 +466,12 @@ const LOADER_STEPS = {
   search: [
     { emoji: "🌐", text: "웹에서 정보 찾고 있어요" },
   ],
+  // Spec UX-SubmissionLoader — 제출서류 가이드 분석 (최대 3분 소요)
+  submission: [
+    { emoji: "📑", text: "RFP에서 제출서류 찾고 있어요" },
+    { emoji: "🗂️", text: "서류 종류 분류 중이에요" },
+    { emoji: "📝", text: "준비 가이드 정리 중이에요" },
+  ],
 };
 
 // ---------- Router ----------
@@ -3836,12 +3842,17 @@ async function renderSubmissionDocsSection(cid, client) {
       class: "btn btn-primary",
       onclick: async (e) => {
         const btn = e.currentTarget;
-        btn.disabled = true; btn.textContent = "분석 중… (최대 1분)";
+        btn.disabled = true; btn.textContent = "분석 중…";
+        // Spec UX-SubmissionLoader — 풀스크린 로더 + 타이머 (RFP doMultiUpload L4725 패턴 정합).
+        //   최대 3분 소요 → showTimer:true 로 경과 초 표시. backdrop 이 클릭/스크롤 추가 차단.
+        const loader = showFullscreenLoader(LOADER_STEPS.submission, { showTimer: true });
         try {
           await api.post(`/api/clients/${cid}/submission-docs/extract`, {}, { timeoutMs: 180000 });
+          loader.finish("✅", "분석 완료!", 700);
           // Spec D-Fix-SubmissionDocs-Rerender — 추출 완료 후 전용 화면 재렌더 (분석 화면으로 튕기지 않게)
           renderClientSubmissionDocs(cid);
         } catch (err) {
+          loader.stop();
           toast(err.message || "분석에 실패했어요", "error");
           btn.disabled = false; btn.textContent = "제출서류 분석하기";
         }
@@ -4020,11 +4031,15 @@ async function renderSubmissionDocsSection(cid, client) {
     onclick: async (e) => {
       const btn = e.currentTarget;
       btn.disabled = true; btn.textContent = "다시 분석 중…";
+      // Spec UX-SubmissionLoader — 풀스크린 로더 + 타이머 (초기 분석 버튼 정합).
+      const loader = showFullscreenLoader(LOADER_STEPS.submission, { showTimer: true });
       try {
         await api.post(`/api/clients/${cid}/submission-docs/extract`, {}, { timeoutMs: 180000 });
+        loader.finish("✅", "분석 완료!", 700);
         // Spec D-Fix-SubmissionDocs-Rerender — 추출 완료 후 전용 화면 재렌더 (분석 화면으로 튕기지 않게)
         renderClientSubmissionDocs(cid);
       } catch (err) {
+        loader.stop();
         toast(err.message || "분석 실패", "error");
         btn.disabled = false; btn.textContent = "다시 분석";
       }

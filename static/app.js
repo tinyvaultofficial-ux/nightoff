@@ -528,6 +528,11 @@ function route() {
 
 // 루트("/") 진입 시 — 랜딩을 본 적 있는 사용자는 바로 대시보드, 아니면 랜딩
 function renderRootRoute() {
+  // Spec Auth-Fix-LandingSeenGuard — 로그아웃 후 / 재진입 시 대시보드 오인 차단.
+  //   로그아웃은 nightoff_jwt 만 지우고 nightoff.landing_seen 은 보존 → 토큰 없는데
+  //   기존 분기는 landing_seen 만 보고 renderDashboard 호출 → 사이드바(로그아웃 버튼 포함)
+  //   잠깐 노출 후 API 401 으로 redirect. 토큰 없으면 무조건 랜딩으로 차단.
+  if (!getToken()) return renderLanding();
   const seen = localStorage.getItem("nightoff.landing_seen") === "1";
   if (seen) return renderDashboard();
   return renderLanding();

@@ -852,12 +852,6 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
                        ⚠ 부적합: 순차 단계(흐름) → timeline / 좌우 대비 → split·asymmetric /
                               role=support
                        ※ 순차 흐름이면 timeline, 좌우 대비면 split. 원 3~4개 권장(최대 4).
-  · matrix           — 2축(X·Y)으로 4분면 매핑 (우선순위 평가, 효과×난이도 등)
-                       ★ 적합: 위치가 정보 / 두 기준으로 분류 / 최우선 분면 1곳 강조
-                              (예: 효과×난이도 평가, 중요도×긴급도, 영향×실현가능성)
-                       ⚠ 부적합: 축 없는 단순 4개 나열 → quad / 순차 흐름 → process /
-                              role=support
-                       ※ 평가·매핑·우선순위면 matrix, 단순 나열이면 quad. 4분면 모두 채울 것.
   · hsplit_top       — 가로 비대칭 2분할 (위 검정 거버닝 강조 + 아래 흰 좌우 2항목)
                        ★ 적합: 강한 거버닝 임팩트 + 좌우 핵심 2축 본문
                               (예: 전략 선언 + 2대 역량, 비전 선언 + 좌우 핵심 메시지)
@@ -901,7 +895,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
 ② 직전 본문 페이지와 같은 viz_pattern 을 연속 배정 X (반드시 다른 키).
 ③ 페이지 내용이 특정 패턴에 자연스러우면 그것을 우선 선택하되, 다양성을 우선 — 억지로 맞추지 말고 자연스러운 후보 2~3개 중 직전과 다른 것 선택.
 ④ ★ 박스/카드 계열(cards3 / before_after / cards_grid) 합산 cap — 본문 페이지의 40% 이내
-   (예: 본문 20장 → 합 8장 이하). 초과 시 다른 계열(2col / process / quant / text_quote / text_declaration / split / timeline / asymmetric / zigzag / hsplit / circles / matrix / hsplit_top / quad / hero_cards / triad / strategy_map)로 회전.
+   (예: 본문 20장 → 합 8장 이하). 초과 시 다른 계열(2col / process / quant / text_quote / text_declaration / split / timeline / asymmetric / zigzag / hsplit / circles / hsplit_top / quad / hero_cards / triad / strategy_map)로 회전.
    박스 도배 = 단조로움(평가위원 "패턴 하나만 반복" 인식).
 ⑤ ★ AS-IS/TO-BE 비교 cap — 환각 주요 창구 제어 (Spec C-Build-BeforeAfterCap):
    - "기존 vs 제안" / "현재 vs 개선" / "AS-IS vs TO-BE" 구도의 비교 슬라이드
@@ -2568,16 +2562,18 @@ async def generate_outline(
         gov_sub = [str(s).strip() for s in gov_sub_raw if s and str(s).strip()]
         # Spec D-Fix-LayoutVariety-1 / D-Fix-NarrativeDiversity / D-Build-PresetSplit — 안전 9종 화이트리스트.
         # outline AI 가 위험 4종 또는 임의 값을 박더라도 안전 풀 밖이면 ""로 fallback.
-        # Spec D-Build-PresetAllowlistEnable3 — matrix/hsplit_top 활성화 (스위치 ON).
-        #   2종은 함수/dispatch/가드/SLIDE 가이드/user prompt 예시 5지점 완성·머지된 상태에서
+        # Spec D-Build-PresetAllowlistEnable3 — hsplit_top 활성화 (스위치 ON).
+        #   함수/dispatch/가드/SLIDE 가이드/user prompt 예시 5지점 완성·머지된 상태에서
         #   본 spec 으로 화이트리스트 1지점 추가 = OUTLINE LLM 이 viz_pattern 으로 선택 가능.
         # ★ Spec Preset-Remove-Funnel — funnel 화이트리스트에서 제거 (옵션 B 완전삭제).
-        #   process 가 균등 단계, timeline 이 순차 흐름 대체 가능. funnel 은 억지 골격 맞춤이
-        #   내용 빈약을 유발해 제거. 함수/dispatch/가드/SLIDE 분기/카탈로그 모두 동시 삭제.
+        #   process 가 균등 단계, timeline 이 순차 흐름 대체 가능.
+        # ★ Spec Preset-Remove-Matrix — matrix 화이트리스트에서 제거 (옵션 B 완전삭제).
+        #   2×2 사분면 범용성 낮음 + 첫 생성 빈 페이지 버그 → quad/cards3 등으로 대체 가능.
+        #   함수/dispatch/가드/SLIDE 분기/카탈로그 + _build_governing_block 헬퍼 (유일 사용자) 모두 동시 삭제.
         _VIZ_PATTERN_SAFE = {"2col", "cards3", "process", "before_after", "quant", "cards_grid",
                              "text_quote", "text_declaration", "split", "timeline", "asymmetric",
                              "zigzag", "hsplit", "circles", "quad",
-                             "matrix", "hsplit_top", "hero_cards", "triad", "strategy_map"}
+                             "hsplit_top", "hero_cards", "triad", "strategy_map"}
         viz_pattern_raw = str(it.get("viz_pattern", "")).strip().lower()
         viz_pattern = viz_pattern_raw if viz_pattern_raw in _VIZ_PATTERN_SAFE else ""
         # ★ Spec D-Fix-NarrativeGuard — text 위계는 hero/support/simple_box 페이지에 배정 X.
@@ -2667,22 +2663,7 @@ async def generate_outline(
                     it.get("page"), _rl_cc, _st_cc,
                 )
                 viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
-        # ★ Spec D-Build-PresetMatrix — matrix 가드 (circles/hsplit/zigzag/asymmetric 과 동일 강도).
-        #   matrix = "2축(X·Y) 4분면 매핑 (우선순위 평가, 효과×난이도)"이므로 role=body 페이지에만 적합.
-        #   hero(컨셉/표지)·support(예산/일정/조직)·simple_box 에 박혀도 무력화.
-        #   ★ 본 spec 단계: 화이트리스트(_VIZ_PATTERN_SAFE) 에 "matrix" 미추가 → 본 가드 분기는
-        #     viz_pattern_raw 가 화이트리스트에서 ""로 fallback 된 후라 진입 0건. 완성 후 별도
-        #     spec 으로 화이트리스트 켜면 본 가드가 실제 작동 시작.
-        elif viz_pattern == "matrix":
-            _rl_mx = str(it.get("role", "")).strip().lower()
-            _st_mx = str(it.get("slide_type", "")).strip().lower()
-            if _rl_mx != "body" or _st_mx == "hero":
-                log.info(
-                    "D-Build-PresetMatrixGuard 강등 p=%s role=%s slide_type=%s",
-                    it.get("page"), _rl_mx, _st_mx,
-                )
-                viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
-        # ★ Spec D-Build-PresetHsplitTop — hsplit_top 가드 (matrix 와 동일 강도).
+        # ★ Spec D-Build-PresetHsplitTop — hsplit_top 가드 (circles/hsplit/zigzag/asymmetric 과 동일 강도).
         #   hsplit_top = "위 검정 거버닝 + 아래 흰 좌우 2항목 (강한 임팩트)"이므로 role=body 만 적합.
         #   hero(컨셉/표지)·support(예산/일정/조직)·simple_box 에 박혀도 무력화.
         #   ★ 본 spec 단계: 화이트리스트(_VIZ_PATTERN_SAFE) 에 "hsplit_top" 미추가 → 본 가드 분기는
@@ -2709,7 +2690,7 @@ async def generate_outline(
                     it.get("page"), _rl_qd, _st_qd,
                 )
                 viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
-        # ★ Spec D-Build-PresetHeroCards — hero_cards 가드 (matrix/hsplit_top 와 동일 강도).
+        # ★ Spec D-Build-PresetHeroCards — hero_cards 가드 (hsplit_top 와 동일 강도).
         #   hero_cards = "상단 거버닝 히어로 + 하단 카드 2~4개 가로 배치"이므로 role=body 만 적합.
         #   hero(컨셉/표지)·support(예산/일정/조직)·simple_box 에 박혀도 무력화.
         #   ★ 본 spec 단계: 화이트리스트(_VIZ_PATTERN_SAFE) 에 "hero_cards" 미추가 → 본 가드 분기는
@@ -3204,77 +3185,6 @@ def _build_slide_user_prompt(
                 '"shapes":[{"type":"text","x":0.9,"y":7.4,"w":10,"h":0.6,'
                 '"text":"4대 핵심 지표","size":18,"weight":700,"color":"#1A1A1A"}]}'
             )
-        elif item.viz_pattern == "matrix":
-            # Spec D-Build-PresetMatrix — 2축(X·Y) 4분면 매핑 (우선순위 평가).
-            # 거버닝 블록(eyebrow+메인 형광+서브)·축·4분면 좌표는 _build_preset_matrix 가 자동.
-            # ★ 본 spec 단계: 화이트리스트 미연결 → 본 분기는 실제 LLM 입력에 도달 0건.
-            #   4종 완성 후 화이트리스트 켜면 본 가이드가 실제 작동 시작 (안전망).
-            # 빈 페이지 방지: 백업 text 도형 함께 채우게 강제(rect/박스/이미지 절대 X).
-            parts.append(
-                "[비박스 레이아웃 — matrix (2축 4분면 매핑)]\n"
-                "두 개의 축(X·Y)으로 영역을 4분면으로 나누고, 각 분면에 항목을 배치하는 레이아웃.\n"
-                "위치 자체가 정보 — 어느 분면에 들어가느냐가 의미.\n"
-                "\n"
-                "★ 채우는 법:\n"
-                "  · axis_x / axis_y: 각 축의 양끝 라벨 (예: [\"低\", \"高\"]).\n"
-                "  · axis_x_label / axis_y_label: 축 본명 (예: \"난이도\", \"효과\"). 선택.\n"
-                "  · quadrants: 4분면 (정확히 4개 — tl/tr/bl/br).\n"
-                "    - pos: \"tl\" 좌상(X低 Y高) / \"tr\" 우상(X高 Y高) / \"bl\" 좌하(X低 Y低) / \"br\" 우하(X高 Y低)\n"
-                "    - title: 분면 핵심 한 줄 (10~15자, 명사형)\n"
-                "    - desc: 짧은 부연 (선택, 한 줄 25자 이내)\n"
-                "    - accent: 최우선 분면 1곳만 true (다중 시 첫 1개만 유지됨)\n"
-                "\n"
-                "★ 거버닝 블록 (4종 공통 헬퍼 — eyebrow + 메인 형광 + 서브):\n"
-                "  · \"title\" (필수): 메인 거버닝. outline 의 governing_main 그대로 박아라.\n"
-                "  · \"title_runs\" (선택): 핵심 명사구 1곳만 형광 강조 (D-Build-TextRunsInject 정합).\n"
-                "    예: [{\"t\":\"앞부분 \"},{\"t\":\"핵심 명사구\",\"accent\":true},{\"t\":\" 뒷부분\"}]\n"
-                "  · \"subtitle\" (선택): 서브 거버닝. 메인 보조 — 의미 있는 수치 또는 보충 설명 (' / ' 구분 0~2개, 각 25자 이내). 억지 수치 X.\n"
-                "    outline 의 governing_sub 그대로.\n"
-                "  · \"eyebrow\" (선택): 좌상단 메타 라벨.\n"
-                "\n"
-                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
-                '  · "preset": "matrix"  (필수)\n'
-                '  · "axis_x": ["低", "高"]  (필수, 양끝 라벨)\n'
-                '  · "axis_y": ["低", "高"]  (필수, 양끝 라벨)\n'
-                '  · "axis_x_label": "난이도" / "axis_y_label": "효과"  (선택, 축 본명)\n'
-                '  · "quadrants": [{"pos":"tl|tr|bl|br","title":"...","desc":"...","accent":bool}, ...]\n'
-                "    (정확히 4개, pos 4종 모두 등장)\n"
-                '  · "title" (필수, 거버닝) / "title_runs" / "subtitle" / "eyebrow" (선택)\n'
-                "  → 축/4분면 원·텍스트 좌표는 코드가 자동 배치한다.\n"
-                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
-                "    절대 금지: rect / 박스 / 이미지 / 도형(type='text' 외).\n"
-                "    축 선·4분면 원은 코드가 자동으로 그린다.\n"
-                "    백업으로 넣을 것 (text 만): 제목 + 각 분면 title 텍스트 정도.\n"
-                "  ★ preset='matrix' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
-                "  ★ quadrants 4개 미달 (3개 이하) 시도 박스로 회귀 — 4개 모두 채울 것.\n"
-                "\n"
-                "★ 다른 패턴과 구분:\n"
-                "  · 축 없는 단순 4개 나열 → quad (색면 4분할)\n"
-                "  · 순차 단계 흐름 → timeline / process\n"
-                "  · 좌우 대비 → split / asymmetric\n"
-                "  · matrix 는 \"두 축으로 분류·평가·우선순위 매핑\" 할 때.\n"
-                "\n"
-                "★ 완성 예시 (이 구조 그대로 따라):\n"
-                '{"preset":"matrix",'
-                '"eyebrow":"Ⅱ. 추진 전략 · 우선순위 평가",'
-                '"title":"효과 大 난이도 小 구간을 최우선 실행 영역으로",'
-                '"title_runs":['
-                '{"t":"효과 大 난이도 小 구간을 "},'
-                '{"t":"최우선 실행 영역","accent":true},'
-                '{"t":"으로"}'
-                '],'
-                '"subtitle":"최우선 영역 집중 + 후순위 단계적 검토",'
-                '"axis_x":["低","高"],"axis_y":["低","高"],'
-                '"axis_x_label":"난이도","axis_y_label":"효과",'
-                '"quadrants":['
-                '{"pos":"tl","title":"빠른 성과 구간","desc":"즉시 착수 가능 5개","accent":false},'
-                '{"pos":"tr","title":"최우선 실행 영역","desc":"역량 집중 투입 3개","accent":true},'
-                '{"pos":"bl","title":"후순위 검토","desc":"중장기 재평가 3개","accent":false},'
-                '{"pos":"br","title":"중장기 과제","desc":"단계적 검토 필요 1개","accent":false}'
-                '],'
-                '"shapes":[{"type":"text","x":0.9,"y":7.7,"w":10,"h":0.4,'
-                '"text":"우선순위 4분면 평가","size":14,"weight":700,"color":"#1A1A1A"}]}'
-            )
         elif item.viz_pattern == "hsplit_top":
             # Spec D-Build-PresetHsplitTop — 가로 비대칭 2분할 (위 검정 거버닝 + 아래 흰 좌우 2항목).
             # 거버닝(헬퍼 X)·검정 색면·형광·좌우 2항목 좌표는 _build_preset_hsplit_top 가 자동.
@@ -3320,7 +3230,7 @@ def _build_slide_user_prompt(
                 "\n"
                 "★ 다른 패턴과 구분:\n"
                 "  · 세로 색면 좌우 대비 → split / asymmetric\n"
-                "  · 4항목 → quad / matrix\n"
+                "  · 4항목 → quad\n"
                 "  · 수치 강조 → quant / circles\n"
                 "  · hsplit_top 은 \"강한 거버닝 임팩트 + 좌우 2축 본문\" 일 때.\n"
                 "\n"
@@ -3417,7 +3327,7 @@ def _build_slide_user_prompt(
                 "\n"
                 "★ 다른 패턴과 구분:\n"
                 "  · 순차 단계(흐름) → timeline / process\n"
-                "  · 2축 평가 → matrix / 단순 4분할 → quad\n"
+                "  · 단순 4분할 → quad\n"
                 "  · 수치 원형 → circles\n"
                 "  · hero_cards 는 \"강한 거버닝 메시지 + 그 주장을 받치는 병렬 카드 2~4개\" 일 때.\n"
                 "\n"

@@ -2659,73 +2659,10 @@ def _build_preset_split(slide_data):
     return shapes
 
 
-# ─── Spec D-Build-PresetMatrix — 4종 공통 거버닝 블록 헬퍼 ───────────────────────
-# matrix 가 사용하는 거버닝 블록(eyebrow + 메인 거버닝 형광 + 서브 거버닝). 추후 donut/venn 도 같은 블록 공유 가능.
-# 좌표/폰트/형광 패턴은 timeline 의 D-Fix-TimelineGoverningPartialAccent /
-#   D-Fix-TimelineGoverningPosition 정합 — 일반 본문 페이지 거버닝 표준 좌표(x=0.5).
-# 입력 스키마 (모두 선택, title 만 필수):
-#   slide_data["eyebrow"]    = "좌상단 메타 라벨"             (선택)
-#   slide_data["title"]      = "메인 거버닝 메시지(필수)"     (필수)
-#   slide_data["title_runs"] = [{"t":"앞"},{"t":"핵심","accent":True},{"t":"뒤"}]  (선택, 형광 segment)
-#   slide_data["subtitle"]   = "서브 거버닝(정량 0~2개, '/' 구분)"  (선택)
-# 반환: (shapes 리스트, area_top — 본문 시작 y 좌표)
-#   - title 없음           → ([eyebrow만 0~1], 1.1)  (거버닝 미생성, 본문 위에서 시작)
-#   - subtitle 있음        → (..., 2.5)             (서브 끝 2.4 + 여유 0.1)
-#   - subtitle 없음        → (..., 2.1)             (메인 끝 2.0 + 여유 0.1, 본문 영역 확장)
-# 형광: title_runs 가 list 이고 비어있지 않으면 title 도형의 text_runs 키로 박음
-#   → _add_text(L1638~) 의 run 단위 색 분기 → accent && theme=='dark' 만 #FFFF00.
-#   유효하지 않으면 text_runs 키 자체 누락 → 일반 거버닝 fallback (형광 없음, 안전).
-# ★ timeline 은 본 헬퍼 사용 X — 이미 자체 거버닝 처리(D-Fix-TimelineGoverning*) 잘 동작 중.
-#   본 헬퍼는 matrix 가 호출 (추후 donut/venn 도 같은 블록 공유 가능).
-def _build_governing_block(slide_data):
-    eyebrow = str(slide_data.get("eyebrow", "")).strip()
-    title = str(slide_data.get("title", "")).strip()
-    subtitle = str(slide_data.get("subtitle", "")).strip()
-    shapes = []
-
-    # ① eyebrow (선택) — timeline 패턴 정합: x=0.5, y=0.5, w=9.89, h=0.4, size=11, #BBBBBB
-    if eyebrow:
-        shapes.append({
-            "type": "text",
-            "x": 0.5, "y": 0.5, "w": 9.89, "h": 0.4,
-            "text": eyebrow,
-            "size": 11, "weight": 400, "color": "#BBBBBB",
-            "align": "left", "valign": "top",
-        })
-
-    # ② title 없으면 거버닝 미생성 → 본문 y=1.1 부터 (eyebrow 만 그렸을 수 있음)
-    if not title:
-        return shapes, 1.1
-
-    # ③ 메인 거버닝 (필수) — timeline 패턴 정합: x=0.5, y=0.8, w=10.5, h=1.2, size=28, weight=800
-    #    형광 호환: title_runs 유효 list 면 text_runs 키로 박음 (D-Fix-TimelineGoverningPartialAccent 정합)
-    title_runs_raw = slide_data.get("title_runs")
-    title_shape = {
-        "type": "text",
-        "x": 0.5, "y": 0.8, "w": 10.5, "h": 1.2,
-        "text": title,
-        "size": 28, "weight": 800, "color": "#1A1A1A",
-        "align": "left", "valign": "top",
-    }
-    if isinstance(title_runs_raw, list) and title_runs_raw:
-        title_shape["text_runs"] = title_runs_raw  # ← 형광 분기 진입 키
-    shapes.append(title_shape)
-
-    # ④ 서브 거버닝 (선택, 정량) — 일반 본문 SLIDE 예시 정합: x=0.5, y=2.0, w=10.5, h=0.4
-    #    size=14, weight=500, color=#444. 형광 없음 (정량 수치라 색 강조 X).
-    if subtitle:
-        shapes.append({
-            "type": "text",
-            "x": 0.5, "y": 2.0, "w": 10.5, "h": 0.4,
-            "text": subtitle,
-            "size": 14, "weight": 500, "color": "#444444",
-            "align": "left", "valign": "top",
-        })
-        area_top = 2.5  # 서브 끝 2.4 + 여유 0.1
-    else:
-        area_top = 2.1  # 메인 끝 2.0 + 여유 0.1 (가이드 "서브 비면 본문 영역 확장" 정합)
-
-    return shapes, area_top
+# ─── Spec Preset-Remove-Matrix — _build_governing_block 헬퍼 제거 (옵션 B 완전삭제) ──
+# 본 위치에 있던 _build_governing_block 헬퍼는 matrix 유일 사용자가 함께 삭제되며
+# dead code 화되어 제거. 향후 donut/venn 등 신규 preset 이 거버닝 패턴을 재활용하려면
+# git history (이전 commit) 에서 함수 복원하거나 timeline (자체 거버닝 처리) 패턴 참고.
 
 
 # ─── Spec D-Build-PresetTimeline — timeline (세로 점 단계형) 레이아웃 프리셋 ───
@@ -3419,171 +3356,10 @@ def _build_preset_hero_cards(slide_data):
     return shapes
 
 
-# ─── Spec D-Build-PresetMatrix — matrix (2축 4분면 매핑) 레이아웃 프리셋 ─────────
-# 본문 영역 7.0" × 5.0" (좌측 매트릭스 + 우측 시각 여백 4.0") 안에 X·Y 두 축 + 4분면 매핑.
-# 거버닝 블록은 _build_governing_block 헬퍼 호출 — eyebrow + 메인 형광 + 서브 거버닝.
-# ★ matrix 는 area_top 항상 2.5 고정 (서브 유무와 무관하게 매트릭스 위치 안정 — 사용자 결정 D3).
-# 입력 스키마 (거버닝 4키 + matrix 고유 5키):
-#   slide_data["eyebrow"]       = (선택, 헬퍼 처리)
-#   slide_data["title"]         = (필수, 헬퍼 처리, 형광 가능)
-#   slide_data["title_runs"]    = (선택, 헬퍼 처리 — 메인 거버닝 형광 segment)
-#   slide_data["subtitle"]      = (선택, 헬퍼 처리)
-#   slide_data["axis_x"]        = ["低", "高"]  (필수, len>=2, 첫·끝만 사용)
-#   slide_data["axis_y"]        = ["低", "高"]  (필수, len>=2)
-#   slide_data["axis_x_label"]  = "난이도"      (선택, 축 본명 + " →" 박음)
-#   slide_data["axis_y_label"]  = "효과"        (선택, 축 본명 + " ↑" 박음)
-#   slide_data["quadrants"]     = [{"pos":"tl|tr|bl|br","title","desc","accent":bool}, ...]
-#                                  (필수, 정확히 4개, pos 중복 X, accent 다중 시 첫 1개만 유지)
-# 안전망 (엄격):
-#   - axis_x/axis_y list 아님 or len<2  → 빈 list 반환 (preset 미성립 → LLM 백업)
-#   - quadrants list 아님 or len != 4   → 빈 list 반환
-#   - pos 정제 후 4개 아님 (중복/오타) → 빈 list 반환
-# 원 형광 (theme): preset 함수는 theme 인자 받지 않음(circles/timeline 동일).
-#   accent 분면 fill=#1A1A1A (검정 강조), 비강조 분면 fill=#CCCCCC (옅은 회색).
-#   _map_color 가 theme=dark 시 fill role 다크 매핑 자동(#1A1A1A → 흰 / #CCCCCC → 어두운 회색) →
-#   라이트/다크 모두 자연스러운 강조 대비 보장. 형광(#FFFF00)은 text_runs 분기에서만 사용.
-def _build_preset_matrix(slide_data):
-    # ① 거버닝 헬퍼 — eyebrow + 메인(형광) + 서브
-    shapes, _hdr_area_top = _build_governing_block(slide_data)
-    # ★ matrix 는 area_top 2.5 고정 (D3 — 서브 유무와 무관)
-    area_top = 2.5
-    area_bot = 7.5
-
-    # ② 축 검증
-    ax = slide_data.get("axis_x") or []
-    ay = slide_data.get("axis_y") or []
-    if not (isinstance(ax, list) and len(ax) >= 2 and
-            isinstance(ay, list) and len(ay) >= 2):
-        return []
-    ax_lo = str(ax[0]).strip()
-    ax_hi = str(ax[-1]).strip()
-    ay_lo = str(ay[0]).strip()
-    ay_hi = str(ay[-1]).strip()
-
-    axis_x_label = str(slide_data.get("axis_x_label", "")).strip()
-    axis_y_label = str(slide_data.get("axis_y_label", "")).strip()
-
-    # ③ quadrants 정제 (circles L2955-2965 패턴 + pos_map 변형, 엄격 검증)
-    quads_raw = slide_data.get("quadrants") or []
-    if not isinstance(quads_raw, list) or len(quads_raw) != 4:
-        return []
-    allowed_pos = {"tl", "tr", "bl", "br"}
-    pos_map = {}
-    for q in quads_raw:
-        if not isinstance(q, dict):
-            continue
-        pos = str(q.get("pos", "")).strip().lower()
-        if pos not in allowed_pos or pos in pos_map:
-            continue  # 중복/오타 → 건너뜀
-        pos_map[pos] = {
-            "title":  str(q.get("title", "")).strip(),
-            "desc":   str(q.get("desc", "")).strip(),
-            "accent": bool(q.get("accent", False)),
-        }
-    if len(pos_map) != 4:
-        return []  # 분면 누락/중복 → 미성립
-
-    # ④ accent 1곳만 유지 (D1 결정 — 다중 accent 시 첫 1개만, 나머지 false)
-    #    pos 순서 tl/tr/bl/br 고정 순회 — 등장 순서로 첫 1개 유지.
-    accent_seen = False
-    for p in ("tl", "tr", "bl", "br"):
-        if pos_map[p]["accent"]:
-            if accent_seen:
-                pos_map[p]["accent"] = False
-            else:
-                accent_seen = True
-
-    # ⑤ 매트릭스 좌표 (진단 확정 표)
-    mx_l, mx_r = 0.7, 7.7   # 매트릭스 가로 영역 7.0"
-    my_t, my_b = area_top, area_bot  # 2.5~7.5 세로 영역 5.0"
-    ax_y = (my_t + my_b) / 2  # X축 y = 5.0
-    ay_x = (mx_l + mx_r) / 2  # Y축 x = 4.2
-
-    # ⑥ 축 (line 2개) — quant L2196~ / timeline L2881 line 형식 정합
-    shapes.append({
-        "type": "line",
-        "x1": mx_l + 0.5, "y1": ax_y, "x2": mx_r - 0.5, "y2": ax_y,
-        "color": "#1A1A1A", "width": 1.5,
-    })
-    shapes.append({
-        "type": "line",
-        "x1": ay_x, "y1": my_t + 0.3, "x2": ay_x, "y2": my_b - 0.3,
-        "color": "#1A1A1A", "width": 1.5,
-    })
-
-    # ⑦ 축 끝점 라벨 4개 (size 10, color #666) — 양끝 低/高
-    #    Y 상단 (높음): 축 위쪽 끝
-    shapes.append({"type":"text","x":3.7,"y":2.4,"w":1.0,"h":0.3,
-                   "text":ay_hi,"size":10,"weight":500,"color":"#666666",
-                   "align":"center","valign":"top"})
-    #    Y 하단 (낮음): 축 아래쪽 끝
-    shapes.append({"type":"text","x":3.7,"y":7.2,"w":1.0,"h":0.3,
-                   "text":ay_lo,"size":10,"weight":500,"color":"#666666",
-                   "align":"center","valign":"top"})
-    #    X 좌측 (낮음): 축 왼쪽 끝
-    shapes.append({"type":"text","x":0.5,"y":4.85,"w":0.7,"h":0.3,
-                   "text":ax_lo,"size":10,"weight":500,"color":"#666666",
-                   "align":"right","valign":"top"})
-    #    X 우측 (높음): 축 오른쪽 끝
-    shapes.append({"type":"text","x":7.3,"y":4.85,"w":1.5,"h":0.3,
-                   "text":ax_hi,"size":10,"weight":500,"color":"#666666",
-                   "align":"left","valign":"top"})
-
-    # ⑧ 축 본명 라벨 (D2 결정 — 양끝 低/高 외에 본명+방향 화살표 표시)
-    #    axis_x_label: X축 우측 끝 라벨 옆 (예 "난이도 →")
-    #    axis_y_label: Y축 위쪽 끝 라벨 옆 (예 "효과 ↑")
-    if axis_x_label:
-        shapes.append({"type":"text","x":7.3,"y":5.15,"w":3.5,"h":0.35,
-                       "text":axis_x_label + " →","size":11,"weight":700,"color":"#1A1A1A",
-                       "align":"left","valign":"top"})
-    if axis_y_label:
-        shapes.append({"type":"text","x":4.35,"y":2.4,"w":3.0,"h":0.3,
-                       "text":axis_y_label + " ↑","size":11,"weight":700,"color":"#1A1A1A",
-                       "align":"left","valign":"top"})
-
-    # ⑨ 4분면 항목 (원 + 제목 + 부연) — 진단 확정 표 좌표 정합
-    #    accent 분면: fill #1A1A1A (강한 검정 → dark 자동 반전으로 흰 원)
-    #    비강조 분면: fill #CCCCCC (옅은 회색 → dark 자동 반전으로 어두운 회색)
-    pos_center = {
-        "tl": (2.45, 3.75),
-        "tr": (5.95, 3.75),
-        "bl": (2.45, 6.25),
-        "br": (5.95, 6.25),
-    }
-    for pos in ("tl", "tr", "bl", "br"):
-        cx, cy = pos_center[pos]
-        q = pos_map[pos]
-        circle_fill = "#1A1A1A" if q["accent"] else "#CCCCCC"
-        # 원 (circles L2986 형식 정합)
-        shapes.append({
-            "type": "circle",
-            "x": cx - 0.3, "y": cy - 0.85,
-            "w": 0.6, "h": 0.6,
-            "fill": circle_fill,
-            "stroke": None,
-            "stroke_width": None,
-        })
-        # 제목 (circles L2992 패턴, size 14 weight 700)
-        if q["title"]:
-            shapes.append({
-                "type": "text",
-                "x": cx - 1.3, "y": cy - 0.1, "w": 2.6, "h": 0.5,
-                "text": q["title"],
-                "size": 14, "weight": 700, "color": "#1A1A1A",
-                "align": "center", "valign": "top",
-            })
-        # 부연 (circles L2995 패턴, size 10 color #666)
-        if q["desc"]:
-            shapes.append({
-                "type": "text",
-                "x": cx - 1.3, "y": cy + 0.45, "w": 2.6, "h": 0.7,
-                "text": q["desc"],
-                "size": 10, "weight": 400, "color": "#666666",
-                "align": "center", "valign": "top",
-            })
-    return shapes
-
-
+# ─── Spec Preset-Remove-Matrix — _build_preset_matrix 제거 자리 (옵션 B 완전삭제) ──
+# 본 위치에 있던 matrix preset 함수는 2×2 사분면 범용성 낮음 + 첫 생성 빈 페이지 버그로
+# 제거. quad/cards3 등으로 대체 가능. 화이트리스트/카탈로그/dispatch/SLIDE 분기/거버닝
+# 헬퍼 (_build_governing_block, 유일 사용자) 모두 동시 삭제.
 # ─── Spec D-Build-PresetHsplitTop — hsplit_top (위 검정 거버닝 + 아래 흰 좌우 2항목) ─
 # split (세로 좌우 색면 2분할) 의 가로 비대칭 버전 — 위 1/3 검정 색면 + 아래 2/3 흰 바탕.
 # 위 검정 영역: 중앙 정렬 거버닝 (eyebrow + 메인 1줄 + 형광 2줄 + subtitle).
@@ -4254,23 +4030,10 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
                     shapes = slide_data.get("shapes", [])
             except Exception:
                 shapes = slide_data.get("shapes", [])
-        elif preset_name == "matrix":
-            # Spec D-Build-PresetMatrix — 2축 4분면 매핑 (X·Y + 4분면).
-            # ★ 본 spec 단계: 코드만 등록 + viz_pattern 화이트리스트 미연결 (LLM 미선택 보장).
-            #   완성 후 별도 spec 으로 화이트리스트 켤 것.
-            # circles/quad 와 동일 패턴 — 성공 시 preset 만(겹침 차단), 실패/예외 시 LLM 백업.
-            try:
-                preset_shapes = _build_preset_matrix(slide_data)
-                if preset_shapes:
-                    shapes = preset_shapes
-                else:
-                    shapes = slide_data.get("shapes", [])
-            except Exception:
-                shapes = slide_data.get("shapes", [])
         elif preset_name == "hsplit_top":
             # Spec D-Build-PresetHsplitTop — 가로 비대칭 2분할 (위 검정 거버닝 + 아래 흰 좌우 2항목).
             # ★ 본 spec 단계: 코드만 등록 + viz_pattern 화이트리스트 미연결 (LLM 미선택 보장).
-            #   matrix 와 동일 — 완성 후 별도 spec 으로 한꺼번에 켤 것.
+            #   완성 후 별도 spec 으로 한꺼번에 켤 것.
             # split 가로 비대칭 버전 — 성공 시 preset 만, 실패/예외 시 LLM 백업.
             try:
                 preset_shapes = _build_preset_hsplit_top(slide_data)
@@ -4294,7 +4057,7 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
         elif preset_name == "hero_cards":
             # Spec D-Build-PresetHeroCards — 상단 거버닝 히어로 + 하단 카드 N개(2~4).
             # ★ 본 spec 단계: 코드만 등록 + viz_pattern 화이트리스트 미연결 (LLM 미선택 보장).
-            #   matrix/hsplit_top 와 동일 — 별도 spec 으로 한꺼번에 켤 것.
+            #   hsplit_top 와 동일 — 별도 spec 으로 한꺼번에 켤 것.
             # circles 와 동일 패턴 — 성공 시 preset 만, 실패/예외 시 LLM 백업.
             try:
                 preset_shapes = _build_preset_hero_cards(slide_data)

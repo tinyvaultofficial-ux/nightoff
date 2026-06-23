@@ -4531,12 +4531,15 @@ async def api_rfp_upload_single(
     info = await _save_rfp_file(cid, file, role)
     # 갈래 1: 과업 분석
     analysis = _run_rfp_aggregate(cid)
-    # D-Fix-CreditExt: 분석 성공 후 차감 300 (실패 시 차감 X)
-    try:
-        with get_db() as _db_cd:
-            _deduct_credits(_db_cd, user["id"], 300)
-    except Exception as _e_cd:
-        log.warning("RFP 분석(single) 크레딧 차감 실패 (무시): %s", _e_cd)
+    # ★ Spec Fix-CreditDeductGuard — 분석 실패(error 키) 시 차감 안 함.
+    #   기존 코멘트 "실패 시 차감 X" 와 실 동작 모순 (가드 0건 → 무조건 차감) 정합.
+    #   isinstance 가드 — analysis 가 list/None/비dict 극단 케이스도 안전 skip.
+    if not (isinstance(analysis, dict) and analysis.get("error")):
+        try:
+            with get_db() as _db_cd:
+                _deduct_credits(_db_cd, user["id"], 300)
+        except Exception as _e_cd:
+            log.warning("RFP 분석(single) 크레딧 차감 실패 (무시): %s", _e_cd)
     # 갈래 2: 발주처 들여다보기 자동 수집 (실패해도 분석은 유지)
     intel = {}
     try:
@@ -4580,12 +4583,15 @@ async def api_rfp_upload_multi(
 
     # 갈래 1: 과업 분석 (기존 RFP 분석)
     analysis = _run_rfp_aggregate(cid)
-    # D-Fix-CreditExt: 분석 성공 후 차감 300 (실패 시 차감 X / multi 도 1회)
-    try:
-        with get_db() as _db_cd:
-            _deduct_credits(_db_cd, user["id"], 300)
-    except Exception as _e_cd:
-        log.warning("RFP 분석(multi) 크레딧 차감 실패 (무시): %s", _e_cd)
+    # ★ Spec Fix-CreditDeductGuard — 분석 실패(error 키) 시 차감 안 함.
+    #   기존 코멘트 "실패 시 차감 X" 와 실 동작 모순 (가드 0건 → 무조건 차감) 정합.
+    #   isinstance 가드 — analysis 가 list/None/비dict 극단 케이스도 안전 skip.
+    if not (isinstance(analysis, dict) and analysis.get("error")):
+        try:
+            with get_db() as _db_cd:
+                _deduct_credits(_db_cd, user["id"], 300)
+        except Exception as _e_cd:
+            log.warning("RFP 분석(multi) 크레딧 차감 실패 (무시): %s", _e_cd)
     # 갈래 2: 발주처 들여다보기 — 자동 수집 (실패해도 RFP 분석은 유지)
     intel = {}
     try:

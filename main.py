@@ -1702,7 +1702,7 @@ orientation 엄격 규칙 (Spec D-Fix-Orient):
   "title": "사업/과업명",
   "organization": "발주처(공고기관) — 가장 큰 조직 단위만 추출. 본부·과·팀·실 같은 하위 부서는 제외하고 재단/협회/부/처/청/시/군/구/공사/대학/기관 단위까지만. 추출 불가능하면 빈 문자열. 예시: '문화체육관광부', '한국관광공사', '서울특별시', '한국콘텐츠진흥원', '국립중앙박물관'. 잘못된 예: '서울시 한강사업본부' → '서울특별시', '문체부 콘텐츠정책관실' → '문화체육관광부'",
   "client_type": "공공|대기업|민간|스타트업",
-  "project_domain": "festival|forum|education|sports|exhibition|campaign|tourism|rnd|welfare|other",
+  "project_domain": "festival|forum|education|sports|exhibition|display|campaign|tourism|rnd|welfare|other",
   "project_domain_label": "도메인 한국어 라벨 (예: '축제·행사', '포럼·컨퍼런스', '박람회·전시' 등)",
   "project_tone_hint": "RFP 본문·분위기에서 읽히는 톤 특성 한 줄 (예: '아동 가족 중심, 감성·체험형', '국제·지적 권위, 어젠다 설정형', '정량 성과·바이어 유치 중심')",
   "target_audience": "주요 참여자/청중 (예: '아동 가족', '국제 연사·학계', 'B2B 바이어', '일반 시민', '선수·심판', '학생·교사')",
@@ -1767,13 +1767,16 @@ project_domain 판단 기준 (본문 키워드·어휘 우선):
 - forum: 포럼·컨퍼런스·심포지엄·정상회의·국제회의·학술대회
 - education: 교육·연수·아카데미·워크숍·컨설팅·직무훈련·커리큘럼
 - sports: 대회·경기·선수권·체육·올림픽·리그·마라톤·토너먼트
-- exhibition: 박람회·전시회·산업전·엑스포·B2B 상담회
+- exhibition: B2B 상담·바이어 매칭·거래·계약이 핵심 (박람회·산업전·엑스포·B2B 상담회)
+- display: 관람·큐레이션·체험·메시지 전달이 핵심 (박물관·미술관·특별전·기획전·팝업스토어)
 - campaign: 공공 캠페인·시민참여·인식개선·홍보·공익
 - tourism: 관광·여행·지역브랜딩·도시마케팅·DMO
 - rnd: R&D·연구·기술개발·용역연구·분석·모델 개발
 - welfare: 복지·돌봄·노인·청소년·장애인·사회서비스
 - other: 위에 해당 안 되면 (명확히 모를 때만)
 복합 성격이면 **가장 중심이 되는 한 개만** 선택. 불확실하면 other.
+  ※ 박람회와 전시가 헷갈리면 — 최종 목적이 '거래 성사'면 exhibition, '관람 경험'이면 display.
+  ※ 도서전·아트페어 등 양면 케이스 — 주 대상이 바이어(거래)면 exhibition, 일반 관람객(경험)이면 display.
 
 문서:
 ---

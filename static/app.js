@@ -1049,7 +1049,7 @@ function renderLanding() {
         ])),
 
         // 가격 행 (취소선 정가 + 런칭가)
-        h("div", { class: "pt-cell pt-row-label" }, "월 요금"),
+        h("div", { class: "pt-cell pt-row-label" }, "패키지"),
         ...TIERS.map(t => h("div", { class: `pt-cell ${t.best ? "pt-best" : ""}` }, [
           h("div", { class: "pt-price-row" }, [
             // Spec D-Fix-40: 정가 + 할인 라벨 wrapper (인라인 정렬)
@@ -1059,7 +1059,7 @@ function renderLanding() {
             ]),
             h("span", { class: "pt-price-promo" }, [
               h("strong", { class: "pt-price-amount" }, t.promo),
-              h("span", { class: "pt-price-per" }, "/월"),
+              h("span", { class: "pt-price-per" }, ""),
             ]),
           ]),
         ])),
@@ -1759,7 +1759,7 @@ function showSubscribeComingSoonModal() {
   });
   const modal = h("div", { class: "modal" });
   modal.appendChild(h("div", { class: "modal-header" }, [
-    h("h3", {}, "🎉 곧 출시 예정"),
+    h("h3", {}, "결제 안내"),
     h("button", {
       class: "icon-btn",
       "aria-label": "닫기",
@@ -1767,8 +1767,8 @@ function showSubscribeComingSoonModal() {
     }, "✕"),
   ]));
   modal.appendChild(h("div", { class: "modal-body" }, [
-    h("p", {}, "결제 시스템 준비 중입니다."),
-    h("p", { class: "muted small" }, "출시 시 가입하신 이메일로 안내드릴게요."),
+    h("p", {}, "결제는 문의를 통해 진행해 드리고 있어요."),
+    h("p", { class: "muted small" }, "awc@creworth.com으로 연락 주시면 안내해 드릴게요."),
   ]));
   modal.appendChild(h("div", { class: "modal-footer" }, [
     h("button", {

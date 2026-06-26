@@ -5629,60 +5629,6 @@ def _client_ip(request: Request) -> str:
     return (request.client.host if request.client else "")[:45]
 
 
-def _sms_code_salt() -> str:
-    """SMS_CODE_SALT env — 부재/짧음 시 503 raise. HMAC-SHA256 영역 자립 영역."""
-    salt = os.environ.get("SMS_CODE_SALT", "").strip()
-    if not salt or len(salt) < 16:
-        raise HTTPException(503, detail={
-            "error": "SMS 검증 시스템이 일시 중단되었어요.",
-            "code": "SMS_SALT_MISSING",
-        })
-    return salt
-
-
-def _sms_code_hash(code: str) -> str:
-    """HMAC-SHA256(SMS_CODE_SALT, code) → 64 hex chars. 자립 영역."""
-    import hmac, hashlib
-    return hmac.new(
-        _sms_code_salt().encode("utf-8"),
-        str(code).strip().encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-
-
-def _encode_verification_jwt(phone: str) -> str:
-    """SMS 검증 완료 토큰 (10분 유효) — 가입 endpoint 에서 phone 변조 방지.
-
-    기존 encode_jwt 와 분리: purpose='sms_verified' 강제 매칭으로 user JWT 우회 방지.
-    동일 시크릿 (JWT_SECRET) + 동일 알고리즘 (HS256), payload 만 분리.
-    """
-    now = datetime.now(timezone.utc)
-    payload = {
-        "sub": phone,
-        "purpose": "sms_verified",
-        "iat": int(now.timestamp()),
-        "exp": int((now + timedelta(minutes=10)).timestamp()),
-    }
-    return _jwt.encode(payload, _jwt_secret(), algorithm=JWT_ALGORITHM)
-
-
-def _decode_verification_jwt(token: str) -> Optional[str]:
-    """검증 토큰 디코드 → phone. 만료/위조/purpose 불일치 시 None.
-
-    purpose='sms_verified' 강제 매칭 — 일반 user JWT 가 verification_token 자리에 사용되어
-    인증 우회되는 사고 방지.
-    """
-    try:
-        payload = _jwt.decode(token, _jwt_secret(), algorithms=[JWT_ALGORITHM])
-        if payload.get("purpose") != "sms_verified":
-            return None
-        return payload.get("sub")
-    except _jwt.ExpiredSignatureError:
-        return None
-    except _jwt.InvalidTokenError:
-        return None
-
-
 # ── credit 영역 후반 (_seed_pick / _credit_rate_limit / _get_or_create_lotto /
 #    _lotto_rank / _credit_attempt_today / _credit_record_attempt + 6 endpoints)
 #    은 Spec 4-B (5/16) 폐기. DB 테이블 + users.credit_count 컬럼 보존.

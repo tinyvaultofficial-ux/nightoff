@@ -118,6 +118,10 @@
     </p>
     <button class="verify-pending-resend" id="resend-btn" type="button">재발송</button>
     <p class="verify-pending-status" id="resend-status"></p>
+    <p class="verify-pending-hint" style="margin-top:24px;">
+      인증을 완료하면 이 탭이 자동으로 대시보드로 이동해요.<br>
+      다른 기기에서 인증했다면 아래 '로그인'을 눌러주세요.
+    </p>
     <p class="verify-pending-login">
       이미 인증했어요 → <a href="/login.html">로그인</a>
     </p>
@@ -155,6 +159,19 @@
         }
       }, 1000);
     }
+
+    // Spec UX-VerifyPendingAutoTransition — 가입 탭 자동 전환.
+    // 메일 인증 완료 시 _render_verify_success (main.py:1002) 가 localStorage 에
+    // "nightoff_jwt" 저장 → 같은 도메인 모든 탭 공유(브라우저 표준) → 이 탭도 자동 감지.
+    // ★ polling 아님: 서버 호출 0, 자기 localStorage 만 읽음(보안 영역 0).
+    // 다른 브라우저/디바이스에서 인증한 경우엔 작동 X → "이미 인증했어요 → 로그인" 링크 폴백.
+    function checkAuthToken() {
+      if (localStorage.getItem("nightoff_jwt")) {
+        location.href = "/";
+      }
+    }
+    checkAuthToken();             // 진입 즉시 1회 (이미 인증된 채 이 페이지 도달한 케이스)
+    setInterval(checkAuthToken, 5000);
 
     btn.addEventListener("click", async () => {
       if (!email) {

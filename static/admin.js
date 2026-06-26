@@ -765,7 +765,6 @@ const POLICY_META = {
   // ⚠ 옛 유령 정책 (코드 0 사용) — POLICY_META + HIDDEN_POLICY_KEYS 둘 다 정합 유지:
   //   package_price       (결제 미연동, 단일 380000 잔존)
   //   monthly_conversations (sentinel 999999, 코드 path 미사용)
-  //   trial_credits        (5000 시드, 자동 부여 로직 부재)
   //   → DB row 는 보존 (이번 spec: UI 표시만 정리), 결제 연동 spec 시 DB 정리.
   monthly_proposals: {
     label: "신규 가입 크레딧 (월 리셋)",
@@ -773,37 +772,6 @@ const POLICY_META = {
     type: "number",
     min: 0,
     desc: "신규 가입 시 부여 + 매월 1일 리셋되는 quota. 1페이지=100크레딧. 예: 500 = 5페이지 분량",
-  },
-
-  // ───────── Phase 1-A-3 — 무료체험 정책 메타데이터 (Phase 1-E 일부) ─────────
-  // trial_enabled 를 무료체험 그룹 최상위로 정의 — kill-switch 시인성 ↑
-  trial_enabled: {
-    label: "무료체험 활성화 (kill-switch)",
-    suffix: "",
-    type: "select",
-    options: ["Y", "N"],
-    desc: "전체 무료체험 ON/OFF — 'Y' 활성 / 'N' 비활성. 사고/어뷰징 시 즉시 'N' 으로 비활성화 가능 (Phase 1-B/C/D endpoint 가 본 정책 참조).",
-  },
-  trial_sms_max_per_day: {
-    label: "일일 SMS 발송 한도 (전체)",
-    suffix: "건",
-    type: "number",
-    min: 0,
-    desc: "전체 일일 SMS 발송 cap (비용 모니터링). 1건 ≈ 20원 — 500 = 일 최대 10,000원.",
-  },
-  trial_sms_max_per_phone_day: {
-    label: "번호당 일일 SMS 한도",
-    suffix: "건",
-    type: "number",
-    min: 0,
-    desc: "한 번호로 받을 수 있는 일일 SMS 횟수 cap (어뷰징 방지). 5 권장.",
-  },
-  trial_sms_max_per_ip_day: {
-    label: "IP당 일일 SMS 한도",
-    suffix: "건",
-    type: "number",
-    min: 0,
-    desc: "한 IP에서 발송 가능한 일일 SMS cap (봇 방지). 10 권장.",
   },
 
   // ───────── Spec D-Build-ThemeAdminToggle — 다크 테마 select 드롭다운 ─────────
@@ -852,7 +820,7 @@ function renderSettingsForm() {
   // 옛 유령 정책 (코드 0 사용) — UI 표시에서 명시 제거 (DB row 는 보존).
   // POLICY_META 에서 빼는 것만으론 fallback 루프 (아래) 가 settingsState 의 키를
   // 무조건 ordered 에 추가해서 UI 에 노출됨 → 본 set 으로 명시 skip.
-  const HIDDEN_POLICY_KEYS = new Set(["package_price", "monthly_conversations", "trial_credits"]);
+  const HIDDEN_POLICY_KEYS = new Set(["package_price", "monthly_conversations"]);
 
   // POLICY_META 영역 정의 영역 정책값 우선 + 그 외 영역 fallback 영역
   const ordered = [];

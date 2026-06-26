@@ -820,7 +820,11 @@ function renderSettingsForm() {
   // 옛 유령 정책 (코드 0 사용) — UI 표시에서 명시 제거 (DB row 는 보존).
   // POLICY_META 에서 빼는 것만으론 fallback 루프 (아래) 가 settingsState 의 키를
   // 무조건 ordered 에 추가해서 UI 에 노출됨 → 본 set 으로 명시 skip.
-  const HIDDEN_POLICY_KEYS = new Set(["package_price", "monthly_conversations"]);
+  const HIDDEN_POLICY_KEYS = new Set([
+    "package_price", "monthly_conversations",
+    "trial_enabled", "trial_credits",
+    "trial_sms_max_per_day", "trial_sms_max_per_phone_day", "trial_sms_max_per_ip_day",
+  ]);
 
   // POLICY_META 영역 정의 영역 정책값 우선 + 그 외 영역 fallback 영역
   const ordered = [];

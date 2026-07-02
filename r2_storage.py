@@ -175,7 +175,16 @@ def download_one(key: str, local_path: Optional[Path] = None) -> Optional[Path]:
 
 
 def sync_master_templates() -> dict:
-    """버킷의 모든 PPTX 동기화 + 기본 마스터 alias 생성.
+    """기본 마스터 PPTX 1개만 다운로드 + dmz_default alias 생성.
+
+    Spec fix/r2-sync-master-only — 이전에는 버킷 전체 *.pptx 를 순회 다운로드해
+    사용자 제안서 pptx/*/*.pptx (Spec D-Fix-PptxR2 로 축적) 와 루트 잔재까지
+    매 startup 마다 받아 Railway healthcheck (300s) 를 초과했다. 실제 startup 에
+    필요한 건 마스터 1개뿐. 사용자 제안서는 필요 시 download_to_buffer 로
+    stream 한다 (main.py:6532 등).
+
+    키 결정: R2_DEFAULT_KEY 환경변수가 있으면 그 값, 없으면 "paperlogy_default.pptx".
+    download_one 재사용 → 기존 ETag 캐시 + 로컬 fallback 정합.
 
     return: {"downloaded": N, "skipped": N, "failed": N, "default": Path|None}
     """
@@ -188,68 +197,41 @@ def sync_master_templates() -> dict:
         return result
 
     cache = _local_cache_dir()
-    objects = list_objects()
-    log.info("R2 객체 %d 개 발견 (bucket=%s)", len(objects), os.environ["R2_BUCKET_NAME"])
+    master_key = os.environ.get("R2_DEFAULT_KEY", "").strip() or "paperlogy_default.pptx"
+    local = cache / _safe_local_name(master_key)
 
-    downloaded_paths: list[tuple[str, Path]] = []
-    for obj in objects:
-        key = obj["key"]
-        local = cache / _safe_local_name(key)
-        marker = _etag_marker_path(local)
-        prev = _read_marker(marker)
-        if local.exists() and prev == obj["etag"]:
-            result["skipped"] += 1
-            downloaded_paths.append((key, local))
-            continue
-        p = download_one(key, local)
-        if p is not None:
-            result["downloaded"] += 1
-            downloaded_paths.append((key, p))
-        else:
-            result["failed"] += 1
+    # download_one: ETag 캐시 HIT 시 즉시 return (로그만), MISS 시 다운로드.
+    # 실패 시 로컬에 이미 있으면 그것 반환, 없으면 None.
+    p = download_one(master_key, local)
+    if p is None:
+        result["failed"] = 1
+        log.warning("R2 마스터 다운로드 실패 (%s) — 로컬 master_templates/ 만 사용", master_key)
+        return result
+    result["downloaded"] = 1  # (skip/downloaded 정확 구분은 download_one 로그로 확인)
 
-    # 기본 마스터 alias (find_master_template 가 dmz_default.pptx 를 찾음)
+    # 기본 마스터 alias (find_master_template 가 dmz_default.pptx 를 찾음).
+    # 기존 로직 그대로 — hardlink 우선, 실패 시 copy.
     default_alias = cache / "dmz_default.pptx"
-    default_key = os.environ.get("R2_DEFAULT_KEY", "").strip()
-
-    chosen: Optional[Path] = None
-    if default_key:
-        for k, p in downloaded_paths:
-            if k == default_key:
-                chosen = p
-                break
-    if chosen is None and downloaded_paths:
-        # 키 이름에 'DMZ' 또는 'default' 포함 우선 → 없으면 첫 번째
-        for k, p in downloaded_paths:
-            if re.search(r"DMZ|default", k, re.IGNORECASE):
-                chosen = p
-                break
-        if chosen is None:
-            chosen = downloaded_paths[0][1]
-
-    if chosen is not None and chosen.exists():
+    if p.exists():
         try:
-            # Windows 는 symlink 권한 이슈 → 단순 copy 로 alias 보장
-            if default_alias.resolve() != chosen.resolve():
+            if default_alias.resolve() != p.resolve():
                 if default_alias.exists():
                     default_alias.unlink()
-                # 같은 디렉토리 내라서 hardlink 가능하면 그게 가장 빠름
                 try:
-                    os.link(chosen, default_alias)
-                    log.info("기본 마스터 alias (hardlink): %s → %s", default_alias.name, chosen.name)
+                    os.link(p, default_alias)
+                    log.info("기본 마스터 alias (hardlink): %s → %s", default_alias.name, p.name)
                 except (OSError, NotImplementedError):
                     import shutil
-                    shutil.copy2(chosen, default_alias)
-                    log.info("기본 마스터 alias (copy):     %s → %s", default_alias.name, chosen.name)
+                    shutil.copy2(p, default_alias)
+                    log.info("기본 마스터 alias (copy):     %s → %s", default_alias.name, p.name)
             result["default"] = default_alias
         except Exception as e:
             log.warning("기본 마스터 alias 생성 실패: %s", e)
-            result["default"] = chosen
+            result["default"] = p
 
     log.info(
-        "R2 sync 완료 · 다운로드 %d · skip %d · 실패 %d · default=%s",
-        result["downloaded"], result["skipped"], result["failed"],
-        getattr(result["default"], "name", None),
+        "R2 master sync 완료 · master=%s · default=%s",
+        master_key, getattr(result["default"], "name", None),
     )
     return result
 

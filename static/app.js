@@ -1666,6 +1666,47 @@ const BUDGET_COLS = [
 function _n(v) { const n = Number(String(v).replace(/[^\d.-]/g, "")); return isFinite(n) ? n : 0; }
 function _fmt(n) { return (Number(n) || 0).toLocaleString("ko-KR"); }
 
+// Spec UX-CostSheetRounding — 세부항목 amount 만원 단위 내림 + 잔차 최대 항목 흡수.
+// ★ 정합 불변식 (반드시 유지): Σ(정리 후 amount) === Σ(정리 전 amount).
+// ★ 절차:
+//   1. 각 item.amount 를 만원 단위 floor (내림).
+//   2. 잔차 = (정리 전 합) - (내림 합) — 항상 0 이상.
+//   3. 최대 항목(정리 전 값 기준, 동액 시 index 낮은 첫 번째)에 잔차 흡수.
+// ★ 잔차 흡수 항목은 잔차가 만원 배수 아니면 만원 배수 안 됨 — 정합 우선.
+// ★ In-place 수정. cats 비었으면 no-op.
+// Backend main.py:_apply_amount_rounding_10k 와 sync.
+function applyAmountRounding10k(data) {
+  const ROUND = 10000;
+  const items = [];
+  let originalSum = 0;
+  (data.categories || []).forEach((cat) => {
+    (cat.items || []).forEach((it) => {
+      const amt = Number(it.amount) || 0;
+      it.amount = amt;
+      items.push({ it: it, orig: amt });
+      originalSum += amt;
+    });
+  });
+  if (items.length === 0 || originalSum <= 0) return;
+  items.forEach(({ it }) => {
+    it.amount = Math.floor((Number(it.amount) || 0) / ROUND) * ROUND;
+  });
+  const roundedSum = items.reduce((a, { it }) => a + (Number(it.amount) || 0), 0);
+  const residual = originalSum - roundedSum;
+  if (residual > 0) {
+    let maxIdx = 0;
+    let maxOrig = items[0].orig;
+    for (let i = 1; i < items.length; i++) {
+      if (items[i].orig > maxOrig) { maxOrig = items[i].orig; maxIdx = i; }
+    }
+    items[maxIdx].it.amount = (Number(items[maxIdx].it.amount) || 0) + residual;
+  }
+  const finalSum = items.reduce((a, { it }) => a + (Number(it.amount) || 0), 0);
+  if (finalSum !== originalSum) {
+    console.warn("[applyAmountRounding10k] 정합 실패", { originalSum, finalSum });
+  }
+}
+
 // 기본 투찰율 영역 — 사용자 영역 변경 가능 (90~100%, 0.1 step)
 // 기본 투찰율 — B2G 표준 (RFP 예산 대비 청구 비율).
 // main.py:DEFAULT_BID_RATE 와 sync. 92-95% 권장 / 안전 영역 82-88% / 적극 영역 96-98%.
@@ -1689,6 +1730,13 @@ function recalcBudget(data) {
       cat.subtotal += it.amount;
     });
     subtotalSum += cat.subtotal;
+  });
+  // Spec UX-CostSheetRounding — 세부항목 amount 를 만원 단위 정리 (Σ 불변식 유지).
+  //   subtotalSum 은 헬퍼가 정합 유지하므로 그대로. cat.subtotal 은 항목 amount
+  //   조정으로 값이 이동할 수 있어 재계산 필요.
+  applyAmountRounding10k(data);
+  (data.categories || []).forEach((cat) => {
+    cat.subtotal = (cat.items || []).reduce((a, it) => a + (Number(it.amount) || 0), 0);
   });
   data.subtotal_sum = subtotalSum;
   data.admin_fee   = Math.round(subtotalSum * 0.07);            // 일반관리비 7%

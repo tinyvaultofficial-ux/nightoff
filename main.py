@@ -2055,16 +2055,28 @@ def _startup() -> None:
         r2_storage.sync_master_templates()
     except Exception as e:
         log.warning("R2 sync 실패 (무시 — 로컬 master_templates/ 만 사용): %s", e)
+    # Spec fix/rag-sync-background — RAG DB (203MB) 는 background thread 로 실행.
+    # 이전엔 startup 에서 동기 blocking 다운로드 → 200s+ 소요로 Railway healthcheck (300s) 초과.
+    # background 로 옮기면 uvicorn 이 즉시 응답 시작 → healthcheck 통과. RAG 는 뒤에서 준비.
+    # 준비 전 요청은 rag_retriever.is_available()=False (파일 없음) → graceful skip (오류 X).
+    # sync_master_templates / sync_skeletons 은 작아서 startup 동기 유지 (이 위·아래 블록).
+    def _bg_rag_sync():
+        try:
+            import r2_storage
+            rag_result = r2_storage.sync_rag_db()
+            if rag_result.get("downloaded") or rag_result.get("skipped"):
+                log.info("RAG DB sync (bg) OK (size=%.1fMB, downloaded=%s)",
+                         rag_result.get("size_mb", 0), rag_result.get("downloaded", False))
+            elif rag_result.get("error"):
+                log.info("RAG DB sync (bg) skip: %s", rag_result["error"])
+        except Exception as e:
+            log.warning("RAG DB sync (bg) 실패 (무시 — RAG 비활성 모드로): %s", e)
     try:
-        import r2_storage
-        rag_result = r2_storage.sync_rag_db()
-        if rag_result.get("downloaded") or rag_result.get("skipped"):
-            log.info("RAG DB sync OK (size=%.1fMB, downloaded=%s)",
-                     rag_result.get("size_mb", 0), rag_result.get("downloaded", False))
-        elif rag_result.get("error"):
-            log.info("RAG DB sync skip: %s", rag_result["error"])
+        import threading
+        threading.Thread(target=_bg_rag_sync, daemon=True, name="rag-sync-bg").start()
+        log.info("RAG DB sync 시작 (background thread — startup 무블로킹)")
     except Exception as e:
-        log.warning("RAG DB sync 실패 (무시 — RAG 비활성 모드로): %s", e)
+        log.warning("RAG DB sync 백그라운드 스케줄 실패 (무시): %s", e)
     # Spec D-Build-SkeletonConnect — 골격 13종 HTML + _index.json 동기화 (HTML 모드 토글 ON 시 사용).
     # 실패해도 startup 무영향 (HTML 모드 토글 OFF 면 골격 미사용 → 영향 0).
     # 토글 ON 이어도 캐시 미존재 시 _load_skeleton_html 이 "" 반환 → 카탈로그 fallback.

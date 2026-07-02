@@ -6007,6 +6007,47 @@ def _budget_item_amount(it: dict) -> int:
     return round(up * qty * period_qty * util)
 
 
+def _apply_amount_rounding_10k(cats: list) -> None:
+    """세부항목 amount 를 만원 단위 내림 + 잔차를 금액 최대 항목에 흡수.
+
+    Spec UX-CostSheetRounding — 투찰율 factor 조정 후 남는 지저분한 끝자리 정리.
+    ★ 정합 불변식 (반드시 유지):
+        Σ(정리 후 amount) == Σ(정리 전 amount)   (원 단위까지 정확)
+    ★ 절차:
+        1. 각 item.amount 를 만원 단위 floor (내림).
+        2. 잔차 = (정리 전 합) - (내림 합) — 항상 0 이상 (내림이라 안전).
+        3. 최대 항목(정리 전 값 기준, 동액 시 index 낮은 첫 번째)에 잔차 흡수.
+    ★ 잔차 흡수 항목은 잔차가 만원 배수 아니면 만원 배수 안 됨 — 정합 우선, 미관 감수.
+    ★ item.amount 가 미채워진 경우 _budget_item_amount 로 계산 후 정리 (defensive).
+    ★ In-place. cats 가 비어있거나 합계 0 이면 no-op.
+
+    프론트 recalcBudget 안 applyAmountRounding10k (static/app.js) 와 sync.
+    """
+    ROUND = 10_000
+    items_and_orig: list[tuple[dict, int]] = []
+    original_sum = 0
+    for cat in (cats or []):
+        for it in (cat.get("items") or []):
+            amt_val = it.get("amount")
+            amt = int(amt_val) if amt_val is not None else _budget_item_amount(it)
+            it["amount"] = amt
+            items_and_orig.append((it, amt))
+            original_sum += amt
+    if not items_and_orig or original_sum <= 0:
+        return
+    for it, _orig in items_and_orig:
+        it["amount"] = (int(it["amount"]) // ROUND) * ROUND
+    rounded_sum = sum(int(it["amount"]) for it, _ in items_and_orig)
+    residual = original_sum - rounded_sum
+    if residual > 0:
+        max_idx = max(range(len(items_and_orig)), key=lambda i: items_and_orig[i][1])
+        items_and_orig[max_idx][0]["amount"] = int(items_and_orig[max_idx][0]["amount"]) + residual
+    final_sum = sum(int(it["amount"]) for it, _ in items_and_orig)
+    if final_sum != original_sum:
+        log.warning("산출내역서 만원정리 정합 실패 · orig=%s final=%s",
+                    original_sum, final_sum)
+
+
 # 기본 투찰율 — RFP 예산 대비 청구 비율 (B2G 표준 정합).
 # 의미: bid_price = budget_limit × bid_rate (RFP 예산 영역 95%만 청구).
 # 한국 B2G 영역 권장 92-95% / 안전 영역 90% / 영역 영역 영역 82-85%.
@@ -6239,6 +6280,12 @@ def api_budget_xlsx(body: BudgetXlsxRequest, user: dict = Depends(get_current_us
     except ImportError:
         raise HTTPException(500, "openpyxl 라이브러리 영역 X — 서버 영역 점검 필요.")
 
+    # Spec UX-CostSheetRounding — body.categories 세부 amount 를 만원 내림+잔차 흡수로 정리.
+    #   프론트 recalcBudget 이 정리한 값이 오는 게 정상이나, 다른 경로(admin·재발행) 등
+    #   대비 defensive 재정리 (idempotent — 이미 만원 배수면 잔차=0 → 변화 X).
+    #   정합 불변식: Σ item.amount 유지 → 하단 소계·부가세·총합계 자동 정합.
+    _apply_amount_rounding_10k(body.categories or [])
+
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "산출내역서"
@@ -6343,7 +6390,11 @@ def api_budget_xlsx(body: BudgetXlsxRequest, user: dict = Depends(get_current_us
         cat_label = f"{cat_idx}. {cat.get('name', '')}"
         cat_subtotal = 0
         for it in (cat.get("items") or []):
-            amt = _budget_item_amount(it)
+            # Spec UX-CostSheetRounding — 진입부 helper 가 이미 amount 를 만원 정리
+            #   (+ 잔차 흡수)해서 채워둠. 여기서 재계산하면 정리가 무효화되므로 저장값 신뢰.
+            #   AI 응답이 amount 누락한 defensive 케이스만 _budget_item_amount 로 fallback.
+            amt_stored = it.get("amount")
+            amt = int(amt_stored) if amt_stored is not None else _budget_item_amount(it)
             cat_subtotal += amt
             row_data = [
                 cat_label if cur_row == cur_row else "",  # 구분 — 첫 항목만 채움 (간소: 매 행 채움)

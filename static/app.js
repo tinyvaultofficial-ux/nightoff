@@ -546,7 +546,29 @@ function renderRootRoute() {
   if (seen) return renderDashboard();
   return renderLanding();
 }
-window.addEventListener("popstate", route);
+window.addEventListener("popstate", (e) => {
+  // Spec UX-GenerationLeaveGuard — 생성 중 뒤로가기/백스페이스 실수 이탈 방지.
+  //   생성 시작 IIFE (L5333 근처) 가 window.__nightoff_generating=true 로 세팅 +
+  //   sentinel state 를 push (같은 URL). 뒤로가기 시 sentinel 이 먼저 pop →
+  //   URL 변경 없이 popstate 만 발생 → 아래 confirm 표시.
+  //     취소 = sentinel 재부착(사용자 화면 유지) / 확인 = 플래그 해제 후 실제 뒤로가기.
+  //   beforeunload (같은 IIFE) 는 새로고침·탭닫기 커버, popstate 는 뒤로가기 커버 — 상호 보완.
+  //   생성 안 할 때 (flag falsy) 는 기존과 동일하게 route(e) 만 호출 — 회귀 X.
+  if (window.__nightoff_generating) {
+    const leave = confirm(
+      "제안서 생성 중이에요. 나가시겠어요?\n" +
+      "(생성은 백그라운드에서 계속되며, 다시 들어오면 결과를 볼 수 있어요.)"
+    );
+    if (!leave) {
+      history.pushState(null, "", location.href);
+      return;
+    }
+    window.__nightoff_generating = false;
+    history.back();
+    return;
+  }
+  route(e);
+});
 document.addEventListener("click", (e) => {
   const a = e.target.closest("a[data-link]");
   if (a) {
@@ -5334,6 +5356,13 @@ async function renderChat(cid, convId) {
               // D-Fix-UnloadWarn: 생성 중 이탈 시 브라우저 네이티브 경고 (실수 새로고침/이동 방어)
               const _warnBeforeUnload = (e) => { e.preventDefault(); e.returnValue = ""; };
               window.addEventListener("beforeunload", _warnBeforeUnload);
+              // Spec UX-GenerationLeaveGuard — 뒤로가기/백스페이스 방어.
+              //   전역 플래그를 popstate 리스너(L549) 가 참조 → confirm.
+              //   sentinel push 로 뒤로가기 시 URL 변경 없이 popstate 만 발생시켜서
+              //   route() 로 화면이 바뀌기 전에 confirm 을 띄울 수 있게 함.
+              //   beforeunload(위) 는 새로고침/탭닫기/URL이동 커버, 이 블록은 뒤로가기 커버.
+              window.__nightoff_generating = true;
+              history.pushState(null, "", location.href);
               try {
                 await runMultiPassProposal({ convId, pages: selectedPages, asstEl, bubble, progress, body, msgs });
               } catch (e) {
@@ -5354,6 +5383,10 @@ async function renderChat(cid, convId) {
               } finally {
                 // D-Fix-UnloadWarn: 생성 종료(완료/에러/중단) 시 경고 해제
                 window.removeEventListener("beforeunload", _warnBeforeUnload);
+                // Spec UX-GenerationLeaveGuard — 플래그 해제 (완료/에러/중단 모든 경로).
+                //   push 해 둔 sentinel state 는 남지만, 이후 뒤로가기 시 flag=false 이므로
+                //   popstate 리스너가 정상 route() 로 진행 — 회귀 X (같은 URL 재-render 1회).
+                window.__nightoff_generating = false;
               }
             })();
           }, pageLimit);

@@ -5216,7 +5216,6 @@ async function renderChat(cid, convId) {
           h("div", { class: "ap-card-head" }, [
             h("span", { class: "ap-card-emoji" }, "🔍"),
             h("span", { class: "ap-card-title" }, "자체 검증"),
-            h("span", { class: "ap-card-tag" }, "점수"),
           ]),
           h("p", { class: "ap-card-desc" }, "평가위원 시각 예상 점수 + 빠진 요구사항"),
         ]),

@@ -5205,7 +5205,7 @@ async function renderChat(cid, convId) {
           h("div", { class: "ap-card-head" }, [
             h("span", { class: "ap-card-emoji" }, "📑"),
             h("span", { class: "ap-card-title" }, "제출서류 가이드"),
-            h("span", { class: "ap-card-tag" }, "준비"),
+            h("span", { class: "ap-card-tag" }, "beta"),
           ]),
           h("p", { class: "ap-card-desc" }, "RFP에 필요한 제출서류를 빠짐없이 정리하고, 우리 회사 보유 여부와 채울 값까지 한눈에"),
         ]),

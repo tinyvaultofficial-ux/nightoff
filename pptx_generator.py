@@ -4219,9 +4219,12 @@ def _build_preset_hero_detail(slide_data):
                        "text":badge,"size":13,"weight":700,"color":"#FEFEFE",
                        "align":"center","valign":"middle"})
         cursor_x += b_w + 0.2
-    # (2) 초대형 숫자 (선택)
+    # (2) 초대형 숫자 (선택) — 72pt weight 900 Paperlogy 는 glyph 폭 ≈ 0.55~0.6"/자리.
+    #   기존 n_w=1.3 은 한 자리엔 충분하나 두 자리("10" 등) 는 부족 → word_wrap 세로 흐름.
+    #   n_w=2.0 = 두 자리 glyph 폭(≈1.2") + kerning/여유 마진 (한 자리엔 좌측 정렬이라 우측 공백만 늘어 무해).
+    #   ★ size(pt) 는 유지 — 임팩트 유지가 이번 수정의 전제.
     if number:
-        n_w = 1.3
+        n_w = 2.0
         shapes.append({"type":"text","x":cursor_x,"y":hdr_y,"w":n_w,"h":hdr_h,
                        "text":number,"size":72,"weight":900,"color":"#FEFEFE",
                        "align":"left","valign":"middle"})

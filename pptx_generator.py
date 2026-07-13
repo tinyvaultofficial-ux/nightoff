@@ -4740,8 +4740,14 @@ def _build_preset_fullbleed_overlay(slide_data):
                    "align":"center","valign":"middle"})
 
     # ── ② 상단 오버레이 (중앙정렬)
+    #   ★ Spec Preset-FullbleedNoBox — 텍스트 뒤 검정 박스 전량 제거.
+    #     이유: placeholder 회색 대비 박스가 튐 + 사용자가 밝은 실사진 쓸 때
+    #     박스가 걸리적거림. 대신 텍스트를 검정 계열(#1A1A1A / #666666)로 두고,
+    #     어두운 배경 이미지 쓰는 사용자는 PPT 에서 직접 색 조정.
+    #   ★ 배지(badge / label_badge) 는 그 자체가 디자인 요소라 유지 (원본 캡쳐 정합).
+    #     대표님 갤러리 검토 후 튀면 후속 제거.
     top_y = 0.35
-    # (a) 상단 배지 pill (선택)
+    # (a) 상단 배지 pill (선택) — 유지
     if badge:
         b_w = 1.6
         b_h = 0.4
@@ -4752,80 +4758,60 @@ def _build_preset_fullbleed_overlay(slide_data):
                        "text":badge,"size":11,"weight":700,"color":"#FEFEFE",
                        "align":"center","valign":"middle"})
         top_y += b_h + 0.15
+    else:
+        top_y = 0.55   # 배지 없으면 살짝 아래에서 시작
 
-    # (b) 거버닝 블록 (검정 박스가 subtitle + title 를 감쌈, 텍스트 폭 기반)
-    #     title 길이 기준 폭 계산 (subtitle 은 대개 더 짧음).
-    title_est_w = len(title) * 0.36 + 0.8
-    gov_box_w = max(4.0, min(title_est_w, 9.0))
-    gov_box_x = (W - gov_box_w) / 2
-    inner_pad = 0.15
-    sub_h   = 0.35 if subtitle else 0
-    title_h = 0.9
-    sub_gap = 0.05 if subtitle else 0
-    gov_box_h = inner_pad * 2 + sub_h + sub_gap + title_h
-    shapes.append({"type":"rect","x":gov_box_x,"y":top_y,"w":gov_box_w,"h":gov_box_h,
-                   "fill":"#1B1B1B","radius":0.05})
-    ty = top_y + inner_pad
+    # (b) 거버닝 텍스트 — 검정 박스 제거, 텍스트만 중앙정렬.
+    #     subtitle 검정 계열 회색으로, title 은 role:"governing" 유지 (자동 보라).
+    text_x = 0.9
+    text_w = W - 1.8   # 넉넉히 슬라이드 폭 사용 (박스 제약 없음)
     if subtitle:
-        shapes.append({"type":"text","x":gov_box_x + 0.15,"y":ty,
-                       "w":gov_box_w - 0.3,"h":sub_h,
-                       "text":subtitle,"size":12,"weight":400,"color":"#DDDDDD",
+        shapes.append({"type":"text","x":text_x,"y":top_y,"w":text_w,"h":0.35,
+                       "text":subtitle,"size":12,"weight":500,"color":"#666666",
                        "align":"center","valign":"middle"})
-        ty += sub_h + sub_gap
-    shapes.append({"type":"text","x":gov_box_x + 0.15,"y":ty,
-                   "w":gov_box_w - 0.3,"h":title_h,
-                   "text":title,"size":26,"weight":800,"color":"#FEFEFE",
+        top_y += 0.4
+    # title (거버닝 — role:"governing" 자동 보라)
+    shapes.append({"type":"text","x":text_x,"y":top_y,"w":text_w,"h":0.9,
+                   "text":title,"size":26,"weight":800,"color":"#1A1A1A",
                    "align":"center","valign":"middle",
                    "role":"governing"})
 
-    # ── ③ 좌하단 오버레이 (아래→위 순서로 좌표 계산)
-    left_x    = 0.6
-    bottom_y  = H - 0.6           # 하단 여백
-    line_h    = 0.32
-    inner_pad = 0.15
+    # ── ③ 좌하단 오버레이 (박스 제거, 텍스트만)
+    #   points → label_badge → note 순서로 아래에서 위로 스택.
+    #   points·note 는 검정 텍스트, label_badge 는 pill 유지.
+    left_x   = 0.9
+    line_h   = 0.32
+    points_bottom = H - 0.5
+    pts_top = points_bottom - len(points) * line_h
 
-    # (c) points wrapping box (필수, 최하단)
-    max_line_len = max(len("▶ " + p) for p in points)
-    pts_est_w = max_line_len * 0.17 + 0.5
-    pts_w = max(3.5, min(pts_est_w, 7.0))
-    pts_h = len(points) * line_h + inner_pad * 2
-    pts_top = bottom_y - pts_h
-    shapes.append({"type":"rect","x":left_x,"y":pts_top,"w":pts_w,"h":pts_h,
-                   "fill":"#1B1B1B","radius":0.05})
+    # (c) points 리스트 (박스 없음, 검정 텍스트)
     for i, p in enumerate(points):
-        py = pts_top + inner_pad + i * line_h
-        shapes.append({"type":"text","x":left_x + inner_pad,"y":py,
-                       "w":pts_w - 2 * inner_pad,"h":line_h,
-                       "text":"▶ " + p,"size":11,"weight":400,"color":"#FEFEFE",
+        py = pts_top + i * line_h
+        shapes.append({"type":"text","x":left_x,"y":py,"w":8.0,"h":line_h,
+                       "text":"▶ " + p,"size":11,"weight":500,"color":"#1A1A1A",
                        "align":"left","valign":"middle"})
 
-    # (d) label_badge (선택) — points 박스 위 별도 pill
+    # (d) label_badge (선택) — pill 유지, points 위
     if label_badge:
         lb_est_w = len(label_badge) * 0.16 + 0.4
         lb_w = max(1.5, min(lb_est_w, 4.0))
         lb_h = 0.35
-        lb_y = pts_top - lb_h - 0.1
+        lb_y = pts_top - lb_h - 0.15
         shapes.append({"type":"rect","x":left_x,"y":lb_y,"w":lb_w,"h":lb_h,
                        "fill":"#1B1B1B","radius":0.1})
         shapes.append({"type":"text","x":left_x,"y":lb_y,"w":lb_w,"h":lb_h,
                        "text":label_badge,"size":10,"weight":700,"color":"#FEFEFE",
                        "align":"center","valign":"middle"})
-        stack_top = lb_y - 0.1
+        stack_top = lb_y - 0.15
     else:
-        stack_top = pts_top - 0.1
+        stack_top = pts_top - 0.15
 
-    # (e) note (선택) — 최상단 (label_badge / points 위)
+    # (e) note (선택) — 박스 없음, 검정 텍스트
     if note:
-        note_text  = "※ " + note
-        note_est_w = len(note_text) * 0.16 + 0.4
-        note_w = max(2.5, min(note_est_w, 7.0))
         note_h = 0.35
         note_y = stack_top - note_h
-        shapes.append({"type":"rect","x":left_x,"y":note_y,"w":note_w,"h":note_h,
-                       "fill":"#1B1B1B","radius":0.05})
-        shapes.append({"type":"text","x":left_x + 0.12,"y":note_y,
-                       "w":note_w - 0.24,"h":note_h,
-                       "text":note_text,"size":10,"weight":500,"color":"#FEFEFE",
+        shapes.append({"type":"text","x":left_x,"y":note_y,"w":8.0,"h":note_h,
+                       "text":"※ " + note,"size":10,"weight":500,"color":"#1A1A1A",
                        "align":"left","valign":"middle"})
     return shapes
 

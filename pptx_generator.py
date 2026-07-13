@@ -2024,6 +2024,16 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A", the
             # Spec D-Build-ThemeColorMap 1-c — 명시 color 도 다크에서 role 별 매핑(_add_text 내부 _map_color).
             # Spec D-Build-TextRunsRender 1-d-① — text_runs(선택) 그대로 전달, _add_text 가 분기 처리.
             #   text_runs 없는 도형(기존 100%) → _add_text 내부에서 기존 경로로 들어가 비트 단위 무변경.
+            # Spec Governing-Purple — role=="governing" 시 색을 브랜드 accent 로 강제.
+            #   각 preset builder 가 거버닝(메인 제목) 도형에만 "role":"governing" 마킹.
+            #   theme.py 의 ACCENT 토큰 참조 (라이트 #A78BFA / 다크 #A78BFA).
+            #   미마킹 도형(divider 로마·quantitative value·아이템 head 등)은 무영향.
+            #   #A78BFA 는 DARK_MAP 미매핑 → light/dark 모두 그대로 통과 (안전).
+            color_val = str(shape_def.get("color", default_text_color))
+            if shape_def.get("role") == "governing":
+                _accent = _get_theme(theme).get("ACCENT")
+                if _accent:
+                    color_val = _accent
             return _add_text(
                 slide,
                 float(shape_def.get("x", 0)), float(shape_def.get("y", 0)),
@@ -2031,7 +2041,7 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A", the
                 str(shape_def.get("text", "")),
                 size=float(shape_def.get("size", 14)),
                 weight=int(shape_def.get("weight", 400)),
-                color=str(shape_def.get("color", default_text_color)),
+                color=color_val,
                 align=str(shape_def.get("align", "left")),
                 valign=str(shape_def.get("valign", "top")),
                 font_family=shape_def.get("font_family"),
@@ -2437,6 +2447,7 @@ def _build_preset_narrative(slide_data: dict) -> list:
         "text": quote,
         "size": 40, "weight": 700, "color": "#1A1A1A",
         "align": "center", "valign": "middle",
+        "role": "governing",
     })
     # 흐름 설명 (선택 / 최대 3개) — 0.62 간격
     y = 4.1
@@ -2496,6 +2507,7 @@ def _narrative_declaration(slide_data: dict) -> list:
         "text": declaration,
         "size": 44, "weight": 700, "color": "#1A1A1A",
         "align": "center", "valign": "middle",
+        "role": "governing",
     })
     # 근거 (선택 / 최대 3개) — Spec Preset-Fix-Declaration A안:
     #   옅은 테두리 박스 + 왼쪽 정렬 + em-dash 접두 제거 (박스가 구분 역할 대체).
@@ -2536,6 +2548,7 @@ def _narrative_qa(slide_data: dict) -> list:
         "text": "Q. " + question,
         "size": 28, "weight": 700, "color": "#1A1A1A",
         "align": "center", "valign": "middle",
+        "role": "governing",
     }]
     for i, a in enumerate(answers):
         shapes.append({
@@ -2579,6 +2592,7 @@ def _narrative_emphasis(slide_data: dict) -> list:
             "text": highlight,
             "size": 24, "weight": 700, "color": "#1A1A1A",
             "align": "center", "valign": "middle",
+            "role": "governing",
         })
     return shapes
 
@@ -2604,6 +2618,7 @@ def _narrative_contrast(slide_data: dict) -> list:
         "text": but_this,
         "size": 34, "weight": 700, "color": "#1A1A1A",
         "align": "center", "valign": "middle",
+        "role": "governing",
     })
     return shapes
 
@@ -2646,7 +2661,7 @@ def _build_preset_split(slide_data):
         if label:
             out.append({"type":"text","x":x,"y":y,"w":w,"h":0.5,"text":label,"size":13,"weight":700,"color":label_color,"align":"center","valign":"middle"})
             y += 0.7
-        out.append({"type":"text","x":x,"y":y,"w":w,"h":1.2,"text":head,"size":26,"weight":head_weight,"color":head_color,"align":"center","valign":"middle"})
+        out.append({"type":"text","x":x,"y":y,"w":w,"h":1.2,"text":head,"size":26,"weight":head_weight,"color":head_color,"align":"center","valign":"middle","role":"governing"})
         y += 1.7
         for p in pts:
             out.append({"type":"text","x":x,"y":y,"w":w,"h":0.55,"text":p,"size":13,"weight":400,"color":pt_color,"align":"center","valign":"middle"})
@@ -2730,6 +2745,7 @@ def _build_preset_timeline(slide_data):
             "text": title,
             "size": 28, "weight": 800, "color": "#1A1A1A",
             "align": "left", "valign": "top",
+            "role": "governing",
         }
         if isinstance(title_runs_raw, list) and title_runs_raw:
             title_shape["text_runs"] = title_runs_raw
@@ -2829,7 +2845,7 @@ def _build_preset_asymmetric(slide_data):
     if number:
         shapes.append({"type":"text","x":lx,"y":y,"w":lw,"h":1.0,"text":number,"size":54,"weight":800,"color":"#1A1A1A","align":"left","valign":"top"})
         y += 1.3
-    shapes.append({"type":"text","x":lx,"y":y,"w":lw,"h":1.4,"text":head,"size":28,"weight":800,"color":"#1A1A1A","align":"left","valign":"top"})
+    shapes.append({"type":"text","x":lx,"y":y,"w":lw,"h":1.4,"text":head,"size":28,"weight":800,"color":"#1A1A1A","align":"left","valign":"top","role":"governing"})
     y += 1.5
     for p in pts:
         shapes.append({"type":"text","x":lx,"y":y,"w":lw,"h":0.7,"text":p,"size":14,"weight":400,"color":"#444444","align":"left","valign":"top"})
@@ -2888,7 +2904,7 @@ def _build_preset_zigzag(slide_data):
         shapes.append({"type":"text","x":0.9,"y":0.5,"w":9.89,"h":0.4,"text":eyebrow,"size":11,"weight":400,"color":"#BBBBBB","align":"left","valign":"top"})
     top = 1.1
     if title:
-        shapes.append({"type":"text","x":0.9,"y":1.0,"w":10.0,"h":0.9,"text":title,"size":26,"weight":800,"color":"#1A1A1A","align":"left","valign":"top"})
+        shapes.append({"type":"text","x":0.9,"y":1.0,"w":10.0,"h":0.9,"text":title,"size":26,"weight":800,"color":"#1A1A1A","align":"left","valign":"top","role":"governing"})
         top = 2.3
     n = len(items)
     area_top = top + 0.3
@@ -2947,7 +2963,7 @@ def _build_preset_hsplit(slide_data):
     shapes.append({"type":"rect","x":img_x,"y":img_top,"w":img_w,"h":img_h,"fill":"#F5F5F5","stroke":"#DDDDDD","stroke_width":1})
     shapes.append({"type":"text","x":img_x,"y":img_top + img_h/2 - 0.2,"w":img_w,"h":0.4,"text":caption,"size":12,"weight":400,"color":"#BBBBBB","align":"center","valign":"middle"})
     txt_top = img_top + img_h + 0.5
-    shapes.append({"type":"text","x":img_x,"y":txt_top,"w":img_w,"h":0.8,"text":head,"size":26,"weight":800,"color":"#1A1A1A","align":"left","valign":"top"})
+    shapes.append({"type":"text","x":img_x,"y":txt_top,"w":img_w,"h":0.8,"text":head,"size":26,"weight":800,"color":"#1A1A1A","align":"left","valign":"top","role":"governing"})
     if desc:
         shapes.append({"type":"text","x":img_x,"y":txt_top + 0.9,"w":img_w,"h":0.9,"text":desc,"size":14,"weight":400,"color":"#444444","align":"left","valign":"top"})
     return shapes
@@ -2996,7 +3012,7 @@ def _build_preset_circles(slide_data):
     #    timeline _build_governing_block L2691-2701 패턴 정합: title_runs list 면 text_runs 키로 박음.
     #    accent 세그먼트는 _add_text(L1679)가 dark 에서 #FFFF00 자동 처리 → 본 함수 추가 코드 X.
     if title:
-        title_shape = {"type":"text","x":0,"y":1.05,"w":11.69,"h":1.2,"text":title,"size":28,"weight":800,"color":"#FEFEFE","align":"center","valign":"top"}
+        title_shape = {"type":"text","x":0,"y":1.05,"w":11.69,"h":1.2,"text":title,"size":28,"weight":800,"color":"#FEFEFE","align":"center","valign":"top","role":"governing"}
         title_runs_raw = slide_data.get("title_runs")
         if isinstance(title_runs_raw, list) and title_runs_raw:
             title_shape["text_runs"] = title_runs_raw
@@ -3075,7 +3091,8 @@ def _build_preset_triad(slide_data):
                        "text":eyebrow,"size":11,"weight":400,"color":"#BBBBBB","align":"left","valign":"top"})
     if title:
         t = {"type":"text","x":0.5,"y":2.2,"w":gov_w,"h":3.0,
-             "text":title,"size":28,"weight":800,"color":"#1A1A1A","align":"left","valign":"top"}
+             "text":title,"size":28,"weight":800,"color":"#1A1A1A","align":"left","valign":"top",
+             "role":"governing"}
         tr = slide_data.get("title_runs")
         if isinstance(tr, list) and tr:
             t["text_runs"] = tr
@@ -3165,7 +3182,8 @@ def _build_preset_strategy_map(slide_data):
                        "align":"center","valign":"top"})
     t = {"type":"text","x":margin,"y":0.9,"w":usable,"h":0.9,
          "text":title,"size":28,"weight":800,"color":"#1A1A1A",
-         "align":"center","valign":"top"}
+         "align":"center","valign":"top",
+         "role":"governing"}
     tr = slide_data.get("title_runs")
     if isinstance(tr, list) and tr:
         t["text_runs"] = tr
@@ -3299,7 +3317,7 @@ def _build_preset_hero_cards(slide_data):
     #   timeline _build_governing_block L2691-2701 패턴: title_runs list → text_runs 키.
     #   accent 세그먼트는 _add_text L1679 분기에서 dark 시 #FFFF00 자동 처리 → 추가 코드 X.
     if title:
-        title_shape = {"type":"text","x":0,"y":1.0,"w":11.69,"h":1.0,"text":title,"size":28,"weight":800,"color":"#FEFEFE","align":"center","valign":"middle"}
+        title_shape = {"type":"text","x":0,"y":1.0,"w":11.69,"h":1.0,"text":title,"size":28,"weight":800,"color":"#FEFEFE","align":"center","valign":"middle","role":"governing"}
         title_runs_raw = slide_data.get("title_runs")
         if isinstance(title_runs_raw, list) and title_runs_raw:
             title_shape["text_runs"] = title_runs_raw
@@ -3443,6 +3461,7 @@ def _build_preset_hsplit_top(slide_data):
         "text": title,
         "size": 28, "weight": 800, "color": "#FFFFFF",
         "align": "center", "valign": "middle",
+        "role": "governing",
     })
 
     # ④ 메인 거버닝 2줄 (형광 키워드, 선택, #FFFF00 직접 — text_runs 안 씀, theme 우회)
@@ -3830,6 +3849,151 @@ def _build_preset_divider(slide_data, divider_idx=1):
     return shapes
 
 
+# ─── Spec Preset-New-ConclusionCards — 3열 카드 + 하단 결론 밴드 ────────────────
+# 상단 거버닝 + 중단 3열 카드(라벨바+헤드+옅은회색 desc박스 안 태그·설명) +
+# 하단 검정 밴드(아래 화살표 + conclusion). 이미지 placeholder 없음.
+# 색 정합 (거버닝 자동 보라 + 미매핑 검정/흰):
+#   상단 title / 하단 conclusion → role:"governing" 마킹 → _get_theme(theme)["ACCENT"] 자동.
+#   라벨 바·태그·밴드·아이템 흰글씨 → #1B1B1B / #FEFEFE 미매핑 (양 테마 그대로).
+#   desc 박스 → #F5F5F5 (다크에선 DARK_MAP 매핑 #1F1F1F).
+# 화살표 → chevron/block_arrow 우향 고정이라 사용 X, arrow(직선+삼각형 헤드) 세로 배치.
+#
+# 입력 스키마:
+#   slide_data["items"]           = [{label(필수), head(필수), tag?, desc?}, ...]  ★ 정확히 3개
+#   slide_data["conclusion"]      = str (필수)
+#   slide_data["eyebrow"]?        = str
+#   slide_data["subtitle"]?       = str
+#   slide_data["lead"]?           = str
+#   slide_data["title"]?          = str  (거버닝 — role:"governing" 자동 보라)
+#   slide_data["conclusion_lead"]? = str
+# 안전망: items list 아님 / 3개 정확히 아님 / 각 head 누락 / conclusion 없음 → 빈 list.
+# ★ 본 spec 단계: 코드 + dispatch 만 등록 — viz_pattern 화이트리스트·SLIDE 프롬프트
+#   미연결 (LLM 우연 선택 방지). 갤러리 검증 후 별도 spec 으로 켜기.
+def _build_preset_conclusion_cards(slide_data):
+    items_raw = slide_data.get("items") or []
+    if not isinstance(items_raw, list):
+        return []
+    items = []
+    for it in items_raw:
+        if not isinstance(it, dict):
+            continue
+        head = str(it.get("head", "")).strip()
+        if not head:
+            continue
+        items.append({
+            "label": str(it.get("label", "")).strip(),
+            "head": head,
+            "tag": str(it.get("tag", "")).strip(),
+            "desc": str(it.get("desc", "")).strip(),
+        })
+    if len(items) != 3:
+        return []
+    conclusion = str(slide_data.get("conclusion", "")).strip()
+    if not conclusion:
+        return []
+
+    eyebrow         = str(slide_data.get("eyebrow", "")).strip()
+    subtitle        = str(slide_data.get("subtitle", "")).strip()
+    lead            = str(slide_data.get("lead", "")).strip()
+    title           = str(slide_data.get("title", "")).strip()
+    conclusion_lead = str(slide_data.get("conclusion_lead", "")).strip()
+
+    W, H = 11.69, 8.27
+    shapes = []
+
+    # ── ① 상단 거버닝 블록 (중앙정렬)
+    top_x, top_w = 0.9, W - 1.8
+    if eyebrow:
+        shapes.append({"type":"text","x":top_x,"y":0.3,"w":top_w,"h":0.35,
+                       "text":eyebrow,"size":11,"weight":400,"color":"#999999",
+                       "align":"center","valign":"middle"})
+    if subtitle:
+        shapes.append({"type":"text","x":top_x,"y":0.7,"w":top_w,"h":0.35,
+                       "text":subtitle,"size":12,"weight":400,"color":"#666666",
+                       "align":"center","valign":"middle"})
+    if lead:
+        shapes.append({"type":"text","x":top_x,"y":1.15,"w":top_w,"h":0.4,
+                       "text":lead,"size":14,"weight":500,"color":"#1A1A1A",
+                       "align":"center","valign":"middle"})
+    if title:
+        # ★ role:"governing" → render 시 _get_theme(theme)["ACCENT"] 자동 (라이트 #6B46E5).
+        shapes.append({"type":"text","x":top_x,"y":1.55,"w":top_w,"h":0.7,
+                       "text":title,"size":28,"weight":800,"color":"#1A1A1A",
+                       "align":"center","valign":"middle",
+                       "role":"governing"})
+
+    # ── ② 중단 3열 카드 (정확히 3, 균등 분배)
+    margin  = 0.9
+    gap     = 0.3
+    card_w  = (W - 2 * margin - 2 * gap) / 3   # ≈ 3.097
+    card_top = 2.4
+    label_h  = 0.5
+    head_top = card_top + label_h + 0.05        # 2.95
+    head_h   = 0.65
+    desc_top = head_top + head_h + 0.1          # 3.7
+    desc_h   = 2.15                             # ends 5.85
+    for i, it in enumerate(items):
+        cx = margin + i * (card_w + gap)
+        # (1) 라벨 바 — 검정 fill + 흰 글씨 (마커 없음, 거버닝 아님)
+        shapes.append({"type":"rect","x":cx,"y":card_top,"w":card_w,"h":label_h,
+                       "fill":"#1B1B1B"})
+        if it["label"]:
+            shapes.append({"type":"text","x":cx,"y":card_top,"w":card_w,"h":label_h,
+                           "text":it["label"],"size":12,"weight":700,"color":"#FEFEFE",
+                           "align":"center","valign":"middle"})
+        # (2) 헤드라인
+        shapes.append({"type":"text","x":cx + 0.1,"y":head_top,"w":card_w - 0.2,"h":head_h,
+                       "text":it["head"],"size":16,"weight":700,"color":"#1A1A1A",
+                       "align":"center","valign":"middle"})
+        # (3) 설명 박스 — 옅은 회색 fill (다크에선 #1F1F1F 자동)
+        shapes.append({"type":"rect","x":cx,"y":desc_top,"w":card_w,"h":desc_h,
+                       "fill":"#F5F5F5"})
+        # (3a) 태그 — 검정 rounded rect (hero_cards L3340 패턴, radius 지정)
+        tag_present = bool(it["tag"])
+        if tag_present:
+            tag_w = 1.4
+            tag_h = 0.4
+            tag_x = cx + (card_w - tag_w) / 2
+            tag_y = desc_top + 0.18
+            shapes.append({"type":"rect","x":tag_x,"y":tag_y,"w":tag_w,"h":tag_h,
+                           "fill":"#1B1B1B","radius":0.06})
+            shapes.append({"type":"text","x":tag_x,"y":tag_y,"w":tag_w,"h":tag_h,
+                           "text":it["tag"],"size":11,"weight":700,"color":"#FEFEFE",
+                           "align":"center","valign":"middle"})
+        # (3b) desc
+        if it["desc"]:
+            desc_text_y = desc_top + (0.75 if tag_present else 0.2)
+            desc_text_h = desc_top + desc_h - desc_text_y - 0.15
+            shapes.append({"type":"text","x":cx + 0.2,"y":desc_text_y,
+                           "w":card_w - 0.4,"h":desc_text_h,
+                           "text":it["desc"],"size":11,"weight":400,"color":"#666666",
+                           "align":"center","valign":"top"})
+
+    # ── ③ 하단 결론 밴드 (전체 폭 검정)
+    band_top = 6.0
+    band_h   = H - band_top   # 2.27
+    shapes.append({"type":"rect","x":0,"y":band_top,"w":W,"h":band_h,
+                   "fill":"#1B1B1B"})
+    # 아래 방향 화살표 — chevron/block_arrow 우향 고정이라 arrow(직선+헤드) 사용
+    #   hero_cards L3308 패턴 정합 (검정 밴드 위 #FEFEFE)
+    shapes.append({"type":"arrow","x1":W/2,"y1":band_top + 0.15,
+                   "x2":W/2,"y2":band_top + 0.55,
+                   "color":"#FEFEFE","width":1.5})
+    if conclusion_lead:
+        shapes.append({"type":"text","x":0.5,"y":band_top + 0.7,"w":W - 1.0,"h":0.35,
+                       "text":conclusion_lead,"size":13,"weight":400,"color":"#FEFEFE",
+                       "align":"center","valign":"middle"})
+    # conclusion — 결론 문장. 검정 밴드 위라 흰 계열 색 지정 후 role:"governing" 마킹 시
+    #   render 가 _get_theme(theme)["ACCENT"] 로 오버라이드 → 라이트 #6B46E5.
+    #   ★ 검정 밴드 위 보라 대비 가독성은 갤러리 확인 (governing-purple 갤러리 검증됨).
+    conclusion_y = band_top + (1.15 if conclusion_lead else 0.85)
+    shapes.append({"type":"text","x":0.5,"y":conclusion_y,"w":W - 1.0,"h":1.0,
+                   "text":conclusion,"size":26,"weight":900,"color":"#FEFEFE",
+                   "align":"center","valign":"middle",
+                   "role":"governing"})
+    return shapes
+
+
 def generate_from_shape_json(json_data, output_path, *, theme="light"):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -4085,6 +4249,19 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
             # circles/triad/hero_cards 와 동일 패턴 — 성공 시 preset 만, 실패/예외 시 LLM 백업.
             try:
                 preset_shapes = _build_preset_strategy_map(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "conclusion_cards":
+            # Spec Preset-New-ConclusionCards — 3열 카드 + 하단 결론 밴드.
+            # ★ 본 spec 단계: 코드 + dispatch 만 등록 — viz_pattern 화이트리스트·
+            #   SLIDE 프롬프트 미연결 (LLM 우연 선택 방지). 갤러리 검증 후 별도 spec.
+            # strategy_map/triad/hero_cards 와 동일 패턴 — 성공 시 preset 만, 실패/예외 시 LLM 백업.
+            try:
+                preset_shapes = _build_preset_conclusion_cards(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

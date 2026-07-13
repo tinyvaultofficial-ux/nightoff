@@ -4691,6 +4691,145 @@ def _build_preset_quad_detail(slide_data):
     return shapes
 
 
+# ─── Spec Preset-New-FullbleedOverlay — 풀블리드 배경 + 텍스트 오버레이 ─────────
+# 화면 전체 이미지 placeholder 위에 상단 거버닝 + 좌하단 텍스트 오버레이.
+# 조감도·시설사진·동선계획·컨셉·3D렌더링 등 "비주얼이 주인공" 슬라이드.
+# 색 정합:
+#   상단 title → role:"governing" → _get_theme(theme)["ACCENT"] 자동 (라이트 #6B46E5).
+#   배경 → #F5F5F5 (DARK_MAP fill 매핑 → 다크 #1F1F1F 자동).
+#   오버레이 박스·배지 → #1B1B1B 미매핑 (양 테마 검정 유지).
+#   텍스트 → #FEFEFE / #DDDDDD 미매핑.
+# ★ 검정 박스 크기: 텍스트 폭에 맞게 heuristic 계산 (배경 이미지 최대한 노출).
+#   Korean 글자폭 ≈ 폰트pt × 0.014"/pt 기준으로 근사 (26pt ≈ 0.36", 11pt ≈ 0.15").
+#   auto_size = TEXT_TO_SHAPE_FIT 이 안전망 (박스 초과 시 폰트 축소).
+# ★ z-order: 배경 rect 를 shapes 리스트 맨 앞 append → 나머지 오버레이는 위에.
+#
+# 입력 스키마:
+#   slide_data["title"]        = str (필수, 거버닝)
+#   slide_data["points"]       = list[str] ★ 2, 3, 4개 중 하나 (그 외 [])
+#   slide_data["badge"]?       = str (상단 알약 배지)
+#   slide_data["subtitle"]?    = str (상단 거버닝 박스 안)
+#   slide_data["note"]?        = str (좌하단 ※ 문구)
+#   slide_data["label_badge"]? = str (좌하단 별도 알약 배지)
+# 안전망: title 없음 / points 2~4 아님 → 빈 list.
+# ★ 본 spec 단계: 코드 + dispatch 만 등록 — SLIDE 프롬프트·화이트리스트 미연결.
+def _build_preset_fullbleed_overlay(slide_data):
+    title = str(slide_data.get("title", "")).strip()
+    if not title:
+        return []
+    points_raw = slide_data.get("points") or []
+    if not isinstance(points_raw, list):
+        return []
+    points = [str(p).strip() for p in points_raw if str(p).strip()]
+    if len(points) not in (2, 3, 4):
+        return []
+
+    badge       = str(slide_data.get("badge", "")).strip()
+    subtitle    = str(slide_data.get("subtitle", "")).strip()
+    note        = str(slide_data.get("note", "")).strip()
+    label_badge = str(slide_data.get("label_badge", "")).strip()
+
+    W, H = 11.69, 8.27
+    shapes = []
+
+    # ── ① 배경 풀블리드 이미지 placeholder (반드시 먼저 — z-order 하단)
+    shapes.append({"type":"rect","x":0,"y":0,"w":W,"h":H,
+                   "fill":"#F5F5F5"})
+    shapes.append({"type":"text","x":0,"y":H / 2 - 0.2,"w":W,"h":0.4,
+                   "text":"이미지 영역","size":13,"weight":400,"color":"#AAAAAA",
+                   "align":"center","valign":"middle"})
+
+    # ── ② 상단 오버레이 (중앙정렬)
+    top_y = 0.35
+    # (a) 상단 배지 pill (선택)
+    if badge:
+        b_w = 1.6
+        b_h = 0.4
+        b_x = (W - b_w) / 2
+        shapes.append({"type":"rect","x":b_x,"y":top_y,"w":b_w,"h":b_h,
+                       "fill":"#1B1B1B","radius":0.1})
+        shapes.append({"type":"text","x":b_x,"y":top_y,"w":b_w,"h":b_h,
+                       "text":badge,"size":11,"weight":700,"color":"#FEFEFE",
+                       "align":"center","valign":"middle"})
+        top_y += b_h + 0.15
+
+    # (b) 거버닝 블록 (검정 박스가 subtitle + title 를 감쌈, 텍스트 폭 기반)
+    #     title 길이 기준 폭 계산 (subtitle 은 대개 더 짧음).
+    title_est_w = len(title) * 0.36 + 0.8
+    gov_box_w = max(4.0, min(title_est_w, 9.0))
+    gov_box_x = (W - gov_box_w) / 2
+    inner_pad = 0.15
+    sub_h   = 0.35 if subtitle else 0
+    title_h = 0.9
+    sub_gap = 0.05 if subtitle else 0
+    gov_box_h = inner_pad * 2 + sub_h + sub_gap + title_h
+    shapes.append({"type":"rect","x":gov_box_x,"y":top_y,"w":gov_box_w,"h":gov_box_h,
+                   "fill":"#1B1B1B","radius":0.05})
+    ty = top_y + inner_pad
+    if subtitle:
+        shapes.append({"type":"text","x":gov_box_x + 0.15,"y":ty,
+                       "w":gov_box_w - 0.3,"h":sub_h,
+                       "text":subtitle,"size":12,"weight":400,"color":"#DDDDDD",
+                       "align":"center","valign":"middle"})
+        ty += sub_h + sub_gap
+    shapes.append({"type":"text","x":gov_box_x + 0.15,"y":ty,
+                   "w":gov_box_w - 0.3,"h":title_h,
+                   "text":title,"size":26,"weight":800,"color":"#FEFEFE",
+                   "align":"center","valign":"middle",
+                   "role":"governing"})
+
+    # ── ③ 좌하단 오버레이 (아래→위 순서로 좌표 계산)
+    left_x    = 0.6
+    bottom_y  = H - 0.6           # 하단 여백
+    line_h    = 0.32
+    inner_pad = 0.15
+
+    # (c) points wrapping box (필수, 최하단)
+    max_line_len = max(len("▶ " + p) for p in points)
+    pts_est_w = max_line_len * 0.17 + 0.5
+    pts_w = max(3.5, min(pts_est_w, 7.0))
+    pts_h = len(points) * line_h + inner_pad * 2
+    pts_top = bottom_y - pts_h
+    shapes.append({"type":"rect","x":left_x,"y":pts_top,"w":pts_w,"h":pts_h,
+                   "fill":"#1B1B1B","radius":0.05})
+    for i, p in enumerate(points):
+        py = pts_top + inner_pad + i * line_h
+        shapes.append({"type":"text","x":left_x + inner_pad,"y":py,
+                       "w":pts_w - 2 * inner_pad,"h":line_h,
+                       "text":"▶ " + p,"size":11,"weight":400,"color":"#FEFEFE",
+                       "align":"left","valign":"middle"})
+
+    # (d) label_badge (선택) — points 박스 위 별도 pill
+    if label_badge:
+        lb_est_w = len(label_badge) * 0.16 + 0.4
+        lb_w = max(1.5, min(lb_est_w, 4.0))
+        lb_h = 0.35
+        lb_y = pts_top - lb_h - 0.1
+        shapes.append({"type":"rect","x":left_x,"y":lb_y,"w":lb_w,"h":lb_h,
+                       "fill":"#1B1B1B","radius":0.1})
+        shapes.append({"type":"text","x":left_x,"y":lb_y,"w":lb_w,"h":lb_h,
+                       "text":label_badge,"size":10,"weight":700,"color":"#FEFEFE",
+                       "align":"center","valign":"middle"})
+        stack_top = lb_y - 0.1
+    else:
+        stack_top = pts_top - 0.1
+
+    # (e) note (선택) — 최상단 (label_badge / points 위)
+    if note:
+        note_text  = "※ " + note
+        note_est_w = len(note_text) * 0.16 + 0.4
+        note_w = max(2.5, min(note_est_w, 7.0))
+        note_h = 0.35
+        note_y = stack_top - note_h
+        shapes.append({"type":"rect","x":left_x,"y":note_y,"w":note_w,"h":note_h,
+                       "fill":"#1B1B1B","radius":0.05})
+        shapes.append({"type":"text","x":left_x + 0.12,"y":note_y,
+                       "w":note_w - 0.24,"h":note_h,
+                       "text":note_text,"size":10,"weight":500,"color":"#FEFEFE",
+                       "align":"left","valign":"middle"})
+    return shapes
+
+
 def generate_from_shape_json(json_data, output_path, *, theme="light"):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -5008,6 +5147,18 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
             # ★ 본 spec 단계: 코드 + dispatch 만 등록 — SLIDE 프롬프트·화이트리스트 미연결.
             try:
                 preset_shapes = _build_preset_quad_detail(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "fullbleed_overlay":
+            # Spec Preset-New-FullbleedOverlay — 풀블리드 이미지 + 상단 거버닝 오버레이
+            # + 좌하단 텍스트 오버레이. 조감도·시설·컨셉 등 비주얼 우선 슬라이드.
+            # ★ 본 spec 단계: 코드 + dispatch 만 등록 — SLIDE 프롬프트·화이트리스트 미연결.
+            try:
+                preset_shapes = _build_preset_fullbleed_overlay(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

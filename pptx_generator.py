@@ -4554,6 +4554,143 @@ def _build_preset_flow_detail(slide_data):
     return shapes
 
 
+# ─── Spec Preset-New-QuadDetail — 좌측정렬 거버닝 + 2×2 상세 블록 ──────────────
+# 좌측정렬 거버닝(배지+subtitle+title) + 2×2 그리드 (각 블록: 검정 헤더바 +
+# 체크리스트(선택 2~3) + 이미지 placeholder). 기존 신규 프리셋 4종이 모두
+# 중앙정렬 거버닝이라 좌측정렬 다양성 확보 목적.
+# 색 정합:
+#   상단 title → role:"governing" → _get_theme(theme)["ACCENT"] 자동 (라이트 #6B46E5).
+#   블록 헤더바 → #1B1B1B 미매핑 (양 테마 검정 유지).
+#   배지 → #1B1B1B + rounded (알약형, hero_cards L3340 패턴).
+#   이미지 placeholder → #F5F5F5 (DARK_MAP fill 매핑 → 다크 #1F1F1F 자동).
+#   체크 항목 앞에 "✓ " 문자 inline (별도 shape 없음).
+# 밀도: 2×2 블록이라 각 블록이 W/2 폭 확보 → 체크리스트 + 이미지 각 여유.
+# ★ points 없는 블록: 체크리스트 슬롯 생략 → 이미지가 블록 전체(헤더 제외) 채움.
+# ★ points 있는 블록: 고정 슬롯 0.85" 확보 (2·3개 시각 정렬 유지).
+#
+# 입력 스키마:
+#   slide_data["title"]     = str (필수, 거버닝)
+#   slide_data["items"]     = [{head(필수), points?}, ...]  ★ 정확히 4개
+#                             points = list[str] (2~3 권장, 상한 3)
+#   slide_data["badge"]?    = str  (좌측 알약 배지)
+#   slide_data["subtitle"]? = str
+# 안전망: title 없음 / items 정확 4 아님 / 각 head 누락 → 빈 list.
+# ★ 본 spec 단계: 코드 + dispatch 만 등록 — SLIDE 프롬프트·화이트리스트 미연결.
+def _build_preset_quad_detail(slide_data):
+    title = str(slide_data.get("title", "")).strip()
+    if not title:
+        return []
+
+    items_raw = slide_data.get("items") or []
+    if not isinstance(items_raw, list):
+        return []
+    items = []
+    for it in items_raw:
+        if not isinstance(it, dict):
+            continue
+        head = str(it.get("head", "")).strip()
+        if not head:
+            continue
+        pts_raw = it.get("points") or []
+        if not isinstance(pts_raw, list):
+            pts_raw = []
+        points = [str(p).strip() for p in pts_raw if str(p).strip()][:3]
+        items.append({"head": head, "points": points})
+    if len(items) != 4:
+        return []
+
+    badge    = str(slide_data.get("badge", "")).strip()
+    subtitle = str(slide_data.get("subtitle", "")).strip()
+
+    W, H = 11.69, 8.27
+    margin = 0.9
+    shapes = []
+
+    # ── ① 상단 거버닝 (★ 좌측 정렬)
+    top_y = 0.35
+    # 배지 (선택) — 검정 알약 rect + 흰 텍스트
+    if badge:
+        b_w, b_h = 1.6, 0.35
+        shapes.append({"type":"rect","x":margin,"y":top_y,"w":b_w,"h":b_h,
+                       "fill":"#1B1B1B","radius":0.05})
+        shapes.append({"type":"text","x":margin,"y":top_y,"w":b_w,"h":b_h,
+                       "text":badge,"size":11,"weight":700,"color":"#FEFEFE",
+                       "align":"center","valign":"middle"})
+    # subtitle (선택) — 좌측 정렬 회색
+    sub_y = top_y + (0.5 if badge else 0.05)
+    if subtitle:
+        shapes.append({"type":"text","x":margin,"y":sub_y,"w":W - 2*margin,"h":0.3,
+                       "text":subtitle,"size":12,"weight":400,"color":"#666666",
+                       "align":"left","valign":"middle"})
+        title_y = sub_y + 0.35
+    else:
+        title_y = sub_y
+    # title (필수, 거버닝 — 좌측 정렬, role:"governing" 자동 보라)
+    shapes.append({"type":"text","x":margin,"y":title_y,"w":W - 2*margin,"h":0.75,
+                   "text":title,"size":26,"weight":800,"color":"#1A1A1A",
+                   "align":"left","valign":"middle",
+                   "role":"governing"})
+    top_end = title_y + 0.85
+
+    # ── ② 2×2 그리드
+    grid_top = top_end + 0.15         # 최소 여유
+    if grid_top < 2.1:
+        grid_top = 2.1
+    grid_bot = H - 0.25
+    grid_h   = grid_bot - grid_top     # 세로 총 폭
+    gap = 0.3
+    block_w = (W - 2 * margin - gap) / 2
+    block_h = (grid_h - gap) / 2
+    header_h = 0.5
+
+    # 블록 좌표 (좌상 · 우상 · 좌하 · 우하)
+    positions = [
+        (margin,              grid_top),                # 좌상
+        (margin + block_w + gap, grid_top),             # 우상
+        (margin,              grid_top + block_h + gap),# 좌하
+        (margin + block_w + gap, grid_top + block_h + gap),  # 우하
+    ]
+
+    for i, it in enumerate(items):
+        bx, by = positions[i]
+        # (1) 헤더 바 (검정) — 마커 없음 (거버닝 아님)
+        shapes.append({"type":"rect","x":bx,"y":by,"w":block_w,"h":header_h,
+                       "fill":"#1B1B1B"})
+        shapes.append({"type":"text","x":bx,"y":by,"w":block_w,"h":header_h,
+                       "text":it["head"],"size":13,"weight":700,"color":"#FEFEFE",
+                       "align":"center","valign":"middle"})
+        # 내부 콘텐츠 영역 (헤더 아래)
+        content_top = by + header_h + 0.1
+        content_bot = by + block_h - 0.05
+        content_h   = content_bot - content_top
+        # (2) 체크리스트 — points 있을 때만 고정 슬롯 0.85"
+        if it["points"]:
+            check_slot_h = 0.85
+            for j, pt in enumerate(it["points"]):
+                p_y = content_top + j * 0.28
+                shapes.append({"type":"text","x":bx + 0.15,"y":p_y,
+                               "w":block_w - 0.3,"h":0.28,
+                               "text":"✓ " + pt,"size":11,"weight":400,"color":"#1A1A1A",
+                               "align":"left","valign":"middle"})
+            img_top = content_top + check_slot_h + 0.05
+            img_h   = content_bot - img_top
+        else:
+            # 체크리스트 생략 — 이미지가 콘텐츠 영역 전체 차지
+            img_top = content_top
+            img_h   = content_h
+        if img_h < 0.4:
+            img_h = 0.4
+        # (3) 이미지 placeholder (hsplit L2947 / timeline L2787 패턴)
+        shapes.append({"type":"rect","x":bx + 0.1,"y":img_top,
+                       "w":block_w - 0.2,"h":img_h,
+                       "fill":"#F5F5F5","stroke":"#DDDDDD","stroke_width":1})
+        shapes.append({"type":"text","x":bx + 0.1,"y":img_top + img_h/2 - 0.2,
+                       "w":block_w - 0.2,"h":0.4,
+                       "text":"이미지 영역","size":11,"weight":400,"color":"#AAAAAA",
+                       "align":"center","valign":"middle"})
+    return shapes
+
+
 def generate_from_shape_json(json_data, output_path, *, theme="light"):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -4858,6 +4995,19 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
             # ★ 본 spec 단계: 코드 + dispatch 만 등록 — SLIDE 프롬프트·화이트리스트 미연결.
             try:
                 preset_shapes = _build_preset_flow_detail(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "quad_detail":
+            # Spec Preset-New-QuadDetail — 좌측정렬 거버닝 + 2×2 상세 블록
+            # (각 블록: 검정 헤더바 + 체크리스트 2~3 + 이미지 placeholder).
+            # 기존 "quad" 프리셋과 별개. 첫 좌측정렬 신규 거버닝.
+            # ★ 본 spec 단계: 코드 + dispatch 만 등록 — SLIDE 프롬프트·화이트리스트 미연결.
+            try:
+                preset_shapes = _build_preset_quad_detail(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

@@ -4141,6 +4141,192 @@ def _build_preset_numbered_columns(slide_data):
     return shapes
 
 
+# ─── Spec Preset-New-HeroDetail — 헤더 + 좌우분할(대형 이미지 + 번호항목 3) + 결론 ─
+# 상단 검정 헤더 (배지+대형숫자+텍스트 스택) + 중단 좌 대형 이미지 placeholder +
+# 우 번호 항목 3개 (미니 이미지 + 원문자 head + desc) + 하단 결론 2줄.
+# 색 정합:
+#   상단 title / 하단 conclusion → role:"governing" → _get_theme(theme)["ACCENT"] 자동.
+#   헤더 검정 블록 / 아이템 원문자 head 보라 → #1B1B1B / #6B46E5 / #FEFEFE 하드코딩.
+#     (모두 DARK_MAP 미매핑 → 양 테마 그대로 통과)
+#   이미지 placeholder → #F5F5F5 (DARK_MAP fill 매핑 → 다크 #1F1F1F 자동).
+# 원문자 번호 → 3개 고정 → ①②③.
+# 아이템 head 는 아이템 성격이라 role:"governing" 마킹 X (색은 브랜드 보라 직접).
+#
+# 입력 스키마:
+#   slide_data["items"]           = [{head(필수), desc?}, ...]  ★ 정확히 3개
+#   slide_data["conclusion"]      = str (필수)
+#   slide_data["badge"]?          = str (헤더 배지, 줄바꿈 가능)
+#   slide_data["number"]?         = str (헤더 초대형 숫자)
+#   slide_data["index"]?          = str (예: "1-1")
+#   slide_data["subtitle"]?       = str
+#   slide_data["title"]?          = str  (거버닝 — 자동 보라)
+#   slide_data["section_title"]?  = str
+#   slide_data["section_sub"]?    = str
+#   slide_data["conclusion_lead"]? = str
+# 안전망: items 정확히 3개 아님 / 각 head 누락 / conclusion 없음 → 빈 list.
+# ★ 본 spec 단계: 코드 + dispatch 만 등록 — SLIDE 프롬프트·화이트리스트 미연결.
+_HERO_DETAIL_CIRCLED = ["①", "②", "③"]
+
+
+def _build_preset_hero_detail(slide_data):
+    items_raw = slide_data.get("items") or []
+    if not isinstance(items_raw, list):
+        return []
+    items = []
+    for it in items_raw:
+        if not isinstance(it, dict):
+            continue
+        head = str(it.get("head", "")).strip()
+        if not head:
+            continue
+        items.append({
+            "head": head,
+            "desc": str(it.get("desc", "")).strip(),
+        })
+    if len(items) != 3:
+        return []
+    conclusion = str(slide_data.get("conclusion", "")).strip()
+    if not conclusion:
+        return []
+
+    badge           = str(slide_data.get("badge", "")).strip()
+    number          = str(slide_data.get("number", "")).strip()
+    index           = str(slide_data.get("index", "")).strip()
+    subtitle        = str(slide_data.get("subtitle", "")).strip()
+    title           = str(slide_data.get("title", "")).strip()
+    section_title   = str(slide_data.get("section_title", "")).strip()
+    section_sub     = str(slide_data.get("section_sub", "")).strip()
+    conclusion_lead = str(slide_data.get("conclusion_lead", "")).strip()
+
+    W, H = 11.69, 8.27
+    shapes = []
+
+    # ── ① 상단 헤더 (검정 블록)
+    hdr_x, hdr_y = 0.9, 0.3
+    hdr_w, hdr_h = W - 1.8, 1.8
+    shapes.append({"type":"rect","x":hdr_x,"y":hdr_y,"w":hdr_w,"h":hdr_h,
+                   "fill":"#1B1B1B"})
+    # 가로 순차 배치: 배지 → 숫자 → 텍스트 스택
+    cursor_x = hdr_x + 0.3
+    # (1) 배지 (선택) — 브랜드 보라 rounded rect + 흰 텍스트 (2줄 가능)
+    if badge:
+        b_w = 1.4
+        b_h = 1.3
+        b_y = hdr_y + (hdr_h - b_h) / 2
+        shapes.append({"type":"rect","x":cursor_x,"y":b_y,"w":b_w,"h":b_h,
+                       "fill":"#6B46E5","radius":0.05})
+        shapes.append({"type":"text","x":cursor_x,"y":b_y,"w":b_w,"h":b_h,
+                       "text":badge,"size":13,"weight":700,"color":"#FEFEFE",
+                       "align":"center","valign":"middle"})
+        cursor_x += b_w + 0.2
+    # (2) 초대형 숫자 (선택)
+    if number:
+        n_w = 1.3
+        shapes.append({"type":"text","x":cursor_x,"y":hdr_y,"w":n_w,"h":hdr_h,
+                       "text":number,"size":72,"weight":900,"color":"#FEFEFE",
+                       "align":"left","valign":"middle"})
+        cursor_x += n_w + 0.15
+    # (3) 텍스트 스택 (index / subtitle / title) — 남은 폭 채움, 좌측 정렬
+    stack_x = cursor_x
+    stack_w = (hdr_x + hdr_w) - stack_x - 0.3
+    if stack_w >= 1.0 and (index or subtitle or title):
+        ty = hdr_y + 0.25
+        if index:
+            shapes.append({"type":"text","x":stack_x,"y":ty,"w":stack_w,"h":0.3,
+                           "text":index,"size":11,"weight":500,"color":"#AAAAAA",
+                           "align":"left","valign":"middle"})
+            ty += 0.35
+        if subtitle:
+            shapes.append({"type":"text","x":stack_x,"y":ty,"w":stack_w,"h":0.3,
+                           "text":subtitle,"size":12,"weight":400,"color":"#DDDDDD",
+                           "align":"left","valign":"middle"})
+            ty += 0.35
+        if title:
+            th = hdr_y + hdr_h - ty - 0.15
+            if th < 0.5:
+                th = 0.5
+            shapes.append({"type":"text","x":stack_x,"y":ty,"w":stack_w,"h":th,
+                           "text":title,"size":22,"weight":800,"color":"#FEFEFE",
+                           "align":"left","valign":"middle",
+                           "role":"governing"})
+
+    # ── ② 중단 좌우 분할 (좌 대형 이미지 + 우 번호 항목 3)
+    mid_top = hdr_y + hdr_h + 0.3       # 2.4
+    mid_h   = 3.9                       # ends 6.3
+    # 좌 대형 이미지 placeholder (hsplit L2947 / timeline L2787 패턴)
+    L_x, L_w = 0.9, 6.0
+    shapes.append({"type":"rect","x":L_x,"y":mid_top,"w":L_w,"h":mid_h,
+                   "fill":"#F5F5F5","stroke":"#DDDDDD","stroke_width":1})
+    shapes.append({"type":"text","x":L_x,"y":mid_top + mid_h/2 - 0.2,
+                   "w":L_w,"h":0.4,
+                   "text":"이미지 영역","size":13,"weight":400,"color":"#AAAAAA",
+                   "align":"center","valign":"middle"})
+    # 우 콘텐츠 컬럼
+    R_x = L_x + L_w + 0.2               # 7.1
+    R_w = (W - 0.9) - R_x               # 3.69
+    ry = mid_top
+    if section_title:
+        shapes.append({"type":"text","x":R_x,"y":ry,"w":R_w,"h":0.5,
+                       "text":section_title,"size":15,"weight":800,"color":"#1A1A1A",
+                       "align":"center","valign":"middle"})
+        ry += 0.55
+    if section_sub:
+        shapes.append({"type":"text","x":R_x,"y":ry,"w":R_w,"h":0.3,
+                       "text":section_sub,"size":11,"weight":400,"color":"#666666",
+                       "align":"center","valign":"middle"})
+        ry += 0.35
+    # 번호 항목 3개 (미니 이미지 + 원문자 head + desc)
+    items_top = ry + 0.1
+    items_bot = mid_top + mid_h
+    item_h    = (items_bot - items_top) / 3
+    mi_w = 0.9
+    for i, it in enumerate(items):
+        iy = items_top + i * item_h
+        # 미니 이미지 (좌)
+        mi_h = min(item_h - 0.1, 0.9)
+        shapes.append({"type":"rect","x":R_x,"y":iy,"w":mi_w,"h":mi_h,
+                       "fill":"#F5F5F5","stroke":"#DDDDDD","stroke_width":1})
+        shapes.append({"type":"text","x":R_x,"y":iy,"w":mi_w,"h":mi_h,
+                       "text":"이미지","size":10,"weight":400,"color":"#AAAAAA",
+                       "align":"center","valign":"middle"})
+        # 콘텐츠 (우) — 원문자 + head + desc
+        cx = R_x + mi_w + 0.15
+        cw = R_x + R_w - cx
+        if cw < 0.8:
+            cw = 0.8
+        num_head = _HERO_DETAIL_CIRCLED[i] + " " + it["head"]
+        shapes.append({"type":"text","x":cx,"y":iy,"w":cw,"h":0.4,
+                       "text":num_head,"size":12,"weight":800,"color":"#6B46E5",
+                       "align":"left","valign":"top"})
+        if it["desc"]:
+            d_top = iy + 0.42
+            d_h   = iy + item_h - d_top - 0.05
+            if d_h < 0.3:
+                d_h = 0.3
+            shapes.append({"type":"text","x":cx,"y":d_top,"w":cw,"h":d_h,
+                           "text":it["desc"],"size":9,"weight":400,"color":"#666666",
+                           "align":"left","valign":"top"})
+
+    # ── ③ 하단 결론 (흰 배경, 밴드 없음)
+    bot_x, bot_w = 0.9, W - 1.8
+    bot_top = mid_top + mid_h + 0.2     # 6.5
+    if conclusion_lead:
+        shapes.append({"type":"text","x":bot_x,"y":bot_top,"w":bot_w,"h":0.35,
+                       "text":conclusion_lead,"size":12,"weight":400,
+                       "color":"#666666","align":"center","valign":"middle"})
+        conclusion_y = bot_top + 0.45
+    else:
+        conclusion_y = bot_top + 0.1
+    conclusion_h = H - conclusion_y - 0.3
+    if conclusion_h < 0.6:
+        conclusion_h = 0.6
+    shapes.append({"type":"text","x":bot_x,"y":conclusion_y,"w":bot_w,"h":conclusion_h,
+                   "text":conclusion,"size":22,"weight":900,"color":"#1A1A1A",
+                   "align":"center","valign":"middle",
+                   "role":"governing"})
+    return shapes
+
+
 def generate_from_shape_json(json_data, output_path, *, theme="light"):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -4421,6 +4607,18 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
             # conclusion_cards / strategy_map / hero_cards 와 동일 패턴.
             try:
                 preset_shapes = _build_preset_numbered_columns(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "hero_detail":
+            # Spec Preset-New-HeroDetail — 검정 헤더(배지+숫자+텍스트) + 좌 대형 이미지
+            # + 우 번호 항목 3(미니 이미지 + 원문자 head + desc) + 결론 2줄.
+            # ★ 본 spec 단계: 코드 + dispatch 만 등록 — SLIDE 프롬프트·화이트리스트 미연결.
+            try:
+                preset_shapes = _build_preset_hero_detail(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

@@ -2376,7 +2376,13 @@ def r2_sync(admin: dict = Depends(require_admin)):
 
 @app.get("/favicon.ico")
 def favicon():
-    return JSONResponse({}, status_code=204)
+    # 많은 크롤러 (네이버·구글 포함) 가 HTML 파싱 전 /favicon.ico 를 루트에서 직접
+    # 요청한다. 이전엔 204 No Content 를 반환해 크롤러가 아이콘을 못 받고 기본
+    # 지구본을 표시했다. 이제 static/favicon.ico (16/32/48 멀티사이즈) 를 서빙.
+    p = STATIC_DIR / "favicon.ico"
+    if not p.exists():
+        return JSONResponse({}, status_code=204)
+    return FileResponse(str(p), media_type="image/x-icon")
 
 
 @app.get("/client/{rest:path}")

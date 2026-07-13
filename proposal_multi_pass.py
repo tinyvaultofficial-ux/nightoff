@@ -971,6 +971,53 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
                           "이 셋이 맞물릴 때 → 이런 결과" 논리가 있는 페이지에만.
                           cards3 는 등분 비교, triad 는 이미지 자리 + 비대칭. conclusion_cards 는 "3개 → 결론" 서사.
                           items 정확히 3개 + conclusion 필수. 미충족 시 코드가 preset 무효 처리.
+  · numbered_columns — 상단 검정 헤더 + 초대형 배경 숫자 3~4열 + 하단 결론 2줄 (밴드 없음)
+                       ★ 적합: role=body 페이지의 "N대 원칙/축/전략을 번호로 구조화해 병렬 제시" 페이지
+                              (예: 3대 운영 원칙, 4대 접근 방향, N대 핵심 축, 우리 제안의 N대 특징)
+                       ⚠ 부적합: 순차 흐름(그건 process/timeline) / 결론 없는 단순 나열 /
+                              이미지 자리가 본질(그건 triad/quad_detail) / role=support / slide_type=hero
+                       ※ ★ 박스 그리드 회귀 아님 — 초대형 배경 숫자(120pt 옅은 회색)가 시각 앵커.
+                          items 3 또는 4개 + conclusion 필수. 미충족 시 코드가 preset 무효 처리.
+                          conclusion_cards 와의 구분: conclusion_cards 는 카드 + 결론 밴드(검정 면적 큼),
+                          numbered_columns 는 흰 배경 + 배경 숫자 시각앵커(가벼운 인상).
+  · hero_detail      — 상단 검정 헤더 + 좌 대형 이미지 + 우 번호 항목 3개 + 하단 결론
+                       ★ 적합: role=body 페이지의 "하나의 핵심 대상(공간·시설·컨셉)을 이미지로 보여주며
+                              그 세부 요소 3가지를 짚는" 페이지
+                              (예: 메인 광장 소개 + 3대 구성 요소, 핵심 시설 소개 + 3가지 기능,
+                                   컨셉 조감 + 3가지 실현 방식)
+                       ⚠ 부적합: 이미지가 불필요한 순수 텍스트 페이지 / 여러 대상 비교(그건 split/triad) /
+                              role=support / slide_type=hero
+                       ※ ★ 이미지 영역이 큼 — 실제 이미지(조감도·렌더링·시설사진)를 넣을 수 있는 페이지에만.
+                          items 정확히 3개 + conclusion 필수. 미충족 시 코드가 preset 무효 처리.
+                          triad 와의 구분: triad 는 우측 원 3개 이미지 자리(항목이 각각 독립),
+                          hero_detail 은 좌측 하나의 대형 이미지 + 우측 번호 세부(하나의 대상을 파고듦).
+  · flow_detail      — 상단 거버닝 + 중단 가로 흐름 4~5단계 + 하단 3~4열 상세 (고밀도, 한 장에 흐름+상세)
+                       ★ 적합: role=body 페이지의 "운영 프로세스는 이렇고, 각 축에서 이렇게 실행합니다"처럼
+                              흐름과 상세를 한 장에 담아야 하는 정보량 많은 페이지
+                              (예: 5단계 운영 프로세스 + 3대 실행축 세부, 4단계 추진 흐름 + 4대 원칙 세부)
+                       ⚠ 부적합: 정보량이 적은 페이지(빈약해 보임) / 흐름만 있는 페이지(그건 process/timeline) /
+                              상세만 있는 페이지(그건 cards3/numbered_columns) / role=support / slide_type=hero
+                       ※ ★ 고밀도 페이지 — 흐름 4~5단계 + 상세 3~4열이 모두 있어야 자연스러움.
+                          steps 4 또는 5개(kr 필수) + columns 3 또는 4개(key 필수, 각 items 정확 3개) + title 필수.
+                          미충족 시 코드가 preset 무효 처리. 얇은 페이지에 억지로 쓰지 말 것.
+  · quad_detail      — 좌측정렬 거버닝(배지+부제+제목) + 2×2 그리드 4블록 (각 블록: 검정 헤더 + 체크리스트 + 이미지)
+                       ★ 적합: role=body 페이지의 "4개 시설/구역/프로그램을 각각 이미지와 세부 항목으로 설명"
+                              페이지 (예: 4대 구역 배치, 4대 프로그램 상세, 4대 시설 소개)
+                       ⚠ 부적합: 항목이 4개가 아닌 경우(그건 triad/hero_cards) /
+                              이미지가 불필요한 경우(그건 numbered_columns) / role=support / slide_type=hero
+                       ※ ★ 이미지 영역 4개 — 실제 이미지(시설사진·구역도·프로그램컷)를 넣을 수 있는 페이지에만.
+                          items 정확히 4개(head 필수) + title 필수. 각 items 의 points 는 선택(0~3개 체크리스트).
+                          미충족 시 코드가 preset 무효 처리. quad(색면 4분할, 텍스트만)와 다름 — quad_detail 은 이미지 자리 강조.
+  · fullbleed_overlay — 화면 전체 배경 이미지 + 상단 거버닝 오버레이 + 좌하단 포인트 텍스트
+                       ★ 적합: role=body 페이지의 "조감도·3D렌더링·현장사진·컨셉 이미지 등 비주얼이 주인공"
+                              페이지. "이 그림 하나로 말한다"는 페이지.
+                              (예: 축제장 조감도, 공간 3D 렌더링, 무대 컨셉 이미지, 시설 전경)
+                       ⚠ 부적합: 이미지가 없거나 약한 페이지 / 정보를 조목조목 설명해야 하는 페이지 /
+                              role=support / slide_type=hero
+                       ※ ★★ 한 제안서에 최대 1~2장만 사용 (배정 규칙 ⑨ 참조).
+                          배경 이미지의 시각적 무게가 매우 크므로 남용하면 제안서가 산만해짐.
+                          정말 강력한 비주얼이 있는 페이지에만.
+                          title 필수 + points 2~4개 필수. 미충족 시 코드가 preset 무효 처리.
 
 ★ 컨셉 슬로건 페이지는 별도 hero 페이지(카탈로그 11번)가 담당.
   text_* 키로 컨셉 슬로건을 만들지 말 것 — 컨셉 슬로건은 80~90pt 거대 슬로건 hero,
@@ -998,6 +1045,11 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
 ⑦ 위험 4종(벤다이어그램 / 2x2 매트릭스 / 수직 타임라인 / 다이어그램+표) 절대 X —
    안전 카탈로그 키 밖 값은 코드가 자동 ""로 강등시킴 (배정 무효).
 ⑧ 특수 페이지(표지·목차·챕터 divider 5장·마무리)는 "" (배정 안 함).
+⑨ ★ fullbleed_overlay 배정 cap — 전체 제안서에서 최대 1~2장 (Spec Preset-Connect-5-Remaining):
+   - 화면 전체 배경 이미지 위 오버레이 구조라 시각 무게가 매우 큼.
+     한 덱에 3장 이상 박히면 배경 이미지 반복으로 제안서 전체가 산만해진다.
+   - "정말 강력한 비주얼이 있는 페이지"에만 배정 — 조감도·3D 렌더링·핵심 컨셉 이미지 등.
+     대체 후보 있으면 hero_detail / quad_detail(이미지 자리 있는 다른 프리셋) 로 회전.
 
 [skeleton_id 배정 규칙 — Spec D-Build-SkeletonConnect / Spec D-Fix-SkeletonDiversity]
 운영이 사람이 양질 제안서에서 떠낸 검증된 골격 15종 HTML 을 R2 에서 동기화해뒀다.
@@ -2686,11 +2738,17 @@ async def generate_outline(
         # ★ Spec Preset-Connect-ConclusionCards — conclusion_cards 화이트리스트 등재 (1종 단독 spec).
         #   함수(_build_preset_conclusion_cards)·dispatch·카탈로그·위치 가드·SLIDE elif 4지점 동시.
         #   3열 카드 + 하단 결론 밴드 서사(수렴) 구조 — 단순 카드 그리드가 아니라 결론으로 모이는 흐름.
+        # ★ Spec Preset-Connect-5-Remaining — 나머지 신규 5종 화이트리스트 등재 (한 번 스펙, 실측은 한번).
+        #   함수/dispatch 는 이미 등록 완료 — 이번 spec 은 카탈로그/가드/SLIDE elif 3지점 각 5개 추가.
+        #   numbered_columns / hero_detail / flow_detail / quad_detail / fullbleed_overlay.
+        #   fullbleed_overlay 는 배정 규칙 ⑨ 로 전체 제안서 1~2장 cap 도 함께 걸음(시각 무게 과다 방지).
         _VIZ_PATTERN_SAFE = {"2col", "cards3", "process", "before_after", "quant", "cards_grid",
                              "text_quote", "text_declaration", "split", "timeline", "asymmetric",
                              "zigzag", "hsplit", "circles", "quad",
                              "hsplit_top", "hero_cards", "triad", "strategy_map",
-                             "conclusion_cards"}
+                             "conclusion_cards",
+                             "numbered_columns", "hero_detail", "flow_detail",
+                             "quad_detail", "fullbleed_overlay"}
         viz_pattern_raw = str(it.get("viz_pattern", "")).strip().lower()
         viz_pattern = viz_pattern_raw if viz_pattern_raw in _VIZ_PATTERN_SAFE else ""
         # ★ Spec D-Fix-NarrativeGuard — text 위계는 hero/support/simple_box 페이지에 배정 X.
@@ -2857,6 +2915,54 @@ async def generate_outline(
                 log.info(
                     "Preset-Connect-ConclusionCards 강등 p=%s role=%s st=%s",
                     it.get("page"), _rl_cn, _st_cn,
+                )
+                viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
+        # ★ Spec Preset-Connect-5-Remaining — 신규 5종 위치 가드 (표준 role=body AND slide_type!=hero).
+        #   각 프리셋 모두 role=body 페이지에만 적합. 표지·간지·예산·조직 페이지 침범 방지.
+        #   함수/dispatch/카탈로그/SLIDE elif 4지점 동시 등록 스펙의 일부.
+        elif viz_pattern == "numbered_columns":
+            _rl_nc = str(it.get("role", "")).strip().lower()
+            _st_nc = str(it.get("slide_type", "")).strip().lower()
+            if _rl_nc != "body" or _st_nc == "hero":
+                log.info(
+                    "Preset-Connect-NumberedColumns 강등 p=%s role=%s st=%s",
+                    it.get("page"), _rl_nc, _st_nc,
+                )
+                viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
+        elif viz_pattern == "hero_detail":
+            _rl_hd = str(it.get("role", "")).strip().lower()
+            _st_hd = str(it.get("slide_type", "")).strip().lower()
+            if _rl_hd != "body" or _st_hd == "hero":
+                log.info(
+                    "Preset-Connect-HeroDetail 강등 p=%s role=%s st=%s",
+                    it.get("page"), _rl_hd, _st_hd,
+                )
+                viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
+        elif viz_pattern == "flow_detail":
+            _rl_fd = str(it.get("role", "")).strip().lower()
+            _st_fd = str(it.get("slide_type", "")).strip().lower()
+            if _rl_fd != "body" or _st_fd == "hero":
+                log.info(
+                    "Preset-Connect-FlowDetail 강등 p=%s role=%s st=%s",
+                    it.get("page"), _rl_fd, _st_fd,
+                )
+                viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
+        elif viz_pattern == "quad_detail":
+            _rl_qdd = str(it.get("role", "")).strip().lower()
+            _st_qdd = str(it.get("slide_type", "")).strip().lower()
+            if _rl_qdd != "body" or _st_qdd == "hero":
+                log.info(
+                    "Preset-Connect-QuadDetail 강등 p=%s role=%s st=%s",
+                    it.get("page"), _rl_qdd, _st_qdd,
+                )
+                viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
+        elif viz_pattern == "fullbleed_overlay":
+            _rl_fo = str(it.get("role", "")).strip().lower()
+            _st_fo = str(it.get("slide_type", "")).strip().lower()
+            if _rl_fo != "body" or _st_fo == "hero":
+                log.info(
+                    "Preset-Connect-FullbleedOverlay 강등 p=%s role=%s st=%s",
+                    it.get("page"), _rl_fo, _st_fo,
                 )
                 viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
         # Spec D-Fix-BodyRole-1 — role 화이트리스트 (body/support/"" 만 허용).
@@ -3620,6 +3726,290 @@ def _build_slide_user_prompt(
                 '{"type":"text","x":0.9,"y":7.5,"w":10,"h":0.4,'
                 '"text":"3축 통합 → 지역 지속 브랜드 전환","size":11,"weight":400,"color":"#666"}'
                 ']}'
+            )
+        elif item.viz_pattern == "numbered_columns":
+            # Spec Preset-Connect-5-Remaining — 상단 검정 헤더 + 초대형 배경 숫자 3~4열 + 하단 결론.
+            # 상단/카드/결론 좌표·색·정렬은 _build_preset_numbered_columns 가 자동 배치.
+            # 함수 하드 조건: items 3~4개(각 head 필수) + conclusion 필수 — 미충족 시 preset 무효 반환.
+            parts.append(
+                "[배정된 레이아웃 패턴] numbered_columns (초대형 배경 숫자 3~4열 + 하단 결론)\n"
+                "★ 용도: N대 원칙/축/전략을 번호로 구조화해 병렬 제시하는 페이지.\n"
+                "  예: 3대 운영 원칙, 4대 접근 방향, N대 핵심 축, 우리 제안의 N대 특징.\n"
+                "\n"
+                "★ 다른 패턴과 구분:\n"
+                "  · 순차 흐름 → process/timeline (번호가 순서 아님, 병렬 축)\n"
+                "  · 이미지 자리 3개 → triad / quad_detail (numbered_columns 는 이미지 없음)\n"
+                "  · 결론 밴드로 수렴 → conclusion_cards (numbered_columns 는 배경 숫자가 시각앵커)\n"
+                "  · 단순 카드 나열 → cards3 (numbered_columns 는 결론 문장이 있어야 함)\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "numbered_columns"  (필수)\n'
+                '  · "items": [3개 또는 4개]  (필수 — 3/4 아니면 preset 무효 처리됨)\n'
+                '      각 item = {"label": 짧은 라벨(선택, 예 "PRINCIPLE 01"),\n'
+                '                 "head": 헤드라인(필수, 8~15자, 브랜드 보라로 자동 렌더),\n'
+                '                 "desc": 설명(선택, 30~50자)}\n'
+                '  · "conclusion": 하단 결론 문장  (필수 — 없으면 preset 무효 처리됨. 25~40자 명사형/선언형)\n'
+                '  · "title" (선택) — 상단 검정 헤더 안 큰 거버닝 (outline 의 governing_main, 25~40자)\n'
+                '                     ★ role:"governing" 자동 부착 — theme 별 accent 색 자동 적용\n'
+                '  · "badge" (선택) — 헤더 상단 알약 배지 (5~10자, 예 "3대 원칙")\n'
+                '  · "conclusion_lead" (선택) — 결론 상단 리드 문장 (15~25자, 옅은 회색)\n'
+                "  → 좌표·색·초대형 배경 숫자 배치는 코드가 자동 — 신경 쓰지 말 것.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
+                "    절대 금지: rect / 박스 / 색면 / 그 외 모든 shape(type='text' 외).\n"
+                "    상단 검정 헤더·초대형 배경 숫자는 코드(_build_preset_numbered_columns)가 자동으로 그린다.\n"
+                "    shapes 에 rect 를 넣으면 preset 의 헤더/숫자를 덮어버려 회귀한다.\n"
+                "    백업으로 넣을 것 (text 만, 3~4개): 페이지 제목 + 각 item head 요약 + 결론 요약.\n"
+                "  ★ preset='numbered_columns' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
+                "\n"
+                "★ 완성 예시 (이 구조 그대로 따라):\n"
+                '{"preset":"numbered_columns",'
+                '"badge":"3대 원칙",'
+                '"title":"지역 축제 운영을 지탱하는 3대 원칙",'
+                '"items":['
+                '{"label":"PRINCIPLE 01","head":"현장 밀도",'
+                '"desc":"연령·계층별 몰입 지점을 촘촘히 배치해 체류시간을 확장한다"},'
+                '{"label":"PRINCIPLE 02","head":"참여 순환",'
+                '"desc":"관객이 콘텐츠 제작자가 되는 양방향 운영 구조를 만든다"},'
+                '{"label":"PRINCIPLE 03","head":"성과 축적",'
+                '"desc":"방문·참여 지표를 축적해 다음 회차 기획 근거로 전환한다"}'
+                '],'
+                '"conclusion_lead":"세 원칙의 종합 효과",'
+                '"conclusion":"1회성 이벤트를 지역 지속 자산으로 전환한다",'
+                '"shapes":[{"type":"text","x":0.9,"y":7.9,"w":10,"h":0.3,'
+                '"text":"3대 원칙 → 지속 자산 전환","size":11,"weight":400,"color":"#666"}]}'
+            )
+        elif item.viz_pattern == "hero_detail":
+            # Spec Preset-Connect-5-Remaining — 헤더 + 좌 대형 이미지 + 우 번호 항목 3 + 하단 결론.
+            # 좌표·이미지 placeholder·원문자 번호는 _build_preset_hero_detail 이 자동 배치.
+            # 함수 하드 조건: items 정확히 3개(각 head 필수) + conclusion 필수 — 미충족 시 preset 무효 반환.
+            parts.append(
+                "[배정된 레이아웃 패턴] hero_detail (헤더 + 좌 대형 이미지 + 우 번호항목 3 + 하단 결론)\n"
+                "★ 용도: 하나의 핵심 대상(공간·시설·컨셉)을 이미지로 보여주며 그 세부 요소 3가지를 짚는 페이지.\n"
+                "  예: 메인 광장 소개 + 3대 구성 요소, 핵심 시설 + 3가지 기능, 컨셉 조감 + 3가지 실현 방식.\n"
+                "★ ★ 이미지 영역이 큼 (좌측 6.0인치) — 실제 이미지(조감도·렌더링·시설사진)를 넣을 수\n"
+                "  있는 페이지에만. 이미지 없는 페이지에 박으면 회색 placeholder 가 좌측 절반을 차지해 어색.\n"
+                "\n"
+                "★ 다른 패턴과 구분:\n"
+                "  · 여러 대상 비교 → split / triad (hero_detail 은 하나의 대상을 파고듦)\n"
+                "  · 4개 시설 각각 이미지 → quad_detail (hero_detail 은 1개 대상 + 3개 세부)\n"
+                "  · 이미지 자리 필요 없음 → numbered_columns / conclusion_cards\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "hero_detail"  (필수)\n'
+                '  · "items": [정확히 3개]  (필수 — 3개 아니면 preset 무효 처리됨)\n'
+                '      각 item = {"head": 세부 요소명(필수, 8~15자, 원문자 ①②③ 자동 부착),\n'
+                '                 "desc": 설명(선택, 30~50자)}\n'
+                '  · "conclusion": 하단 결론 문장  (필수 — 없으면 preset 무효 처리됨. 25~40자)\n'
+                '  · "title" (선택) — 헤더 안 큰 거버닝 (outline 의 governing_main, 25~40자)\n'
+                '                     ★ role:"governing" 자동 부착 — theme 별 accent 색 자동 적용\n'
+                '  · "number" (선택) — 헤더 좌측 초대형 숫자 (예 "01", 두 자리까지 정합, 72pt 자동 렌더)\n'
+                '  · "badge" (선택) — 헤더 좌측 브랜드 보라 배지 (5~10자, 줄바꿈 \\n 가능)\n'
+                '  · "index" (선택) — 헤더 우측 상단 인덱스 (예 "Ⅲ-1")\n'
+                '  · "subtitle" (선택) — 헤더 우측 subtitle (12~20자)\n'
+                '  · "section_title" (선택) — 우측 항목 위 소제목 (예 "구성 요소")\n'
+                '  · "section_sub" (선택) — section_title 아래 부제 (예 "3대 세부 영역")\n'
+                '  · "conclusion_lead" (선택) — 결론 상단 리드 문장 (15~25자)\n'
+                "  → 좌표·이미지 placeholder·원문자 번호·색은 코드가 자동 — 신경 쓰지 말 것.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
+                "    절대 금지: rect / 박스 / 이미지 / 색면 / 그 외 모든 shape(type='text' 외).\n"
+                "    검정 헤더·좌측 이미지 자리·우측 미니 이미지 3개는 코드가 자동으로 그린다.\n"
+                "    shapes 에 rect 를 넣으면 preset 의 이미지 자리를 덮어 회귀한다.\n"
+                "    백업으로 넣을 것 (text 만, 3~4개): 페이지 제목 + 각 item head 요약 + 결론 요약.\n"
+                "  ★ preset='hero_detail' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
+                "\n"
+                "★ 완성 예시 (이 구조 그대로 따라):\n"
+                '{"preset":"hero_detail",'
+                '"badge":"핵심\\n공간",'
+                '"number":"01",'
+                '"index":"Ⅲ-1",'
+                '"subtitle":"주 무대와 관객 동선",'
+                '"title":"메인 광장은 축제의 심장이자 관객 여정의 시작점",'
+                '"section_title":"구성 요소",'
+                '"section_sub":"3대 세부 영역",'
+                '"items":['
+                '{"head":"주 무대","desc":"1일 5시간 x 2일 공연 프로그램의 중심 스테이지"},'
+                '{"head":"관객존","desc":"체류형 라운지 + 참여 부스로 몰입 지점 확보"},'
+                '{"head":"운영 동선","desc":"진입 - 체험 - 퇴장을 이어주는 통합 흐름"}'
+                '],'
+                '"conclusion_lead":"공간이 만들어내는 경험",'
+                '"conclusion":"관객이 다시 찾고 싶은 중심 공간을 완성한다",'
+                '"shapes":[{"type":"text","x":0.9,"y":7.9,"w":10,"h":0.3,'
+                '"text":"메인 광장 + 3대 구성 요소","size":11,"weight":400,"color":"#666"}]}'
+            )
+        elif item.viz_pattern == "flow_detail":
+            # Spec Preset-Connect-5-Remaining — 상단 거버닝 + 가로 흐름 4~5단계 + 하단 3~4열 상세 (고밀도).
+            # 좌표·박스·화살표·구분선은 _build_preset_flow_detail 이 자동 배치.
+            # 함수 하드 조건: title 필수 + steps 4~5개(kr 필수) + columns 3~4개(key 필수, 각 items 정확 3개, head 필수).
+            #   미충족 시 preset 무효 반환.
+            parts.append(
+                "[배정된 레이아웃 패턴] flow_detail (상단 흐름 4~5단계 + 하단 3~4열 상세, 고밀도)\n"
+                "★ 용도: 운영 프로세스 + 각 실행축 세부처럼 흐름과 상세를 한 장에 담아야 하는 정보량 많은 페이지.\n"
+                "  예: 5단계 운영 프로세스 + 3대 실행축 세부, 4단계 추진 흐름 + 4대 원칙 세부.\n"
+                "★ 밀도가 높은 프리셋 — 흐름 4~5단계 + 상세 3~4열이 모두 있어야 자연스러움.\n"
+                "  얇은 페이지에 억지로 쓰면 각 칸이 텅 비어 보인다.\n"
+                "\n"
+                "★ 다른 패턴과 구분:\n"
+                "  · 흐름만 있음 → process(가로) / timeline(세로)\n"
+                "  · 상세만 있음 → cards3 / numbered_columns / conclusion_cards\n"
+                "  · 흐름+상세 결합 필요 = flow_detail 유일\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "flow_detail"  (필수)\n'
+                '  · "title": 상단 거버닝 메시지 (필수 — outline 의 governing_main 그대로, 25~40자)\n'
+                '                     ★ role:"governing" 자동 부착\n'
+                '  · "steps": [4개 또는 5개]  (필수 — 4/5 아니면 preset 무효)\n'
+                '      각 step = {"kr": 한글 단계명(필수, 3~6자),\n'
+                '                 "en": 영문 단계명(선택, 예 "PLAN", 브랜드 보라로 자동 렌더),\n'
+                '                 "desc": 한 줄 설명(선택, 20~30자)}\n'
+                '  · "columns": [3개 또는 4개]  (필수 — 3/4 아니면 preset 무효, 각 items 는 정확 3개여야 함)\n'
+                '      각 column = {"key": 대형 강조 텍스트(필수, 2~4자 또는 "01" 같은 번호, 브랜드 보라 대형),\n'
+                '                   "key_sub": key 부제(선택, 5~10자),\n'
+                '                   "lead": 리드 문장(선택, 15~25자),\n'
+                '                   "items": [정확 3개, 각 {head(필수), desc(선택)}]}\n'
+                '  · "subtitle" (선택) — title 위 부제 (12~20자)\n'
+                '  · "section_title_1" (선택) — 흐름 영역 소제목 (예 "운영 프로세스")\n'
+                '  · "section_title_2" (선택) — 상세 영역 소제목 (예 "3대 실행축")\n'
+                '  · "flow_lead" (선택) — 흐름 영역 리드 문장\n'
+                "  → 좌표·박스·화살표·구분선은 코드가 자동 — 신경 쓰지 말 것.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
+                "    절대 금지: rect / 박스 / 색면 / 그 외 모든 shape(type='text' 외).\n"
+                "    상단/중단/하단 3영역 박스·화살표·구분선은 코드가 자동으로 그린다.\n"
+                "    백업으로 넣을 것 (text 만): 페이지 제목 + 각 step kr 요약 + 각 column key 요약.\n"
+                "  ★ preset='flow_detail' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
+                "\n"
+                "★ 완성 예시 (이 구조 그대로 따라, steps 5개 + columns 3개):\n"
+                '{"preset":"flow_detail",'
+                '"subtitle":"운영 프로세스와 세부 실행",'
+                '"title":"5단계 운영 흐름과 3대 실행축의 결합",'
+                '"section_title_1":"운영 프로세스",'
+                '"flow_lead":"기획부터 사후 정착까지 표준화된 5단계",'
+                '"steps":['
+                '{"en":"PLAN","kr":"기획","desc":"현황 진단과 목표 정의"},'
+                '{"en":"PREPARE","kr":"준비","desc":"콘텐츠 제작과 운영 정비"},'
+                '{"en":"OPEN","kr":"개막","desc":"관객 유입과 초기 반응 관리"},'
+                '{"en":"RUN","kr":"운영","desc":"현장 대응과 실시간 개선"},'
+                '{"en":"WRAP","kr":"사후","desc":"성과 정리와 지속 자산화"}'
+                '],'
+                '"section_title_2":"3대 실행축",'
+                '"columns":['
+                '{"key":"01","key_sub":"콘텐츠","lead":"몰입도를 만드는 프로그램 밀도",'
+                '"items":['
+                '{"head":"연령 맞춤","desc":"세대별 진입 콘텐츠 분산 배치"},'
+                '{"head":"오감 트리거","desc":"청각·시각·촉각 자극 지점 설계"},'
+                '{"head":"참여 유도","desc":"관객이 콘텐츠에 개입할 여지 확보"}]},'
+                '{"key":"02","key_sub":"운영","lead":"현장을 살아 움직이게 하는 시스템",'
+                '"items":['
+                '{"head":"실시간 큐레이션","desc":"현장 반응 기반 프로그램 재배치"},'
+                '{"head":"서포터즈","desc":"자원 활동가 중심 운영 네트워크"},'
+                '{"head":"안전 관리","desc":"인파·기상·응급 3중 대응 프로토콜"}]},'
+                '{"key":"03","key_sub":"성과","lead":"다음 회차 근거를 만드는 데이터",'
+                '"items":['
+                '{"head":"참여 지표","desc":"방문·체류·재방문 정량 추적"},'
+                '{"head":"만족도","desc":"현장·사후 설문의 정성 축적"},'
+                '{"head":"아카이브","desc":"콘텐츠·기록물의 재활용 자산화"}]}'
+                '],'
+                '"shapes":[{"type":"text","x":0.9,"y":7.9,"w":10,"h":0.3,'
+                '"text":"5단계 흐름 x 3대 실행축","size":11,"weight":400,"color":"#666"}]}'
+            )
+        elif item.viz_pattern == "quad_detail":
+            # Spec Preset-Connect-5-Remaining — 좌측정렬 거버닝 + 2x2 그리드 4블록 (각 헤더+체크리스트+이미지).
+            # 좌표·그리드·이미지 placeholder 는 _build_preset_quad_detail 이 자동 배치.
+            # 함수 하드 조건: title 필수 + items 정확 4개(head 필수) — 미충족 시 preset 무효 반환.
+            #   points 는 각 item 최대 3개 (그 이상은 잘림).
+            parts.append(
+                "[배정된 레이아웃 패턴] quad_detail (좌측정렬 거버닝 + 2x2 그리드 4블록, 각 이미지 + 체크리스트)\n"
+                "★ 용도: 4개 시설/구역/프로그램을 각각 이미지와 세부 항목으로 설명하는 페이지.\n"
+                "  예: 4대 구역 배치, 4대 프로그램 상세, 4대 시설 소개, 4대 컨셉 존.\n"
+                "★ ★ 이미지 영역 4개 — 실제 이미지(시설사진·구역도·프로그램컷)를 넣을 수 있는 페이지에만.\n"
+                "\n"
+                "★ 다른 패턴과 구분:\n"
+                "  · 4개 색면 텍스트만 → quad (quad_detail 은 이미지 자리 + 체크리스트)\n"
+                "  · 4개 아닌 3개 → triad / hero_cards\n"
+                "  · 이미지 자리 불필요 → numbered_columns / conclusion_cards\n"
+                "  · 하나의 대상 + 3개 세부 → hero_detail (quad_detail 은 4개 독립 대상)\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "quad_detail"  (필수)\n'
+                '  · "title": 상단 좌측정렬 거버닝 (필수 — outline 의 governing_main, 25~40자)\n'
+                '                     ★ role:"governing" 자동 부착\n'
+                '  · "items": [정확히 4개]  (필수 — 4개 아니면 preset 무효 처리됨)\n'
+                '      각 item = {"head": 블록 헤더(필수, 5~10자, 검정 헤더바 위 흰 글씨로 자동 렌더),\n'
+                '                 "points": 체크리스트(선택, 0~3개 문자열, "✓ " 접두 자동)}\n'
+                '                 ※ points 없으면 이미지가 블록 전체(헤더 제외) 차지.\n'
+                '  · "badge" (선택) — 좌상단 알약 배지 (5~10자)\n'
+                '  · "subtitle" (선택) — title 위 좌측정렬 부제 (12~20자)\n'
+                "  → 좌표·2x2 그리드·이미지 placeholder·검정 헤더바는 코드가 자동 — 신경 쓰지 말 것.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
+                "    절대 금지: rect / 박스 / 이미지 / 색면 / 그 외 모든 shape(type='text' 외).\n"
+                "    2x2 4개 블록 + 이미지 placeholder + 헤더바는 코드가 자동으로 그린다.\n"
+                "    백업으로 넣을 것 (text 만): 페이지 제목 + 각 item head 요약.\n"
+                "  ★ preset='quad_detail' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
+                "\n"
+                "★ 완성 예시 (이 구조 그대로 따라):\n"
+                '{"preset":"quad_detail",'
+                '"badge":"4대 구역",'
+                '"subtitle":"축제장을 구성하는 네 개의 공간",'
+                '"title":"관객이 자연스럽게 순환하는 4대 구역 배치",'
+                '"items":['
+                '{"head":"메인 광장","points":["1일 5시간 공연 무대","1,500명 수용 관객존"]},'
+                '{"head":"체험 존","points":["연령별 3개 부스","오감 자극 프로그램"]},'
+                '{"head":"참여 존","points":["실시간 큐레이션","서포터즈 활동 거점"]},'
+                '{"head":"안전 존","points":["의료·응급 상시 대기","인파 관제 통제소"]}'
+                '],'
+                '"shapes":[{"type":"text","x":0.9,"y":7.9,"w":10,"h":0.3,'
+                '"text":"4대 구역 배치와 순환 동선","size":11,"weight":400,"color":"#666"}]}'
+            )
+        elif item.viz_pattern == "fullbleed_overlay":
+            # Spec Preset-Connect-5-Remaining — 화면 전체 배경 이미지 + 상단 거버닝 + 좌하단 오버레이.
+            # 배경 placeholder·오버레이 좌표는 _build_preset_fullbleed_overlay 가 자동 배치.
+            # 함수 하드 조건: title 필수 + points 2~4개(list[str]) — 미충족 시 preset 무효 반환.
+            # ★ 배정 규칙 ⑨ (전체 제안서 1~2장 cap) 정합 — 배경 이미지 시각 무게 과다 방지.
+            parts.append(
+                "[배정된 레이아웃 패턴] fullbleed_overlay (화면 전체 배경 이미지 + 텍스트 오버레이)\n"
+                "★ 용도: 조감도·3D 렌더링·현장사진·컨셉 이미지 등 비주얼이 주인공인 페이지.\n"
+                "  \"이 그림 하나로 말한다\"는 페이지. 예: 축제장 조감도, 공간 3D 렌더링, 시설 전경.\n"
+                "★★ 배정 규칙 ⑨ — 전체 제안서에서 최대 1~2장만 사용 (시각 무게 과다 방지).\n"
+                "   3장 이상 배정되면 배경 이미지 반복으로 제안서가 산만해진다.\n"
+                "   정말 강력한 비주얼이 있는 페이지에만.\n"
+                "\n"
+                "★ 다른 패턴과 구분:\n"
+                "  · 이미지 없는 순수 텍스트 → text_declaration / text_quote / narrative\n"
+                "  · 하나의 대상 + 세부 3개 → hero_detail (fullbleed_overlay 는 세부보다 인상)\n"
+                "  · 4개 이미지 각각 → quad_detail\n"
+                "  · 정보를 조목조목 → cards3 / numbered_columns / flow_detail\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "fullbleed_overlay"  (필수)\n'
+                '  · "title": 상단 오버레이 거버닝 (필수 — outline 의 governing_main, 25~40자)\n'
+                '                     ★ role:"governing" 자동 부착 — theme 별 accent 색 자동 적용\n'
+                '  · "points": [2, 3, 또는 4개 문자열]  (필수 — 2~4 아니면 preset 무효)\n'
+                '                 좌하단에 "▶ " 접두로 세로 나열. 각 15~25자 명사형.\n'
+                '  · "badge" (선택) — 상단 알약 배지 (5~10자, 예 "조감도")\n'
+                '  · "subtitle" (선택) — title 위 subtitle (12~20자, 옅은 회색)\n'
+                '  · "note" (선택) — 좌하단 "※ " 문구 (15~25자, 예 개념 조감 안내)\n'
+                '  · "label_badge" (선택) — 좌하단 별도 알약 배지 (5~10자, 예 "SCENE 01")\n'
+                "  → 배경 placeholder·오버레이 좌표·배지는 코드가 자동 — 신경 쓰지 말 것.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
+                "    절대 금지: rect / 박스 / 색면 / 그 외 모든 shape(type='text' 외).\n"
+                "    화면 전체 배경 placeholder 는 코드가 자동으로 그린다.\n"
+                "    shapes 에 rect 를 넣으면 배경 이미지 자리를 덮어버려 회귀한다.\n"
+                "    백업으로 넣을 것 (text 만): 페이지 제목 + 각 point 요약.\n"
+                "  ★ preset='fullbleed_overlay' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
+                "\n"
+                "★ 완성 예시 (이 구조 그대로 따라):\n"
+                '{"preset":"fullbleed_overlay",'
+                '"badge":"조감도",'
+                '"subtitle":"축제장 전경",'
+                '"title":"관객·공연·운영을 한 그림에 담아낸 축제장 조감",'
+                '"points":['
+                '"메인 광장은 축제장 중앙에 배치",'
+                '"체험 존은 광장 좌우로 대칭 분산",'
+                '"운영 통제소는 관객 진입구 정면에 위치"'
+                '],'
+                '"note":"본 도면은 개념 조감이며 세부 치수는 실측 반영",'
+                '"label_badge":"SCENE 01",'
+                '"shapes":[{"type":"text","x":0.9,"y":7.9,"w":10,"h":0.3,'
+                '"text":"축제장 전체 조감","size":11,"weight":400,"color":"#666"}]}'
             )
         else:
             parts.append(

@@ -3849,6 +3849,151 @@ def _build_preset_divider(slide_data, divider_idx=1):
     return shapes
 
 
+# ─── Spec Preset-New-ConclusionCards — 3열 카드 + 하단 결론 밴드 ────────────────
+# 상단 거버닝 + 중단 3열 카드(라벨바+헤드+옅은회색 desc박스 안 태그·설명) +
+# 하단 검정 밴드(아래 화살표 + conclusion). 이미지 placeholder 없음.
+# 색 정합 (거버닝 자동 보라 + 미매핑 검정/흰):
+#   상단 title / 하단 conclusion → role:"governing" 마킹 → _get_theme(theme)["ACCENT"] 자동.
+#   라벨 바·태그·밴드·아이템 흰글씨 → #1B1B1B / #FEFEFE 미매핑 (양 테마 그대로).
+#   desc 박스 → #F5F5F5 (다크에선 DARK_MAP 매핑 #1F1F1F).
+# 화살표 → chevron/block_arrow 우향 고정이라 사용 X, arrow(직선+삼각형 헤드) 세로 배치.
+#
+# 입력 스키마:
+#   slide_data["items"]           = [{label(필수), head(필수), tag?, desc?}, ...]  ★ 정확히 3개
+#   slide_data["conclusion"]      = str (필수)
+#   slide_data["eyebrow"]?        = str
+#   slide_data["subtitle"]?       = str
+#   slide_data["lead"]?           = str
+#   slide_data["title"]?          = str  (거버닝 — role:"governing" 자동 보라)
+#   slide_data["conclusion_lead"]? = str
+# 안전망: items list 아님 / 3개 정확히 아님 / 각 head 누락 / conclusion 없음 → 빈 list.
+# ★ 본 spec 단계: 코드 + dispatch 만 등록 — viz_pattern 화이트리스트·SLIDE 프롬프트
+#   미연결 (LLM 우연 선택 방지). 갤러리 검증 후 별도 spec 으로 켜기.
+def _build_preset_conclusion_cards(slide_data):
+    items_raw = slide_data.get("items") or []
+    if not isinstance(items_raw, list):
+        return []
+    items = []
+    for it in items_raw:
+        if not isinstance(it, dict):
+            continue
+        head = str(it.get("head", "")).strip()
+        if not head:
+            continue
+        items.append({
+            "label": str(it.get("label", "")).strip(),
+            "head": head,
+            "tag": str(it.get("tag", "")).strip(),
+            "desc": str(it.get("desc", "")).strip(),
+        })
+    if len(items) != 3:
+        return []
+    conclusion = str(slide_data.get("conclusion", "")).strip()
+    if not conclusion:
+        return []
+
+    eyebrow         = str(slide_data.get("eyebrow", "")).strip()
+    subtitle        = str(slide_data.get("subtitle", "")).strip()
+    lead            = str(slide_data.get("lead", "")).strip()
+    title           = str(slide_data.get("title", "")).strip()
+    conclusion_lead = str(slide_data.get("conclusion_lead", "")).strip()
+
+    W, H = 11.69, 8.27
+    shapes = []
+
+    # ── ① 상단 거버닝 블록 (중앙정렬)
+    top_x, top_w = 0.9, W - 1.8
+    if eyebrow:
+        shapes.append({"type":"text","x":top_x,"y":0.3,"w":top_w,"h":0.35,
+                       "text":eyebrow,"size":11,"weight":400,"color":"#999999",
+                       "align":"center","valign":"middle"})
+    if subtitle:
+        shapes.append({"type":"text","x":top_x,"y":0.7,"w":top_w,"h":0.35,
+                       "text":subtitle,"size":12,"weight":400,"color":"#666666",
+                       "align":"center","valign":"middle"})
+    if lead:
+        shapes.append({"type":"text","x":top_x,"y":1.15,"w":top_w,"h":0.4,
+                       "text":lead,"size":14,"weight":500,"color":"#1A1A1A",
+                       "align":"center","valign":"middle"})
+    if title:
+        # ★ role:"governing" → render 시 _get_theme(theme)["ACCENT"] 자동 (라이트 #6B46E5).
+        shapes.append({"type":"text","x":top_x,"y":1.55,"w":top_w,"h":0.7,
+                       "text":title,"size":28,"weight":800,"color":"#1A1A1A",
+                       "align":"center","valign":"middle",
+                       "role":"governing"})
+
+    # ── ② 중단 3열 카드 (정확히 3, 균등 분배)
+    margin  = 0.9
+    gap     = 0.3
+    card_w  = (W - 2 * margin - 2 * gap) / 3   # ≈ 3.097
+    card_top = 2.4
+    label_h  = 0.5
+    head_top = card_top + label_h + 0.05        # 2.95
+    head_h   = 0.65
+    desc_top = head_top + head_h + 0.1          # 3.7
+    desc_h   = 2.15                             # ends 5.85
+    for i, it in enumerate(items):
+        cx = margin + i * (card_w + gap)
+        # (1) 라벨 바 — 검정 fill + 흰 글씨 (마커 없음, 거버닝 아님)
+        shapes.append({"type":"rect","x":cx,"y":card_top,"w":card_w,"h":label_h,
+                       "fill":"#1B1B1B"})
+        if it["label"]:
+            shapes.append({"type":"text","x":cx,"y":card_top,"w":card_w,"h":label_h,
+                           "text":it["label"],"size":12,"weight":700,"color":"#FEFEFE",
+                           "align":"center","valign":"middle"})
+        # (2) 헤드라인
+        shapes.append({"type":"text","x":cx + 0.1,"y":head_top,"w":card_w - 0.2,"h":head_h,
+                       "text":it["head"],"size":16,"weight":700,"color":"#1A1A1A",
+                       "align":"center","valign":"middle"})
+        # (3) 설명 박스 — 옅은 회색 fill (다크에선 #1F1F1F 자동)
+        shapes.append({"type":"rect","x":cx,"y":desc_top,"w":card_w,"h":desc_h,
+                       "fill":"#F5F5F5"})
+        # (3a) 태그 — 검정 rounded rect (hero_cards L3340 패턴, radius 지정)
+        tag_present = bool(it["tag"])
+        if tag_present:
+            tag_w = 1.4
+            tag_h = 0.4
+            tag_x = cx + (card_w - tag_w) / 2
+            tag_y = desc_top + 0.18
+            shapes.append({"type":"rect","x":tag_x,"y":tag_y,"w":tag_w,"h":tag_h,
+                           "fill":"#1B1B1B","radius":0.06})
+            shapes.append({"type":"text","x":tag_x,"y":tag_y,"w":tag_w,"h":tag_h,
+                           "text":it["tag"],"size":11,"weight":700,"color":"#FEFEFE",
+                           "align":"center","valign":"middle"})
+        # (3b) desc
+        if it["desc"]:
+            desc_text_y = desc_top + (0.75 if tag_present else 0.2)
+            desc_text_h = desc_top + desc_h - desc_text_y - 0.15
+            shapes.append({"type":"text","x":cx + 0.2,"y":desc_text_y,
+                           "w":card_w - 0.4,"h":desc_text_h,
+                           "text":it["desc"],"size":11,"weight":400,"color":"#666666",
+                           "align":"center","valign":"top"})
+
+    # ── ③ 하단 결론 밴드 (전체 폭 검정)
+    band_top = 6.0
+    band_h   = H - band_top   # 2.27
+    shapes.append({"type":"rect","x":0,"y":band_top,"w":W,"h":band_h,
+                   "fill":"#1B1B1B"})
+    # 아래 방향 화살표 — chevron/block_arrow 우향 고정이라 arrow(직선+헤드) 사용
+    #   hero_cards L3308 패턴 정합 (검정 밴드 위 #FEFEFE)
+    shapes.append({"type":"arrow","x1":W/2,"y1":band_top + 0.15,
+                   "x2":W/2,"y2":band_top + 0.55,
+                   "color":"#FEFEFE","width":1.5})
+    if conclusion_lead:
+        shapes.append({"type":"text","x":0.5,"y":band_top + 0.7,"w":W - 1.0,"h":0.35,
+                       "text":conclusion_lead,"size":13,"weight":400,"color":"#FEFEFE",
+                       "align":"center","valign":"middle"})
+    # conclusion — 결론 문장. 검정 밴드 위라 흰 계열 색 지정 후 role:"governing" 마킹 시
+    #   render 가 _get_theme(theme)["ACCENT"] 로 오버라이드 → 라이트 #6B46E5.
+    #   ★ 검정 밴드 위 보라 대비 가독성은 갤러리 확인 (governing-purple 갤러리 검증됨).
+    conclusion_y = band_top + (1.15 if conclusion_lead else 0.85)
+    shapes.append({"type":"text","x":0.5,"y":conclusion_y,"w":W - 1.0,"h":1.0,
+                   "text":conclusion,"size":26,"weight":900,"color":"#FEFEFE",
+                   "align":"center","valign":"middle",
+                   "role":"governing"})
+    return shapes
+
+
 def generate_from_shape_json(json_data, output_path, *, theme="light"):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -4104,6 +4249,19 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
             # circles/triad/hero_cards 와 동일 패턴 — 성공 시 preset 만, 실패/예외 시 LLM 백업.
             try:
                 preset_shapes = _build_preset_strategy_map(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "conclusion_cards":
+            # Spec Preset-New-ConclusionCards — 3열 카드 + 하단 결론 밴드.
+            # ★ 본 spec 단계: 코드 + dispatch 만 등록 — viz_pattern 화이트리스트·
+            #   SLIDE 프롬프트 미연결 (LLM 우연 선택 방지). 갤러리 검증 후 별도 spec.
+            # strategy_map/triad/hero_cards 와 동일 패턴 — 성공 시 preset 만, 실패/예외 시 LLM 백업.
+            try:
+                preset_shapes = _build_preset_conclusion_cards(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

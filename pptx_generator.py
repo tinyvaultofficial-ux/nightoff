@@ -3994,6 +3994,153 @@ def _build_preset_conclusion_cards(slide_data):
     return shapes
 
 
+# ─── Spec Preset-New-NumberedColumns — 넘버 카드 3~4열 + 결론 ───────────────────
+# 상단 검정 헤더 블록(배지 알약 + 거버닝) + 중단 넘버 카드(초대형 옅은 회색 숫자 +
+# 콘텐츠 스택) 3 또는 4열 + 하단 결론 2줄(밴드 없음).
+# 색 정합:
+#   상단 title / 하단 conclusion → role:"governing" → _get_theme(theme)["ACCENT"] 자동.
+#   헤더 검정 블록 · 배지 stroke → #1B1B1B / #FEFEFE 미매핑 (양 테마 유지).
+#   배지 stroke-only → fill 키 자체 생략 → dispatch None → _add_rect._set_no_fill.
+#     (★ _add_rect 는 _add_circle 과 달리 "none" 정규화 가드 없어서 문자열 "none"
+#      쓰면 _hex_to_rgb 실패. 키 생략이 안전.)
+#   초대형 배경 숫자 → #EEEEEE (미매핑, 반투명 불가 대체).
+#   아이템 head → #6B46E5 하드코딩 (거버닝 마커 안 달음, DARK_MAP 미매핑).
+# 화살표 없음 — conclusion_cards 와 달리 밴드 없이 흰 배경 위 결론 텍스트만.
+#
+# 입력 스키마:
+#   slide_data["items"]           = [{label?, head(필수), desc?}, ...]  ★ 3개 또는 4개
+#   slide_data["conclusion"]      = str (필수)
+#   slide_data["badge"]?          = str (상단 알약 배지 문구)
+#   slide_data["title"]?          = str (거버닝 — role:"governing" 자동 보라)
+#   slide_data["conclusion_lead"]? = str
+# 안전망: items 3/4 개 아님 / 각 head 누락 / conclusion 없음 → 빈 list.
+# ★ 본 spec 단계: 코드 + dispatch 만 등록 — viz_pattern 화이트리스트·SLIDE
+#   프롬프트 미연결 (LLM 우연 선택 방지). 갤러리 검증 후 별도 spec 으로 켜기.
+def _build_preset_numbered_columns(slide_data):
+    items_raw = slide_data.get("items") or []
+    if not isinstance(items_raw, list):
+        return []
+    items = []
+    for it in items_raw:
+        if not isinstance(it, dict):
+            continue
+        head = str(it.get("head", "")).strip()
+        if not head:
+            continue
+        items.append({
+            "label": str(it.get("label", "")).strip(),
+            "head": head,
+            "desc": str(it.get("desc", "")).strip(),
+        })
+    if len(items) not in (3, 4):
+        return []
+    conclusion = str(slide_data.get("conclusion", "")).strip()
+    if not conclusion:
+        return []
+
+    badge           = str(slide_data.get("badge", "")).strip()
+    title           = str(slide_data.get("title", "")).strip()
+    conclusion_lead = str(slide_data.get("conclusion_lead", "")).strip()
+
+    W, H = 11.69, 8.27
+    shapes = []
+
+    # ── ① 상단 헤더 블록 (여백 둔 검정 박스)
+    hdr_x, hdr_y = 0.9, 0.3
+    hdr_w, hdr_h = W - 1.8, 2.0
+    shapes.append({"type":"rect","x":hdr_x,"y":hdr_y,"w":hdr_w,"h":hdr_h,
+                   "fill":"#1B1B1B"})
+    # 배지 알약 (stroke-only, fill 키 생략)
+    if badge:
+        badge_w = 4.0
+        badge_h = 0.42
+        badge_x = hdr_x + (hdr_w - badge_w) / 2
+        badge_y = hdr_y + 0.35
+        shapes.append({"type":"rect","x":badge_x,"y":badge_y,"w":badge_w,"h":badge_h,
+                       "stroke":"#FEFEFE","stroke_width":1,"radius":0.2})
+        shapes.append({"type":"text","x":badge_x,"y":badge_y,"w":badge_w,"h":badge_h,
+                       "text":badge,"size":11,"weight":600,"color":"#FEFEFE",
+                       "align":"center","valign":"middle"})
+    # 타이틀 (거버닝 — role:"governing" 자동 보라, 검정 배경 위)
+    if title:
+        title_y = hdr_y + (1.0 if badge else 0.7)
+        title_h = hdr_h - (title_y - hdr_y) - 0.15
+        shapes.append({"type":"text","x":hdr_x + 0.3,"y":title_y,
+                       "w":hdr_w - 0.6,"h":title_h,
+                       "text":title,"size":26,"weight":800,"color":"#FEFEFE",
+                       "align":"center","valign":"middle",
+                       "role":"governing"})
+
+    # ── ② 중단 넘버 카드 (n=3 or 4 가변)
+    n = len(items)
+    margin = 0.9
+    gap = 0.3 if n == 3 else 0.25
+    card_w = (W - 2 * margin - (n - 1) * gap) / n
+    card_top = 2.6
+    card_h   = 3.5
+
+    # n 별 파라미터 — 4열은 폭이 좁아 숫자/헤드 축소
+    if n == 3:
+        num_size = 120
+        content_x_off = 0.9
+        head_size = 17
+    else:  # n == 4
+        num_size = 92
+        content_x_off = 0.7
+        head_size = 15
+
+    for i, it in enumerate(items):
+        cx = margin + i * (card_w + gap)
+        # 초대형 배경 숫자 — 카드 좌측, 옅은 회색 (반투명 대체)
+        shapes.append({"type":"text","x":cx,"y":card_top - 0.15,
+                       "w":card_w * 0.55,"h":2.4,
+                       "text":str(i + 1),"size":num_size,"weight":900,
+                       "color":"#EEEEEE","align":"left","valign":"top"})
+        # 콘텐츠 스택 (숫자 우측 — 겹침 허용)
+        cx_c = cx + content_x_off
+        w_c  = cx + card_w - cx_c - 0.05
+        if w_c < 1.0:
+            w_c = 1.0
+        y_c = card_top + 0.4
+        if it["label"]:
+            shapes.append({"type":"text","x":cx_c,"y":y_c,"w":w_c,"h":0.35,
+                           "text":it["label"],"size":11,"weight":600,
+                           "color":"#666666","align":"left","valign":"top"})
+            y_c += 0.4
+        # head — 브랜드 보라 직접 지정 (거버닝 아니므로 role 마킹 X)
+        shapes.append({"type":"text","x":cx_c,"y":y_c,"w":w_c,"h":0.7,
+                       "text":it["head"],"size":head_size,"weight":800,
+                       "color":"#6B46E5","align":"left","valign":"top"})
+        y_c += 0.8
+        if it["desc"]:
+            desc_h = card_top + card_h - y_c - 0.15
+            if desc_h < 0.4:
+                desc_h = 0.4
+            shapes.append({"type":"text","x":cx_c,"y":y_c,"w":w_c,"h":desc_h,
+                           "text":it["desc"],"size":11,"weight":400,
+                           "color":"#666666","align":"left","valign":"top"})
+
+    # ── ③ 하단 결론 2줄 (흰 배경, 밴드 없음)
+    bot_x, bot_w = 0.9, W - 1.8
+    bot_top = card_top + card_h + 0.3   # 6.4
+    if conclusion_lead:
+        shapes.append({"type":"text","x":bot_x,"y":bot_top,"w":bot_w,"h":0.35,
+                       "text":conclusion_lead,"size":13,"weight":400,
+                       "color":"#666666","align":"center","valign":"middle"})
+        conclusion_y = bot_top + 0.45
+    else:
+        conclusion_y = bot_top + 0.15
+    conclusion_h = H - conclusion_y - 0.3
+    if conclusion_h < 0.6:
+        conclusion_h = 0.6
+    # conclusion 은 거버닝 — role:"governing" → 자동 보라 (흰 배경 위 #6B46E5)
+    shapes.append({"type":"text","x":bot_x,"y":conclusion_y,"w":bot_w,"h":conclusion_h,
+                   "text":conclusion,"size":24,"weight":900,"color":"#1A1A1A",
+                   "align":"center","valign":"middle",
+                   "role":"governing"})
+    return shapes
+
+
 def generate_from_shape_json(json_data, output_path, *, theme="light"):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -4262,6 +4409,18 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
             # strategy_map/triad/hero_cards 와 동일 패턴 — 성공 시 preset 만, 실패/예외 시 LLM 백업.
             try:
                 preset_shapes = _build_preset_conclusion_cards(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "numbered_columns":
+            # Spec Preset-New-NumberedColumns — 검정 헤더 + 초대형 배경 숫자 3~4열 + 결론.
+            # ★ 본 spec 단계: 코드 + dispatch 만 등록 — viz_pattern 화이트리스트·SLIDE 프롬프트 미연결.
+            # conclusion_cards / strategy_map / hero_cards 와 동일 패턴.
+            try:
+                preset_shapes = _build_preset_numbered_columns(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

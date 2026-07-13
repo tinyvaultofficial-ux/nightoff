@@ -961,6 +961,16 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
                               (예: 3대 전략 + 5단계 추진 로드맵, 핵심 축 + 실행 절차)
                        ⚠ 부적합: 전략/실행 한쪽만 → cards3/process/triad / 정보 적을 때(과밀) / role=support
                        ※ 대전략+하위실행을 함께 보여줄 때만. 한쪽만이면 더 단순한 패턴.
+  · conclusion_cards — 상단 거버닝 + 3열 카드 + 하단 검정 결론 밴드 (서사 수렴 구조)
+                       ★ 적합: role=body 페이지의 "세 갈래 축/방향이 하나의 결론으로 모이는" 페이지
+                              (예: 3대 요소가 맞물릴 때 → 이런 결과, 3대 전략의 종합 효과,
+                                   3대 관점의 최종 결론, 3대 축 → 통합 성과)
+                       ⚠ 부적합: 단순 3항목 나열(그건 cards3/triad) / 좌우 대등 병렬(그건 split) /
+                              결론 문장 없는 페이지 / role=support / slide_type=hero
+                       ※ ★ 박스 그리드 회귀 아님 — 하단 결론 밴드로 수렴하는 서사 구조.
+                          "이 셋이 맞물릴 때 → 이런 결과" 논리가 있는 페이지에만.
+                          cards3 는 등분 비교, triad 는 이미지 자리 + 비대칭. conclusion_cards 는 "3개 → 결론" 서사.
+                          items 정확히 3개 + conclusion 필수. 미충족 시 코드가 preset 무효 처리.
 
 ★ 컨셉 슬로건 페이지는 별도 hero 페이지(카탈로그 11번)가 담당.
   text_* 키로 컨셉 슬로건을 만들지 말 것 — 컨셉 슬로건은 80~90pt 거대 슬로건 hero,
@@ -2673,10 +2683,14 @@ async def generate_outline(
         # ★ Spec Preset-Remove-Matrix — matrix 화이트리스트에서 제거 (옵션 B 완전삭제).
         #   2×2 사분면 범용성 낮음 + 첫 생성 빈 페이지 버그 → quad/cards3 등으로 대체 가능.
         #   함수/dispatch/가드/SLIDE 분기/카탈로그 + _build_governing_block 헬퍼 (유일 사용자) 모두 동시 삭제.
+        # ★ Spec Preset-Connect-ConclusionCards — conclusion_cards 화이트리스트 등재 (1종 단독 spec).
+        #   함수(_build_preset_conclusion_cards)·dispatch·카탈로그·위치 가드·SLIDE elif 4지점 동시.
+        #   3열 카드 + 하단 결론 밴드 서사(수렴) 구조 — 단순 카드 그리드가 아니라 결론으로 모이는 흐름.
         _VIZ_PATTERN_SAFE = {"2col", "cards3", "process", "before_after", "quant", "cards_grid",
                              "text_quote", "text_declaration", "split", "timeline", "asymmetric",
                              "zigzag", "hsplit", "circles", "quad",
-                             "hsplit_top", "hero_cards", "triad", "strategy_map"}
+                             "hsplit_top", "hero_cards", "triad", "strategy_map",
+                             "conclusion_cards"}
         viz_pattern_raw = str(it.get("viz_pattern", "")).strip().lower()
         viz_pattern = viz_pattern_raw if viz_pattern_raw in _VIZ_PATTERN_SAFE else ""
         # ★ Spec D-Fix-NarrativeGuard — text 위계는 hero/support/simple_box 페이지에 배정 X.
@@ -2830,6 +2844,19 @@ async def generate_outline(
                 log.info(
                     "Preset-Connect-StrategyMap 강등 p=%s role=%s st=%s",
                     it.get("page"), _rl_sm, _st_sm,
+                )
+                viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
+        # ★ Spec Preset-Connect-ConclusionCards — conclusion_cards 가드 (strategy_map/triad 와 동일 강도).
+        #   conclusion_cards = "3개 축 → 하단 결론 밴드로 수렴" 서사 구조 → role=body 페이지에만 적합.
+        #   hero(컨셉/표지)·support(예산/일정/조직)·simple_box 에 박히면 결론 밴드가 표지·예산에
+        #   붙어 심각한 오배정 → 반드시 무력화.
+        elif viz_pattern == "conclusion_cards":
+            _rl_cn = str(it.get("role", "")).strip().lower()
+            _st_cn = str(it.get("slide_type", "")).strip().lower()
+            if _rl_cn != "body" or _st_cn == "hero":
+                log.info(
+                    "Preset-Connect-ConclusionCards 강등 p=%s role=%s st=%s",
+                    it.get("page"), _rl_cn, _st_cn,
                 )
                 viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
         # Spec D-Fix-BodyRole-1 — role 화이트리스트 (body/support/"" 만 허용).
@@ -3524,6 +3551,75 @@ def _build_slide_user_prompt(
                 '{"head":"지속 관계","desc":"아카이브 사후 연계","caption":"후속 시리즈"}],'
                 '"steps":[{"label":"기획"},{"label":"준비"},{"label":"개막"},{"label":"운영"},{"label":"사후"}],'
                 '"footer":"단계별 KPI로 적시 보정"}'
+            )
+        elif item.viz_pattern == "conclusion_cards":
+            # Spec Preset-Connect-ConclusionCards — 상단 거버닝 + 3열 카드 + 하단 검정 결론 밴드(서사 수렴).
+            # 상단/카드/밴드 좌표·색·정렬은 _build_preset_conclusion_cards 가 자동 배치.
+            # 함수 하드 조건: items 정확히 3개(각 head 필수) + conclusion 필수 — 미충족 시 preset 무효 반환.
+            # triad/strategy_map 패턴 정합 — preset 키 박으라는 지시 + 백업 text 도형 강제.
+            # 빈 페이지 방지: 백업 text 도형 함께 채우게 강제(rect/박스/이미지 절대 X).
+            parts.append(
+                "[배정된 레이아웃 패턴] conclusion_cards (3열 카드 → 하단 결론 밴드로 수렴하는 서사)\n"
+                "★ 용도: 세 갈래 축/방향/요소가 하나의 결론으로 모이는 페이지.\n"
+                "  \"이 셋이 맞물릴 때 → 이런 결과\" 논리. 예: 3대 전략의 종합 효과, 3대 요소의 통합 성과,\n"
+                "  3대 관점의 최종 결론.\n"
+                "\n"
+                "★ 다른 패턴과 구분 (오배정 방지):\n"
+                "  · 단순 3항목 등분 비교 → cards3 (결론 문장 없음)\n"
+                "  · 이미지 자리 3개 + 좌측 비대칭 거버닝 → triad (수렴 서사 없음)\n"
+                "  · 좌우 대등한 두 축 병렬 → split (3개 아님)\n"
+                "  · 상단 거버닝 + 하단 카드 대칭 나열 (결론 없음) → hero_cards\n"
+                "  · conclusion_cards 는 \"3개 축 + 하단으로 수렴하는 결론\"이 본질. 결론 문장이 없으면 이 패턴 아님.\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "conclusion_cards"  (필수)\n'
+                '  · "items": [정확히 3개]  (필수 — 3개 아니면 preset 무효 처리됨)\n'
+                '      각 item = {"label": 짧은 라벨(예 "AXIS 01"), "head": 카드 헤드라인(필수, 15~25자),\n'
+                '                 "tag": 태그(선택, 5~10자, 검정 알약으로 렌더), "desc": 설명(선택, 40~60자)}\n'
+                '  · "conclusion": 하단 결론 문장  (필수 — 없으면 preset 무효 처리됨. 25~40자 명사형/선언형)\n'
+                '  · "title" (선택) — 상단 큰 거버닝 메시지 (outline 의 governing_main 그대로, 25~40자)\n'
+                '                     ★ role:"governing" 자동 부착 — theme 별 accent 색 자동 적용\n'
+                '  · "title_runs" (선택) — title 의 형광 강조 segment (D-Build-TextRunsInject 정합):\n'
+                '      [{"t":"앞부분 "},{"t":"핵심 명사구","accent":true},{"t":" 뒷부분"}]\n'
+                '      ★ accent:true 한 곳만, 모든 t 를 이으면 title 과 정확히 일치, 애매하면 생략.\n'
+                '      ★ theme=dark 시 accent 부분만 #A78BFA 자동 적용 (light 면 형광 없음, 정상).\n'
+                '  · "subtitle" (선택) — title 상단 부제 (12~20자, 옅은 회색으로 렌더)\n'
+                '  · "lead" (선택) — title 상단 리드 문장 (15~25자, 강한 검정으로 렌더)\n'
+                '  · "eyebrow" (선택) — 좌상단 메타 라벨 (섹션 breadcrumb 등)\n'
+                '  · "conclusion_lead" (선택) — 결론 밴드 상단 리드 문장 (15~25자, 밴드 위 회백색으로 렌더)\n'
+                "  → 좌표·색·정렬·카드 배치·밴드 색면은 코드가 자동 배치 — 신경 쓰지 말 것.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
+                "    절대 금지: rect / 박스 / 색면 / 그 외 모든 shape(type='text' 외).\n"
+                "    3열 카드·하단 검정 결론 밴드는 코드(_build_preset_conclusion_cards)가 자동으로 그린다.\n"
+                "    shapes 에 rect 를 넣으면 preset 의 카드·밴드를 덮어버려 박스 단조로움으로 회귀한다.\n"
+                "    백업으로 넣을 것 (text 만, 3~4개):\n"
+                "      · 페이지 제목 text 1개 (상단)\n"
+                "      · 각 카드 head 요약 text 3개 (또는 결론 문장 요약 1개)\n"
+                "    preset 처리 실패해도 최소한 텍스트는 남도록.\n"
+                "  ★ preset='conclusion_cards' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
+                "\n"
+                "★ 완성 예시 (이 구조 그대로 따라):\n"
+                '{"preset":"conclusion_cards",'
+                '"eyebrow":"Ⅲ. 추진 전략",'
+                '"title":"세 축이 맞물릴 때 지역 축제는 지속 자산이 된다",'
+                '"title_runs":[{"t":"세 축이 맞물릴 때 지역 축제는 "},{"t":"지속 자산","accent":true},{"t":"이 된다"}],'
+                '"subtitle":"콘텐츠 · 참여 · 데이터 3-Track",'
+                '"items":['
+                '{"label":"AXIS 01","head":"현장 콘텐츠 밀도","tag":"체험 설계",'
+                '"desc":"연령대별 오감 자극 프로그램으로 체류시간을 확장한다"},'
+                '{"label":"AXIS 02","head":"관객 참여 순환","tag":"양방향 운영",'
+                '"desc":"실시간 큐레이션과 서포터즈 활동으로 관객을 참여자로 전환한다"},'
+                '{"label":"AXIS 03","head":"성과 데이터 축적","tag":"지속 자산",'
+                '"desc":"방문·참여 지표를 아카이브해 다음 회차 기획의 근거로 삼는다"}'
+                '],'
+                '"conclusion_lead":"세 축이 맞물려 만들어내는 성과",'
+                '"conclusion":"1회성 이벤트를 지역의 지속 브랜드로",'
+                '"shapes":['
+                '{"type":"text","x":0.9,"y":0.4,"w":10,"h":0.4,'
+                '"text":"3대 추진 축과 종합 성과","size":14,"weight":700,"color":"#1A1A1A"},'
+                '{"type":"text","x":0.9,"y":7.5,"w":10,"h":0.4,'
+                '"text":"3축 통합 → 지역 지속 브랜드 전환","size":11,"weight":400,"color":"#666"}'
+                ']}'
             )
         else:
             parts.append(

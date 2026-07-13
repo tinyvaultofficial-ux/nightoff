@@ -4330,6 +4330,230 @@ def _build_preset_hero_detail(slide_data):
     return shapes
 
 
+# ─── Spec Preset-New-FlowDetail — 상단 가로 흐름 + 하단 항목별 상세 (고밀도) ────
+# 상단 거버닝(subtitle + title) + 중단 가로 흐름 박스 4~5개 (en/kr/desc, 화살표
+# 연결) + 하단 3~4열 상세(대형 key 보라 + key_sub + lead + items 3개 head/desc).
+# 색 정합:
+#   상단 title → role:"governing" → _get_theme(theme)["ACCENT"] 자동 (라이트 #6B46E5).
+#   중단 en / 하단 key → #6B46E5 하드코딩 (아이템 강조, DARK_MAP 미매핑 → 양 테마 유지).
+#   박스 fill/stroke → #FFFFFF / #DDDDDD (DARK_MAP 매핑으로 자연 반전).
+#   화살표 → chevron/block_arrow 대신 arrow(직선+헤드) 가로 배치.
+# 밀도 주의: 4열 + 각 3항목 케이스가 가장 빡빡 — desc size 최소 9pt 유지.
+#
+# 입력 스키마:
+#   slide_data["title"]            = str (필수, 거버닝)
+#   slide_data["steps"]            = [{kr(필수), en?, desc?}, ...]  ★ 4개 또는 5개
+#   slide_data["columns"]          = [{key(필수), items(필수, 정확 3), key_sub?, lead?}, ...]
+#                                    ★ 3개 또는 4개, 각 items = [{head(필수), desc?}, ...] 정확 3
+#   slide_data["subtitle"]?        = str
+#   slide_data["section_title_1"]? = str  (중단 헤더)
+#   slide_data["section_title_2"]? = str  (하단 헤더)
+#   slide_data["flow_lead"]?       = str
+# 안전망: title 없음 / steps 4~5 아님 / columns 3~4 아님 / 각 column items 3 아님 → 빈 list.
+# ★ 본 spec 단계: 코드 + dispatch 만 등록 — SLIDE 프롬프트·화이트리스트 미연결.
+def _build_preset_flow_detail(slide_data):
+    title = str(slide_data.get("title", "")).strip()
+    if not title:
+        return []
+
+    # steps 정규화 (4~5개, 각 kr 필수)
+    steps_raw = slide_data.get("steps") or []
+    if not isinstance(steps_raw, list):
+        return []
+    steps = []
+    for s in steps_raw:
+        if not isinstance(s, dict):
+            continue
+        kr = str(s.get("kr", "")).strip()
+        if not kr:
+            continue
+        steps.append({
+            "en":   str(s.get("en", "")).strip(),
+            "kr":   kr,
+            "desc": str(s.get("desc", "")).strip(),
+        })
+    if len(steps) not in (4, 5):
+        return []
+
+    # columns 정규화 (3~4개, 각 key 필수 + items 정확 3개 필수)
+    columns_raw = slide_data.get("columns") or []
+    if not isinstance(columns_raw, list):
+        return []
+    columns = []
+    for col in columns_raw:
+        if not isinstance(col, dict):
+            continue
+        key = str(col.get("key", "")).strip()
+        if not key:
+            continue
+        items_raw = col.get("items") or []
+        if not isinstance(items_raw, list):
+            continue
+        col_items = []
+        for it in items_raw:
+            if not isinstance(it, dict):
+                continue
+            head = str(it.get("head", "")).strip()
+            if not head:
+                continue
+            col_items.append({
+                "head": head,
+                "desc": str(it.get("desc", "")).strip(),
+            })
+        if len(col_items) != 3:
+            continue   # 이 column 은 유효 X — 최종 columns 카운트 검사에서 걸림
+        columns.append({
+            "key":     key,
+            "key_sub": str(col.get("key_sub", "")).strip(),
+            "lead":    str(col.get("lead", "")).strip(),
+            "items":   col_items,
+        })
+    if len(columns) not in (3, 4):
+        return []
+
+    subtitle        = str(slide_data.get("subtitle", "")).strip()
+    section_title_1 = str(slide_data.get("section_title_1", "")).strip()
+    section_title_2 = str(slide_data.get("section_title_2", "")).strip()
+    flow_lead       = str(slide_data.get("flow_lead", "")).strip()
+
+    W, H = 11.69, 8.27
+    margin = 0.9
+    inner_w = W - 2 * margin
+    shapes = []
+
+    # ── ① 상단 거버닝 (중앙정렬)
+    if subtitle:
+        shapes.append({"type":"text","x":margin,"y":0.35,"w":inner_w,"h":0.25,
+                       "text":subtitle,"size":11,"weight":400,"color":"#666666",
+                       "align":"center","valign":"middle"})
+    # title (필수, role:"governing" 자동 보라)
+    shapes.append({"type":"text","x":margin,"y":0.65,"w":inner_w,"h":0.85,
+                   "text":title,"size":26,"weight":800,"color":"#1A1A1A",
+                   "align":"center","valign":"middle",
+                   "role":"governing"})
+
+    # ── ② 중단 가로 흐름 (4 or 5 boxes + arrows)
+    if section_title_1:
+        shapes.append({"type":"text","x":margin,"y":1.7,"w":inner_w,"h":0.3,
+                       "text":section_title_1,"size":13,"weight":700,"color":"#1A1A1A",
+                       "align":"left","valign":"middle"})
+    if flow_lead:
+        shapes.append({"type":"text","x":margin,"y":2.0,"w":inner_w,"h":0.25,
+                       "text":flow_lead,"size":10,"weight":400,"color":"#666666",
+                       "align":"left","valign":"middle"})
+
+    n_steps = len(steps)
+    arrow_w = 0.4
+    box_w   = (inner_w - (n_steps - 1) * arrow_w) / n_steps
+    box_top = 2.35
+    box_h   = 1.55
+    if n_steps == 4:
+        kr_size, en_size, desc_size_s = 16, 10, 10
+    else:  # 5
+        kr_size, en_size, desc_size_s = 14, 9, 9
+
+    for i, st in enumerate(steps):
+        bx = margin + i * (box_w + arrow_w)
+        # 박스 (rounded rect)
+        shapes.append({"type":"rect","x":bx,"y":box_top,"w":box_w,"h":box_h,
+                       "fill":"#FFFFFF","stroke":"#DDDDDD","stroke_width":1,
+                       "radius":0.05})
+        pad = 0.12
+        iy = box_top + pad
+        # en (선택)
+        if st["en"]:
+            shapes.append({"type":"text","x":bx + pad,"y":iy,"w":box_w - 2 * pad,"h":0.3,
+                           "text":st["en"],"size":en_size,"weight":500,"color":"#6B46E5",
+                           "align":"center","valign":"top"})
+            iy += 0.32
+        # kr (필수)
+        shapes.append({"type":"text","x":bx + pad,"y":iy,"w":box_w - 2 * pad,"h":0.5,
+                       "text":st["kr"],"size":kr_size,"weight":800,"color":"#1A1A1A",
+                       "align":"center","valign":"top"})
+        iy += 0.55
+        # desc (선택)
+        if st["desc"]:
+            d_h = box_top + box_h - iy - pad
+            if d_h < 0.2:
+                d_h = 0.2
+            shapes.append({"type":"text","x":bx + pad,"y":iy,"w":box_w - 2 * pad,"h":d_h,
+                           "text":st["desc"],"size":desc_size_s,"weight":400,
+                           "color":"#666666","align":"center","valign":"top"})
+        # 화살표 (마지막 제외)
+        if i < n_steps - 1:
+            ax1 = bx + box_w + 0.05
+            ax2 = bx + box_w + arrow_w - 0.05
+            ay  = box_top + box_h / 2
+            shapes.append({"type":"arrow","x1":ax1,"y1":ay,"x2":ax2,"y2":ay,
+                           "color":"#1A1A1A","width":1.5})
+
+    # ── ③ 하단 항목별 상세 (3 or 4 columns + 세로 구분선)
+    if section_title_2:
+        shapes.append({"type":"text","x":margin,"y":4.15,"w":inner_w,"h":0.3,
+                       "text":section_title_2,"size":13,"weight":700,"color":"#1A1A1A",
+                       "align":"left","valign":"middle"})
+
+    n_cols       = len(columns)
+    col_area_top = 4.55
+    col_area_bot = H - 0.25          # 8.02
+    col_w        = inner_w / n_cols
+    if n_cols == 3:
+        key_size, head_size_c, desc_size_c = 30, 12, 10
+    else:  # 4
+        key_size, head_size_c, desc_size_c = 26, 11, 9
+
+    # 세로 구분선 (열 사이 n-1개)
+    for i in range(1, n_cols):
+        dx = margin + i * col_w
+        shapes.append({"type":"line","x1":dx,"y1":col_area_top,
+                       "x2":dx,"y2":col_area_bot,
+                       "color":"#DDDDDD","width":1})
+
+    inner_pad = 0.15
+    for i, col in enumerate(columns):
+        cx = margin + i * col_w + inner_pad
+        cw = col_w - 2 * inner_pad
+        cy = col_area_top
+        # key (대형 보라 — 아이템 성격이라 role 마킹 X, 직접 hex 지정)
+        shapes.append({"type":"text","x":cx,"y":cy,"w":cw,"h":0.65,
+                       "text":col["key"],"size":key_size,"weight":900,"color":"#6B46E5",
+                       "align":"center","valign":"top"})
+        cy += 0.7
+        if col["key_sub"]:
+            shapes.append({"type":"text","x":cx,"y":cy,"w":cw,"h":0.25,
+                           "text":col["key_sub"],"size":11,"weight":400,"color":"#666666",
+                           "align":"center","valign":"top"})
+            cy += 0.3
+        if col["lead"]:
+            shapes.append({"type":"text","x":cx,"y":cy,"w":cw,"h":0.45,
+                           "text":col["lead"],"size":11,"weight":400,"color":"#666666",
+                           "align":"center","valign":"top"})
+            cy += 0.5
+        # items (3개 세로 스택)
+        items_top = cy + 0.1
+        items_area = col_area_bot - items_top
+        if items_area < 0.6:
+            items_area = 0.6
+        item_h = items_area / 3
+        for j, it in enumerate(col["items"]):
+            iy = items_top + j * item_h
+            # head (앞에 "· " bullet inline — 별도 shape 없음)
+            head_text = "· " + it["head"]
+            shapes.append({"type":"text","x":cx,"y":iy,"w":cw,"h":0.3,
+                           "text":head_text,"size":head_size_c,"weight":700,
+                           "color":"#1A1A1A","align":"left","valign":"top"})
+            if it["desc"]:
+                d_top = iy + 0.3
+                d_h   = item_h - 0.32
+                if d_h < 0.2:
+                    d_h = 0.2
+                shapes.append({"type":"text","x":cx + 0.15,"y":d_top,
+                               "w":cw - 0.15,"h":d_h,
+                               "text":it["desc"],"size":desc_size_c,"weight":400,
+                               "color":"#666666","align":"left","valign":"top"})
+    return shapes
+
+
 def generate_from_shape_json(json_data, output_path, *, theme="light"):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -4622,6 +4846,18 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
             # ★ 본 spec 단계: 코드 + dispatch 만 등록 — SLIDE 프롬프트·화이트리스트 미연결.
             try:
                 preset_shapes = _build_preset_hero_detail(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "flow_detail":
+            # Spec Preset-New-FlowDetail — 상단 거버닝 + 중단 가로 흐름 4~5단계
+            # + 하단 3~4열 상세(각 열 items 3개). 고밀도 레이아웃.
+            # ★ 본 spec 단계: 코드 + dispatch 만 등록 — SLIDE 프롬프트·화이트리스트 미연결.
+            try:
+                preset_shapes = _build_preset_flow_detail(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

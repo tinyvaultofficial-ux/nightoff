@@ -5205,11 +5205,14 @@ input.locked-by-env::placeholder {
 .rfp-checklist-more-toggle {
   cursor: pointer;
   list-style: none;   /* 기본 삼각형 마커 제거 (Firefox) */
-  padding: 8px 10px;
+  display: block;             /* 전체 폭 chip — 클릭 영역 최대화 */
+  padding: 10px 14px;         /* 8/10 → 10/14 로 여유 (버튼 hit-target) */
   color: var(--primary);
   font-size: 13px; font-weight: 600;
+  text-align: center;         /* chip 관행 — 가운데 정렬 */
+  background: var(--primary-soft);  /* 평소 상태에서도 배경 노출 → 클릭 유도 */
   border-radius: 8px;
-  transition: background .15s ease;
+  transition: background .15s ease, color .15s ease;
   user-select: none;
 }
 .rfp-checklist-more-toggle::-webkit-details-marker { display: none; }  /* Safari/Chrome */
@@ -5222,7 +5225,10 @@ input.locked-by-env::placeholder {
   content: "▾ ";
 }
 .rfp-checklist-more-toggle:hover {
-  background: var(--primary-soft);
+  /* 기본이 --primary-soft(#EDE7FF) 이므로 한 단계 진한 톤으로 대비.
+     하드코딩 hex — 팔레트에 딱 맞는 중간 톤이 없음 (soft #EDE7FF ↔ primary #6B46E5 사이). */
+  background: #DCCCFF;
+  color: var(--primary-hover);
 }
 .rfp-checklist-hint {
   margin: 8px 2px 0;

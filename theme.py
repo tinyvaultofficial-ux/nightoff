@@ -37,7 +37,7 @@ THEMES: dict[str, dict[str, str]] = {
         "LINE":        "#DDDDDD",   # 구분선·테두리 연회색
         "PANEL_FILL":  "#1A1A1A",   # 검정 면 (split/asymmetric 강조 면)
         "PANEL_FG":    "#FFFFFF",   # 검정 면 위 흰 글씨
-        "ACCENT":      "#1A1A1A",   # 라이트에선 별도 강조색 없음(검정으로 fallback)
+        "ACCENT":      "#A78BFA",   # 브랜드 보라 — 라이트 기본 확정 (거버닝 일괄 적용용)
     },
     "dark": {
         # 다크 테마 = 검정 바탕 + 흰 글씨 + 형광 강조

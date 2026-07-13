@@ -2024,6 +2024,16 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A", the
             # Spec D-Build-ThemeColorMap 1-c — 명시 color 도 다크에서 role 별 매핑(_add_text 내부 _map_color).
             # Spec D-Build-TextRunsRender 1-d-① — text_runs(선택) 그대로 전달, _add_text 가 분기 처리.
             #   text_runs 없는 도형(기존 100%) → _add_text 내부에서 기존 경로로 들어가 비트 단위 무변경.
+            # Spec Governing-Purple — role=="governing" 시 색을 브랜드 accent 로 강제.
+            #   각 preset builder 가 거버닝(메인 제목) 도형에만 "role":"governing" 마킹.
+            #   theme.py 의 ACCENT 토큰 참조 (라이트 #A78BFA / 다크 #A78BFA).
+            #   미마킹 도형(divider 로마·quantitative value·아이템 head 등)은 무영향.
+            #   #A78BFA 는 DARK_MAP 미매핑 → light/dark 모두 그대로 통과 (안전).
+            color_val = str(shape_def.get("color", default_text_color))
+            if shape_def.get("role") == "governing":
+                _accent = _get_theme(theme).get("ACCENT")
+                if _accent:
+                    color_val = _accent
             return _add_text(
                 slide,
                 float(shape_def.get("x", 0)), float(shape_def.get("y", 0)),
@@ -2031,7 +2041,7 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A", the
                 str(shape_def.get("text", "")),
                 size=float(shape_def.get("size", 14)),
                 weight=int(shape_def.get("weight", 400)),
-                color=str(shape_def.get("color", default_text_color)),
+                color=color_val,
                 align=str(shape_def.get("align", "left")),
                 valign=str(shape_def.get("valign", "top")),
                 font_family=shape_def.get("font_family"),
@@ -2437,6 +2447,7 @@ def _build_preset_narrative(slide_data: dict) -> list:
         "text": quote,
         "size": 40, "weight": 700, "color": "#1A1A1A",
         "align": "center", "valign": "middle",
+        "role": "governing",
     })
     # 흐름 설명 (선택 / 최대 3개) — 0.62 간격
     y = 4.1
@@ -2496,6 +2507,7 @@ def _narrative_declaration(slide_data: dict) -> list:
         "text": declaration,
         "size": 44, "weight": 700, "color": "#1A1A1A",
         "align": "center", "valign": "middle",
+        "role": "governing",
     })
     # 근거 (선택 / 최대 3개) — Spec Preset-Fix-Declaration A안:
     #   옅은 테두리 박스 + 왼쪽 정렬 + em-dash 접두 제거 (박스가 구분 역할 대체).
@@ -2536,6 +2548,7 @@ def _narrative_qa(slide_data: dict) -> list:
         "text": "Q. " + question,
         "size": 28, "weight": 700, "color": "#1A1A1A",
         "align": "center", "valign": "middle",
+        "role": "governing",
     }]
     for i, a in enumerate(answers):
         shapes.append({
@@ -2579,6 +2592,7 @@ def _narrative_emphasis(slide_data: dict) -> list:
             "text": highlight,
             "size": 24, "weight": 700, "color": "#1A1A1A",
             "align": "center", "valign": "middle",
+            "role": "governing",
         })
     return shapes
 
@@ -2604,6 +2618,7 @@ def _narrative_contrast(slide_data: dict) -> list:
         "text": but_this,
         "size": 34, "weight": 700, "color": "#1A1A1A",
         "align": "center", "valign": "middle",
+        "role": "governing",
     })
     return shapes
 
@@ -2646,7 +2661,7 @@ def _build_preset_split(slide_data):
         if label:
             out.append({"type":"text","x":x,"y":y,"w":w,"h":0.5,"text":label,"size":13,"weight":700,"color":label_color,"align":"center","valign":"middle"})
             y += 0.7
-        out.append({"type":"text","x":x,"y":y,"w":w,"h":1.2,"text":head,"size":26,"weight":head_weight,"color":head_color,"align":"center","valign":"middle"})
+        out.append({"type":"text","x":x,"y":y,"w":w,"h":1.2,"text":head,"size":26,"weight":head_weight,"color":head_color,"align":"center","valign":"middle","role":"governing"})
         y += 1.7
         for p in pts:
             out.append({"type":"text","x":x,"y":y,"w":w,"h":0.55,"text":p,"size":13,"weight":400,"color":pt_color,"align":"center","valign":"middle"})
@@ -2730,6 +2745,7 @@ def _build_preset_timeline(slide_data):
             "text": title,
             "size": 28, "weight": 800, "color": "#1A1A1A",
             "align": "left", "valign": "top",
+            "role": "governing",
         }
         if isinstance(title_runs_raw, list) and title_runs_raw:
             title_shape["text_runs"] = title_runs_raw
@@ -2829,7 +2845,7 @@ def _build_preset_asymmetric(slide_data):
     if number:
         shapes.append({"type":"text","x":lx,"y":y,"w":lw,"h":1.0,"text":number,"size":54,"weight":800,"color":"#1A1A1A","align":"left","valign":"top"})
         y += 1.3
-    shapes.append({"type":"text","x":lx,"y":y,"w":lw,"h":1.4,"text":head,"size":28,"weight":800,"color":"#1A1A1A","align":"left","valign":"top"})
+    shapes.append({"type":"text","x":lx,"y":y,"w":lw,"h":1.4,"text":head,"size":28,"weight":800,"color":"#1A1A1A","align":"left","valign":"top","role":"governing"})
     y += 1.5
     for p in pts:
         shapes.append({"type":"text","x":lx,"y":y,"w":lw,"h":0.7,"text":p,"size":14,"weight":400,"color":"#444444","align":"left","valign":"top"})
@@ -2888,7 +2904,7 @@ def _build_preset_zigzag(slide_data):
         shapes.append({"type":"text","x":0.9,"y":0.5,"w":9.89,"h":0.4,"text":eyebrow,"size":11,"weight":400,"color":"#BBBBBB","align":"left","valign":"top"})
     top = 1.1
     if title:
-        shapes.append({"type":"text","x":0.9,"y":1.0,"w":10.0,"h":0.9,"text":title,"size":26,"weight":800,"color":"#1A1A1A","align":"left","valign":"top"})
+        shapes.append({"type":"text","x":0.9,"y":1.0,"w":10.0,"h":0.9,"text":title,"size":26,"weight":800,"color":"#1A1A1A","align":"left","valign":"top","role":"governing"})
         top = 2.3
     n = len(items)
     area_top = top + 0.3
@@ -2947,7 +2963,7 @@ def _build_preset_hsplit(slide_data):
     shapes.append({"type":"rect","x":img_x,"y":img_top,"w":img_w,"h":img_h,"fill":"#F5F5F5","stroke":"#DDDDDD","stroke_width":1})
     shapes.append({"type":"text","x":img_x,"y":img_top + img_h/2 - 0.2,"w":img_w,"h":0.4,"text":caption,"size":12,"weight":400,"color":"#BBBBBB","align":"center","valign":"middle"})
     txt_top = img_top + img_h + 0.5
-    shapes.append({"type":"text","x":img_x,"y":txt_top,"w":img_w,"h":0.8,"text":head,"size":26,"weight":800,"color":"#1A1A1A","align":"left","valign":"top"})
+    shapes.append({"type":"text","x":img_x,"y":txt_top,"w":img_w,"h":0.8,"text":head,"size":26,"weight":800,"color":"#1A1A1A","align":"left","valign":"top","role":"governing"})
     if desc:
         shapes.append({"type":"text","x":img_x,"y":txt_top + 0.9,"w":img_w,"h":0.9,"text":desc,"size":14,"weight":400,"color":"#444444","align":"left","valign":"top"})
     return shapes
@@ -2996,7 +3012,7 @@ def _build_preset_circles(slide_data):
     #    timeline _build_governing_block L2691-2701 패턴 정합: title_runs list 면 text_runs 키로 박음.
     #    accent 세그먼트는 _add_text(L1679)가 dark 에서 #FFFF00 자동 처리 → 본 함수 추가 코드 X.
     if title:
-        title_shape = {"type":"text","x":0,"y":1.05,"w":11.69,"h":1.2,"text":title,"size":28,"weight":800,"color":"#FEFEFE","align":"center","valign":"top"}
+        title_shape = {"type":"text","x":0,"y":1.05,"w":11.69,"h":1.2,"text":title,"size":28,"weight":800,"color":"#FEFEFE","align":"center","valign":"top","role":"governing"}
         title_runs_raw = slide_data.get("title_runs")
         if isinstance(title_runs_raw, list) and title_runs_raw:
             title_shape["text_runs"] = title_runs_raw
@@ -3075,7 +3091,8 @@ def _build_preset_triad(slide_data):
                        "text":eyebrow,"size":11,"weight":400,"color":"#BBBBBB","align":"left","valign":"top"})
     if title:
         t = {"type":"text","x":0.5,"y":2.2,"w":gov_w,"h":3.0,
-             "text":title,"size":28,"weight":800,"color":"#1A1A1A","align":"left","valign":"top"}
+             "text":title,"size":28,"weight":800,"color":"#1A1A1A","align":"left","valign":"top",
+             "role":"governing"}
         tr = slide_data.get("title_runs")
         if isinstance(tr, list) and tr:
             t["text_runs"] = tr
@@ -3165,7 +3182,8 @@ def _build_preset_strategy_map(slide_data):
                        "align":"center","valign":"top"})
     t = {"type":"text","x":margin,"y":0.9,"w":usable,"h":0.9,
          "text":title,"size":28,"weight":800,"color":"#1A1A1A",
-         "align":"center","valign":"top"}
+         "align":"center","valign":"top",
+         "role":"governing"}
     tr = slide_data.get("title_runs")
     if isinstance(tr, list) and tr:
         t["text_runs"] = tr
@@ -3299,7 +3317,7 @@ def _build_preset_hero_cards(slide_data):
     #   timeline _build_governing_block L2691-2701 패턴: title_runs list → text_runs 키.
     #   accent 세그먼트는 _add_text L1679 분기에서 dark 시 #FFFF00 자동 처리 → 추가 코드 X.
     if title:
-        title_shape = {"type":"text","x":0,"y":1.0,"w":11.69,"h":1.0,"text":title,"size":28,"weight":800,"color":"#FEFEFE","align":"center","valign":"middle"}
+        title_shape = {"type":"text","x":0,"y":1.0,"w":11.69,"h":1.0,"text":title,"size":28,"weight":800,"color":"#FEFEFE","align":"center","valign":"middle","role":"governing"}
         title_runs_raw = slide_data.get("title_runs")
         if isinstance(title_runs_raw, list) and title_runs_raw:
             title_shape["text_runs"] = title_runs_raw
@@ -3443,6 +3461,7 @@ def _build_preset_hsplit_top(slide_data):
         "text": title,
         "size": 28, "weight": 800, "color": "#FFFFFF",
         "align": "center", "valign": "middle",
+        "role": "governing",
     })
 
     # ④ 메인 거버닝 2줄 (형광 키워드, 선택, #FFFF00 직접 — text_runs 안 씀, theme 우회)

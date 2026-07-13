@@ -4980,14 +4980,34 @@ async function renderRfpSection(cid) {
       ]));
     }
 
-    // 우: 주요 요구사항 체크리스트
+    // 우: 주요 요구사항 체크리스트 — 상한 없이 뽑히므로 20개 이상도 흔함.
+    //   상위 3개는 항상 노출, 4번째부터는 <details> 로 접어 "+N개 더보기".
+    //   ★ <ul> 안에 <details> 를 넣지 않는다 (HTML 표준 위반) —
+    //   <details> 는 .rfp-checklist-wrap 안에 <ul> 과 형제로 배치.
+    //   3개 이하면 접을 게 없으니 기존 그대로 (분기 유지, 회귀 X).
     if (a.key_requirements?.length) {
-      const checklist = h("ul", { class: "rfp-checklist" },
-        a.key_requirements.map((r) => h("li", {}, r)));
-      middleGrid.appendChild(h("div", { class: "rfp-checklist-wrap" }, [
-        h("p", { class: "rfp-radar-title" }, `✅ 주요 요구사항 (${a.key_requirements.length}개)`),
-        checklist,
-      ]));
+      const VISIBLE = 3;
+      const all = a.key_requirements;
+      const visible = all.slice(0, VISIBLE);
+      const hidden = all.slice(VISIBLE);
+      const wrapChildren = [
+        h("p", { class: "rfp-radar-title" }, `✅ 주요 요구사항 (${all.length}개)`),
+        h("ul", { class: "rfp-checklist" },
+          visible.map((r) => h("li", {}, r))),
+      ];
+      if (hidden.length) {
+        wrapChildren.push(
+          h("details", { class: "rfp-checklist-more" }, [
+            h("summary", { class: "rfp-checklist-more-toggle" },
+              `+ ${hidden.length}개 더보기`),
+            h("ul", { class: "rfp-checklist" },
+              hidden.map((r) => h("li", {}, r))),
+          ]),
+          h("p", { class: "rfp-checklist-hint" },
+            "빠짐없이 확인해야 할 항목이에요. 클릭해서 모두 확인하세요"),
+        );
+      }
+      middleGrid.appendChild(h("div", { class: "rfp-checklist-wrap" }, wrapChildren));
     } else {
       middleGrid.appendChild(h("div", { class: "rfp-checklist-wrap" }, [
         h("p", { class: "rfp-radar-title" }, "✅ 주요 요구사항"),

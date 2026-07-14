@@ -4393,16 +4393,31 @@ async def generate_one_slide(
                     )
                     html_text = ""
             # Spec D-Fix-NarrativeRaw / D-Build-PresetSplit / D-Build-PresetTimeline /
-            # D-Build-PresetAsymmetric / D-Build-PresetZigzag —
-            # text_*/split/timeline/asymmetric/zigzag SLIDE LLM raw 추적 (read-only / 동작 무변경).
-            # Railway 로그 "D-Fix-NarrativeRaw" 검색 시:
-            # text_* → preset/style / split → left/right.head / timeline → steps_n /
-            # asymmetric → head_present / zigzag → items_n 채움 여부. 그 외는 분기 미진입.
+            # D-Build-PresetAsymmetric / D-Build-PresetZigzag /
+            # Spec D-Fix-NarrativeRaw-Expand —
+            # SLIDE LLM raw 응답 추적 (read-only / 생성 로직 무변경 / 로그만 확장).
+            # Railway 로그 "D-Fix-NarrativeRaw" 검색 시 preset 별 스키마 유무 진단 가능:
+            #   text_* → preset/style          split → left/right.head
+            #   timeline → steps_n              asymmetric/hsplit_top → head_present
+            #   zigzag/circles/quad/hero_cards/triad/hero_detail/conclusion_cards
+            #     /numbered_columns/quad_detail → items_n
+            #   flow_detail → columns_n + steps_n
+            #   strategy_map → pillars_n + steps_n
+            #   fullbleed_overlay → points_n
+            #   신규 프리셋 (conclusion_cards/numbered_columns/hero_detail) → conclusion_present
+            # ★ 커버 대상 = 화이트리스트(_VIZ_PATTERN_SAFE) 통과할 수 있는 프리셋 전량.
+            #   text_* 는 prefix 매치 유지, 그 외 15종은 frozenset 조회.
+            _RAW_LOG_TRACKED = frozenset({
+                # 기존 커버 (or 체인 그대로)
+                "split", "timeline", "asymmetric", "zigzag", "hsplit", "circles", "quad",
+                # 기존 등록됐으나 로그 미커버 (하위 4종)
+                "hsplit_top", "hero_cards", "triad", "strategy_map",
+                # 신규 6종 (Preset-Connect-* 시리즈 등록 시 로그 필터 확장 누락됐던 것)
+                "conclusion_cards", "numbered_columns", "hero_detail",
+                "flow_detail", "quad_detail", "fullbleed_overlay",
+            })
             _vp_raw = str(getattr(item, "viz_pattern", ""))
-            if (_vp_raw.startswith("text_") or _vp_raw == "split"
-                    or _vp_raw == "timeline" or _vp_raw == "asymmetric"
-                    or _vp_raw == "zigzag" or _vp_raw == "hsplit"
-                    or _vp_raw == "circles" or _vp_raw == "quad"):
+            if _vp_raw.startswith("text_") or _vp_raw in _RAW_LOG_TRACKED:
                 _left_obj = parsed.get("left") if isinstance(parsed.get("left"), dict) else {}
                 _right_obj = parsed.get("right") if isinstance(parsed.get("right"), dict) else {}
                 _left_head = str(_left_obj.get("head", "")).strip() if _left_obj else ""
@@ -4410,9 +4425,15 @@ async def generate_one_slide(
                 _steps_n = len(parsed.get("steps") or []) if isinstance(parsed.get("steps"), list) else 0
                 _head_present = bool(str(parsed.get("head", "")).strip())
                 _items_n = len(parsed.get("items") or []) if isinstance(parsed.get("items"), list) else 0
+                # Spec D-Fix-NarrativeRaw-Expand — 신규 프리셋 진단 필드 추가.
+                _columns_n = len(parsed.get("columns") or []) if isinstance(parsed.get("columns"), list) else 0
+                _points_n = len(parsed.get("points") or []) if isinstance(parsed.get("points"), list) else 0
+                _pillars_n = len(parsed.get("pillars") or []) if isinstance(parsed.get("pillars"), list) else 0
+                _conclusion_present = bool(str(parsed.get("conclusion", "")).strip())
                 log.warning(
                     "D-Fix-NarrativeRaw p%s viz=%s preset=%s style=%s shapes_n=%s "
-                    "left_head=%s right_head=%s steps_n=%s head_present=%s items_n=%s raw=%s",
+                    "left_head=%s right_head=%s steps_n=%s head_present=%s items_n=%s "
+                    "columns_n=%s points_n=%s pillars_n=%s conclusion_present=%s raw=%s",
                     item.page,
                     item.viz_pattern,
                     parsed.get("preset", "none"),
@@ -4423,6 +4444,10 @@ async def generate_one_slide(
                     _steps_n,
                     _head_present,
                     _items_n,
+                    _columns_n,
+                    _points_n,
+                    _pillars_n,
+                    _conclusion_present,
                     (raw or "").replace("\n", " ")[:2000],
                 )
             # Spec D-Build-PresetBelt — parsed 의 shapes/section 외 키(preset/style/left/right/

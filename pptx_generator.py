@@ -3886,7 +3886,11 @@ def _build_preset_conclusion_cards(slide_data):
             "tag": str(it.get("tag", "")).strip(),
             "desc": str(it.get("desc", "")).strip(),
         })
-    if len(items) != 3:
+    # ★ Spec Preset-Loosen-Count — 정확 3 강제 폐지. 초과 잘라내고 최소 1개면 렌더.
+    #   기존 성공 프리셋(timeline/circles/asymmetric)의 관대함 준수 (Law 1).
+    if len(items) > 3:
+        items = items[:3]
+    if not items:
         return []
     conclusion = str(slide_data.get("conclusion", "")).strip()
     if not conclusion:
@@ -3922,10 +3926,12 @@ def _build_preset_conclusion_cards(slide_data):
                        "align":"center","valign":"middle",
                        "role":"governing"})
 
-    # ── ② 중단 3열 카드 (정확히 3, 균등 분배)
+    # ── ② 중단 N열 카드 (1~3, 균등 분배 — Spec Preset-Loosen-Count)
+    #   n=1: card_w ≈ 9.89 (전폭)  n=2: card_w ≈ 4.795  n=3: card_w ≈ 3.097
+    n = len(items)
     margin  = 0.9
     gap     = 0.3
-    card_w  = (W - 2 * margin - 2 * gap) / 3   # ≈ 3.097
+    card_w  = (W - 2 * margin - (n - 1) * gap) / n
     card_top = 2.4
     label_h  = 0.5
     head_top = card_top + label_h + 0.05        # 2.95
@@ -4032,7 +4038,10 @@ def _build_preset_numbered_columns(slide_data):
             "head": head,
             "desc": str(it.get("desc", "")).strip(),
         })
-    if len(items) not in (3, 4):
+    # ★ Spec Preset-Loosen-Count — (3,4) 강제 폐지. 초과 잘라내고 최소 2개면 렌더 (1열은 무의미).
+    if len(items) > 4:
+        items = items[:4]
+    if len(items) < 2:
         return []
     conclusion = str(slide_data.get("conclusion", "")).strip()
     if not conclusion:
@@ -4071,16 +4080,25 @@ def _build_preset_numbered_columns(slide_data):
                        "align":"center","valign":"middle",
                        "role":"governing"})
 
-    # ── ② 중단 넘버 카드 (n=3 or 4 가변)
+    # ── ② 중단 넘버 카드 (n=2/3/4 가변 — Spec Preset-Loosen-Count)
     n = len(items)
     margin = 0.9
-    gap = 0.3 if n == 3 else 0.25
+    if n == 2:
+        gap = 0.4
+    elif n == 3:
+        gap = 0.3
+    else:  # n == 4
+        gap = 0.25
     card_w = (W - 2 * margin - (n - 1) * gap) / n
     card_top = 2.6
     card_h   = 3.5
 
-    # n 별 파라미터 — 4열은 폭이 좁아 숫자/헤드 축소
-    if n == 3:
+    # n 별 파라미터 — 열이 적을수록 숫자/헤드 크게, 많을수록 축소
+    if n == 2:
+        num_size = 150   # 카드 폭 넓으니 배경 숫자도 크게
+        content_x_off = 1.2
+        head_size = 20
+    elif n == 3:
         num_size = 120
         content_x_off = 0.9
         head_size = 17
@@ -4183,7 +4201,11 @@ def _build_preset_hero_detail(slide_data):
             "head": head,
             "desc": str(it.get("desc", "")).strip(),
         })
-    if len(items) != 3:
+    # ★ Spec Preset-Loosen-Count — 정확 3 강제 폐지. 최대 3개까지 잘라내고 최소 1개면 렌더.
+    #   원문자 배열 _HERO_DETAIL_CIRCLED 가 3개라 그 이상은 인덱스 오버 방지 겸 자름.
+    if len(items) > 3:
+        items = items[:3]
+    if not items:
         return []
     conclusion = str(slide_data.get("conclusion", "")).strip()
     if not conclusion:
@@ -4278,10 +4300,10 @@ def _build_preset_hero_detail(slide_data):
                        "text":section_sub,"size":11,"weight":400,"color":"#666666",
                        "align":"center","valign":"middle"})
         ry += 0.35
-    # 번호 항목 3개 (미니 이미지 + 원문자 head + desc)
+    # 번호 항목 N개 (미니 이미지 + 원문자 head + desc) — Spec Preset-Loosen-Count 로 1~3 가변
     items_top = ry + 0.1
     items_bot = mid_top + mid_h
-    item_h    = (items_bot - items_top) / 3
+    item_h    = (items_bot - items_top) / max(1, len(items))
     mi_w = 0.9
     for i, it in enumerate(items):
         iy = items_top + i * item_h
@@ -4372,10 +4394,13 @@ def _build_preset_flow_detail(slide_data):
             "kr":   kr,
             "desc": str(s.get("desc", "")).strip(),
         })
-    if len(steps) not in (4, 5):
+    # ★ Spec Preset-Loosen-Count — 정확 (4,5) 강제 폐지. 최대 5개 잘라내고 최소 3개면 렌더.
+    if len(steps) > 5:
+        steps = steps[:5]
+    if len(steps) < 3:
         return []
 
-    # columns 정규화 (3~4개, 각 key 필수 + items 정확 3개 필수)
+    # columns 정규화 (2~4개, 각 key 필수 + items 0~3개 허용 — Spec Preset-Loosen-Count)
     columns_raw = slide_data.get("columns") or []
     if not isinstance(columns_raw, list):
         return []
@@ -4388,7 +4413,7 @@ def _build_preset_flow_detail(slide_data):
             continue
         items_raw = col.get("items") or []
         if not isinstance(items_raw, list):
-            continue
+            items_raw = []
         col_items = []
         for it in items_raw:
             if not isinstance(it, dict):
@@ -4400,15 +4425,18 @@ def _build_preset_flow_detail(slide_data):
                 "head": head,
                 "desc": str(it.get("desc", "")).strip(),
             })
-        if len(col_items) != 3:
-            continue   # 이 column 은 유효 X — 최종 columns 카운트 검사에서 걸림
+        # ★ items 정확 3 강제 폐지 — 초과 잘라내고 0~3 모두 허용 (key/lead 만 있어도 유효 column).
+        if len(col_items) > 3:
+            col_items = col_items[:3]
         columns.append({
             "key":     key,
             "key_sub": str(col.get("key_sub", "")).strip(),
             "lead":    str(col.get("lead", "")).strip(),
             "items":   col_items,
         })
-    if len(columns) not in (3, 4):
+    if len(columns) > 4:
+        columns = columns[:4]
+    if len(columns) < 2:
         return []
 
     subtitle        = str(slide_data.get("subtitle", "")).strip()
@@ -4447,7 +4475,10 @@ def _build_preset_flow_detail(slide_data):
     box_w   = (inner_w - (n_steps - 1) * arrow_w) / n_steps
     box_top = 2.35
     box_h   = 1.55
-    if n_steps == 4:
+    # ★ Spec Preset-Loosen-Count — n_steps=3 파라미터 추가 (박스 폭 넓으니 폰트 확대)
+    if n_steps == 3:
+        kr_size, en_size, desc_size_s = 18, 11, 11
+    elif n_steps == 4:
         kr_size, en_size, desc_size_s = 16, 10, 10
     else:  # 5
         kr_size, en_size, desc_size_s = 14, 9, 9
@@ -4497,7 +4528,10 @@ def _build_preset_flow_detail(slide_data):
     col_area_top = 4.55
     col_area_bot = H - 0.25          # 8.02
     col_w        = inner_w / n_cols
-    if n_cols == 3:
+    # ★ Spec Preset-Loosen-Count — n_cols=2 파라미터 추가 (열 폭 넓으니 key 대형화)
+    if n_cols == 2:
+        key_size, head_size_c, desc_size_c = 36, 14, 11
+    elif n_cols == 3:
         key_size, head_size_c, desc_size_c = 30, 12, 10
     else:  # 4
         key_size, head_size_c, desc_size_c = 26, 11, 9
@@ -4529,12 +4563,15 @@ def _build_preset_flow_detail(slide_data):
                            "text":col["lead"],"size":11,"weight":400,"color":"#666666",
                            "align":"center","valign":"top"})
             cy += 0.5
-        # items (3개 세로 스택)
+        # items (0~3개 세로 스택 — Spec Preset-Loosen-Count 로 개수 가변)
+        n_items_col = len(col["items"])
+        if n_items_col == 0:
+            continue    # 이 column 은 key/key_sub/lead 만 표시 (items 없어도 유효)
         items_top = cy + 0.1
         items_area = col_area_bot - items_top
         if items_area < 0.6:
             items_area = 0.6
-        item_h = items_area / 3
+        item_h = items_area / n_items_col
         for j, it in enumerate(col["items"]):
             iy = items_top + j * item_h
             # head (앞에 "· " bullet inline — 별도 shape 없음)
@@ -4596,7 +4633,11 @@ def _build_preset_quad_detail(slide_data):
             pts_raw = []
         points = [str(p).strip() for p in pts_raw if str(p).strip()][:3]
         items.append({"head": head, "points": points})
-    if len(items) != 4:
+    # ★ Spec Preset-Loosen-Count — 정확 4 강제 폐지. 최대 4개 잘라내고 최소 2개면 렌더.
+    #   n=2 → 1행 2블록(전 높이), n=3 → 1행 3블록(전 높이), n=4 → 2x2(기존).
+    if len(items) > 4:
+        items = items[:4]
+    if len(items) < 2:
         return []
 
     badge    = str(slide_data.get("badge", "")).strip()
@@ -4632,24 +4673,44 @@ def _build_preset_quad_detail(slide_data):
                    "role":"governing"})
     top_end = title_y + 0.85
 
-    # ── ② 2×2 그리드
+    # ── ② 그리드 (n=2 1행, n=3 1행, n=4 2×2 — Spec Preset-Loosen-Count)
+    n = len(items)
     grid_top = top_end + 0.15         # 최소 여유
     if grid_top < 2.1:
         grid_top = 2.1
     grid_bot = H - 0.25
     grid_h   = grid_bot - grid_top     # 세로 총 폭
     gap = 0.3
-    block_w = (W - 2 * margin - gap) / 2
-    block_h = (grid_h - gap) / 2
+    inner_w = W - 2 * margin
     header_h = 0.5
 
-    # 블록 좌표 (좌상 · 우상 · 좌하 · 우하)
-    positions = [
-        (margin,              grid_top),                # 좌상
-        (margin + block_w + gap, grid_top),             # 우상
-        (margin,              grid_top + block_h + gap),# 좌하
-        (margin + block_w + gap, grid_top + block_h + gap),  # 우하
-    ]
+    if n == 2:
+        # 1행 2블록 (전 높이) — 각 블록 폭 넓게, 이미지 자리도 크게
+        block_w = (inner_w - gap) / 2
+        block_h = grid_h
+        positions = [
+            (margin, grid_top),
+            (margin + block_w + gap, grid_top),
+        ]
+    elif n == 3:
+        # 1행 3블록 (전 높이) — triad 처럼 3열 가로 나열
+        block_w = (inner_w - 2 * gap) / 3
+        block_h = grid_h
+        positions = [
+            (margin, grid_top),
+            (margin + block_w + gap, grid_top),
+            (margin + 2 * (block_w + gap), grid_top),
+        ]
+    else:  # n == 4
+        block_w = (inner_w - gap) / 2
+        block_h = (grid_h - gap) / 2
+        # 블록 좌표 (좌상 · 우상 · 좌하 · 우하)
+        positions = [
+            (margin,              grid_top),                # 좌상
+            (margin + block_w + gap, grid_top),             # 우상
+            (margin,              grid_top + block_h + gap),# 좌하
+            (margin + block_w + gap, grid_top + block_h + gap),  # 우하
+        ]
 
     for i, it in enumerate(items):
         bx, by = positions[i]
@@ -4721,7 +4782,10 @@ def _build_preset_fullbleed_overlay(slide_data):
     if not isinstance(points_raw, list):
         return []
     points = [str(p).strip() for p in points_raw if str(p).strip()]
-    if len(points) not in (2, 3, 4):
+    # ★ Spec Preset-Loosen-Count — 정확 (2,3,4) 강제 폐지. 최대 4개 잘라내고 최소 1개면 렌더.
+    if len(points) > 4:
+        points = points[:4]
+    if not points:
         return []
 
     badge       = str(slide_data.get("badge", "")).strip()

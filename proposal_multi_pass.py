@@ -3779,59 +3779,53 @@ def _build_slide_user_prompt(
                 '"text":"3대 원칙 → 지속 자산 전환","size":11,"weight":400,"color":"#666"}]}'
             )
         elif item.viz_pattern == "hero_detail":
-            # Spec Preset-Connect-5-Remaining — 헤더 + 좌 대형 이미지 + 우 번호 항목 3 + 하단 결론.
-            # 좌표·이미지 placeholder·원문자 번호는 _build_preset_hero_detail 이 자동 배치.
-            # 함수 하드 조건: items 정확히 3개(각 head 필수) + conclusion 필수 — 미충족 시 preset 무효 반환.
+            # Spec Hero-Detail-Prompt-Diet — LLM 요구 선택 필드 9→3 압축.
+            # 이전 프롬프트는 badge/number/index/subtitle/title/section_title/section_sub/
+            # conclusion_lead + desc 9종 제각각이라 LLM 이 감당 못 하고 백업 shapes 만
+            # 만드는 회피 경로 → viz 2 → preset 0 실패. 성공 프리셋(conclusion_cards/
+            # numbered_columns/process) 처럼 items 반복형으로 단순화.
+            # ★ 함수(_build_preset_hero_detail) 무변경 — 9개 다 받되 LLM 에게는 3개만
+            #   요구. 대표님이 후속 spec 으로 더 확장하고 싶으면 프롬프트에 다시 언급.
+            # 함수 완화 후 조건: items 1~3개(각 head 필수) + conclusion 필수. 미충족 시 무효.
             parts.append(
-                "[배정된 레이아웃 패턴] hero_detail (헤더 + 좌 대형 이미지 + 우 번호항목 3 + 하단 결론)\n"
-                "★ 용도: 하나의 핵심 대상(공간·시설·컨셉)을 이미지로 보여주며 그 세부 요소 3가지를 짚는 페이지.\n"
-                "  예: 메인 광장 소개 + 3대 구성 요소, 핵심 시설 + 3가지 기능, 컨셉 조감 + 3가지 실현 방식.\n"
-                "★ ★ 이미지 영역이 큼 (좌측 6.0인치) — 실제 이미지(조감도·렌더링·시설사진)를 넣을 수\n"
-                "  있는 페이지에만. 이미지 없는 페이지에 박으면 회색 placeholder 가 좌측 절반을 차지해 어색.\n"
+                "[배정된 레이아웃 패턴] hero_detail (좌 대형 이미지 + 우 번호항목 1~3 + 하단 결론)\n"
+                "★ 용도: 하나의 핵심 대상(공간·시설·컨셉)을 이미지로 보여주며 세부 요소 1~3개를 짚는 페이지.\n"
+                "  예: 메인 광장 + 3대 구성 요소, 핵심 시설 + 3가지 기능, 컨셉 조감 + 3가지 실현 방식.\n"
+                "★ 좌측 이미지 영역이 큼 (6.0인치) — 실제 이미지(조감도·렌더링·시설사진)를 넣을 수\n"
+                "  있는 페이지에만.\n"
                 "\n"
                 "★ 다른 패턴과 구분:\n"
-                "  · 여러 대상 비교 → split / triad (hero_detail 은 하나의 대상을 파고듦)\n"
-                "  · 4개 시설 각각 이미지 → quad_detail (hero_detail 은 1개 대상 + 3개 세부)\n"
                 "  · 이미지 자리 필요 없음 → numbered_columns / conclusion_cards\n"
+                "  · 4개 시설 각각 이미지 → quad_detail (hero_detail 은 1개 대상 + 세부)\n"
+                "  · 여러 대상 비교 → split / triad\n"
                 "\n"
                 "★ slide JSON 출력에 반드시 다음 키 포함:\n"
                 '  · "preset": "hero_detail"  (필수)\n'
-                '  · "items": [정확히 3개]  (필수 — 3개 아니면 preset 무효 처리됨)\n'
+                '  · "items": [1~3개]  (필수 — 없으면 preset 무효 처리됨)\n'
                 '      각 item = {"head": 세부 요소명(필수, 8~15자, 원문자 ①②③ 자동 부착),\n'
                 '                 "desc": 설명(선택, 30~50자)}\n'
                 '  · "conclusion": 하단 결론 문장  (필수 — 없으면 preset 무효 처리됨. 25~40자)\n'
-                '  · "title" (선택) — 헤더 안 큰 거버닝 (outline 의 governing_main, 25~40자)\n'
-                '                     ★ role:"governing" 자동 부착 — theme 별 accent 색 자동 적용\n'
-                '  · "number" (선택) — 헤더 좌측 초대형 숫자 (예 "01", 두 자리까지 정합, 72pt 자동 렌더)\n'
-                '  · "badge" (선택) — 헤더 좌측 브랜드 보라 배지 (5~10자, 줄바꿈 \\n 가능)\n'
-                '  · "index" (선택) — 헤더 우측 상단 인덱스 (예 "Ⅲ-1")\n'
-                '  · "subtitle" (선택) — 헤더 우측 subtitle (12~20자)\n'
-                '  · "section_title" (선택) — 우측 항목 위 소제목 (예 "구성 요소")\n'
-                '  · "section_sub" (선택) — section_title 아래 부제 (예 "3대 세부 영역")\n'
-                '  · "conclusion_lead" (선택) — 결론 상단 리드 문장 (15~25자)\n'
+                '  · "title" (선택, 강력 권장) — 헤더 큰 거버닝 (outline governing_main, 25~40자)\n'
+                '                     ★ role:"governing" 자동 부착 — theme 별 accent 색 자동\n'
+                '  · "subtitle" (선택) — 헤더 부제 (12~20자)\n'
+                '  · "badge" (선택) — 헤더 좌측 알약 배지 (5~10자)\n'
                 "  → 좌표·이미지 placeholder·원문자 번호·색은 코드가 자동 — 신경 쓰지 말 것.\n"
                 "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
                 "    절대 금지: rect / 박스 / 이미지 / 색면 / 그 외 모든 shape(type='text' 외).\n"
-                "    검정 헤더·좌측 이미지 자리·우측 미니 이미지 3개는 코드가 자동으로 그린다.\n"
-                "    shapes 에 rect 를 넣으면 preset 의 이미지 자리를 덮어 회귀한다.\n"
+                "    검정 헤더·좌측 이미지 자리·우측 미니 이미지는 코드가 자동으로 그린다.\n"
                 "    백업으로 넣을 것 (text 만, 3~4개): 페이지 제목 + 각 item head 요약 + 결론 요약.\n"
                 "  ★ preset='hero_detail' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
                 "\n"
                 "★ 완성 예시 (이 구조 그대로 따라):\n"
                 '{"preset":"hero_detail",'
-                '"badge":"핵심\\n공간",'
-                '"number":"01",'
-                '"index":"Ⅲ-1",'
-                '"subtitle":"주 무대와 관객 동선",'
+                '"badge":"핵심 공간",'
                 '"title":"메인 광장은 축제의 심장이자 관객 여정의 시작점",'
-                '"section_title":"구성 요소",'
-                '"section_sub":"3대 세부 영역",'
+                '"subtitle":"주 무대와 관객 동선",'
                 '"items":['
                 '{"head":"주 무대","desc":"1일 5시간 x 2일 공연 프로그램의 중심 스테이지"},'
                 '{"head":"관객존","desc":"체류형 라운지 + 참여 부스로 몰입 지점 확보"},'
                 '{"head":"운영 동선","desc":"진입 - 체험 - 퇴장을 이어주는 통합 흐름"}'
                 '],'
-                '"conclusion_lead":"공간이 만들어내는 경험",'
                 '"conclusion":"관객이 다시 찾고 싶은 중심 공간을 완성한다",'
                 '"shapes":[{"type":"text","x":0.9,"y":7.9,"w":10,"h":0.3,'
                 '"text":"메인 광장 + 3대 구성 요소","size":11,"weight":400,"color":"#666"}]}'

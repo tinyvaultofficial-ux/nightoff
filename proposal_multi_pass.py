@@ -3085,6 +3085,51 @@ def _format_quantitative_locks(qlocks: dict | None) -> str:
     return "\n".join(lines)
 
 
+# ─── Spec User-Prompt-Preset-Hint — 마지막 출력 지시에 preset 키 명시 매핑 ────
+# 배경: user prompt 마지막의 "출력 = {...}" 힌트가 이전엔 section/shapes 만 담아,
+#   LLM 이 프롬프트 중간의 [배정된 레이아웃 패턴] preset 지시를 잊고 백업 shapes 만
+#   출력하는 케이스가 다수 (viz > 0 / preset = 0). 진단 결과: hero_detail /
+#   quad_detail / flow_detail / numbered_columns / strategy_map 이 이 경로로 실패.
+# 목적: viz_pattern → preset 이름 매핑을 마지막 힌트에 삽입해 LLM 이 끝까지 잊지
+#   않게 함. 매핑에 없는 viz_pattern 은 preset 키 미삽입 (기존 shapes-only 출력 유지).
+# ★ 매핑 규칙:
+#   · text_quote / text_declaration → "narrative" (name shift — SLIDE elif L3140 정합)
+#   · quant → "quantitative" (D-Fix-Preset1 시대 이름)
+#   · 그 외 dispatch 있는 프리셋 = identity (viz == preset)
+#   · 제외 (도형 dispatch 없음 → preset 키 넣으면 오히려 렌더 오류):
+#     - HTML 트랙용 별칭 4종: 2col, cards3, cards_grid, before_after
+_VIZ_TO_PRESET: dict = {
+    # 텍스트 위계형 → narrative + style (SLIDE elif 가 style 도 함께 채우게 지시)
+    "text_quote":         "narrative",
+    "text_declaration":   "narrative",
+    # 옛 D-Fix-Preset1~2 (dispatch 있음, SLIDE elif 는 else fallback / autonomous)
+    "quant":              "quantitative",
+    "process":            "process",
+    # dispatch + SLIDE elif 둘 다 있는 기존 프리셋 (identity)
+    "split":              "split",
+    "timeline":           "timeline",
+    "asymmetric":         "asymmetric",
+    "zigzag":             "zigzag",
+    "hsplit":             "hsplit",
+    "circles":            "circles",
+    "hsplit_top":         "hsplit_top",
+    "quad":               "quad",
+    "hero_cards":         "hero_cards",
+    "triad":              "triad",
+    "strategy_map":       "strategy_map",
+    # 신규 6종 (identity)
+    "conclusion_cards":   "conclusion_cards",
+    "numbered_columns":   "numbered_columns",
+    "hero_detail":        "hero_detail",
+    "flow_detail":        "flow_detail",
+    "quad_detail":        "quad_detail",
+    "fullbleed_overlay":  "fullbleed_overlay",
+    # NOT included (의도 제외):
+    #   2col / cards3 / cards_grid / before_after — HTML 트랙 전용, 도형 dispatch 없음.
+    #   이들이 viz_pattern 으로 배정되면 preset 키 없이 shapes-only 로 자율 렌더 → 안전.
+}
+
+
 def _build_slide_user_prompt(
     item: OutlineItem,
     outline_summary: str,
@@ -4062,7 +4107,19 @@ def _build_slide_user_prompt(
         )
     else:
         parts.append("위 정보를 바탕으로 이 한 슬라이드의 도형 JSON 을 출력해라.")
-        parts.append(f"출력 = {{ \"section\": \"{item.section}\", \"shapes\": [...] }}")
+        # Spec User-Prompt-Preset-Hint — viz_pattern 배정 페이지는 마지막 출력 힌트에
+        #   preset 이름을 명시해 LLM 이 [배정된 레이아웃 패턴] 지시를 끝까지 지키게 함.
+        #   매핑에 없는 viz_pattern (특수 페이지 "" / HTML 트랙 별칭 4종) 은 기존대로.
+        _preset_hint = _VIZ_TO_PRESET.get(str(item.viz_pattern or "").strip(), "")
+        if _preset_hint:
+            parts.append(
+                f"출력 = {{ \"preset\": \"{_preset_hint}\", "
+                f"\"section\": \"{item.section}\", "
+                f"... 위 [배정된 레이아웃 패턴] 이 요구한 필수 키 전부 포함 ..., "
+                f"\"shapes\": [...] }}"
+            )
+        else:
+            parts.append(f"출력 = {{ \"section\": \"{item.section}\", \"shapes\": [...] }}")
 
     # Spec D-Build-TextRunsInject (1-d-②v2) — 다크 형광 강조 안내 v2.
     # 1-d-②(7d5e226) 의 두 문제 수정:

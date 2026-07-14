@@ -3682,26 +3682,61 @@ def _build_slide_user_prompt(
                 '"text":"3대 추진 축","size":14,"weight":700,"color":"#1A1A1A"}]}'
             )
         elif item.viz_pattern == "strategy_map":
-            # Spec Preset-Connect-StrategyMap — 상단 박스3 + "+" + 하단 원5 + 화살표 + footer (4단).
-            # 상단/하단 좌표·박스·원·화살표·"+" 모두 _build_preset_strategy_map 가 자동 배치.
-            # circles/triad 패턴 정합 — preset 키 박으라는 지시 + 백업 text 강제.
+            # Spec Strategy-Map-Expand-And-Loosen — SLIDE 프롬프트 확장 + 함수 완화.
+            # 진단: 이전 22줄/1377자 압축 프롬프트가 너무 짧아 LLM 완전 abort
+            # (raw 비어있음, 재시도 4회 모두 실패). conclusion_cards 스타일로 확장.
+            # 함수도 pillars 정확 3 → 2~3, steps 3~6 → 2~6 완화 (pptx_generator.py).
             parts.append(
-                "[비박스 레이아웃 — strategy_map (상단 대전략 박스3 + 하단 실행흐름 원5)]\n"
-                "이 페이지는 preset 키로 렌더한다. 아래 스키마로 출력:\n"
-                '  · "preset": "strategy_map"  (필수 — 누락 시 박스로 회귀)\n'
-                '  · "eyebrow": "상단 라벨" (선택)\n'
-                '  · "title": "상단 메인 거버닝" (필수)\n'
-                '  · "pillars": [{"head":"전략명","desc":"내용","caption":"요약"}, ...] (정확히 3개)\n'
-                '  · "steps": [{"label":"단계명"}, ...] (3~6개, 원 안은 이미지 자리)\n'
-                '  · "footer": "하단 마무리 메시지" (선택)\n'
-                "★ pillars는 반드시 3개, steps는 3~6개. 원 안엔 텍스트 넣지 마라(이미지 자리).\n"
-                "★ 완성 예시:\n"
-                '{"preset":"strategy_map","title":"3대 전략으로 실행 체계 가동",'
-                '"pillars":[{"head":"감각 트리거","desc":"단계별 오감 자극","caption":"연령별 체험"},'
-                '{"head":"관객 참여","desc":"양방향 능동 참여","caption":"실시간 큐레이션"},'
-                '{"head":"지속 관계","desc":"아카이브 사후 연계","caption":"후속 시리즈"}],'
+                "[배정된 레이아웃 패턴] strategy_map (상단 대전략 박스 2~3 + 하단 실행흐름 원 2~6)\n"
+                "★ 용도: \"이 전략 축들을, 이 단계로 실행한다\" 는 페이지.\n"
+                "  상단 = 2~3개 대전략 축(pillars), 하단 = 그 축들을 실행하는 순차 단계(steps).\n"
+                "  둘의 관계: 상단 축이 정의하고, 하단 단계가 실행한다. 한 화면에 조망.\n"
+                "  예: 3대 추진 전략 + 5단계 실행 로드맵, 2대 원칙 + 4단계 프로세스.\n"
+                "\n"
+                "★ 다른 패턴과 구분:\n"
+                "  · 축만 있고 실행 단계 없음 → triad / conclusion_cards / cards3\n"
+                "  · 단계 흐름만 있음 → process (가로) / timeline (세로)\n"
+                "  · 상단 축 4+ 개 → quad_detail (strategy_map 은 2~3만)\n"
+                "  · 대상 하나 파고들기 → hero_detail\n"
+                "\n"
+                "★ 채우는 법:\n"
+                "  · pillars = 2~3개 대전략 축. 각 { head(필수, 5~10자 축 이름), desc(선택, 20~30자),\n"
+                "    caption(선택, 5~10자 요약 태그) }. 축들이 서로 다른 각도를 보여줘야 함.\n"
+                "  · steps = 2~6개 실행 단계. 각 { label(필수, 3~6자 단계명) }. 원 안은 이미지 자리\n"
+                "    (코드가 회색 placeholder 자동) — 텍스트/수치 넣지 마라.\n"
+                "  · title = 페이지 거버닝 (필수, outline governing_main). \"이 전략들을 이 흐름으로\" 함축.\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "strategy_map"  (필수)\n'
+                '  · "title": 상단 거버닝 (필수 — 없으면 preset 무효, 25~40자)\n'
+                '                     ★ role:"governing" 자동 부착 — theme 별 accent 색\n'
+                '  · "pillars": [2~3개]  (필수 — 미충족 시 preset 무효)\n'
+                '      각 pillar = {"head":(필수, 5~10자), "desc":(선택, 20~30자), "caption":(선택, 5~10자)}\n'
+                '  · "steps": [2~6개]  (필수 — 미충족 시 preset 무효)\n'
+                '      각 step = {"label": 단계명(필수, 3~6자)}\n'
+                '  · "eyebrow" (선택) — 상단 메타 라벨 (섹션 breadcrumb 등)\n'
+                '  · "footer" (선택) — 하단 마무리 메시지 (15~25자)\n'
+                "  → 상단 박스·\"+\"·하단 원·화살표·좌표는 코드가 자동 배치 — 신경 쓰지 말 것.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
+                "    절대 금지: rect / 박스 / 원 / 이미지 / 색면 / 그 외 모든 shape(type='text' 외).\n"
+                "    상단 박스·하단 원·화살표는 코드가 자동으로 그린다.\n"
+                "    shapes 에 rect 를 넣으면 preset 의 박스·원을 덮어 회귀한다.\n"
+                "    백업으로 넣을 것 (text 만, 3~4개): 페이지 제목 + 각 pillar head + footer 요약.\n"
+                "  ★ preset='strategy_map' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
+                "\n"
+                "★ 완성 예시 (이 구조 그대로 따라, pillars 3개 + steps 5개):\n"
+                '{"preset":"strategy_map",'
+                '"eyebrow":"Ⅲ. 추진 전략",'
+                '"title":"3대 전략을 5단계로 완성하는 실행 체계",'
+                '"pillars":['
+                '{"head":"감각 트리거","desc":"단계별 오감 자극 프로그램","caption":"연령별 체험"},'
+                '{"head":"관객 참여","desc":"양방향 능동 참여 유도","caption":"실시간 큐레이션"},'
+                '{"head":"지속 관계","desc":"아카이브와 사후 연계","caption":"후속 시리즈"}'
+                '],'
                 '"steps":[{"label":"기획"},{"label":"준비"},{"label":"개막"},{"label":"운영"},{"label":"사후"}],'
-                '"footer":"단계별 KPI로 적시 보정"}'
+                '"footer":"단계별 KPI 로 적시 보정",'
+                '"shapes":[{"type":"text","x":0.9,"y":7.9,"w":10,"h":0.3,'
+                '"text":"3대 전략 x 5단계 실행","size":11,"weight":400,"color":"#666"}]}'
             )
         elif item.viz_pattern == "conclusion_cards":
             # Spec Preset-Connect-ConclusionCards — 상단 거버닝 + 3열 카드 + 하단 검정 결론 밴드(서사 수렴).

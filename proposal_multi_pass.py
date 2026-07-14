@@ -3911,39 +3911,41 @@ def _build_slide_user_prompt(
                 '"text":"메인 광장 + 3대 구성 요소","size":11,"weight":400,"color":"#666"}]}'
             )
         elif item.viz_pattern == "flow_detail":
-            # Spec Preset-Connect-5-Remaining — 상단 거버닝 + 가로 흐름 4~5단계 + 하단 3~4열 상세 (고밀도).
-            # 좌표·박스·화살표·구분선은 _build_preset_flow_detail 이 자동 배치.
-            # 함수 하드 조건: title 필수 + steps 4~5개(kr 필수) + columns 3~4개(key 필수, 각 items 정확 3개, head 필수).
-            #   미충족 시 preset 무효 반환.
+            # Spec Flow-Detail-Prompt-Diet — 3레벨 중첩 압도 완화. 선택 필드 4개 제거 + 예시 압축.
+            # 이전 프롬프트는 75줄/4372자 (최장) + 예시 30줄+ 이라 LLM 이 감당 못 하고 백업
+            # shapes 만 생성 → viz 2 → preset 0 실패. 함수는 이미 완화됨 (steps 3~5,
+            # columns 2~4, items 0~3 — Spec Preset-Loosen-Count 2e6c69a). 프롬프트만 압축.
+            # ★ 제거한 4개 선택 필드(section_title_1/2, flow_lead, columns.key_sub)는 함수가
+            #   여전히 받되 LLM 에게 요구 X — LLM 부담 감소, 렌더는 자연스럽게 생략.
             parts.append(
-                "[배정된 레이아웃 패턴] flow_detail (상단 흐름 4~5단계 + 하단 3~4열 상세, 고밀도)\n"
-                "★ 용도: 운영 프로세스 + 각 실행축 세부처럼 흐름과 상세를 한 장에 담아야 하는 정보량 많은 페이지.\n"
-                "  예: 5단계 운영 프로세스 + 3대 실행축 세부, 4단계 추진 흐름 + 4대 원칙 세부.\n"
-                "★ 밀도가 높은 프리셋 — 흐름 4~5단계 + 상세 3~4열이 모두 있어야 자연스러움.\n"
-                "  얇은 페이지에 억지로 쓰면 각 칸이 텅 비어 보인다.\n"
+                "[배정된 레이아웃 패턴] flow_detail (상단 흐름 3~5단계 + 하단 상세 2~4열, 고밀도)\n"
+                "★ 용도: \"이 흐름으로 진행하고, 각 축에서 이렇게 실행한다\" — 흐름과 상세를 한 장에.\n"
+                "  예: 5단계 프로세스 + 3대 실행축, 4단계 추진 + 4대 원칙, 3단계 흐름 + 2대 축.\n"
                 "\n"
                 "★ 다른 패턴과 구분:\n"
-                "  · 흐름만 있음 → process(가로) / timeline(세로)\n"
+                "  · 흐름만 있음 → process (가로) / timeline (세로)\n"
                 "  · 상세만 있음 → cards3 / numbered_columns / conclusion_cards\n"
-                "  · 흐름+상세 결합 필요 = flow_detail 유일\n"
+                "  · 흐름 + 상세 둘 다 있을 때만 flow_detail. 정보량 적으면 각 칸이 빈약해짐.\n"
+                "\n"
+                "★ 채우는 법 (3레벨 중첩 — 각 레벨 성격 다름):\n"
+                "  · steps  = 상단 가로 흐름 (프로세스 단계). 순서 있는 3~5개.\n"
+                "  · columns = 하단 세로 열 (각 축의 상세). 2~4개, 각 축이 다른 관점.\n"
+                "  · columns[i].items = 각 열 안 세부 항목. 1~3개.\n"
+                "  ★ steps 와 columns 는 별개 — steps 는 '흐름', columns 는 '상세'.\n"
                 "\n"
                 "★ slide JSON 출력에 반드시 다음 키 포함:\n"
                 '  · "preset": "flow_detail"  (필수)\n'
-                '  · "title": 상단 거버닝 메시지 (필수 — outline 의 governing_main 그대로, 25~40자)\n'
-                '                     ★ role:"governing" 자동 부착\n'
-                '  · "steps": [4개 또는 5개]  (필수 — 4/5 아니면 preset 무효)\n'
-                '      각 step = {"kr": 한글 단계명(필수, 3~6자),\n'
-                '                 "en": 영문 단계명(선택, 예 "PLAN", 브랜드 보라로 자동 렌더),\n'
-                '                 "desc": 한 줄 설명(선택, 20~30자)}\n'
-                '  · "columns": [3개 또는 4개]  (필수 — 3/4 아니면 preset 무효, 각 items 는 정확 3개여야 함)\n'
-                '      각 column = {"key": 대형 강조 텍스트(필수, 2~4자 또는 "01" 같은 번호, 브랜드 보라 대형),\n'
-                '                   "key_sub": key 부제(선택, 5~10자),\n'
-                '                   "lead": 리드 문장(선택, 15~25자),\n'
-                '                   "items": [정확 3개, 각 {head(필수), desc(선택)}]}\n'
+                '  · "title": 상단 거버닝 (필수 — outline governing_main, 25~40자)\n'
+                '                     ★ role:"governing" 자동 부착 — theme 별 accent 색\n'
+                '  · "steps": [3~5개]  (필수 — 미충족 시 preset 무효)\n'
+                '      각 step = {"kr":(필수, 3~6자 한글 단계명),\n'
+                '                 "en":(선택, 예 "PLAN", 회색 렌더),\n'
+                '                 "desc":(선택, 20~30자 한 줄)}\n'
+                '  · "columns": [2~4개]  (필수 — 미충족 시 preset 무효)\n'
+                '      각 column = {"key":(필수, 2~4자 또는 "01" 대형 검정 앵커),\n'
+                '                   "lead":(선택, 15~25자 축 요약),\n'
+                '                   "items":[1~3개, 각 {"head":(필수, 5~10자), "desc":(선택, 15~25자)}]}\n'
                 '  · "subtitle" (선택) — title 위 부제 (12~20자)\n'
-                '  · "section_title_1" (선택) — 흐름 영역 소제목 (예 "운영 프로세스")\n'
-                '  · "section_title_2" (선택) — 상세 영역 소제목 (예 "3대 실행축")\n'
-                '  · "flow_lead" (선택) — 흐름 영역 리드 문장\n'
                 "  → 좌표·박스·화살표·구분선은 코드가 자동 — 신경 쓰지 말 것.\n"
                 "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
                 "    절대 금지: rect / 박스 / 색면 / 그 외 모든 shape(type='text' 외).\n"
@@ -3951,39 +3953,22 @@ def _build_slide_user_prompt(
                 "    백업으로 넣을 것 (text 만): 페이지 제목 + 각 step kr 요약 + 각 column key 요약.\n"
                 "  ★ preset='flow_detail' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
                 "\n"
-                "★ 완성 예시 (이 구조 그대로 따라, steps 5개 + columns 3개):\n"
+                "★ 완성 예시 (이 구조 그대로 따라, 최소 구성 steps 3 + columns 2):\n"
                 '{"preset":"flow_detail",'
-                '"subtitle":"운영 프로세스와 세부 실행",'
-                '"title":"5단계 운영 흐름과 3대 실행축의 결합",'
-                '"section_title_1":"운영 프로세스",'
-                '"flow_lead":"기획부터 사후 정착까지 표준화된 5단계",'
+                '"title":"3단계 흐름과 2대 축으로 실행하는 운영 체계",'
                 '"steps":['
-                '{"en":"PLAN","kr":"기획","desc":"현황 진단과 목표 정의"},'
-                '{"en":"PREPARE","kr":"준비","desc":"콘텐츠 제작과 운영 정비"},'
-                '{"en":"OPEN","kr":"개막","desc":"관객 유입과 초기 반응 관리"},'
-                '{"en":"RUN","kr":"운영","desc":"현장 대응과 실시간 개선"},'
-                '{"en":"WRAP","kr":"사후","desc":"성과 정리와 지속 자산화"}'
+                '{"kr":"기획","en":"PLAN"},'
+                '{"kr":"실행","en":"RUN"},'
+                '{"kr":"사후","en":"WRAP"}'
                 '],'
-                '"section_title_2":"3대 실행축",'
                 '"columns":['
-                '{"key":"01","key_sub":"콘텐츠","lead":"몰입도를 만드는 프로그램 밀도",'
-                '"items":['
-                '{"head":"연령 맞춤","desc":"세대별 진입 콘텐츠 분산 배치"},'
-                '{"head":"오감 트리거","desc":"청각·시각·촉각 자극 지점 설계"},'
-                '{"head":"참여 유도","desc":"관객이 콘텐츠에 개입할 여지 확보"}]},'
-                '{"key":"02","key_sub":"운영","lead":"현장을 살아 움직이게 하는 시스템",'
-                '"items":['
-                '{"head":"실시간 큐레이션","desc":"현장 반응 기반 프로그램 재배치"},'
-                '{"head":"서포터즈","desc":"자원 활동가 중심 운영 네트워크"},'
-                '{"head":"안전 관리","desc":"인파·기상·응급 3중 대응 프로토콜"}]},'
-                '{"key":"03","key_sub":"성과","lead":"다음 회차 근거를 만드는 데이터",'
-                '"items":['
-                '{"head":"참여 지표","desc":"방문·체류·재방문 정량 추적"},'
-                '{"head":"만족도","desc":"현장·사후 설문의 정성 축적"},'
-                '{"head":"아카이브","desc":"콘텐츠·기록물의 재활용 자산화"}]}'
+                '{"key":"01","lead":"몰입도를 만드는 프로그램",'
+                '"items":[{"head":"연령 맞춤"},{"head":"오감 트리거"}]},'
+                '{"key":"02","lead":"현장을 움직이게 하는 시스템",'
+                '"items":[{"head":"실시간 큐레이션"},{"head":"서포터즈"}]}'
                 '],'
                 '"shapes":[{"type":"text","x":0.9,"y":7.9,"w":10,"h":0.3,'
-                '"text":"5단계 흐름 x 3대 실행축","size":11,"weight":400,"color":"#666"}]}'
+                '"text":"3단계 흐름 x 2대 축","size":11,"weight":400,"color":"#666"}]}'
             )
         elif item.viz_pattern == "quad_detail":
             # Spec Preset-Connect-5-Remaining — 좌측정렬 거버닝 + 2x2 그리드 4블록 (각 헤더+체크리스트+이미지).

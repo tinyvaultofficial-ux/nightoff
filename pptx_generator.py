@@ -1592,7 +1592,7 @@ def _add_text(slide, x, y, w, h, text, *,
 
     Spec D-Build-TextRunsRender (1-d-①): text_runs 가 있으면 부분 강조 경로.
       형식: [{"t":"...", "accent":bool?}, ...]
-      run 단위로 색 분기 — accent=True && theme=='dark' 만 형광(#FFFF00), 그 외 일반 color.
+      run 단위로 색 분기 — accent=True && theme=='dark' 만 accent 색(#A78BFA), 그 외 일반 color.
       ★ text_runs 없음/빈 list → 기존 경로 가드 (비트 단위 무변경 / 한 글자도 안 건드림).
       ★ text 필드는 fallback 으로 유지 — text_runs 미지원/디버깅용. 새 경로는 text 무시.
       ★ segment 의 "t" 안에 \\n 이 있으면: split 후 각 \\n 경계마다 paragraph 분리,
@@ -1675,7 +1675,7 @@ def _add_text(slide, x, y, w, h, text, *,
                 run.font.bold = weight_norm >= 600
                 if italic:
                     run.font.italic = True
-                # ★ 색 결정 — accent && dark 만 형광(#FFFF00). 라이트는 accent 무시 → 일반 color.
+                # ★ 색 결정 — accent && dark 만 accent 색(#A78BFA). 라이트는 accent 무시 → 일반 color.
                 if seg["accent"] and theme == "dark":
                     seg_color = "#A78BFA"
                 else:
@@ -2026,9 +2026,8 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A", the
             #   text_runs 없는 도형(기존 100%) → _add_text 내부에서 기존 경로로 들어가 비트 단위 무변경.
             # Spec Governing-Purple — role=="governing" 시 색을 브랜드 accent 로 강제.
             #   각 preset builder 가 거버닝(메인 제목) 도형에만 "role":"governing" 마킹.
-            #   theme.py 의 ACCENT 토큰 참조 (라이트 #A78BFA / 다크 #A78BFA).
+            #   theme.py 의 ACCENT 토큰 참조 (라이트 #6B46E5 / 다크 #A78BFA).
             #   미마킹 도형(divider 로마·quantitative value·아이템 head 등)은 무영향.
-            #   #A78BFA 는 DARK_MAP 미매핑 → light/dark 모두 그대로 통과 (안전).
             color_val = str(shape_def.get("color", default_text_color))
             if shape_def.get("role") == "governing":
                 _accent = _get_theme(theme).get("ACCENT")
@@ -2728,7 +2727,7 @@ def _build_preset_timeline(slide_data):
         #   timeline 도 같은 방식: LLM 이 SLIDE 출력에 slide_data["title_runs"] 키로 segment 직접 결정.
         #     [{"t":"앞부분 "},{"t":"핵심 명사구","accent":true},{"t":" 뒷부분"}]
         #   title_runs 유효(list + 비어있지 않음) → title 도형의 text_runs 키로 그대로 박음
-        #     → dispatch(L2040) → _add_text(L1638) → run 단위 색 분기 → accent && dark 만 #FFFF00.
+        #     → dispatch(L2040) → _add_text(L1638) → run 단위 색 분기 → accent && dark 만 #A78BFA.
         #   title_runs 없음/빈 list/비-list → text_runs 키 자체 누락 → _add_text L1690 기존 경로 →
         #     일반 거버닝 fallback (형광 없음, 거버닝 자체는 28pt 로 표시 — 안전).
         #   ★ size 28 / 좌표 (y=0.8, h=1.2, top=2.4, area_top=2.7) 무변경 — 단계 분포 0 영향.
@@ -3010,7 +3009,7 @@ def _build_preset_circles(slide_data):
         shapes.append({"type":"text","x":0,"y":0.5,"w":11.69,"h":0.4,"text":eyebrow,"size":11,"weight":400,"color":"#999999","align":"center","valign":"top"})
     # ③ title (선택) — 검정 밴드 안 중앙 정렬, title_runs 형광 호환
     #    timeline _build_governing_block L2691-2701 패턴 정합: title_runs list 면 text_runs 키로 박음.
-    #    accent 세그먼트는 _add_text(L1679)가 dark 에서 #FFFF00 자동 처리 → 본 함수 추가 코드 X.
+    #    accent 세그먼트는 _add_text(L1679)가 dark 에서 #A78BFA 자동 처리 → 본 함수 추가 코드 X.
     if title:
         title_shape = {"type":"text","x":0,"y":1.05,"w":11.69,"h":1.2,"text":title,"size":28,"weight":800,"color":"#FEFEFE","align":"center","valign":"top","role":"governing"}
         title_runs_raw = slide_data.get("title_runs")
@@ -3315,7 +3314,7 @@ def _build_preset_hero_cards(slide_data):
         shapes.append({"type":"text","x":0,"y":0.5,"w":11.69,"h":0.4,"text":eyebrow,"size":11,"weight":400,"color":"#999999","align":"center","valign":"top"})
     # ③ title (선택) — 검정 밴드 안 중앙정렬, title_runs 형광 호환 (circles 패턴 정합).
     #   timeline _build_governing_block L2691-2701 패턴: title_runs list → text_runs 키.
-    #   accent 세그먼트는 _add_text L1679 분기에서 dark 시 #FFFF00 자동 처리 → 추가 코드 X.
+    #   accent 세그먼트는 _add_text L1679 분기에서 dark 시 #A78BFA 자동 처리 → 추가 코드 X.
     if title:
         title_shape = {"type":"text","x":0,"y":1.0,"w":11.69,"h":1.0,"text":title,"size":28,"weight":800,"color":"#FEFEFE","align":"center","valign":"middle","role":"governing"}
         title_runs_raw = slide_data.get("title_runs")
@@ -3387,11 +3386,11 @@ def _build_preset_hero_cards(slide_data):
 #   헬퍼는 흰 배경·검정 글자·좌측 정렬 가정. 본 preset 은 검정 배경·흰 글자·중앙 정렬 →
 #   거버닝을 함수 안에서 직접 그림.
 #
-# ★ 형광 처리 (theme=light 우회): title_runs 안 씀.
-#   _add_text 의 accent 분기(L1679)는 `accent && theme=='dark'` 일 때만 #FFFF00 적용 →
-#   theme=light 면 형광 X. 본 preset 은 검정 배경이라 light 에서도 형광 필요.
-#   → 형광 키워드(title_accent)를 별도 text 도형 + color="#FFFF00" 직접 지정.
-#   _map_color(#FFFF00, "text", *) 는 DARK_MAP 에 매핑 없음 → light/dark 모두 형광 그대로.
+# ★ 거버닝 강조: title (1줄) + title_accent (2줄) 둘 다 role:"governing" 마커.
+#   Spec Preset-Purple-Accent-Cleanup — 이전엔 title_accent 만 하드코딩 #A78BFA 로 색차 유도,
+#   그러나 라이트에서 title #6B46E5 와 title_accent #A78BFA 가 두 톤으로 튐. 마커 통일로 해결.
+#   dispatch (L2027-2036) 가 role:"governing" 도형을 _get_theme(theme)["ACCENT"] 로 override →
+#   라이트 #6B46E5 / 다크 #A78BFA. 2줄 시각 임팩트는 위치·크기 그대로.
 #
 # ★ z-order (shapes 리스트 순서 = 렌더 순서, 먼저 = 아래):
 #   ① 검정 rect → ② eyebrow → ③ 메인 1줄 → ④ 메인 2줄(형광) → ⑤ subtitle
@@ -3405,7 +3404,7 @@ def _build_preset_hero_cards(slide_data):
 # 입력 스키마:
 #   slide_data["eyebrow"]      = "위 메타 라벨" (선택, color #999999)
 #   slide_data["title"]        = "메인 거버닝 1줄 (흰 글자)" (필수)
-#   slide_data["title_accent"] = "형광 키워드 2줄 (#FFFF00 직접)" (선택)
+#   slide_data["title_accent"] = "거버닝 2줄 강조 키워드 (role:'governing' → ACCENT)" (선택)
 #   slide_data["subtitle"]     = "서브 거버닝" (선택, color #999999)
 #   slide_data["left"]         = {"head"(필수), "body"} (필수)
 #   slide_data["right"]        = {"head"(필수), "body"} (필수)
@@ -3464,15 +3463,17 @@ def _build_preset_hsplit_top(slide_data):
         "role": "governing",
     })
 
-    # ④ 메인 거버닝 2줄 (형광 키워드, 선택, #FFFF00 직접 — text_runs 안 씀, theme 우회)
-    #   _map_color 가 DARK_MAP 미매핑 색은 통과 → light/dark 모두 형광 유지.
+    # ④ 메인 거버닝 2줄 (선택, role:"governing" → 라이트 #6B46E5 / 다크 #A78BFA 자동)
+    #   Spec Preset-Purple-Accent-Cleanup — 하드코딩 #A78BFA 제거, title 과 동일하게 마커 통일.
+    #   color:"#FFFFFF" 는 마커 override 되기 전 fallback 힌트 (title 과 정합).
     if title_accent:
         shapes.append({
             "type": "text",
             "x": 0, "y": 1.7, "w": W, "h": 0.7,
             "text": title_accent,
-            "size": 28, "weight": 800, "color": "#A78BFA",
+            "size": 28, "weight": 800, "color": "#FFFFFF",
             "align": "center", "valign": "middle",
+            "role": "governing",
         })
 
     # ⑤ subtitle (선택, 검정 영역 끝쪽, #999999 — dark 가독성 위해 #CCC 회피)
@@ -4010,7 +4011,7 @@ def _build_preset_conclusion_cards(slide_data):
 #     (★ _add_rect 는 _add_circle 과 달리 "none" 정규화 가드 없어서 문자열 "none"
 #      쓰면 _hex_to_rgb 실패. 키 생략이 안전.)
 #   초대형 배경 숫자 → #EEEEEE (미매핑, 반투명 불가 대체).
-#   아이템 head → #6B46E5 하드코딩 (거버닝 마커 안 달음, DARK_MAP 미매핑).
+#   아이템 head → #1A1A1A 검정 (Spec Preset-Purple-Accent-Cleanup — 강조색 제거, weight 800 위계).
 # 화살표 없음 — conclusion_cards 와 달리 밴드 없이 흰 배경 위 결론 텍스트만.
 #
 # 입력 스키마:
@@ -4125,10 +4126,12 @@ def _build_preset_numbered_columns(slide_data):
                            "text":it["label"],"size":11,"weight":600,
                            "color":"#666666","align":"left","valign":"top"})
             y_c += 0.4
-        # head — 브랜드 보라 직접 지정 (거버닝 아니므로 role 마킹 X)
+        # head — Spec Preset-Purple-Accent-Cleanup — 아이템 강조색 제거.
+        #   거버닝 = 브랜드 보라 하나 원칙 → 아이템은 검정 (거버닝 아니므로 role 마킹 X).
+        #   위계는 weight 800 + head_size 로 유지.
         shapes.append({"type":"text","x":cx_c,"y":y_c,"w":w_c,"h":0.7,
                        "text":it["head"],"size":head_size,"weight":800,
-                       "color":"#6B46E5","align":"left","valign":"top"})
+                       "color":"#1A1A1A","align":"left","valign":"top"})
         y_c += 0.8
         if it["desc"]:
             desc_h = card_top + card_h - y_c - 0.15
@@ -4164,11 +4167,11 @@ def _build_preset_numbered_columns(slide_data):
 # 우 번호 항목 3개 (미니 이미지 + 원문자 head + desc) + 하단 결론 2줄.
 # 색 정합:
 #   상단 title / 하단 conclusion → role:"governing" → _get_theme(theme)["ACCENT"] 자동.
-#   헤더 검정 블록 / 아이템 원문자 head 보라 → #1B1B1B / #6B46E5 / #FEFEFE 하드코딩.
-#     (모두 DARK_MAP 미매핑 → 양 테마 그대로 통과)
+#   헤더 검정 블록 / 아이템 원문자 head → #1B1B1B / #1A1A1A / #FEFEFE 하드코딩.
+#     (Spec Preset-Purple-Accent-Cleanup — 아이템 head 강조색 제거, weight 800 위계 유지)
 #   이미지 placeholder → #F5F5F5 (DARK_MAP fill 매핑 → 다크 #1F1F1F 자동).
 # 원문자 번호 → 3개 고정 → ①②③.
-# 아이템 head 는 아이템 성격이라 role:"governing" 마킹 X (색은 브랜드 보라 직접).
+# 아이템 head 는 아이템 성격이라 role:"governing" 마킹 X (원문자 포함 전체 검정).
 #
 # 입력 스키마:
 #   slide_data["items"]           = [{head(필수), desc?}, ...]  ★ 정확히 3개
@@ -4230,13 +4233,15 @@ def _build_preset_hero_detail(slide_data):
                    "fill":"#1B1B1B"})
     # 가로 순차 배치: 배지 → 숫자 → 텍스트 스택
     cursor_x = hdr_x + 0.3
-    # (1) 배지 (선택) — 브랜드 보라 rounded rect + 흰 텍스트 (2줄 가능)
+    # (1) 배지 (선택) — Spec Preset-Purple-Accent-Cleanup — 브랜드 보라 fill 제거.
+    #   거버닝 아닌 UI 요소는 강조색 없음. 검정 헤더 위 검정 배지는 시각 위계가 약해지므로
+    #   다른 신규 프리셋(numbered_columns)의 stroke-only 알약과 동일 패턴 적용 (fill 생략 + 흰 stroke).
     if badge:
         b_w = 1.4
         b_h = 1.3
         b_y = hdr_y + (hdr_h - b_h) / 2
         shapes.append({"type":"rect","x":cursor_x,"y":b_y,"w":b_w,"h":b_h,
-                       "fill":"#6B46E5","radius":0.05})
+                       "stroke":"#FEFEFE","stroke_width":1,"radius":0.05})
         shapes.append({"type":"text","x":cursor_x,"y":b_y,"w":b_w,"h":b_h,
                        "text":badge,"size":13,"weight":700,"color":"#FEFEFE",
                        "align":"center","valign":"middle"})
@@ -4320,8 +4325,10 @@ def _build_preset_hero_detail(slide_data):
         if cw < 0.8:
             cw = 0.8
         num_head = _HERO_DETAIL_CIRCLED[i] + " " + it["head"]
+        # Spec Preset-Purple-Accent-Cleanup — 아이템 강조색 제거 (원문자 포함 전체 검정).
+        #   거버닝 아니므로 role 마킹 X. 위계는 weight 800 로 유지.
         shapes.append({"type":"text","x":cx,"y":iy,"w":cw,"h":0.4,
-                       "text":num_head,"size":12,"weight":800,"color":"#6B46E5",
+                       "text":num_head,"size":12,"weight":800,"color":"#1A1A1A",
                        "align":"left","valign":"top"})
         if it["desc"]:
             d_top = iy + 0.42
@@ -4357,7 +4364,8 @@ def _build_preset_hero_detail(slide_data):
 # 연결) + 하단 3~4열 상세(대형 key 보라 + key_sub + lead + items 3개 head/desc).
 # 색 정합:
 #   상단 title → role:"governing" → _get_theme(theme)["ACCENT"] 자동 (라이트 #6B46E5).
-#   중단 en / 하단 key → #6B46E5 하드코딩 (아이템 강조, DARK_MAP 미매핑 → 양 테마 유지).
+#   중단 en / 하단 key → #666666 / #1A1A1A (Spec Preset-Purple-Accent-Cleanup — 강조색 제거).
+#     en 은 작은 영문 라벨이라 회색 #666666, key 는 대형 키워드라 검정 #1A1A1A.
 #   박스 fill/stroke → #FFFFFF / #DDDDDD (DARK_MAP 매핑으로 자연 반전).
 #   화살표 → chevron/block_arrow 대신 arrow(직선+헤드) 가로 배치.
 # 밀도 주의: 4열 + 각 3항목 케이스가 가장 빡빡 — desc size 최소 9pt 유지.
@@ -4491,10 +4499,11 @@ def _build_preset_flow_detail(slide_data):
                        "radius":0.05})
         pad = 0.12
         iy = box_top + pad
-        # en (선택)
+        # en (선택) — Spec Preset-Purple-Accent-Cleanup — 강조색 제거.
+        #   작은 영문 라벨이므로 검정보다 회색 #666666 이 자연스러움 (kr 검정 위계 유지).
         if st["en"]:
             shapes.append({"type":"text","x":bx + pad,"y":iy,"w":box_w - 2 * pad,"h":0.3,
-                           "text":st["en"],"size":en_size,"weight":500,"color":"#6B46E5",
+                           "text":st["en"],"size":en_size,"weight":500,"color":"#666666",
                            "align":"center","valign":"top"})
             iy += 0.32
         # kr (필수)
@@ -4548,9 +4557,10 @@ def _build_preset_flow_detail(slide_data):
         cx = margin + i * col_w + inner_pad
         cw = col_w - 2 * inner_pad
         cy = col_area_top
-        # key (대형 보라 — 아이템 성격이라 role 마킹 X, 직접 hex 지정)
+        # key (대형 검정 — Spec Preset-Purple-Accent-Cleanup, 아이템 강조색 제거)
+        #   아이템 성격이라 role 마킹 X. 위계는 weight 900 + key_size 대형 폰트로 유지.
         shapes.append({"type":"text","x":cx,"y":cy,"w":cw,"h":0.65,
-                       "text":col["key"],"size":key_size,"weight":900,"color":"#6B46E5",
+                       "text":col["key"],"size":key_size,"weight":900,"color":"#1A1A1A",
                        "align":"center","valign":"top"})
         cy += 0.7
         if col["key_sub"]:

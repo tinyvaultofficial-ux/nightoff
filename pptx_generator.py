@@ -3156,8 +3156,9 @@ def _build_preset_strategy_map(slide_data):
         return []
     if not isinstance(pillars_raw, list):
         return []
+    # ★ Spec Strategy-Map-Expand-And-Loosen — 정확 3 강제 폐지. 2~3 허용.
     pillars = [p for p in pillars_raw if isinstance(p, dict)][:3]
-    if len(pillars) != 3:
+    if len(pillars) < 2:
         return []
     steps = []
     for s in (steps_raw if isinstance(steps_raw, list) else []):
@@ -3166,7 +3167,8 @@ def _build_preset_strategy_map(slide_data):
             if lab:
                 steps.append(lab)
     steps = steps[:6]
-    if len(steps) < 3:
+    # ★ Spec Strategy-Map-Expand-And-Loosen — 최소 3 강제 폐지. 2~6 허용.
+    if len(steps) < 2:
         return []
 
     W, H = 11.69, 8.27
@@ -3188,13 +3190,20 @@ def _build_preset_strategy_map(slide_data):
         t["text_runs"] = tr
     shapes.append(t)
 
-    # ── ② 박스 3개 + "+" 결합 (circles/triad 가로 분배 패턴 정합)
+    # ── ② 박스 N개(2 또는 3) + "+" 결합 (Spec Strategy-Map-Expand-And-Loosen)
     box_y, box_h = 1.9, 1.9
-    n_p = 3
+    n_p = len(pillars)
     box_w = 2.9
-    gap_p = (usable - box_w * n_p) / (n_p - 1)  # 박스 사이 간격 (= 0.65")
+    # n_p=3 → gap=0.595 (기존), n_p=2 → gap=0.6 + 좌우 중앙 정렬 (묶음 usable 미만 → 중앙).
+    if n_p == 2:
+        gap_p = 0.6
+        total_p = box_w * n_p + gap_p * (n_p - 1)   # 6.4
+        start_p_x = margin + (usable - total_p) / 2
+    else:  # n_p == 3
+        gap_p = (usable - box_w * n_p) / (n_p - 1)  # 0.595
+        start_p_x = margin
     for i, p in enumerate(pillars):
-        bx = margin + i * (box_w + gap_p)
+        bx = start_p_x + i * (box_w + gap_p)
         # 박스 본체
         shapes.append({"type":"rect","x":bx,"y":box_y,"w":box_w,"h":box_h,
                        "fill":"#FFFFFF","stroke":"#DDDDDD","stroke_width":1})
@@ -3221,7 +3230,7 @@ def _build_preset_strategy_map(slide_data):
                            "text":"+","size":32,"weight":800,"color":"#1A1A1A",
                            "align":"center","valign":"middle"})
 
-    # ── ③ 흐름 — 원(이미지 placeholder) + 화살표 + 라벨 (triad 원 패턴 + arrow 도형 차용)
+    # ── ③ 흐름 — 원(이미지 placeholder) + 화살표 + 라벨 (Spec Strategy-Map-Expand-And-Loosen: 2~6)
     flow_y = 5.2  # 원 top
     n_s = len(steps)
     # 원 직경 동적 — n 많아질수록 작게 (가용 영역 안 화살표 공간 확보)
@@ -3233,12 +3242,19 @@ def _build_preset_strategy_map(slide_data):
         circle_d = 1.1
     else:  # 6
         circle_d = 0.95
-    # 균등 분배 (원 + 화살표 사이 gap)
-    gap_s = (usable - circle_d * n_s) / (n_s - 1)
+    # 균등 분배 (원 + 화살표 사이 gap). n_s=2 는 usable 전폭에 원 2 개면 gap 이 너무 벌어져
+    # 화살표가 길게 늘어지므로 gap 고정 + 좌우 중앙 정렬 (pillars n_p=2 와 동일 패턴).
+    if n_s == 2:
+        gap_s = 3.0
+        total_s = circle_d * n_s + gap_s * (n_s - 1)   # 5.6
+        start_s_x = margin + (usable - total_s) / 2
+    else:
+        gap_s = (usable - circle_d * n_s) / (n_s - 1)
+        start_s_x = margin
     cy_center = flow_y + circle_d / 2
     label_y = flow_y + circle_d + 0.15
     for i, label in enumerate(steps):
-        cell_x = margin + i * (circle_d + gap_s)  # 원 좌측
+        cell_x = start_s_x + i * (circle_d + gap_s)  # 원 좌측
         # 원 (이미지 placeholder — triad 색 정합: #ECECEC fill + #CCCCCC stroke)
         shapes.append({"type":"circle","x":cell_x,"y":flow_y,"w":circle_d,"h":circle_d,
                        "fill":"#ECECEC","stroke":"#CCCCCC","stroke_width":0.75})

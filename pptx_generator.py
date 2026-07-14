@@ -2233,11 +2233,25 @@ def _build_preset_quantitative_emphasis(slide_data: dict) -> list:
         "color": "#1A1A1A", "width": 1.5,
     })
     for (x, w, size), (val, lab) in zip(positions, valid):
+        # ★ Spec Quantitative-Value-Autoshrink — value 글자수 기반 폰트 축소.
+        #   원인: word_wrap=True 가 auto_size(TEXT_TO_SHAPE_FIT) 보다 먼저 동작해
+        #   폭 오버 시 축소 대신 줄바꿈 발생. 예: n=3, 90pt, "12만명" 4자 → 폭 3.2" 초과.
+        #   해결: divider L3891-3901 / circles L3109-3110 검증된 글자수 계단식 축소 이식.
+        #   각 metric 독립 축소. 3자 이하는 기존 크기 유지 (회귀 없음).
+        vlen = len(val)
+        if vlen <= 3:
+            v_size = size            # 기존 유지 — "50억"/"92점" 등 회귀 없음
+        elif vlen <= 4:
+            v_size = int(size * 0.80)  # "12만명" 등
+        elif vlen <= 5:
+            v_size = int(size * 0.65)  # "5만 명"(공백) 등
+        else:
+            v_size = int(size * 0.50)  # "1,200만"·"1,234,567명" 등
         shapes.append({
             "type": "text",
             "x": x, "y": 2.8, "w": w, "h": 2.2,
             "text": val,
-            "size": size, "weight": 900, "color": "#1A1A1A",
+            "size": v_size, "weight": 900, "color": "#1A1A1A",
             "align": "center", "valign": "middle",
         })
         if lab:

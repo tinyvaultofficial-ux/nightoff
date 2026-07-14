@@ -3912,52 +3912,65 @@ def _build_slide_user_prompt(
                 '"text":"5단계 흐름 x 3대 실행축","size":11,"weight":400,"color":"#666"}]}'
             )
         elif item.viz_pattern == "quad_detail":
-            # Spec Preset-Connect-5-Remaining — 좌측정렬 거버닝 + 2x2 그리드 4블록 (각 헤더+체크리스트+이미지).
-            # 좌표·그리드·이미지 placeholder 는 _build_preset_quad_detail 이 자동 배치.
-            # 함수 하드 조건: title 필수 + items 정확 4개(head 필수) — 미충족 시 preset 무효 반환.
-            #   points 는 각 item 최대 3개 (그 이상은 잘림).
+            # Spec Quad-Detail-Prompt-Diversify — 예시 톤 다양화 (시설 조감도 → 범용 전략).
+            # 진단: 이전 프롬프트는 "4대 구역 배치" 시설 이미지 톤이라 LLM 이 "시설 페이지 전용"
+            # 으로 좁게 인식 → viz 1 → preset 0 실패. 스키마는 이미 단순 (items 2~4 × head)
+            # 인데 배정 회피. 함수는 이미 완화됨 (items 2~4, Spec Preset-Loosen-Count 2e6c69a).
+            # ★ 이미지 자리는 코드가 placeholder 로 자동 배치 — LLM 이 신경 쓸 것 없음.
+            #   사용자가 나중에 채우는 자리라 텍스트만으로도 유효한 페이지.
             parts.append(
-                "[배정된 레이아웃 패턴] quad_detail (좌측정렬 거버닝 + 2x2 그리드 4블록, 각 이미지 + 체크리스트)\n"
-                "★ 용도: 4개 시설/구역/프로그램을 각각 이미지와 세부 항목으로 설명하는 페이지.\n"
-                "  예: 4대 구역 배치, 4대 프로그램 상세, 4대 시설 소개, 4대 컨셉 존.\n"
-                "★ ★ 이미지 영역 4개 — 실제 이미지(시설사진·구역도·프로그램컷)를 넣을 수 있는 페이지에만.\n"
+                "[배정된 레이아웃 패턴] quad_detail (좌측정렬 거버닝 + 2x2 그리드 4블록, 각 헤더+체크리스트+이미지자리)\n"
+                "★ 용도: 4개 항목을 각각 상세히 설명하는 페이지. 시설·구역만이 아니라 프로그램,\n"
+                "  전략, 서비스, 원칙, 관리 체계 등 \"대등한 4개 축\" 이 있는 모든 경우.\n"
+                "  예: 4대 운영 전략, 4개 프로그램 라인업, 4대 안전 관리 체계, 4대 서비스 축,\n"
+                "      4대 실행 원칙, 4대 시설 소개.\n"
+                "★ 이미지 자리는 코드가 회색 placeholder 로 자동 배치 — LLM 이 신경 쓸 것 없음.\n"
+                "  사용자가 나중에 사진/도면/렌더링을 얹을 자리라 이미지 없어도 텍스트만으로 유효.\n"
                 "\n"
                 "★ 다른 패턴과 구분:\n"
+                "  · 항목 3개 → triad / hero_cards / conclusion_cards\n"
+                "  · 항목 3~4개 (이미지 자리 불필요) → numbered_columns / conclusion_cards\n"
+                "  · 결론으로 수렴 → conclusion_cards\n"
+                "  · 하나의 대상 파고들기 → hero_detail\n"
                 "  · 4개 색면 텍스트만 → quad (quad_detail 은 이미지 자리 + 체크리스트)\n"
-                "  · 4개 아닌 3개 → triad / hero_cards\n"
-                "  · 이미지 자리 불필요 → numbered_columns / conclusion_cards\n"
-                "  · 하나의 대상 + 3개 세부 → hero_detail (quad_detail 은 4개 독립 대상)\n"
+                "  ※ 함수는 items 2~4 허용하나, 4개일 때 2x2 그리드가 가장 자연스러움.\n"
+                "\n"
+                "★ 채우는 법:\n"
+                "  · 각 item = 하나의 블록 (2x2 그리드로 배치).\n"
+                "  · 블록 안 = 헤더바(head) + 체크리스트(points, 선택) + 이미지 자리(자동).\n"
+                "  · head 는 축/항목 이름 (5~10자). points 는 그 항목의 세부 2~3개.\n"
+                "  · points 없으면 이미지 자리가 블록 대부분 — 이미지 중심 페이지.\n"
+                "  · points 있으면 체크리스트가 상단, 이미지 자리는 하단 — 정보+이미지 페이지.\n"
                 "\n"
                 "★ slide JSON 출력에 반드시 다음 키 포함:\n"
                 '  · "preset": "quad_detail"  (필수)\n'
-                '  · "title": 상단 좌측정렬 거버닝 (필수 — outline 의 governing_main, 25~40자)\n'
-                '                     ★ role:"governing" 자동 부착\n'
-                '  · "items": [정확히 4개]  (필수 — 4개 아니면 preset 무효 처리됨)\n'
-                '      각 item = {"head": 블록 헤더(필수, 5~10자, 검정 헤더바 위 흰 글씨로 자동 렌더),\n'
-                '                 "points": 체크리스트(선택, 0~3개 문자열, "✓ " 접두 자동)}\n'
-                '                 ※ points 없으면 이미지가 블록 전체(헤더 제외) 차지.\n'
-                '  · "badge" (선택) — 좌상단 알약 배지 (5~10자)\n'
+                '  · "title": 상단 좌측정렬 거버닝 (필수 — outline governing_main, 25~40자)\n'
+                '                     ★ role:"governing" 자동 부착 — theme 별 accent 색\n'
+                '  · "items": [2~4개]  (필수 — 미충족 시 preset 무효. 4개 권장, 2x2 완성)\n'
+                '      각 item = {"head":(필수, 5~10자 축/항목 이름),\n'
+                '                 "points":(선택, 0~3개 문자열 배열, "✓ " 접두 자동)}\n'
+                '  · "badge" (선택) — 좌상단 알약 배지 (5~10자, 예 "4대 축")\n'
                 '  · "subtitle" (선택) — title 위 좌측정렬 부제 (12~20자)\n'
                 "  → 좌표·2x2 그리드·이미지 placeholder·검정 헤더바는 코드가 자동 — 신경 쓰지 말 것.\n"
                 "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
                 "    절대 금지: rect / 박스 / 이미지 / 색면 / 그 외 모든 shape(type='text' 외).\n"
-                "    2x2 4개 블록 + 이미지 placeholder + 헤더바는 코드가 자동으로 그린다.\n"
+                "    2x2 4개 블록·이미지 placeholder·헤더바는 코드가 자동으로 그린다.\n"
                 "    백업으로 넣을 것 (text 만): 페이지 제목 + 각 item head 요약.\n"
                 "  ★ preset='quad_detail' 키 누락 시 페이지가 박스로 회귀 — 반드시 포함.\n"
                 "\n"
-                "★ 완성 예시 (이 구조 그대로 따라):\n"
+                "★ 완성 예시 (이 구조 그대로 따라, 4대 운영 축 톤):\n"
                 '{"preset":"quad_detail",'
-                '"badge":"4대 구역",'
-                '"subtitle":"축제장을 구성하는 네 개의 공간",'
-                '"title":"관객이 자연스럽게 순환하는 4대 구역 배치",'
+                '"badge":"4대 축",'
+                '"subtitle":"기획부터 성과까지 축제 운영을 지탱하는 네 개의 축",'
+                '"title":"4대 운영 축으로 완성하는 안정적 실행 체계",'
                 '"items":['
-                '{"head":"메인 광장","points":["1일 5시간 공연 무대","1,500명 수용 관객존"]},'
-                '{"head":"체험 존","points":["연령별 3개 부스","오감 자극 프로그램"]},'
-                '{"head":"참여 존","points":["실시간 큐레이션","서포터즈 활동 거점"]},'
-                '{"head":"안전 존","points":["의료·응급 상시 대기","인파 관제 통제소"]}'
+                '{"head":"기획","points":["현장 조사 기반 목표 정의","이해관계자 협의 프로토콜"]},'
+                '{"head":"운영","points":["24/7 상황실 상시 대응","서포터즈 네트워크 운영"]},'
+                '{"head":"안전","points":["인파·기상·응급 3중 대응 체계","의료 상시 대기"]},'
+                '{"head":"성과","points":["실시간 KPI 대시보드","사후 리포트 자산화"]}'
                 '],'
                 '"shapes":[{"type":"text","x":0.9,"y":7.9,"w":10,"h":0.3,'
-                '"text":"4대 구역 배치와 순환 동선","size":11,"weight":400,"color":"#666"}]}'
+                '"text":"4대 운영 축 통합 실행","size":11,"weight":400,"color":"#666"}]}'
             )
         elif item.viz_pattern == "fullbleed_overlay":
             # Spec Preset-Connect-5-Remaining — 화면 전체 배경 이미지 + 상단 거버닝 + 좌하단 오버레이.

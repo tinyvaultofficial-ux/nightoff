@@ -9137,6 +9137,78 @@ def api_admin_debug_proposal(conv_id: str, admin: dict = Depends(require_admin))
         "slide_type_distribution": stype_dist,
         "preset_distribution": preset_dist,
         "slides_total": len(payload.get("slides") or []),
+        # Spec Admin-Debug-RawSlides — raw slide JSON 조회 힌트 (신규 엔드포인트 안내).
+        "raw_slides_url": f"/api/admin/debug/proposal/{conv_id}/slides?viz=hero_detail",
+    }
+
+
+# ─── Spec Admin-Debug-RawSlides — 저장된 slide JSON 조회 (admin read-only) ────
+# 배경: 실측에서 신규 프리셋이 배정됐는데 preset 키가 안 박히는 케이스 (viz>0, preset=0)
+#   원인 확정하려면 LLM 이 실제로 출력한 slide JSON 을 봐야 함. 통계(분포) 엔드포인트만
+#   있어 raw 접근 불가능. 크레딧 절약 겸 이미 저장된 payload 재활용용 read-only 조회.
+# 동작: _load_proposal_payload_for_conv 재사용 → outline 과 slides 병렬 인덱스 매칭 →
+#   viz/page 필터 → 결과 반환. 쓰기·수정 0, 생성 로직 0.
+# 필터 없으면 응답 크기 방지 위해 최대 5장 반환 + truncated=true 표시.
+@app.get("/api/admin/debug/proposal/{conv_id}/slides")
+def api_admin_debug_proposal_slides(
+    conv_id: str,
+    viz: Optional[str] = None,
+    page: Optional[int] = None,
+    admin: dict = Depends(require_admin),
+):
+    """저장된 slide JSON read-only 조회.
+
+    쿼리 파라미터:
+      viz  — 특정 viz_pattern (outline 기준) 필터. 예: ?viz=hero_detail
+      page — 특정 페이지 번호 필터. 예: ?page=23
+      둘 다 없으면 최대 5장 + truncated 표시.
+
+    반환 항목:
+      conv_id, total_slides, matched, truncated, slides[]
+      slides[i] = { page, viz_pattern, preset, keys, shapes_count, raw }
+        · raw = payload["slides"][i] 딕셔너리 전체 (LLM 응답 그대로)
+        · preset = slide.get("preset", "none")
+        · keys = slide 최상위 키 목록 (preset 키 유무 확인 용)
+
+    실패 시 graceful:
+      - assistant payload 없음 → {"error":"no assistant payload with slides"}
+    """
+    with get_db() as db:
+        payload = _load_proposal_payload_for_conv(db, conv_id)
+    if payload is None:
+        return {"error": "no assistant payload with slides"}
+    slides_all = payload.get("slides") or []
+    outline_all = payload.get("outline") or []
+    # outline 과 slides 는 페이지 순서로 병렬 정렬돼 저장됨 (proposal_multi_pass.orchestrate).
+    # 인덱스 병렬 매칭 — outline[i] 의 page/viz_pattern 을 slides[i] 에 붙여 반환.
+    entries = []
+    for i, slide in enumerate(slides_all):
+        if not isinstance(slide, dict):
+            continue
+        outline_item = outline_all[i] if i < len(outline_all) and isinstance(outline_all[i], dict) else {}
+        entries.append({
+            "page": outline_item.get("page", i + 1),
+            "viz_pattern": outline_item.get("viz_pattern") or "",
+            "preset": slide.get("preset", "none"),
+            "keys": sorted(list(slide.keys())),
+            "shapes_count": len(slide.get("shapes") or []) if isinstance(slide.get("shapes"), list) else 0,
+            "raw": slide,
+        })
+    # 필터 (page 우선, 없으면 viz, 둘 다 없으면 전체 → 최대 5)
+    if page is not None:
+        entries = [e for e in entries if e["page"] == page]
+    elif viz:
+        entries = [e for e in entries if e["viz_pattern"] == viz]
+    truncated = False
+    if page is None and not viz and len(entries) > 5:
+        entries = entries[:5]
+        truncated = True
+    return {
+        "conv_id": conv_id,
+        "total_slides": len(slides_all),
+        "matched": len(entries),
+        "truncated": truncated,
+        "slides": entries,
     }
 
 

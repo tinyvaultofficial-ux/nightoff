@@ -2202,11 +2202,24 @@ def _build_preset_quantitative_emphasis(slide_data: dict) -> list:
     else:  # 3
         positions = [(0.9, 3.3, 90), (4.2, 3.3, 90), (7.5, 3.3, 90)]
 
-    shapes: list = [{
+    # ★ Spec Governing-Title-Three-Presets — 조건부 거버닝 (하위 호환: title 없으면 미출력).
+    #   상단 empty 2.5" 여유 (line y=2.5) → y=1.0 h=1.0 자리. 기존 도형과 겹침 없음.
+    shapes: list = []
+    title = str(slide_data.get("title", "")).strip()
+    if title:
+        shapes.append({
+            "type": "text",
+            "x": 0.9, "y": 1.0, "w": 9.89, "h": 1.0,
+            "text": title,
+            "size": 28, "weight": 800, "color": "#1A1A1A",
+            "align": "center", "valign": "middle",
+            "role": "governing",
+        })
+    shapes.append({
         "type": "line",
         "x1": 0.9, "y1": 2.5, "x2": 10.8, "y2": 2.5,
         "color": "#1A1A1A", "width": 1.5,
-    }]
+    })
     for (x, w, size), (val, lab) in zip(positions, valid):
         shapes.append({
             "type": "text",
@@ -2266,6 +2279,18 @@ def _build_preset_horizontal_process(slide_data: dict) -> list:
     box_y = 3.5
 
     shapes: list = []
+    # ★ Spec Governing-Title-Three-Presets — 조건부 거버닝 (하위 호환: title 없으면 미출력).
+    #   상단 empty 3.5" 여유 (chevron y=3.5) → y=1.0 h=1.0 자리. 기존 도형과 겹침 없음.
+    title = str(slide_data.get("title", "")).strip()
+    if title:
+        shapes.append({
+            "type": "text",
+            "x": 0.9, "y": 1.0, "w": 9.89, "h": 1.0,
+            "text": title,
+            "size": 28, "weight": 800, "color": "#1A1A1A",
+            "align": "center", "valign": "middle",
+            "role": "governing",
+        })
     for i, (label, desc) in enumerate(valid):
         x = margin + i * (box_w + gap)
         shapes.append({
@@ -2334,6 +2359,18 @@ def _build_preset_two_column(slide_data: dict) -> list:
     right_x = margin + panel_w + center_gap
 
     shapes: list = []
+    # ★ Spec Governing-Title-Three-Presets — 조건부 거버닝 (하위 호환: title 없으면 미출력).
+    #   상단 empty 2.8" 여유 (panel y=2.8) → y=1.0 h=1.0 자리. 기존 도형과 겹침 없음.
+    title = str(slide_data.get("title", "")).strip()
+    if title:
+        shapes.append({
+            "type": "text",
+            "x": 0.9, "y": 1.0, "w": 9.89, "h": 1.0,
+            "text": title,
+            "size": 28, "weight": 800, "color": "#1A1A1A",
+            "align": "center", "valign": "middle",
+            "role": "governing",
+        })
     panel_styles = [
         {"x": left_x,  "stroke": "#999999", "stroke_width": 1.0},
         {"x": right_x, "stroke": "#1A1A1A", "stroke_width": 1.5},

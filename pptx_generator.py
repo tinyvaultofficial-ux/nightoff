@@ -2204,8 +2204,12 @@ def _build_preset_quantitative_emphasis(slide_data: dict) -> list:
 
     # ★ Spec Governing-Title-Three-Presets — 조건부 거버닝 (하위 호환: title 없으면 미출력).
     #   상단 empty 2.5" 여유 (line y=2.5) → y=1.0 h=1.0 자리. 기존 도형과 겹침 없음.
+    # ★ Spec Governing-Subtitle-Three-Presets — 서브 거버닝(title 있을 때만).
+    #   title 바로 아래 y=2.0 h=0.3 → 끝 y=2.3. line(y=2.5) 과 gap 0.2" 확보.
+    #   role:"governing" 안 달음 — 거버닝은 title 하나만.
     shapes: list = []
     title = str(slide_data.get("title", "")).strip()
+    subtitle = str(slide_data.get("subtitle", "")).strip()
     if title:
         shapes.append({
             "type": "text",
@@ -2215,6 +2219,14 @@ def _build_preset_quantitative_emphasis(slide_data: dict) -> list:
             "align": "center", "valign": "middle",
             "role": "governing",
         })
+        if subtitle:
+            shapes.append({
+                "type": "text",
+                "x": 0.9, "y": 2.0, "w": 9.89, "h": 0.3,
+                "text": subtitle,
+                "size": 13, "weight": 500, "color": "#666666",
+                "align": "center", "valign": "middle",
+            })
     shapes.append({
         "type": "line",
         "x1": 0.9, "y1": 2.5, "x2": 10.8, "y2": 2.5,
@@ -2281,7 +2293,10 @@ def _build_preset_horizontal_process(slide_data: dict) -> list:
     shapes: list = []
     # ★ Spec Governing-Title-Three-Presets — 조건부 거버닝 (하위 호환: title 없으면 미출력).
     #   상단 empty 3.5" 여유 (chevron y=3.5) → y=1.0 h=1.0 자리. 기존 도형과 겹침 없음.
+    # ★ Spec Governing-Subtitle-Three-Presets — 서브 거버닝(title 있을 때만).
+    #   title 바로 아래 y=2.0 h=0.3 → 끝 y=2.3. chevron(y=3.5) 과 gap 1.2" 여유.
     title = str(slide_data.get("title", "")).strip()
+    subtitle = str(slide_data.get("subtitle", "")).strip()
     if title:
         shapes.append({
             "type": "text",
@@ -2291,6 +2306,14 @@ def _build_preset_horizontal_process(slide_data: dict) -> list:
             "align": "center", "valign": "middle",
             "role": "governing",
         })
+        if subtitle:
+            shapes.append({
+                "type": "text",
+                "x": 0.9, "y": 2.0, "w": 9.89, "h": 0.3,
+                "text": subtitle,
+                "size": 13, "weight": 500, "color": "#666666",
+                "align": "center", "valign": "middle",
+            })
     for i, (label, desc) in enumerate(valid):
         x = margin + i * (box_w + gap)
         shapes.append({
@@ -2361,7 +2384,10 @@ def _build_preset_two_column(slide_data: dict) -> list:
     shapes: list = []
     # ★ Spec Governing-Title-Three-Presets — 조건부 거버닝 (하위 호환: title 없으면 미출력).
     #   상단 empty 2.8" 여유 (panel y=2.8) → y=1.0 h=1.0 자리. 기존 도형과 겹침 없음.
+    # ★ Spec Governing-Subtitle-Three-Presets — 서브 거버닝(title 있을 때만).
+    #   title 바로 아래 y=2.0 h=0.3 → 끝 y=2.3. panel(y=2.8) 과 gap 0.5" 여유.
     title = str(slide_data.get("title", "")).strip()
+    subtitle = str(slide_data.get("subtitle", "")).strip()
     if title:
         shapes.append({
             "type": "text",
@@ -2371,6 +2397,14 @@ def _build_preset_two_column(slide_data: dict) -> list:
             "align": "center", "valign": "middle",
             "role": "governing",
         })
+        if subtitle:
+            shapes.append({
+                "type": "text",
+                "x": 0.9, "y": 2.0, "w": 9.89, "h": 0.3,
+                "text": subtitle,
+                "size": 13, "weight": 500, "color": "#666666",
+                "align": "center", "valign": "middle",
+            })
     panel_styles = [
         {"x": left_x,  "stroke": "#999999", "stroke_width": 1.0},
         {"x": right_x, "stroke": "#1A1A1A", "stroke_width": 1.5},

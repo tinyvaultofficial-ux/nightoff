@@ -2342,12 +2342,25 @@ def _build_preset_horizontal_process(slide_data: dict) -> list:
             "text_weight": 700,
             "text_align": "center",
         })
+        # Spec Preset-Process-Bottom-Card — chevron 아래 stroke 카드로
+        #   하단 여백(기존 25%)을 채움. 카드 rect 는 desc 유무 무관 항상
+        #   그려 시각 격자 유지, desc text 는 있을 때만 카드 안에 겹침.
+        #   word_wrap+auto_size(_add_text)로 긴 desc 자동 줄바꿈/축소.
+        card_y = 4.9
+        card_h = 3.0
+        shapes.append({
+            "type": "rect",
+            "x": x, "y": card_y, "w": box_w, "h": card_h,
+            "stroke": "#1A1A1A",
+            "stroke_width": 1.0,
+        })
         if desc:
             shapes.append({
                 "type": "text",
-                "x": x, "y": 4.9, "w": box_w, "h": 1.3,
+                "x": x + 0.1, "y": card_y + 0.15,
+                "w": box_w - 0.2, "h": card_h - 0.3,
                 "text": desc,
-                "size": 11, "weight": 400, "color": "#666",
+                "size": 13, "weight": 400, "color": "#333333",
                 "align": "center", "valign": "top",
             })
     return shapes

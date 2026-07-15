@@ -2029,10 +2029,11 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A", the
             #   theme.py 의 ACCENT 토큰 참조 (라이트 #6B46E5 / 다크 #A78BFA).
             #   미마킹 도형(divider 로마·quantitative value·아이템 head 등)은 무영향.
             color_val = str(shape_def.get("color", default_text_color))
-            if shape_def.get("role") == "governing":
-                _accent = _get_theme(theme).get("ACCENT")
-                if _accent:
-                    color_val = _accent
+            # ★ Spec Governing-Purple-Revert — 거버닝 보라 오버라이드 폐기.
+            #   각 preset 함수가 이미 배경에 맞는 color 를 명시(흰 배경→#1A1A1A,
+            #   검정 배경→#FFFFFF/#FEFEFE, audit 28개 전량 확인). 오버라이드가
+            #   그걸 보라로 덮던 것을 제거 → 명시 color 그대로 배경 대응.
+            #   다크는 _add_text 내부 _map_color(DARK_MAP)가 자동 반전.
             return _add_text(
                 slide,
                 float(shape_def.get("x", 0)), float(shape_def.get("y", 0)),

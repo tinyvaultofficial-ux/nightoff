@@ -4851,10 +4851,15 @@ async def orchestrate(
                     "D-Fix-EmptyPageSafeguard 복원 p%d (의미 도형 0개 → outline %d개로 복원, raw_shapes=%d)",
                     sr.page, len(_restored), len(sr.shapes or []),
                 )
-                final_slides.append({
-                    "section": sr.section,
-                    "shapes": _restored,
-                })
+                # Spec PresetBelt-Safeguard-Meta-Preserve — safeguard 발동 시에도
+                #   sr.meta(preset/items/conclusion 등)를 보존해 dispatch 가 preset
+                #   함수를 정상 호출하게 함. meta 가 비면({}) 기존 동작과 동등.
+                #   _restored 는 shapes 로 유지 → 함수가 [] 반환해도 outline 복원
+                #   텍스트가 fallback 으로 남아 진짜 빈 페이지 방어망 유지.
+                _slide = dict(sr.meta) if isinstance(sr.meta, dict) else {}
+                _slide["section"] = sr.section
+                _slide["shapes"] = _restored
+                final_slides.append(_slide)
             else:
                 # Spec D-Build-PresetBelt — sr.meta(preset/left/right 등)를 펼쳐 박되 section/shapes 우선.
                 # meta 가 비면(=기존 6종 viz_pattern, LLM 이 preset 키 안 채운 경우) preset 없는 dict

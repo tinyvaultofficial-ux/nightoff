@@ -2343,26 +2343,30 @@ def _build_preset_horizontal_process(slide_data: dict) -> list:
             "text_weight": 700,
             "text_align": "center",
         })
-        # Spec Preset-Process-Bottom-Card — chevron 아래 stroke 카드로
-        #   하단 여백(기존 25%)을 채움. 카드 rect 는 desc 유무 무관 항상
-        #   그려 시각 격자 유지, desc text 는 있을 때만 카드 안에 겹침.
-        #   word_wrap+auto_size(_add_text)로 긴 desc 자동 줄바꿈/축소.
+        # Spec Preset-Process-Bullet-Cards — desc 를 쉼표로 쪼개 불릿 세로
+        #   배치. 카드 높이는 항목 수에 맞게 가변(빈 박스 방지). 쉼표 없으면
+        #   단일 불릿, desc 없으면 최소 카드(시각 격자 유지).
+        #   word_wrap+auto_size(_add_text)로 긴 항목 자동 줄바꿈/축소.
+        items = [it.strip() for it in (desc or "").split(",") if it.strip()]
+        n_items = min(len(items), 5)   # 상한 clamp
+
         card_y = 4.9
-        card_h = 3.0
+        card_h = 0.5 if n_items == 0 else (0.4 + 0.5 * n_items)
+
         shapes.append({
             "type": "rect",
             "x": x, "y": card_y, "w": box_w, "h": card_h,
             "stroke": "#1A1A1A",
             "stroke_width": 1.0,
         })
-        if desc:
+        for j, item in enumerate(items[:5]):
             shapes.append({
                 "type": "text",
-                "x": x + 0.1, "y": card_y + 0.15,
-                "w": box_w - 0.2, "h": card_h - 0.3,
-                "text": desc,
-                "size": 13, "weight": 400, "color": "#333333",
-                "align": "center", "valign": "top",
+                "x": x + 0.15, "y": card_y + 0.15 + j * 0.5,
+                "w": box_w - 0.3, "h": 0.45,
+                "text": f"· {item}",
+                "size": 12, "weight": 400, "color": "#333333",
+                "align": "left", "valign": "top",
             })
     return shapes
 

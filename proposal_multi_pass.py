@@ -991,11 +991,15 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
                           items 정확히 3개 + conclusion 필수. 미충족 시 코드가 preset 무효 처리.
                           triad 와의 구분: triad 는 우측 원 3개 이미지 자리(항목이 각각 독립),
                           hero_detail 은 좌측 하나의 대형 이미지 + 우측 번호 세부(하나의 대상을 파고듦).
-  · flow_detail      — 상단 거버닝 + 중단 가로 흐름 4~5단계 + 하단 3~4열 상세 (고밀도, 한 장에 흐름+상세)
+  · flow_detail      — 상단 거버닝 + 중단 가로 흐름 3~5단계 + 하단 2~4열 상세 (한 장에 흐름+상세)
                        ★ 적합: role=body 페이지의 "운영 프로세스는 이렇고, 각 축에서 이렇게 실행합니다"처럼
                               흐름과 상세를 한 장에 담아야 하는 정보량 많은 페이지
                               (예: 5단계 운영 프로세스 + 3대 실행축 세부, 4단계 추진 흐름 + 4대 원칙 세부)
-                       ⚠ 부적합: 정보량이 적은 페이지(빈약해 보임) / 흐름만 있는 페이지(그건 process/timeline) /
+                       ★ Spec Remove-Process-Preset — 가로 단계 흐름(공정·절차·순서·추진 단계·운영 흐름)도
+                              이 프리셋으로. 각 단계에 하단 상세 항목(columns)을 붙여 풍부하게 채운다.
+                              (예: 계약→준비→운영→정산 4단계 + 각 단계의 세부 실행 항목,
+                                   온라인 모집→영상 심사→본선 3단계 + 각 단계의 심사 축·기준)
+                       ⚠ 부적합: 세로 방향 시간축이 본질인 페이지(그건 timeline) /
                               상세만 있는 페이지(그건 cards3/numbered_columns) / role=support / slide_type=hero
                        ※ ★ 고밀도 페이지 — 흐름 4~5단계 + 상세 3~4열이 모두 있어야 자연스러움.
                           steps 4 또는 5개(kr 필수) + columns 3 또는 4개(key 필수, 각 items 정확 3개) + title 필수.
@@ -1684,6 +1688,17 @@ JSON 영역 영역 영역 위 가이드 영역 따라 정확히 출력 — 영�
 
 ⚠ 수치는 단위까지 — "12 만 명" / "연 15 회" / "총 사업비 8 억 5 천만 원" / "강수량 30mm/h" / "풍속 12m/s".
 
+⚠ 왜(근거) → 실행 (Spec Slide-Why-And-FactGate)
+- 각 항목 설명은 "무엇을 한다" 만 쓰지 말고, "왜 이렇게 하는지" 근거를 한 구절로
+  앞세운 뒤 실행을 제시. 근거는 과업 맥락·상식에 기반한 논리면 충분.
+- 한 구절로 간결히 — 만연체·수식 남발 금지, 위 명사형 종결 규칙 유지.
+- 예: "우천이 잦은 시기 특성상 방수 지붕 선제 적용" / "인파 밀집 구간이라 진입 통제 우선"
+
+⚠ 팩트 게이트 (Spec Slide-Why-And-FactGate)
+- 수치·고유명사·출처는 페이지 뼈대(governing/key_msgs) 나 breadcrumb 에 실제로
+  주어진 것만 사용. 없는 통계·수치·출처 지어내기 금지.
+- 뼈대에 없으면 위 "왜→실행" 방식의 논리 근거로 대체.
+
 [콘텐츠 운영 절차 예외 — Spec Content-Step-Exception]
 위 "번호 매김 금지 / 박스당 정보 1~2개 / 항목 나열식 X" 규칙은
 ★ 콘텐츠가 "어떻게 진행·집행되는지"
@@ -1885,9 +1900,7 @@ callout 박스 | callout      | 2~3.5 × 1~1.5인치      | stroke #1A1A1A
    ★ 프리셋 옵션 (Spec D-Fix-Preset3 / Spec Governing-Title-Three-Presets / Spec Governing-Subtitle-Three-Presets): 본 패턴은 slide_data 출력 시 preset='two_column' + title(선택, 강력 권장 — 페이지 상단 거버닝 한 줄, 25~40자, 자동 브랜드 보라) + subtitle(선택 — 서브 거버닝, user prompt 의 [서브 거버닝] 라인 그대로, 정량 수치 또는 보충 한 줄, 25자 이내) + columns=[{title, items[]}, {title, items[]}] (정확히 2개 / 좌=AS-IS / 우=TO-BE) 형식 사용 가능 — 코드가 좌우 패널 + 중앙 화살표를 안정 배치 (옵트인 / preset 미지정 시 기존 자율 그대로). ★ 최상위 title 은 페이지 거버닝, columns[i].title 은 패널 라벨(AS-IS/TO-BE 등) — 다른 필드. 예: {"preset": "two_column", "title": "기존 운영을 참여 중심으로 전환한다", "subtitle": "온·오프라인 통합 접점 12곳", "columns": [{"title": "AS-IS", "items": ["일방 전달", "단기 이벤트"]}, {"title": "TO-BE", "items": ["양방향 참여", "지속 거버넌스"]}]}
    ※ AS-IS 칸은 [과업 리서치]/[RFP 분석] 사실 우선. 없으면 일반적 한계로. 특정 단정 X. (Spec C-Build-BeforeAfterCap)
 2) 3-4 카드 동등 비교 — 가로 등분, 카드 = 헤더 + 본문 + 결론. 적용: 차별점, 평행 분류
-3) 단계별 프로세스 (가로 흐름) — 단계 5-7 개, 박스 + 화살표. 적용: 추진 절차, 운영 흐름
-   ★ 프리셋 옵션 (Spec D-Fix-Preset2 / Spec Governing-Title-Three-Presets / Spec Governing-Subtitle-Three-Presets): 본 패턴은 slide_data 출력 시 preset='process' + title(선택, 강력 권장 — 페이지 상단 거버닝 한 줄, 25~40자, 자동 브랜드 보라) + subtitle(선택 — 서브 거버닝, user prompt 의 [서브 거버닝] 라인 그대로, 정량 수치 또는 보충 한 줄, 25자 이내) + steps=[{label, desc(선택)}] (3~7개) 형식 사용 가능 — 코드가 chevron 을 가로 균등 정렬 (옵트인 / preset 미지정 시 기존 자율 그대로). 예: {"preset": "process", "title": "5단계 표준 프로세스로 안정적 실행", "subtitle": "기획부터 사후 정착까지 표준 5단계", "steps": [{"label": "분석", "desc": "현황 진단"}, {"label": "기획", "desc": "전략 수립"}, {"label": "실행", "desc": "단계별 추진"}]}
-   ⚠ chevron label은 짧게 (3단계 5~10자 / 5단계 4~6자 / 7단계 2~4자) — 길면 잘림 (chevron auto_size 미적용).
+3) (제거됨 — Spec Remove-Process-Preset. 가로 단계 흐름은 flow_detail 로 유도.)
 4) 수직 타임라인 — 좌측 시간/단계 + 우측 상세, 단계 4-6 개. 적용: 일정, 마일스톤
 5) 2x2 매트릭스 / 사분면 — 2 축 분류, 사분면별 텍스트. 적용: SWOT, 포지셔닝
 6) Before / After 점층 카드 — 카드 안 Before → After. 적용: 도입 효과, 개선 사례
@@ -1900,7 +1913,7 @@ callout 박스 | callout      | 2~3.5 × 1~1.5인치      | stroke #1A1A1A
    ★ 프리셋 옵션 (Spec D-Fix-Preset4 / 내러티브 흐름형): 시장분석·인사이트·논리 전개(도식 없이 텍스트 위계로 흐름) 페이지는 slide_data 출력 시 preset='narrative' + quote(큰 인용 / 필수) + flow(흐름 설명 1~3개 / 선택) + conclusion(결론 / 선택) 형식 사용 가능 — 코드가 인용·흐름·결론을 세로 위계로 안정 배치 (옵트인 / preset 미지정 시 기존 자율 그대로). 예: {"preset": "narrative", "quote": "한국이 여행 보낼 만한 곳인가", "flow": ["글로벌 관광객 인식 변화", "K-콘텐츠 영향력 확대"], "conclusion": "지금이 도시 브랜딩의 기회"}
    ★ narrative style 5종 (Spec D-Fix-Preset5 / 도식 없이 텍스트 위계로 입체감):
       · style:'quote' (기본 / 생략 가능) — 인용 + 흐름 + 결론 (시장분석·인사이트)
-      · style:'declaration' — 큰 선언 + 근거 정확히 3개 (핵심 전략 선언) / 키: declaration, grounds[] (Spec Declaration-3Col-Cards — 코드가 가로 3열 카드로 배치)
+      · style:'declaration' — 큰 선언 + 근거 정확히 3개 (핵심 전략 선언) / 키: declaration, grounds[] (각 grounds = "소제목\n· 불릿\n· 불릿" 명사구, 만연체 한 문장 금지 — 코드가 가로 3열 카드로 배치. Spec Declaration-3Col-Cards)
       · style:'qa' — 질문 + 답변 1~3개 (논리 전개·설득) / 키: question, answers[]
       · style:'emphasis' — 소제목 + 본문 + 핵심 강조 (배경·맥락 설명) / 키: subtitle, body, highlight
       · style:'contrast' — "A가 아니라 B" 대비 (컨셉·차별점 강조) / 키: not_this, but_this
@@ -2742,7 +2755,7 @@ async def generate_outline(
         #   함수/dispatch 는 이미 등록 완료 — 이번 spec 은 카탈로그/가드/SLIDE elif 3지점 각 5개 추가.
         #   numbered_columns / hero_detail / flow_detail / quad_detail / fullbleed_overlay.
         #   fullbleed_overlay 는 배정 규칙 ⑨ 로 전체 제안서 1~2장 cap 도 함께 걸음(시각 무게 과다 방지).
-        _VIZ_PATTERN_SAFE = {"2col", "cards3", "process", "before_after", "quant", "cards_grid",
+        _VIZ_PATTERN_SAFE = {"2col", "cards3", "before_after", "quant", "cards_grid",
                              "text_quote", "text_declaration", "split", "timeline", "asymmetric",
                              "zigzag", "hsplit", "circles", "quad",
                              "hsplit_top", "hero_cards", "triad", "strategy_map",
@@ -4851,10 +4864,15 @@ async def orchestrate(
                     "D-Fix-EmptyPageSafeguard 복원 p%d (의미 도형 0개 → outline %d개로 복원, raw_shapes=%d)",
                     sr.page, len(_restored), len(sr.shapes or []),
                 )
-                final_slides.append({
-                    "section": sr.section,
-                    "shapes": _restored,
-                })
+                # Spec PresetBelt-Safeguard-Meta-Preserve — safeguard 발동 시에도
+                #   sr.meta(preset/items/conclusion 등)를 보존해 dispatch 가 preset
+                #   함수를 정상 호출하게 함. meta 가 비면({}) 기존 동작과 동등.
+                #   _restored 는 shapes 로 유지 → 함수가 [] 반환해도 outline 복원
+                #   텍스트가 fallback 으로 남아 진짜 빈 페이지 방어망 유지.
+                _slide = dict(sr.meta) if isinstance(sr.meta, dict) else {}
+                _slide["section"] = sr.section
+                _slide["shapes"] = _restored
+                final_slides.append(_slide)
             else:
                 # Spec D-Build-PresetBelt — sr.meta(preset/left/right 등)를 펼쳐 박되 section/shapes 우선.
                 # meta 가 비면(=기존 6종 viz_pattern, LLM 이 preset 키 안 채운 경우) preset 없는 dict

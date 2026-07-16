@@ -2029,10 +2029,11 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A", the
             #   theme.py 의 ACCENT 토큰 참조 (라이트 #6B46E5 / 다크 #A78BFA).
             #   미마킹 도형(divider 로마·quantitative value·아이템 head 등)은 무영향.
             color_val = str(shape_def.get("color", default_text_color))
-            if shape_def.get("role") == "governing":
-                _accent = _get_theme(theme).get("ACCENT")
-                if _accent:
-                    color_val = _accent
+            # ★ Spec Governing-Purple-Revert — 거버닝 보라 오버라이드 폐기.
+            #   각 preset 함수가 이미 배경에 맞는 color 를 명시(흰 배경→#1A1A1A,
+            #   검정 배경→#FFFFFF/#FEFEFE, audit 28개 전량 확인). 오버라이드가
+            #   그걸 보라로 덮던 것을 제거 → 명시 color 그대로 배경 대응.
+            #   다크는 _add_text 내부 _map_color(DARK_MAP)가 자동 반전.
             return _add_text(
                 slide,
                 float(shape_def.get("x", 0)), float(shape_def.get("y", 0)),
@@ -2342,13 +2343,30 @@ def _build_preset_horizontal_process(slide_data: dict) -> list:
             "text_weight": 700,
             "text_align": "center",
         })
-        if desc:
+        # Spec Preset-Process-Bullet-Cards — desc 를 쉼표로 쪼개 불릿 세로
+        #   배치. 카드 높이는 항목 수에 맞게 가변(빈 박스 방지). 쉼표 없으면
+        #   단일 불릿, desc 없으면 최소 카드(시각 격자 유지).
+        #   word_wrap+auto_size(_add_text)로 긴 항목 자동 줄바꿈/축소.
+        items = [it.strip() for it in (desc or "").split(",") if it.strip()]
+        n_items = min(len(items), 5)   # 상한 clamp
+
+        card_y = 4.9
+        card_h = 0.5 if n_items == 0 else (0.4 + 0.5 * n_items)
+
+        shapes.append({
+            "type": "rect",
+            "x": x, "y": card_y, "w": box_w, "h": card_h,
+            "stroke": "#1A1A1A",
+            "stroke_width": 1.0,
+        })
+        for j, item in enumerate(items[:5]):
             shapes.append({
                 "type": "text",
-                "x": x, "y": 4.9, "w": box_w, "h": 1.3,
-                "text": desc,
-                "size": 11, "weight": 400, "color": "#666",
-                "align": "center", "valign": "top",
+                "x": x + 0.15, "y": card_y + 0.15 + j * 0.5,
+                "w": box_w - 0.3, "h": 0.45,
+                "text": f"· {item}",
+                "size": 12, "weight": 400, "color": "#333333",
+                "align": "left", "valign": "top",
             })
     return shapes
 
@@ -2593,12 +2611,14 @@ def _narrative_declaration(slide_data: dict) -> list:
         "align": "center", "valign": "middle",
         "role": "governing",
     })
-    # 근거 (최대 3개) — Spec Declaration-3Col-Cards:
-    #   세로 쌓인 흰 박스 → 가로 3열 세로 카드로 재배치. 각 카드 = 회색 헤더
-    #   밴드(소제목) + 흰 본문(불릿). grounds 각 문자열은 "소제목\n· 불릿\n·
-    #   불릿" 형태 (Spec Declaration-Grounds-Bullet 정합) — 첫 줄 = 헤더 소제목,
-    #   나머지 = 본문. 3개 카드 높이 통일(가장 긴 본문 기준)로 나란히 정렬.
-    #   무채색만(헤더 회색, 본문 흰/검정, 테두리 회색).
+    # 근거 (최대 3개) — Spec Declaration-3Col-Cards (79f314f/0b7e46e 상위 버전):
+    #   흰박스 세로 쌓기(79f314f) → 가로 3열 세로 카드로 재배치. 각 카드 = 회색
+    #   헤더 밴드(소제목) + 흰 본문(불릿). grounds 각 문자열은 "소제목\n· 불릿\n·
+    #   불릿" 형태 (Spec Declaration-Grounds-Bullet 0b7e46e 정합) — 첫 줄 = 헤더
+    #   소제목, 나머지 = 본문. 3개 카드 높이 통일(가장 긴 본문 기준)로 나란히
+    #   정렬. 무채색만(헤더 회색, 본문 흰/검정, 테두리 회색).
+    #   ★ fill=none 문자열 검정 폴백(_hex_to_rgb len!=6, L1531) 이슈는 각 rect
+    #     에서 fill 키 자체 제거(카드 외곽) 또는 명시 #E8E8E8(헤더 밴드)로 회피.
     n_cards = min(len(grounds), 3)
     if n_cards == 0:
         return shapes
@@ -2637,7 +2657,7 @@ def _narrative_declaration(slide_data: dict) -> list:
 
     for i, (subtitle, body_text, _) in enumerate(parsed):
         cx = margin + i * (card_w + gap)
-        # 카드 외곽 테두리 (옅은 회색)
+        # 카드 외곽 테두리 (옅은 회색, fill 키 제거 = 투명 배경)
         shapes.append({
             "type": "rect", "x": cx, "y": card_y, "w": card_w, "h": card_h,
             "stroke": "#DDDDDD", "stroke_width": 0.75,

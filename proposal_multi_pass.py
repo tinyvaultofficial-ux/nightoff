@@ -991,11 +991,15 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
                           items 정확히 3개 + conclusion 필수. 미충족 시 코드가 preset 무효 처리.
                           triad 와의 구분: triad 는 우측 원 3개 이미지 자리(항목이 각각 독립),
                           hero_detail 은 좌측 하나의 대형 이미지 + 우측 번호 세부(하나의 대상을 파고듦).
-  · flow_detail      — 상단 거버닝 + 중단 가로 흐름 4~5단계 + 하단 3~4열 상세 (고밀도, 한 장에 흐름+상세)
+  · flow_detail      — 상단 거버닝 + 중단 가로 흐름 3~5단계 + 하단 2~4열 상세 (한 장에 흐름+상세)
                        ★ 적합: role=body 페이지의 "운영 프로세스는 이렇고, 각 축에서 이렇게 실행합니다"처럼
                               흐름과 상세를 한 장에 담아야 하는 정보량 많은 페이지
                               (예: 5단계 운영 프로세스 + 3대 실행축 세부, 4단계 추진 흐름 + 4대 원칙 세부)
-                       ⚠ 부적합: 정보량이 적은 페이지(빈약해 보임) / 흐름만 있는 페이지(그건 process/timeline) /
+                       ★ Spec Remove-Process-Preset — 가로 단계 흐름(공정·절차·순서·추진 단계·운영 흐름)도
+                              이 프리셋으로. 각 단계에 하단 상세 항목(columns)을 붙여 풍부하게 채운다.
+                              (예: 계약→준비→운영→정산 4단계 + 각 단계의 세부 실행 항목,
+                                   온라인 모집→영상 심사→본선 3단계 + 각 단계의 심사 축·기준)
+                       ⚠ 부적합: 세로 방향 시간축이 본질인 페이지(그건 timeline) /
                               상세만 있는 페이지(그건 cards3/numbered_columns) / role=support / slide_type=hero
                        ※ ★ 고밀도 페이지 — 흐름 4~5단계 + 상세 3~4열이 모두 있어야 자연스러움.
                           steps 4 또는 5개(kr 필수) + columns 3 또는 4개(key 필수, 각 items 정확 3개) + title 필수.
@@ -1896,9 +1900,7 @@ callout 박스 | callout      | 2~3.5 × 1~1.5인치      | stroke #1A1A1A
    ★ 프리셋 옵션 (Spec D-Fix-Preset3 / Spec Governing-Title-Three-Presets / Spec Governing-Subtitle-Three-Presets): 본 패턴은 slide_data 출력 시 preset='two_column' + title(선택, 강력 권장 — 페이지 상단 거버닝 한 줄, 25~40자, 자동 브랜드 보라) + subtitle(선택 — 서브 거버닝, user prompt 의 [서브 거버닝] 라인 그대로, 정량 수치 또는 보충 한 줄, 25자 이내) + columns=[{title, items[]}, {title, items[]}] (정확히 2개 / 좌=AS-IS / 우=TO-BE) 형식 사용 가능 — 코드가 좌우 패널 + 중앙 화살표를 안정 배치 (옵트인 / preset 미지정 시 기존 자율 그대로). ★ 최상위 title 은 페이지 거버닝, columns[i].title 은 패널 라벨(AS-IS/TO-BE 등) — 다른 필드. 예: {"preset": "two_column", "title": "기존 운영을 참여 중심으로 전환한다", "subtitle": "온·오프라인 통합 접점 12곳", "columns": [{"title": "AS-IS", "items": ["일방 전달", "단기 이벤트"]}, {"title": "TO-BE", "items": ["양방향 참여", "지속 거버넌스"]}]}
    ※ AS-IS 칸은 [과업 리서치]/[RFP 분석] 사실 우선. 없으면 일반적 한계로. 특정 단정 X. (Spec C-Build-BeforeAfterCap)
 2) 3-4 카드 동등 비교 — 가로 등분, 카드 = 헤더 + 본문 + 결론. 적용: 차별점, 평행 분류
-3) 단계별 프로세스 (가로 흐름) — 단계 5-7 개, 박스 + 화살표. 적용: 추진 절차, 운영 흐름
-   ★ 프리셋 옵션 (Spec D-Fix-Preset2 / Spec Governing-Title-Three-Presets / Spec Governing-Subtitle-Three-Presets): 본 패턴은 slide_data 출력 시 preset='process' + title(선택, 강력 권장 — 페이지 상단 거버닝 한 줄, 25~40자, 자동 브랜드 보라) + subtitle(선택 — 서브 거버닝, user prompt 의 [서브 거버닝] 라인 그대로, 정량 수치 또는 보충 한 줄, 25자 이내) + steps=[{label, desc(선택)}] (3~7개) 형식 사용 가능 — 코드가 chevron 을 가로 균등 정렬 (옵트인 / preset 미지정 시 기존 자율 그대로). 예: {"preset": "process", "title": "5단계 표준 프로세스로 안정적 실행", "subtitle": "기획부터 사후 정착까지 표준 5단계", "steps": [{"label": "분석", "desc": "현황 진단"}, {"label": "기획", "desc": "전략 수립"}, {"label": "실행", "desc": "단계별 추진"}]}
-   ⚠ chevron label은 짧게 (3단계 5~10자 / 5단계 4~6자 / 7단계 2~4자) — 길면 잘림 (chevron auto_size 미적용).
+3) (제거됨 — Spec Remove-Process-Preset. 가로 단계 흐름은 flow_detail 로 유도.)
 4) 수직 타임라인 — 좌측 시간/단계 + 우측 상세, 단계 4-6 개. 적용: 일정, 마일스톤
 5) 2x2 매트릭스 / 사분면 — 2 축 분류, 사분면별 텍스트. 적용: SWOT, 포지셔닝
 6) Before / After 점층 카드 — 카드 안 Before → After. 적용: 도입 효과, 개선 사례
@@ -2753,7 +2755,7 @@ async def generate_outline(
         #   함수/dispatch 는 이미 등록 완료 — 이번 spec 은 카탈로그/가드/SLIDE elif 3지점 각 5개 추가.
         #   numbered_columns / hero_detail / flow_detail / quad_detail / fullbleed_overlay.
         #   fullbleed_overlay 는 배정 규칙 ⑨ 로 전체 제안서 1~2장 cap 도 함께 걸음(시각 무게 과다 방지).
-        _VIZ_PATTERN_SAFE = {"2col", "cards3", "process", "before_after", "quant", "cards_grid",
+        _VIZ_PATTERN_SAFE = {"2col", "cards3", "before_after", "quant", "cards_grid",
                              "text_quote", "text_declaration", "split", "timeline", "asymmetric",
                              "zigzag", "hsplit", "circles", "quad",
                              "hsplit_top", "hero_cards", "triad", "strategy_map",

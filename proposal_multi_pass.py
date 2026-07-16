@@ -1900,7 +1900,7 @@ callout 박스 | callout      | 2~3.5 × 1~1.5인치      | stroke #1A1A1A
    ★ 프리셋 옵션 (Spec D-Fix-Preset4 / 내러티브 흐름형): 시장분석·인사이트·논리 전개(도식 없이 텍스트 위계로 흐름) 페이지는 slide_data 출력 시 preset='narrative' + quote(큰 인용 / 필수) + flow(흐름 설명 1~3개 / 선택) + conclusion(결론 / 선택) 형식 사용 가능 — 코드가 인용·흐름·결론을 세로 위계로 안정 배치 (옵트인 / preset 미지정 시 기존 자율 그대로). 예: {"preset": "narrative", "quote": "한국이 여행 보낼 만한 곳인가", "flow": ["글로벌 관광객 인식 변화", "K-콘텐츠 영향력 확대"], "conclusion": "지금이 도시 브랜딩의 기회"}
    ★ narrative style 5종 (Spec D-Fix-Preset5 / 도식 없이 텍스트 위계로 입체감):
       · style:'quote' (기본 / 생략 가능) — 인용 + 흐름 + 결론 (시장분석·인사이트)
-      · style:'declaration' — 큰 선언 + 근거 2~3개 (핵심 전략 선언) / 키: declaration, grounds[]
+      · style:'declaration' — 큰 선언 + 근거 2~3개 (핵심 전략 선언) / 키: declaration, grounds[] (각 grounds = "소제목\n· 불릿\n· 불릿" 명사구, 만연체 한 문장 금지 — Spec Declaration-Grounds-Bullet)
       · style:'qa' — 질문 + 답변 1~3개 (논리 전개·설득) / 키: question, answers[]
       · style:'emphasis' — 소제목 + 본문 + 핵심 강조 (배경·맥락 설명) / 키: subtitle, body, highlight
       · style:'contrast' — "A가 아니라 B" 대비 (컨셉·차별점 강조) / 키: not_this, but_this
@@ -3175,7 +3175,7 @@ def _build_slide_user_prompt(
             _keys_hint = (
                 '"quote"(큰 인용, 필수) + "flow"(흐름 1~3개, 선택) + "conclusion"(결론, 선택)'
                 if _style_v == "quote"
-                else '"declaration"(큰 선언, 필수) + "grounds"(근거 2~3개, 선택)'
+                else '"declaration"(큰 선언, 필수) + "grounds"(근거 2~3개, 선택 — 각 문자열은 "소제목(명사형 8~15자)\\n· 불릿1(한 구절 명사형)\\n· 불릿2\\n· 불릿3(최대 4개)" 형태. 만연체 한 문장 금지, 명사형 종결. Spec Declaration-Grounds-Bullet)'
             )
             parts.append(
                 f"[배정된 레이아웃 패턴] {item.viz_pattern} (텍스트 위계형 — 도식 없음)\n"

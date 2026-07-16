@@ -2593,27 +2593,77 @@ def _narrative_declaration(slide_data: dict) -> list:
         "align": "center", "valign": "middle",
         "role": "governing",
     })
-    # 근거 (선택 / 최대 3개) — Spec Preset-Fix-Declaration A안:
-    #   옅은 테두리 박스 + 왼쪽 정렬 + em-dash 접두 제거 (박스가 구분 역할 대체).
-    #   box_h 0.75 (16pt 2줄 + 여유 0.24") / gap 0.9 (박스 사이 0.15" 여백) / y 4.6 시작.
-    #   3 박스 끝 = 4.6 + 2*0.9 + 0.75 = 7.15 → 하단(8.27) 여유 1.12".
-    y = 4.6
-    box_h = 0.75
-    gap = 0.9
-    for i, g in enumerate(grounds):
-        gy = y + i * gap
-        # 옅은 테두리 박스 — 근거 구분
+    # 근거 (최대 3개) — Spec Declaration-3Col-Cards:
+    #   세로 쌓인 흰 박스 → 가로 3열 세로 카드로 재배치. 각 카드 = 회색 헤더
+    #   밴드(소제목) + 흰 본문(불릿). grounds 각 문자열은 "소제목\n· 불릿\n·
+    #   불릿" 형태 (Spec Declaration-Grounds-Bullet 정합) — 첫 줄 = 헤더 소제목,
+    #   나머지 = 본문. 3개 카드 높이 통일(가장 긴 본문 기준)로 나란히 정렬.
+    #   무채색만(헤더 회색, 본문 흰/검정, 테두리 회색).
+    n_cards = min(len(grounds), 3)
+    if n_cards == 0:
+        return shapes
+    margin = 0.9
+    gap = 0.35
+    inner_w = 11.69 - 2 * margin
+    card_w = (inner_w - gap * (n_cards - 1)) / n_cards
+    card_y = 4.5
+    header_h = 0.55
+    body_pad_x, body_pad_y = 0.15, 0.15
+    body_text_size = 12
+    body_line_h = body_text_size * 1.5 / 72.0
+    body_char_w = body_text_size * 1.0 / 72.0
+    body_text_w = card_w - 2 * body_pad_x
+    body_chars_per_line = max(1, int(body_text_w / body_char_w))
+
+    # 각 카드의 소제목/본문 분리 + 본문 h 계산 → max 로 통일
+    parsed = []
+    for g in grounds[:n_cards]:
+        lines = g.split("\n")
+        subtitle = lines[0].strip() if lines else ""
+        body_text = "\n".join(lines[1:]).strip()
+        # 본문 라인 수: 명시 \n 분리 + 각 라인 word_wrap 추정 합산
+        body_lines = 0
+        for line in body_text.split("\n"):
+            if not line.strip():
+                continue
+            body_lines += max(1, (len(line) + body_chars_per_line - 1) // body_chars_per_line)
+        if body_lines == 0:
+            body_lines = 1
+        body_h_i = body_lines * body_line_h + 2 * body_pad_y
+        parsed.append((subtitle, body_text, body_h_i))
+
+    body_h_unified = min(max(h for _, _, h in parsed), 8.0 - card_y - header_h - 0.2)
+    card_h = header_h + body_h_unified
+
+    for i, (subtitle, body_text, _) in enumerate(parsed):
+        cx = margin + i * (card_w + gap)
+        # 카드 외곽 테두리 (옅은 회색)
         shapes.append({
-            "type": "rect", "x": 1.2, "y": gy, "w": 9.29, "h": box_h,
-            "fill": "none", "stroke": "#DDDDDD", "stroke_width": 1,
+            "type": "rect", "x": cx, "y": card_y, "w": card_w, "h": card_h,
+            "stroke": "#DDDDDD", "stroke_width": 0.75,
         })
-        # 근거 텍스트 — 왼쪽 정렬 + 박스 안 패딩(좌 0.25")
+        # 회색 헤더 밴드 (소제목)
         shapes.append({
-            "type": "text", "x": 1.45, "y": gy, "w": 8.79, "h": box_h,
-            "text": g,
-            "size": 16, "weight": 400, "color": "#555555",
-            "align": "left", "valign": "middle",
+            "type": "rect", "x": cx, "y": card_y, "w": card_w, "h": header_h,
+            "fill": "#E8E8E8",
         })
+        if subtitle:
+            shapes.append({
+                "type": "text", "x": cx, "y": card_y, "w": card_w, "h": header_h,
+                "text": subtitle,
+                "size": 13, "weight": 700, "color": "#1A1A1A",
+                "align": "center", "valign": "middle",
+            })
+        # 본문 (흰 배경 위 불릿)
+        if body_text:
+            shapes.append({
+                "type": "text",
+                "x": cx + body_pad_x, "y": card_y + header_h + body_pad_y,
+                "w": body_text_w, "h": body_h_unified - 2 * body_pad_y,
+                "text": body_text,
+                "size": body_text_size, "weight": 400, "color": "#1A1A1A",
+                "align": "left", "valign": "top",
+            })
     return shapes
 
 

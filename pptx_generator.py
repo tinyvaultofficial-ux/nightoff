@@ -2593,27 +2593,38 @@ def _narrative_declaration(slide_data: dict) -> list:
         "align": "center", "valign": "middle",
         "role": "governing",
     })
-    # 근거 (선택 / 최대 3개) — Spec Preset-Fix-Declaration A안:
-    #   옅은 테두리 박스 + 왼쪽 정렬 + em-dash 접두 제거 (박스가 구분 역할 대체).
-    #   box_h 0.75 (16pt 2줄 + 여유 0.24") / gap 0.9 (박스 사이 0.15" 여백) / y 4.6 시작.
-    #   3 박스 끝 = 4.6 + 2*0.9 + 0.75 = 7.15 → 하단(8.27) 여유 1.12".
-    y = 4.6
-    box_h = 0.75
-    gap = 0.9
-    for i, g in enumerate(grounds):
-        gy = y + i * gap
-        # 옅은 테두리 박스 — 근거 구분
+    # 근거 (선택 / 최대 3개) — Spec Declaration-Box-Lighten:
+    #   이전 코드 fill="none" 문자열이 _hex_to_rgb 검정 폴백(L1531 len!=6)으로
+    #   렌더돼 검은 박스가 됨. fill 키 자체 제거 → _add_rect(fill=None) → if fill:
+    #   False → _set_no_fill 발동 → 진짜 투명 배경 (라이트 흰/다크 검정 슬라이드 배경).
+    #   stroke_width 0.75 로 얇게, 텍스트 #1A1A1A(검정) 로 대비 강화.
+    #   box_h 를 grounds 자수 기반 가변 계산 → 긴 grounds 첫 줄 잘림 방지
+    #   (process 카드 49817c5 패턴). valign=top + 내부 padding 0.15.
+    y = 4.5
+    text_size = 14
+    text_x, text_w = 1.45, 8.79
+    pad_y_top, pad_y_bot = 0.15, 0.15
+    line_h = text_size * 1.5 / 72.0   # 한글 라인 높이 in
+    char_w = text_size * 1.0 / 72.0   # 한글 자폭 in
+    chars_per_line = max(1, int(text_w / char_w))
+    for g in grounds:
+        n_lines = max(1, (len(g) + chars_per_line - 1) // chars_per_line)
+        text_h = n_lines * line_h
+        box_h = text_h + pad_y_top + pad_y_bot
+        # 옅은 회색 테두리 박스 (fill 키 제거 = 진짜 no_fill = 투명 배경)
         shapes.append({
-            "type": "rect", "x": 1.2, "y": gy, "w": 9.29, "h": box_h,
-            "fill": "none", "stroke": "#DDDDDD", "stroke_width": 1,
+            "type": "rect", "x": 1.2, "y": y, "w": 9.29, "h": box_h,
+            "stroke": "#DDDDDD", "stroke_width": 0.75,
         })
-        # 근거 텍스트 — 왼쪽 정렬 + 박스 안 패딩(좌 0.25")
+        # 근거 텍스트 — 왼쪽 정렬 + 상단 padding + valign=top (잘림 방지)
         shapes.append({
-            "type": "text", "x": 1.45, "y": gy, "w": 8.79, "h": box_h,
+            "type": "text", "x": text_x, "y": y + pad_y_top,
+            "w": text_w, "h": text_h,
             "text": g,
-            "size": 16, "weight": 400, "color": "#555555",
-            "align": "left", "valign": "middle",
+            "size": text_size, "weight": 400, "color": "#1A1A1A",
+            "align": "left", "valign": "top",
         })
+        y += box_h + 0.2   # 항목 간 gap
     return shapes
 
 

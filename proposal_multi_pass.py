@@ -38,6 +38,15 @@ from typing import AsyncIterator, Optional
 log = logging.getLogger("multi_pass")
 
 
+# ─── Spec Strategy-Step1~3 — 전략 관통 기능 전체 on/off ─────────────
+# False = 기존과 100% 동일 (전략 수립/반영/주입 전부 skip).
+#   · 단계1(신설): generate_strategy 호출 skip → OutlineResult.strategy = {} 만 실림
+#   · 단계2(후속): OUTLINE 프롬프트에 strategy 반영 skip
+#   · 단계3(후속): SLIDE 프롬프트에 strategy 주입 skip
+# True 로 켜야만 전략 수립 LLM 호출 발생. 사고 시 False 로 즉시 원복.
+STRATEGY_INJECTION_ENABLED = False
+
+
 # ─── 도메인 톤 매트릭스 (도메인별 어미·톤·어휘·레지스터) ─────────────
 # Phase 2 슬라이드별 호출 시 outline.domain 값에 따라 해당 도메인의 톤 가이드를
 # user prompt 에 동적 inline. main.py 의 _format_chat_block_domain_tone 과 동일 source.
@@ -1114,6 +1123,40 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
 - role 값과 분량(본론 60~70%·보조 30~40%) 규칙(L301-308)은 별개로 작동.
 - 잘못 출력 / 임의 값은 코드가 ""로 강등 (식별 누락 → 무영향 fallback).
 """
+
+
+# ─── Spec Strategy-Step1 — 전략 확정 시스템 프롬프트 (신규) ──────────────
+# OUTLINE 이전에 실행. 대전략·핵심 콘셉트를 하나로 확정해 저장.
+# 단계1(이번 spec) = 확정+저장만. OUTLINE/SLIDE 는 아직 이 값을 안 씀.
+# 단계2 에서 OUTLINE 이 이 전략을 참조해 뼈대 잡음.
+# 단계3 에서 SLIDE 가 관통 대상 페이지에 이 전략을 주입.
+STRATEGY_SYSTEM_PROMPT = """너는 한국 B2G 공공입찰 제안서의 **대전략·핵심 콘셉트 설계자** 다.
+
+입력(RFP 분석·발주처 정보·과업 리서치·사용자 대화)을 근거로,
+이 제안서 한 건을 관통할 **대전략 하나**와 **핵심 콘셉트 한 줄**을 확정한다.
+
+[출력 = JSON 하나만, 다른 텍스트 금지]
+{
+  "strategy": "대전략 한 문장 (예: '지역과 상생하는 지속가능 축제로의 전환')",
+  "concept": "핵심 콘셉트/슬로건 한 줄 (예: '일상에 스며드는 축제')",
+  "rationale": "왜 이 전략인가 — 추진배경·RFP 근거 2~3줄",
+  "pillars": ["전략을 떠받치는 축 3개 내외 (예: '지역상권 협업', '세대통합', '친환경')"]
+}
+
+[★ 절대 원칙]
+- 근거는 [RFP 분석] · [발주처 정보] · [과업 리서치] · [사용자 대화] 에 실재하는 사실 우선.
+  없는 통계·수치·출처는 지어내지 마라 (기존 팩트 게이트 원칙과 정합).
+- 사용자 대화에 슬로건/전략이 명시돼 있으면 그것을 우선 사용 (AI 자율 생성 X).
+- 명사형 종결 (거버닝 어미 원칙과 정합). 예: "~ 전환" / "~ 확립" / "~ 여정" / "~ 체계".
+- strategy 는 한 문장, concept 는 한 줄. 짧고 압축된 명사구.
+- rationale 은 왜 이 전략인지 근거 2~3줄 — 만연체 금지.
+- pillars 는 3개 내외 명사구. 각 5~10자 짧게.
+
+[출력 형식]
+- JSON 만 출력. 다른 설명·코드펜스·주석 금지.
+- 파싱 실패 시 뒤 단계가 skip 하므로, 반드시 유효한 JSON 으로 출력.
+
+JSON:"""
 
 
 # ─── Phase 2: 슬라이드별 시스템 프롬프트 ──────────────────────────────────────
@@ -2573,6 +2616,12 @@ class OutlineResult:
     # 예: {"event_date": "2026-10-21 (화)", "event_capacity": "1,500명", "budget_amount": "8.5억원", ...}
     # SLIDE pass user prompt 에 inject → AI 가 페이지 어디서나 그대로 인용 강제.
     quantitative_locks: dict = field(default_factory=dict)
+    # Spec Strategy-Step1 — 확정된 대전략·핵심 콘셉트 (신규).
+    # 형식: {"strategy": str, "concept": str, "rationale": str, "pillars": list[str]}
+    # 기본 빈 dict — STRATEGY_INJECTION_ENABLED=False 이거나 파싱 실패 시 그대로 {}
+    # → 단계2(OUTLINE 반영)/단계3(SLIDE 주입) 이 빈 dict 감지해 skip → 기존 동작 무영향.
+    # 단계1(이번 spec) 은 저장까지만. OUTLINE/SLIDE 는 아직 이 필드를 안 읽음.
+    strategy: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -2655,6 +2704,81 @@ def _call_anthropic_sync(client, system: str, user: str, max_tokens: int = 8000,
             if text:
                 parts.append(str(text))
     return "".join(parts).strip()
+
+
+# ─── Spec Strategy-Step1 — 전략 확정 생성 (OUTLINE 이전 신설 단계) ──────────
+# generate_outline 과 동일 입력 (rfp/rag/intel/conv/extra) 를 받아 대전략·핵심
+# 콘셉트를 하나로 확정. STRATEGY_INJECTION_ENABLED=True 일 때만 orchestrate 가
+# 호출. False 면 아예 호출 자체 skip (비용/시간 증가 0).
+# 파싱 실패 시 빈 dict 반환 — 뒤 단계가 빈 dict 감지해 skip → 안전 fallback.
+# 단계1 은 저장까지만. 이 값을 OUTLINE/SLIDE 가 "쓰는" 것은 단계2/3.
+async def generate_strategy(
+    client,
+    rfp_block: str,
+    rag_block_global: str,
+    intel_block: str = "",
+    conversation_block: str = "",
+    extra_block: str = "",
+    model: str = "",
+) -> dict:
+    """Phase 0: 전략·콘셉트 확정 (신설).
+
+    generate_outline 의 user_parts 조립 방식 정합 — 사용자 대화(맨 앞) →
+    RFP → RAG → intel → research 순.
+
+    반환: {"strategy":..., "concept":..., "rationale":..., "pillars":[...]}
+    파싱 실패 / 응답 비어있음 → 빈 dict {} (안전 fallback).
+    """
+    user_parts: list[str] = []
+    if conversation_block:
+        user_parts.append(conversation_block)  # 맨 앞 — 사용자 신호 우선
+    user_parts.append(rfp_block)
+    if rag_block_global:
+        user_parts.append(rag_block_global)
+    if intel_block:
+        user_parts.append(intel_block)
+    if extra_block:
+        user_parts.append(extra_block)
+    user_parts.append(
+        "\n위 정보를 바탕으로 이 제안서 한 건을 관통할 대전략 하나와 "
+        "핵심 콘셉트 한 줄을 확정해 JSON 으로 출력해라."
+    )
+    user = "\n\n".join(user_parts)
+
+    # max_tokens 16000 — 전략은 짧음 (JSON 4 필드). OUTLINE(64000) 보다 훨씬 작게.
+    try:
+        raw = await asyncio.to_thread(
+            _call_anthropic_sync, client, STRATEGY_SYSTEM_PROMPT, user, 16000, model,
+        )
+    except Exception as e:
+        log.warning("Strategy-Step1 generate_strategy API 실패: %s → 빈 dict fallback", e)
+        return {}
+    parsed = _parse_json_safely(raw)
+    if not parsed or not isinstance(parsed, dict):
+        log.warning(
+            "Strategy-Step1 generate_strategy 파싱 실패 → 빈 dict fallback. raw 앞 200자: %s",
+            (raw or "")[:200],
+        )
+        return {}
+    # 스키마 정규화 — 필수 4 필드 강제, 누락 시 빈 값. 잘못된 타입은 무시.
+    out = {
+        "strategy":  str(parsed.get("strategy", "")).strip(),
+        "concept":   str(parsed.get("concept", "")).strip(),
+        "rationale": str(parsed.get("rationale", "")).strip(),
+        "pillars":   [
+            str(p).strip() for p in (parsed.get("pillars") or [])
+            if isinstance(p, (str, int, float)) and str(p).strip()
+        ],
+    }
+    # strategy 나 concept 하나라도 있어야 유효 — 둘 다 비면 빈 dict 반환.
+    if not out["strategy"] and not out["concept"]:
+        log.warning("Strategy-Step1 strategy·concept 둘 다 빈 값 → 빈 dict fallback")
+        return {}
+    log.info(
+        "Strategy-Step1 확정 — strategy=%r concept=%r pillars=%d",
+        out["strategy"][:60], out["concept"][:60], len(out["pillars"]),
+    )
+    return out
 
 
 # ─── Phase 1: Outline 생성 ────────────────────────────────────────────────────
@@ -4709,6 +4833,34 @@ async def orchestrate(
       None 이면 RFP page_limit / AI 자율 (기존 동작 동일).
     """
     t0 = time.time()
+
+    # ─── Spec Strategy-Step1 — 전략 확정 (신설, OUTLINE 이전) ───────────
+    # STRATEGY_INJECTION_ENABLED=True 일 때만 실행. False 면 호출 자체 skip →
+    # strategy={} 만 outline 에 실림 → 뒤 단계(OUTLINE/SLIDE)가 빈 dict 감지해
+    # skip → 기존 동작 100% 동일.
+    # heartbeat 패턴 재사용 — 25초 간격 yield.
+    strategy: dict = {}
+    if STRATEGY_INJECTION_ENABLED:
+        yield {"type": "phase", "phase": "strategy", "message": "대전략 · 핵심 콘셉트 확정 중..."}
+        strategy_task = asyncio.create_task(
+            generate_strategy(
+                client, rfp_block, rag_block_global,
+                intel_block, conversation_block, extra_block, model,
+            )
+        )
+        while True:
+            try:
+                strategy = await asyncio.wait_for(asyncio.shield(strategy_task), timeout=25.0)
+                break
+            except asyncio.TimeoutError:
+                yield {"type": "heartbeat", "phase": "strategy"}
+            except Exception as e:
+                # 전략 실패해도 파이프라인은 진행 (빈 dict 로 fallback).
+                log.warning("Strategy-Step1 orchestrate 예외 → 빈 dict fallback: %s", e)
+                strategy = {}
+                break
+        yield {"type": "strategy_done", "strategy": strategy}
+
     yield {"type": "phase", "phase": "outline", "message": "목차 / 슬라이드 구성 작성 중..."}
 
     # outline 호출은 60~180초 소요 → Cloudflare/Railway proxy idle timeout (~60-100s) 회피
@@ -4730,6 +4882,12 @@ async def orchestrate(
         except Exception as e:
             yield {"type": "error", "error": f"outline 실패: {e}"}
             return
+
+    # Spec Strategy-Step1 — 확정 전략을 OutlineResult 에 실어 SLIDE 병렬로 전달.
+    # 단계1 은 저장까지. generate_outline / _build_slide_user_prompt 는 아직 이 필드
+    # 를 안 읽음 (단계2/3 에서 활성). STRATEGY_INJECTION_ENABLED=False 면
+    # strategy={} 라 outline.strategy = {} — 필드 존재 자체가 기존 동작 무영향.
+    outline.strategy = strategy
 
     yield {
         "type": "outline_done",

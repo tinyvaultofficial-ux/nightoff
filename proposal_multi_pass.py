@@ -1122,6 +1122,50 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
 - role 은 식별·검증용 딱지. 분량·비율 강제 X (이번 spec 범위 밖).
 - role 값과 분량(본론 60~70%·보조 30~40%) 규칙(L301-308)은 별개로 작동.
 - 잘못 출력 / 임의 값은 코드가 ""로 강등 (식별 누락 → 무영향 fallback).
+
+[★ Spec Strategy-Step2 — 확정 대전략 반영 + 관통 페이지 판정 (조건부)]
+★ 조건: 입력에 [확정 대전략] 블록이 주어졌을 때만 아래 규칙 발동.
+   전략 블록이 없으면(기본) 아래 지시는 전부 무시하고 기존 규칙만 따른다.
+
+(a) 전략 반영:
+- [확정 대전략] 블록의 strategy(대전략 한 문장)·concept(핵심 콘셉트)·
+  pillars(전략 축 3개 내외) 를 전체 목차와 각 페이지 뼈대(governing_main /
+  key_msgs)의 방향타로 삼는다.
+- 특히 전략 관통 대상 페이지(프로그램·홍보·참여·콘텐츠·차별화 등)는
+  pillars 중 관련 축을 세부 방향에 반영. 컨셉 슬로건 페이지의 governing_main
+  은 [확정 대전략].concept 을 우선 사용 (사용자 대화 슬로건 규칙과 정합).
+- ⚠ 전략을 억지로 모든 페이지에 넣지 마라 — 무대·안전·예산 등 실행·정형
+  페이지는 기능적 완성도 우선. 관통 대상만 반영.
+
+(b) strategy_relevant 판정:
+★ 각 outline 항목에 "strategy_relevant" 필드를 판정해 넣어라:
+   값 = "align" / "exec" / "" 중 하나.
+- "align" (전략 관통 대상):
+    · 컨셉 전개 / 제안 특장점 / 차별화 접근
+    · 프로그램 구성 / 콘텐츠 큐레이션 / 참여 유도
+    · 홍보 계획 / 확산 전략 / 관객 여정
+    · 서비스 방향 / 대상자 접점
+  → 이 페이지들은 단계3 에서 SLIDE 프롬프트에 대전략 블록이 주입된다.
+- "exec" (실행 세부 — 관통 불필요):
+    · 무대·공간·설치·구조·조감
+    · 안전대책·비상대응·기상대응
+    · 예산·산출내역·정산
+    · 조직·인력 배치·추진체계
+    · 일정·마일스톤·추진일정
+    · 보고체계·리스크관리·품질관리·산출물
+  → role='support' 는 대부분 exec.
+- "" (특수/미판정):
+    · 표지·목차·챕터 divider·마무리(감사)
+    · 회사소개·유사 실적·인증·연혁 (정형)
+    · 애매하면 안전하게 "" (억지 주입 방지)
+
+기준:
+- role='' 이면 대체로 "" (특수 페이지).
+- role='support' 이면 대부분 "exec" (관통 X).
+- role='body' 중 프로그램·홍보·참여·콘텐츠·차별화·컨셉류 → "align".
+- role='body' 중 무대·공간·설치·안전류 → "exec".
+- 코드가 α 키워드 fallback 으로 보정하나(strategy_relevant 미출력 시),
+  LLM 판정이 우선. 애매하면 "" 로 두면 fallback 이 처리한다.
 """
 
 
@@ -2602,6 +2646,15 @@ class OutlineItem:
     # ""일 때는 SLIDE 단계 카탈로그 fallback. HTML 모드 SLIDE 분기에서만 사용.
     # 도형 모드 (output_mode='shapes') 는 이 필드를 무시 — user prompt 에 inject 안 됨.
     skeleton_id: str = ""
+    # Spec Strategy-Step2 — 이 페이지가 대전략을 관통해야 하는지 판정 딱지.
+    # 값:
+    #   "align"  → 대전략 관통 대상 (프로그램/홍보/참여/콘텐츠/차별화/컨셉 전개 등)
+    #   "exec"   → 실행 세부 (무대/공간/설치/안전/예산/조직/일정/보고 등, 관통 X)
+    #   ""       → 특수/미판정 (표지/목차/챕터/마무리/회사소개, 또는 애매)
+    # STRATEGY_INJECTION_ENABLED=True + 확정 전략이 있을 때만 채워짐.
+    # 단계2 는 저장까지. 단계3 에서 SLIDE 가 "align" 페이지에만 전략 블록 주입.
+    # γ(OUTLINE LLM 판정) 메인 + α(_strategy_relevant_fallback 키워드) 폴백.
+    strategy_relevant: str = ""
 
 
 @dataclass
@@ -2706,6 +2759,76 @@ def _call_anthropic_sync(client, system: str, user: str, max_tokens: int = 8000,
     return "".join(parts).strip()
 
 
+# ─── Spec Strategy-Step2 — 헬퍼 (전략 문자열화 + α 키워드 fallback) ─────────
+# _format_strategy_block: 확정 전략 dict → OUTLINE/SLIDE user prompt 용 문자열.
+#   strategy 가 비면 "" 반환 → 호출부가 append 안 함 → 기존 동작 동일.
+# _strategy_relevant_fallback: OUTLINE 이 strategy_relevant 를 안 준(빈) 항목에
+#   대해 α 키워드로 보정 (γ 우선 + α fallback). role='body' 안 무대/전략 구분.
+
+def _format_strategy_block(strategy: dict) -> str:
+    """확정 전략 dict → user prompt 용 [확정 대전략] 블록 문자열.
+
+    strategy 가 None / 빈 dict / strategy·concept 둘 다 비면 "" 반환 (안전 fallback).
+    """
+    if not isinstance(strategy, dict) or not strategy:
+        return ""
+    s = str(strategy.get("strategy", "")).strip()
+    c = str(strategy.get("concept", "")).strip()
+    r = str(strategy.get("rationale", "")).strip()
+    pillars_raw = strategy.get("pillars") or []
+    pillars = [str(p).strip() for p in pillars_raw if str(p).strip()]
+    if not s and not c:
+        return ""
+    lines = ["[확정 대전략 — Spec Strategy-Step2. 이 제안서 한 건을 관통하는 하나의 축]"]
+    if s:
+        lines.append(f"대전략: {s}")
+    if c:
+        lines.append(f"핵심 콘셉트: {c}")
+    if pillars:
+        lines.append(f"핵심 축(pillars): {' / '.join(pillars)}")
+    if r:
+        lines.append(f"근거: {r}")
+    lines.append(
+        "★ 목차·페이지 뼈대를 이 축·콘셉트와 정합되게 잡되, 실행·정형 페이지"
+        "(무대/안전/예산/조직/일정 등)에는 억지로 넣지 마라. 관통 대상은 각 페이지의"
+        " strategy_relevant='align' 판정으로 표시."
+    )
+    return "\n".join(lines)
+
+
+_STRATEGY_ALIGN_KW = frozenset({
+    "프로그램", "홍보", "참여", "콘텐츠", "확산", "큐레이션",
+    "서비스", "전략", "차별화", "컨셉", "특장점", "여정", "체험",
+})
+_STRATEGY_EXEC_KW = frozenset({
+    "무대", "공간", "설치", "구조", "조감", "안전", "예산", "산출",
+    "조직", "인력", "일정", "마일스톤", "회사", "실적", "인증",
+    "청렴", "보고", "리스크", "품질", "정산", "산출내역", "추진체계",
+})
+
+
+def _strategy_relevant_fallback(item: "OutlineItem") -> str:
+    """OUTLINE LLM 이 strategy_relevant 를 안 준 항목 α 키워드 보정.
+
+    반환: "align" / "exec" / "" (미판정 유지).
+    - role != "body" → "" (support/특수는 애초에 관통 X)
+    - role == "body":
+        · section 에 EXEC 키워드 → "exec"
+        · section 에 ALIGN 키워드 → "align"
+        · 애매 → "" (안전 — 억지 주입 방지)
+    ★ 이 fallback 은 STRATEGY_INJECTION_ENABLED 일 때만 호출됨 (호출부 게이트).
+    """
+    if item.role != "body":
+        return ""
+    section = str(item.section or "")
+    # exec 키워드 우선 (무대·안전 등이 body 로 배정될 수 있어 그것부터 걸러냄)
+    if any(kw in section for kw in _STRATEGY_EXEC_KW):
+        return "exec"
+    if any(kw in section for kw in _STRATEGY_ALIGN_KW):
+        return "align"
+    return ""
+
+
 # ─── Spec Strategy-Step1 — 전략 확정 생성 (OUTLINE 이전 신설 단계) ──────────
 # generate_outline 과 동일 입력 (rfp/rag/intel/conv/extra) 를 받아 대전략·핵심
 # 콘셉트를 하나로 확정. STRATEGY_INJECTION_ENABLED=True 일 때만 orchestrate 가
@@ -2791,15 +2914,21 @@ async def generate_outline(
     extra_block: str = "",
     model: str = "",
     pages_override: Optional[int] = None,
+    strategy_block: str = "",   # Spec Strategy-Step2 — 확정 대전략 블록 (조건부)
 ) -> OutlineResult:
     """Phase 1: 가벼운 호출 1번으로 outline 짠다.
 
     user_parts 순서 — conversation_block 영역 맨 앞 (NightOff 본질 영역 — 사용자 영역
-    가장 강한 신호). RFP / RAG / intel / extra 영역 순서.
+    가장 강한 신호). RFP / RAG / intel / extra / (Strategy-Step2) strategy 영역 순서.
 
     pages_override: 사용자가 명시적으로 선택한 페이지 수 (1~100).
       - None: RFP page_limit / AI 자율 판단 (기존 동작)
       - 1~100: prompt 끝에 절대 우선 지시 inject. MAX_SLIDES_HARD=100 안전망 그대로.
+
+    strategy_block: Spec Strategy-Step2 — 확정 대전략 블록 문자열 (조건부).
+      - "" (기본): 기존 동작 100% 동일. OUTLINE 프롬프트에 전략 지시 미발동.
+      - 비어있지 않음: extra_block 다음에 삽입 → OUTLINE_SYSTEM_PROMPT 안
+        "확정 대전략 반영 + strategy_relevant 판정" 지시(L1121+)가 이 블록을 보고 발동.
     """
     user_parts: list[str] = []
     if conversation_block:
@@ -2811,6 +2940,9 @@ async def generate_outline(
         user_parts.append(intel_block)
     if extra_block:
         user_parts.append(extra_block)
+    # Spec Strategy-Step2 — 확정 대전략 블록 (조건부). 빈 문자열이면 append X → 기존 동작.
+    if strategy_block:
+        user_parts.append(strategy_block)
     # Step 2 — 사용자가 모달에서 선택한 페이지 수가 있으면 RFP page_limit 보다 절대 우선.
     # prompt 맨 끝에 inject — LLM 이 가장 최근 지시를 우선시하는 특성 활용.
     if pages_override is not None and 1 <= pages_override <= 100:
@@ -3112,6 +3244,13 @@ async def generate_outline(
         # 대소문자 보존 (KPI 가 'KPI', G 시리즈가 'G1' 형식이라 lower X — 그대로 비교).
         skeleton_id_raw = str(it.get("skeleton_id", "")).strip()
         skeleton_id = skeleton_id_raw if skeleton_id_raw in _SKELETON_ID_ALLOWED else ""
+        # Spec Strategy-Step2 — strategy_relevant 화이트리스트 (align/exec/"" 만 허용).
+        # γ(OUTLINE LLM 판정) 우선 + α(_strategy_relevant_fallback 키워드) fallback.
+        # strategy_block 이 프롬프트에 없으면 LLM 이 이 필드를 안 출력 → "" 유지.
+        # fallback 적용은 orchestrate 에서 STRATEGY_INJECTION_ENABLED 게이트 통과 후.
+        _SR_SAFE = {"align", "exec", ""}
+        sr_raw = str(it.get("strategy_relevant", "")).strip().lower()
+        strategy_relevant = sr_raw if sr_raw in _SR_SAFE else ""
         items.append(OutlineItem(
             page=int(it.get("page", len(items) + 1)),
             section=str(it.get("section", "")).strip(),
@@ -3122,6 +3261,7 @@ async def generate_outline(
             viz_pattern=viz_pattern,
             role=role,
             skeleton_id=skeleton_id,
+            strategy_relevant=strategy_relevant,
         ))
 
     # 정량 lock 영역 — RFP 분석 결과에 quantitative_locks 가 있으면 outline 결과에 보존.
@@ -4863,6 +5003,11 @@ async def orchestrate(
 
     yield {"type": "phase", "phase": "outline", "message": "목차 / 슬라이드 구성 작성 중..."}
 
+    # Spec Strategy-Step2 — 확정 전략을 문자열 블록으로 → generate_outline 에 주입.
+    # STRATEGY_INJECTION_ENABLED=False 이거나 strategy={} 면 strategy_block=""
+    # → generate_outline user_parts 에 append 안 함 → 기존 동작 100% 동일.
+    strategy_block = _format_strategy_block(strategy) if STRATEGY_INJECTION_ENABLED else ""
+
     # outline 호출은 60~180초 소요 → Cloudflare/Railway proxy idle timeout (~60-100s) 회피
     # 25초 간격 heartbeat event yield. asyncio.shield 로 task 취소 방지.
     outline_task = asyncio.create_task(
@@ -4870,6 +5015,7 @@ async def orchestrate(
             client, rfp_block, rag_block_global,
             intel_block, conversation_block, extra_block, model,
             pages_override=pages_override,
+            strategy_block=strategy_block,   # Spec Strategy-Step2 (빈 문자열이면 기존과 동일)
         )
     )
     outline = None
@@ -4888,6 +5034,15 @@ async def orchestrate(
     # 를 안 읽음 (단계2/3 에서 활성). STRATEGY_INJECTION_ENABLED=False 면
     # strategy={} 라 outline.strategy = {} — 필드 존재 자체가 기존 동작 무영향.
     outline.strategy = strategy
+
+    # Spec Strategy-Step2 — α 키워드 fallback (γ OUTLINE LLM 판정 우선 + α 보정).
+    # STRATEGY_INJECTION_ENABLED=True + strategy 있을 때만 발동. off/빈 전략이면
+    # OutlineItem.strategy_relevant 는 "" 유지 → 단계3 SLIDE 주입 skip.
+    # LLM 이 판정한 값(align/exec)이 있으면 그것 우선. 미판정("") 만 fallback 으로 보정.
+    if STRATEGY_INJECTION_ENABLED and strategy:
+        for _oitem in outline.outline:
+            if not _oitem.strategy_relevant:
+                _oitem.strategy_relevant = _strategy_relevant_fallback(_oitem)
 
     yield {
         "type": "outline_done",

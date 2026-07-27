@@ -1211,6 +1211,16 @@ SLIDE_SYSTEM_PROMPT = """너는 흑백 제안서 슬라이드의 정보 구조 �
 지금 단계는 **이 한 슬라이드 1 장만** 도형 JSON 으로 그린다. 다른 슬라이드는 신경 X.
 이 슬라이드에 16k 토큰 다 써도 되니까 **함축해서 핵심만, 디자이너가 시각 요소로 풀어낸다는 전제**로 채워라.
 
+[★ Spec Strategy-Step3 — 관통 전략 반영 (조건부)]
+★ 조건: user prompt 에 [이 제안서의 관통 전략 — 이 페이지에 반영] 블록이 주어졌을
+   때만 발동. 블록이 없으면(exec/특수 페이지 or 기능 스위치 off) 이 지시는 무시.
+- 블록이 주어진 페이지는, 그 대전략·콘셉트가 이 페이지의 실행·주장에
+  자연스럽게 반영돼야 한다.
+  (예: 대전략이 "지역과 상생" 이면 프로그램에 지역 협업·지역 자원 활용이 드러나게,
+   콘셉트가 "일상에 스며드는 축제" 면 홍보/참여 페이지도 일상 접점 관점으로.)
+- 전략 키워드만 반복 나열 X. 이 페이지 주제가 전략에서 자연스럽게 파생되게.
+- 없는 사실·수치 지어내기 X (기존 팩트 게이트 원칙과 정합).
+
 [★★★ 마스터 원칙 · NightOff 의 영역 분리 ★★★]
 모든 가이드의 마스터 기준. 다른 가이드와 충돌 시 이 원칙 우선.
 
@@ -2829,6 +2839,41 @@ def _strategy_relevant_fallback(item: "OutlineItem") -> str:
     return ""
 
 
+def _format_strategy_slide_block(strategy: dict) -> str:
+    """Spec Strategy-Step3 — SLIDE 프롬프트용 [관통 전략] 블록 문자열.
+
+    _format_strategy_block(OUTLINE 용) 과 형식 다름:
+      · OUTLINE 용: 뼈대 잡을 때 참고할 근거·pillars 나열.
+      · SLIDE 용: 이 페이지 내용을 관통 지시 (실행 지침 톤).
+
+    strategy 가 None / 빈 dict / strategy·concept 둘 다 비면 "" 반환 (안전 fallback).
+    호출부는 그 결과가 truthy 일 때만 parts 에 append (조건부).
+    """
+    if not isinstance(strategy, dict) or not strategy:
+        return ""
+    s = str(strategy.get("strategy", "")).strip()
+    c = str(strategy.get("concept", "")).strip()
+    pillars_raw = strategy.get("pillars") or []
+    pillars = [str(p).strip() for p in pillars_raw if str(p).strip()]
+    if not s and not c:
+        return ""
+    lines = ["[이 제안서의 관통 전략 — 이 페이지에 반영]"]
+    if s:
+        lines.append(f"대전략: {s}")
+    if c:
+        lines.append(f"콘셉트: {c}")
+    if pillars:
+        lines.append(f"핵심축: {' / '.join(pillars)}")
+    lines.append(
+        "→ 이 페이지의 내용은 위 대전략·콘셉트를 관통해 구체화하라. "
+        "핵심축(pillars)을 이 페이지 영역에 맞게 실제 실행으로 연결. "
+        "단 전략 키워드만 억지로 반복하지 말고, 이 페이지 주제가 전략에서 "
+        "자연스럽게 파생되게. 없는 사실·수치는 지어내지 말 것 "
+        "(팩트 게이트 원칙과 정합)."
+    )
+    return "\n".join(lines)
+
+
 # ─── Spec Strategy-Step1 — 전략 확정 생성 (OUTLINE 이전 신설 단계) ──────────
 # generate_outline 과 동일 입력 (rfp/rag/intel/conv/extra) 를 받아 대전략·핵심
 # 콘셉트를 하나로 확정. STRATEGY_INJECTION_ENABLED=True 일 때만 orchestrate 가
@@ -3417,6 +3462,7 @@ def _build_slide_user_prompt(
     quantitative_locks: dict | None = None,
     output_mode: str = "shapes",  # Spec D-Fix-HTMLPromptConflict — "shapes"|"html"
     theme: str = "light",         # Spec D-Build-TextRunsInject 1-d-② — "light"|"dark"
+    strategy: dict | None = None,  # Spec Strategy-Step3 — 확정 대전략 (align 페이지에만 주입)
 ) -> str:
     # 본인 회사명 inject 제거 (한국 공공입찰 청렴제 — 회사명 본문 등장 비정상)
     parts = [
@@ -3431,6 +3477,21 @@ def _build_slide_user_prompt(
         parts.append("")
         parts.append(qlock_block)
         parts.append("")
+    # ─── Spec Strategy-Step3 — 관통 전략 블록 (align 페이지에만) ────────────
+    # 조건 3중:
+    #   (1) STRATEGY_INJECTION_ENABLED (기능 스위치, 기본 False)
+    #   (2) item.strategy_relevant == "align" (단계2 판정, exec/"" 제외)
+    #   (3) strategy 가 비어있지 않고 _format_strategy_slide_block 이 truthy 문자열
+    # 세 조건 모두 만족해야 append → 기본 off/exec/"" 페이지는 기존과 100% 동일.
+    # 위치: 정량 lock 다음, 거버닝 앞 — 페이지 뼈대 결정 압력과 나란히.
+    if (STRATEGY_INJECTION_ENABLED
+            and getattr(item, "strategy_relevant", "") == "align"
+            and strategy):
+        _strategy_block = _format_strategy_slide_block(strategy)
+        if _strategy_block:
+            parts.append("")
+            parts.append(_strategy_block)
+            parts.append("")
     # 거버닝 분리 (1차-2) — outline 단계에서 결정된 메인/서브 그대로 inject.
     # SLIDE pass 는 자율 분리 X — 받은 그대로 사용.
     parts.append(f"[메인 거버닝] {item.governing_main}")
@@ -4584,6 +4645,7 @@ async def generate_one_slide(
     quantitative_locks: dict | None = None,
     output_mode: str = "shapes",  # Spec D-Build-HTMLOutput — "shapes"|"html"
     theme: str = "light",         # Spec D-Build-TextRunsInject 1-d-② — "light"|"dark"
+    strategy: dict | None = None,  # Spec Strategy-Step3 — 확정 대전략 (align 페이지 SLIDE 프롬프트에만 주입)
 ) -> SlideResult:
     # Spec D-Build-Path1Connect — HTML 모드는 LLM 호출 전 path1 조립 경로 우선 시도.
     # 성공 시: LLM 호출 0회 + 즉시 return (비용 절감 + 좌표 정밀, LLM 이 디자인 안 만짐)
@@ -4663,6 +4725,7 @@ async def generate_one_slide(
         quantitative_locks=quantitative_locks,
         output_mode=output_mode,  # Spec D-Fix-HTMLPromptConflict — user 마지막 명령도 모드 분기
         theme=theme,              # Spec D-Build-TextRunsInject 1-d-② — 다크 형광 inject 분기
+        strategy=strategy,        # Spec Strategy-Step3 — align 페이지에만 조건부 주입 (기본 None)
     )
     # Spec D-Build-HTMLOutput — output_mode 분기 (기본 'shapes' = 기존 동작 그대로).
     # 'html' 모드 = admin + 토글 'Y' 조건 충족 시에만 진입.
@@ -4868,6 +4931,13 @@ async def generate_slides_parallel(
 
     sem = asyncio.Semaphore(concurrency)
 
+    # Spec Strategy-Step3 — outline.strategy 를 각 SLIDE 병렬 호출에 전달.
+    # OutlineResult.strategy 는 단계1 에서 세팅됨 (off 시 {}). 병렬 각 슬라이드가
+    # 이 dict 를 참조 (수정 X, read-only). _build_slide_user_prompt 안에서
+    # STRATEGY_INJECTION_ENABLED + item.strategy_relevant=="align" + strategy 세 조건
+    # 통과 시만 [관통 전략] 블록이 프롬프트에 append.
+    _strategy = getattr(outline, "strategy", None)
+
     async def _bound(item: OutlineItem) -> SlideResult:
         async with sem:
             rag_block = ""
@@ -4882,6 +4952,7 @@ async def generate_slides_parallel(
                 quantitative_locks=outline.quantitative_locks,
                 output_mode=output_mode,
                 theme=theme,    # Spec D-Build-TextRunsInject 1-d-②
+                strategy=_strategy,   # Spec Strategy-Step3 (off 시 None/{} → 주입 skip)
             )
 
     tasks = [asyncio.create_task(_bound(it)) for it in outline.outline]

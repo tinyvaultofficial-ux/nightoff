@@ -3973,7 +3973,11 @@ async def api_proposals_generate_multipass(
 
     # Spec A1-Build-ResearchPipeline — 과업 리서치 블록 (intel_block 패턴)
     # extra_block 슬롯에 주입. error 만 있거나 비면 "" 로 두고 기존 동작 유지.
+    # Spec Research-Inject — orchestrate 에도 원본 dict 를 별도 인자(research_dict)로
+    #   넘겨 outline.research 로 SLIDE 병렬에 전파. RESEARCH_INJECTION_ENABLED=False
+    #   시 orchestrate 안 게이트가 무시하므로 여기서는 항상 dict 를 확보만.
     research_block = ""
+    research_dict: dict = {}
     try:
         with get_db() as db:
             research_row = db.execute(
@@ -3984,8 +3988,10 @@ async def api_proposals_generate_multipass(
             research_obj = json.loads(research_row["research_json"] or "{}")
             if research_obj and not research_obj.get("error"):
                 research_block = "[과업 리서치]\n" + json.dumps(research_obj, ensure_ascii=False, indent=2)
+                research_dict = research_obj if isinstance(research_obj, dict) else {}
     except Exception:
         research_block = ""
+        research_dict = {}
 
     # 대화 히스토리 블록 — outline pass 영역 inject (NightOff 서비스 본질 영역).
     # ⚠ 영역 호출 시점 — "✨ 제안서 생성 시작" user 메시지 INSERT 영역 영역 호출 →
@@ -4030,6 +4036,7 @@ async def api_proposals_generate_multipass(
                 intel_block=intel_block,
                 conversation_block=conversation_block,
                 extra_block=research_block,   # Spec A1-Build-ResearchPipeline — [과업 리서치] 주입 (빈 문자열이면 기존과 동일)
+                research_dict=research_dict,  # Spec Research-Inject — 원본 dict (RESEARCH_INJECTION_ENABLED=True 시 SLIDE 병렬로 전파)
                 concurrency=5,
                 model=model,
                 pages_override=pages_override,   # Step 2 — 사용자가 모달에서 선택한 페이지 수

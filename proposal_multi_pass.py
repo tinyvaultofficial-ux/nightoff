@@ -47,6 +47,15 @@ log = logging.getLogger("multi_pass")
 STRATEGY_INJECTION_ENABLED = False
 
 
+# ─── Spec Research-Inject — 근거 자료(과업 리서치) SLIDE 주입 on/off ────
+# strategy 와 별개 기능 — 독립 플래그로 조합 가능 (strategy off + research on 등).
+# False = 기존 100% 동일 (outline.research={} 만 실림, SLIDE 주입 skip).
+# True 시: align 페이지 SLIDE 프롬프트에 검증 사실(subject_facts /
+#   past_editions / context / summary / sources) 주입 → 본론이 근거 기반으로 깊어짐.
+#   ★ inspiration 필드는 제외 (영감 재료, 사실 아님 — 팩트 게이트 정합).
+RESEARCH_INJECTION_ENABLED = False
+
+
 # ─── 도메인 톤 매트릭스 (도메인별 어미·톤·어휘·레지스터) ─────────────
 # Phase 2 슬라이드별 호출 시 outline.domain 값에 따라 해당 도메인의 톤 가이드를
 # user prompt 에 동적 inline. main.py 의 _format_chat_block_domain_tone 과 동일 source.
@@ -2701,6 +2710,14 @@ class OutlineResult:
     # → 단계2(OUTLINE 반영)/단계3(SLIDE 주입) 이 빈 dict 감지해 skip → 기존 동작 무영향.
     # 단계1(이번 spec) 은 저장까지만. OUTLINE/SLIDE 는 아직 이 필드를 안 읽음.
     strategy: dict = field(default_factory=dict)
+    # Spec Research-Inject — 과업 리서치 원본 dict (신규).
+    # 형식: {"subject_facts":[...], "past_editions":[...], "context":[...],
+    #        "inspiration":[...], "summary": str, "sources":[...]}
+    # 기본 빈 dict — RESEARCH_INJECTION_ENABLED=False 이거나 research 결과 부재 시 {}.
+    # → align 페이지 SLIDE 프롬프트 주입 게이트가 빈 dict 감지해 skip → 기존 동작 무영향.
+    # ★ inspiration 필드는 SLIDE 헬퍼(_format_research_slide_block)가 렌더 시 제외 —
+    #   영감 재료라 사실로 오인 시 팩트 게이트 위반 위험 방지.
+    research: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -2911,6 +2928,58 @@ def _format_strategy_slide_block(strategy: dict) -> str:
         "단 전략 키워드만 억지로 반복하지 말고, 이 페이지 주제가 전략에서 "
         "자연스럽게 파생되게. 없는 사실·수치는 지어내지 말 것 "
         "(팩트 게이트 원칙과 정합)."
+    )
+    return "\n".join(lines)
+
+
+# ─── Spec Research-Inject — SLIDE 프롬프트용 [확인된 근거] 블록 헬퍼 ────
+# research dict → align 페이지 SLIDE 프롬프트용 문자열.
+# ★ inspiration 필드는 렌더 제외 (영감 재료, 사실 아님 — 팩트 게이트 정합).
+# subject_facts / past_editions / context / summary / sources 5필드만 렌더.
+# 모든 필드 빈 값이면 "" 반환 (호출부 3중 게이트 truthy 검사로 skip).
+def _format_research_slide_block(research: dict) -> str:
+    """확정 리서치 dict → SLIDE 프롬프트용 [확인된 근거] 블록 문자열."""
+    if not isinstance(research, dict) or not research:
+        return ""
+
+    def _list_field(key: str) -> list:
+        raw = research.get(key) or []
+        if not isinstance(raw, list):
+            return []
+        return [str(x).strip() for x in raw if str(x).strip()]
+
+    subject_facts = _list_field("subject_facts")
+    past_editions = _list_field("past_editions")
+    context       = _list_field("context")
+    sources       = _list_field("sources")
+    summary       = str(research.get("summary", "")).strip()
+
+    # 모든 유효 필드가 비면 주입 skip (inspiration 은 애초에 안 봄).
+    if not any([subject_facts, past_editions, context, sources, summary]):
+        return ""
+
+    lines = ["[이 사업의 확인된 근거 — 본론 실행의 사실 기반 (web_search 검증)]"]
+    if subject_facts:
+        lines.append("핵심 사실:")
+        for f in subject_facts:
+            lines.append(f"  · {f}")
+    if past_editions:
+        lines.append("지난 회차/유사 사업:")
+        for p in past_editions:
+            lines.append(f"  · {p}")
+    if context:
+        lines.append("발주처·지역 맥락:")
+        for c in context:
+            lines.append(f"  · {c}")
+    if summary:
+        lines.append(f"요약: {summary}")
+    if sources:
+        # sources 최대 5개까지 (URL 이 길면 프롬프트 부담)
+        lines.append(f"(출처: {' / '.join(sources[:5])})")
+    lines.append(
+        "→ 위는 web_search 로 검증된 사실이다. 이 페이지의 실행·주장을 이 근거에 "
+        "연결해 구체화하라. 근거에 없는 사실·수치는 지어내지 말 것 (팩트 게이트 정합). "
+        "inspiration(영감) 은 여기 포함 안 됨 — 사실로 인용할 것 없음."
     )
     return "\n".join(lines)
 
@@ -3511,6 +3580,7 @@ def _build_slide_user_prompt(
     output_mode: str = "shapes",  # Spec D-Fix-HTMLPromptConflict — "shapes"|"html"
     theme: str = "light",         # Spec D-Build-TextRunsInject 1-d-② — "light"|"dark"
     strategy: dict | None = None,  # Spec Strategy-Step3 — 확정 대전략 (align 페이지에만 주입)
+    research: dict | None = None,  # Spec Research-Inject — 확정 근거 자료 (align 페이지에만 주입)
 ) -> str:
     # 본인 회사명 inject 제거 (한국 공공입찰 청렴제 — 회사명 본문 등장 비정상)
     parts = [
@@ -3539,6 +3609,22 @@ def _build_slide_user_prompt(
         if _strategy_block:
             parts.append("")
             parts.append(_strategy_block)
+            parts.append("")
+    # ─── Spec Research-Inject — 확인된 근거 블록 (align 페이지에만) ─────────
+    # 조건 3중 (strategy 와 독립):
+    #   (1) RESEARCH_INJECTION_ENABLED (기능 스위치, 기본 False, strategy 와 별개)
+    #   (2) item.strategy_relevant == "align" (관통 대상만 — align 게이트 재사용)
+    #   (3) research 가 비어있지 않고 _format_research_slide_block 이 truthy 문자열
+    # 세 조건 모두 만족해야 append → 기본 off/exec/"" 페이지는 기존과 100% 동일.
+    # 위치: 전략 블록 바로 뒤, 거버닝 앞 — 전략(방향) + 근거(사실 기반) 함께.
+    # ★ inspiration 은 헬퍼가 렌더 제외 (팩트 게이트 정합, 사실 오인 방지).
+    if (RESEARCH_INJECTION_ENABLED
+            and getattr(item, "strategy_relevant", "") == "align"
+            and research):
+        _research_block = _format_research_slide_block(research)
+        if _research_block:
+            parts.append("")
+            parts.append(_research_block)
             parts.append("")
     # 거버닝 분리 (1차-2) — outline 단계에서 결정된 메인/서브 그대로 inject.
     # SLIDE pass 는 자율 분리 X — 받은 그대로 사용.
@@ -4694,6 +4780,7 @@ async def generate_one_slide(
     output_mode: str = "shapes",  # Spec D-Build-HTMLOutput — "shapes"|"html"
     theme: str = "light",         # Spec D-Build-TextRunsInject 1-d-② — "light"|"dark"
     strategy: dict | None = None,  # Spec Strategy-Step3 — 확정 대전략 (align 페이지 SLIDE 프롬프트에만 주입)
+    research: dict | None = None,  # Spec Research-Inject — 확정 근거 자료 (align 페이지 SLIDE 프롬프트에만 주입)
 ) -> SlideResult:
     # Spec D-Build-Path1Connect — HTML 모드는 LLM 호출 전 path1 조립 경로 우선 시도.
     # 성공 시: LLM 호출 0회 + 즉시 return (비용 절감 + 좌표 정밀, LLM 이 디자인 안 만짐)
@@ -4774,6 +4861,7 @@ async def generate_one_slide(
         output_mode=output_mode,  # Spec D-Fix-HTMLPromptConflict — user 마지막 명령도 모드 분기
         theme=theme,              # Spec D-Build-TextRunsInject 1-d-② — 다크 형광 inject 분기
         strategy=strategy,        # Spec Strategy-Step3 — align 페이지에만 조건부 주입 (기본 None)
+        research=research,        # Spec Research-Inject — align 페이지에만 조건부 주입 (기본 None)
     )
     # Spec D-Build-HTMLOutput — output_mode 분기 (기본 'shapes' = 기존 동작 그대로).
     # 'html' 모드 = admin + 토글 'Y' 조건 충족 시에만 진입.
@@ -4985,6 +5073,11 @@ async def generate_slides_parallel(
     # STRATEGY_INJECTION_ENABLED + item.strategy_relevant=="align" + strategy 세 조건
     # 통과 시만 [관통 전략] 블록이 프롬프트에 append.
     _strategy = getattr(outline, "strategy", None)
+    # Spec Research-Inject — outline.research 도 병렬 각 SLIDE 로 전파.
+    # 구버전 OutlineResult (research 필드 없음) 도 안전 (getattr fallback None).
+    # RESEARCH_INJECTION_ENABLED=False 이거나 research={} 면 _build_slide_user_prompt
+    # 안 3중 게이트에서 skip → 프롬프트 변화 0.
+    _research = getattr(outline, "research", None)
 
     async def _bound(item: OutlineItem) -> SlideResult:
         async with sem:
@@ -5001,6 +5094,7 @@ async def generate_slides_parallel(
                 output_mode=output_mode,
                 theme=theme,    # Spec D-Build-TextRunsInject 1-d-②
                 strategy=_strategy,   # Spec Strategy-Step3 (off 시 None/{} → 주입 skip)
+                research=_research,   # Spec Research-Inject (off 시 None/{} → 주입 skip)
             )
 
     tasks = [asyncio.create_task(_bound(it)) for it in outline.outline]
@@ -5077,6 +5171,7 @@ async def orchestrate(
     pages_override: Optional[int] = None,
     output_mode: str = "shapes",  # Spec D-Build-HTMLOutput — "shapes"|"html"
     theme: str = "light",         # Spec D-Build-TextRunsInject 1-d-② — "light"|"dark"
+    research_dict: dict | None = None,  # Spec Research-Inject — 과업 리서치 원본 dict (RESEARCH_INJECTION_ENABLED=True 시만 활용)
 ) -> AsyncIterator[dict]:
     """전체 파이프라인 실행. dict 이벤트 stream 으로 yield.
 
@@ -5153,6 +5248,14 @@ async def orchestrate(
     # 를 안 읽음 (단계2/3 에서 활성). STRATEGY_INJECTION_ENABLED=False 면
     # strategy={} 라 outline.strategy = {} — 필드 존재 자체가 기존 동작 무영향.
     outline.strategy = strategy
+
+    # Spec Research-Inject — 과업 리서치 원본 dict 을 OutlineResult 에 얹어 SLIDE 병렬로 전달.
+    # RESEARCH_INJECTION_ENABLED=False 이거나 research_dict None/빈 dict 면 {} 유지 →
+    # generate_slides_parallel getattr + _build_slide_user_prompt 3중 게이트에서 skip →
+    # 기존 동작 100% 동일.
+    if RESEARCH_INJECTION_ENABLED and isinstance(research_dict, dict) and research_dict:
+        outline.research = research_dict
+    # else: outline.research 는 dataclass 기본값 {} 유지 (필드 자체는 존재, 값만 빈 dict).
 
     # Spec Strategy-Step2 — α 키워드 fallback (γ OUTLINE LLM 판정 우선 + α 보정).
     # STRATEGY_INJECTION_ENABLED=True + strategy 있을 때만 발동. off/빈 전략이면

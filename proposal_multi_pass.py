@@ -1178,11 +1178,16 @@ STRATEGY_SYSTEM_PROMPT = """너는 한국 B2G 공공입찰 제안서의 **대전
 
 입력(RFP 분석·발주처 정보·과업 리서치·사용자 대화)을 근거로,
 이 제안서 한 건을 관통할 **대전략 하나**와 **핵심 콘셉트 한 줄**을 확정한다.
+★ Spec Strategy-Chain-Enhance — 타깃 → 니즈 → 실행 사슬로 전개.
+   타깃을 한 단계 더 구체화하고 → 그 타깃의 니즈를 도출하고 →
+   pillars(실행 축)는 그 니즈를 공략하는 것으로 역산.
 
 [출력 = JSON 하나만, 다른 텍스트 금지]
 {
   "strategy": "대전략 한 문장 (예: '지역과 상생하는 지속가능 축제로의 전환')",
   "concept": "핵심 콘셉트/슬로건 한 줄 (예: '일상에 스며드는 축제')",
+  "target": "이 사업의 핵심 대상 — 표면 라벨이 아니라 한 단계 구체화한 것 (예: 'MZ' 가 아니라 'SNS로 경험을 전시하려는 1인 MZ가구')",
+  "needs": "그 타깃의 구체적 니즈 — target 에서 자연스럽게 도출되는 결핍/욕구 (예: '느슨하지만 지속되는 연결')",
   "rationale": "왜 이 전략인가 — 추진배경·RFP 근거 2~3줄",
   "pillars": ["전략을 떠받치는 축 3개 내외 (예: '지역상권 협업', '세대통합', '친환경')"]
 }
@@ -1193,8 +1198,19 @@ STRATEGY_SYSTEM_PROMPT = """너는 한국 B2G 공공입찰 제안서의 **대전
 - 사용자 대화에 슬로건/전략이 명시돼 있으면 그것을 우선 사용 (AI 자율 생성 X).
 - 명사형 종결 (거버닝 어미 원칙과 정합). 예: "~ 전환" / "~ 확립" / "~ 여정" / "~ 체계".
 - strategy 는 한 문장, concept 는 한 줄. 짧고 압축된 명사구.
+- target·needs 도 명사형, 각 한 줄 짧게.
 - rationale 은 왜 이 전략인지 근거 2~3줄 — 만연체 금지.
 - pillars 는 3개 내외 명사구. 각 5~10자 짧게.
+
+[★ 사슬 원칙 (Spec Strategy-Chain-Enhance)]
+- 반드시 target → needs → pillars 순으로 논리가 이어지게 하라.
+  타깃을 표면 라벨('MZ', '지역주민', '가족단위')에서 멈추지 말고 한 단계 더 구체화하고,
+  거기서 니즈를 도출하고, pillars(실행 축)는 그 니즈를 공략하는 것으로 역산하라.
+- ★ 단 "한 단계 더"까지만. 억지로 깊이 파지 마라. 상식선에서 납득되는 수준이면 충분.
+  과한 심리분석·철학적 해석 금지 (예: "실존적 불안" 같은 과잉 해석 X).
+- ★ target·needs 도 팩트 게이트 적용: [RFP]·[과업 리서치]·[발주처 정보]에 근거 있으면
+  그것 기반. 근거 없으면 "상식선에서 방어 가능한 수준"으로만.
+  검증 안 된 인과를 사실처럼 단정하지 마라 (예: 'A라서 B한다' 단정보다 'B 경향' 정도).
 
 [출력 형식]
 - JSON 만 출력. 다른 설명·코드펜스·주석 금지.
@@ -2779,11 +2795,15 @@ def _format_strategy_block(strategy: dict) -> str:
     """확정 전략 dict → user prompt 용 [확정 대전략] 블록 문자열.
 
     strategy 가 None / 빈 dict / strategy·concept 둘 다 비면 "" 반환 (안전 fallback).
+    Spec Strategy-Chain-Enhance — target/needs 사슬 필드 반영 (있을 때만).
+    구버전 dict (target/needs 없음) 도 안전: getattr 안전 접근 + if 조건부 append.
     """
     if not isinstance(strategy, dict) or not strategy:
         return ""
     s = str(strategy.get("strategy", "")).strip()
     c = str(strategy.get("concept", "")).strip()
+    t = str(strategy.get("target", "")).strip()
+    n = str(strategy.get("needs", "")).strip()
     r = str(strategy.get("rationale", "")).strip()
     pillars_raw = strategy.get("pillars") or []
     pillars = [str(p).strip() for p in pillars_raw if str(p).strip()]
@@ -2794,6 +2814,11 @@ def _format_strategy_block(strategy: dict) -> str:
         lines.append(f"대전략: {s}")
     if c:
         lines.append(f"핵심 콘셉트: {c}")
+    # Spec Strategy-Chain-Enhance — 사슬 순서 (target → needs → pillars) 로 나열.
+    if t:
+        lines.append(f"타깃: {t}")
+    if n:
+        lines.append(f"니즈: {n}")
     if pillars:
         lines.append(f"핵심 축(pillars): {' / '.join(pillars)}")
     if r:
@@ -2803,6 +2828,11 @@ def _format_strategy_block(strategy: dict) -> str:
         "(무대/안전/예산/조직/일정 등)에는 억지로 넣지 마라. 관통 대상은 각 페이지의"
         " strategy_relevant='align' 판정으로 표시."
     )
+    if n:
+        lines.append(
+            "★ Spec Strategy-Chain-Enhance — 본론(실행) 페이지의 콘텐츠는 위 '니즈'를"
+            " 공략하는 것으로 파생시켜라. 니즈와 무관한 뻔한 나열 금지."
+        )
     return "\n".join(lines)
 
 
@@ -2843,16 +2873,22 @@ def _format_strategy_slide_block(strategy: dict) -> str:
     """Spec Strategy-Step3 — SLIDE 프롬프트용 [관통 전략] 블록 문자열.
 
     _format_strategy_block(OUTLINE 용) 과 형식 다름:
-      · OUTLINE 용: 뼈대 잡을 때 참고할 근거·pillars 나열.
+      · OUTLINE 용: 뼈대 잡을 때 참고할 근거·pillars·target·needs 나열 (사슬 전체).
       · SLIDE 용: 이 페이지 내용을 관통 지시 (실행 지침 톤).
 
     strategy 가 None / 빈 dict / strategy·concept 둘 다 비면 "" 반환 (안전 fallback).
     호출부는 그 결과가 truthy 일 때만 parts 에 append (조건부).
+
+    Spec Strategy-Chain-Enhance (옵션 β) — needs 한 줄만 추가:
+      · target/rationale 은 SLIDE 미주입 (rationale-SLIDE 미사용 패턴 정합, 토큰 절약).
+      · needs 만 추가하는 이유: 본론 실행이 니즈에서 파생돼야 관통되므로.
+      · 구버전 dict (needs 없음) 도 안전 (조건부 append).
     """
     if not isinstance(strategy, dict) or not strategy:
         return ""
     s = str(strategy.get("strategy", "")).strip()
     c = str(strategy.get("concept", "")).strip()
+    n = str(strategy.get("needs", "")).strip()
     pillars_raw = strategy.get("pillars") or []
     pillars = [str(p).strip() for p in pillars_raw if str(p).strip()]
     if not s and not c:
@@ -2862,11 +2898,16 @@ def _format_strategy_slide_block(strategy: dict) -> str:
         lines.append(f"대전략: {s}")
     if c:
         lines.append(f"콘셉트: {c}")
+    if n:
+        lines.append(f"핵심 니즈: {n}")   # Spec Strategy-Chain-Enhance (옵션 β)
     if pillars:
         lines.append(f"핵심축: {' / '.join(pillars)}")
+    _needs_hint = (
+        " 특히 이 페이지 실행은 위 '핵심 니즈'를 공략하게." if n else ""
+    )
     lines.append(
         "→ 이 페이지의 내용은 위 대전략·콘셉트를 관통해 구체화하라. "
-        "핵심축(pillars)을 이 페이지 영역에 맞게 실제 실행으로 연결. "
+        "핵심축(pillars)을 이 페이지 영역에 맞게 실제 실행으로 연결." + _needs_hint + " "
         "단 전략 키워드만 억지로 반복하지 말고, 이 페이지 주제가 전략에서 "
         "자연스럽게 파생되게. 없는 사실·수치는 지어내지 말 것 "
         "(팩트 게이트 원칙과 정합)."
@@ -2932,6 +2973,11 @@ async def generate_strategy(
     out = {
         "strategy":  str(parsed.get("strategy", "")).strip(),
         "concept":   str(parsed.get("concept", "")).strip(),
+        # Spec Strategy-Chain-Enhance — target/needs 사슬 필드 추가.
+        # 있으면 좋고 없어도 전략은 성립 (필수 아님). 유효성 조건은 strategy·concept
+        # 만 검사 유지 — 신·구 응답 dict 모두 안전 (구버전은 이 두 필드 빈 문자열).
+        "target":    str(parsed.get("target", "")).strip(),
+        "needs":     str(parsed.get("needs", "")).strip(),
         "rationale": str(parsed.get("rationale", "")).strip(),
         "pillars":   [
             str(p).strip() for p in (parsed.get("pillars") or [])
@@ -2939,12 +2985,14 @@ async def generate_strategy(
         ],
     }
     # strategy 나 concept 하나라도 있어야 유효 — 둘 다 비면 빈 dict 반환.
+    # (target/needs 는 유효성 조건 대상 아님 — Spec Strategy-Chain-Enhance 정합)
     if not out["strategy"] and not out["concept"]:
         log.warning("Strategy-Step1 strategy·concept 둘 다 빈 값 → 빈 dict fallback")
         return {}
     log.info(
-        "Strategy-Step1 확정 — strategy=%r concept=%r pillars=%d",
-        out["strategy"][:60], out["concept"][:60], len(out["pillars"]),
+        "Strategy-Step1 확정 — strategy=%r concept=%r target=%r needs=%r pillars=%d",
+        out["strategy"][:60], out["concept"][:60],
+        out["target"][:60], out["needs"][:60], len(out["pillars"]),
     )
     return out
 

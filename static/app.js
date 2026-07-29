@@ -201,6 +201,43 @@ function redirectToLogin(force = false) {
   location.href = "/login.html";
 }
 
+// ---------- Idle Timeout — 유휴 3시간 자동 로그아웃 (Spec Frontend-Idle-Timeout) ----------
+// JWT 절대 만료(24h)와 상호보완: 자리 비움·공용 PC 대비. 서버 무변경.
+// 방식: 활동 이벤트에서 lastActivity 갱신(변수 대입만, 가벼움) + 60초 간격으로
+//       (now - lastActivity > IDLE_TIMEOUT_MS) 검사. 활동 이벤트마다 타이머 재설정 X.
+const IDLE_TIMEOUT_MS = 3 * 60 * 60 * 1000;  // 3시간
+const IDLE_CHECK_INTERVAL_MS = 60 * 1000;    // 60초 (정확도 ±1분)
+let _idleLastActivity = 0;
+let _idleCheckHandle = null;
+let _idleLoggingOut = false;  // 중복 실행 방지
+
+function _idleMarkActivity() { _idleLastActivity = Date.now(); }
+
+function _idleCheck() {
+  // 비로그인 상태면 무동작(로그아웃 후에도 setInterval 이 남아있을 수 있음)
+  if (!getToken()) return;
+  if (_idleLoggingOut) return;
+  if (Date.now() - _idleLastActivity <= IDLE_TIMEOUT_MS) return;
+  _idleLoggingOut = true;
+  if (_idleCheckHandle) { clearInterval(_idleCheckHandle); _idleCheckHandle = null; }
+  clearToken();
+  toast("3시간 미사용으로 자동 로그아웃됐어요. 다시 로그인해 주세요.", "ok", 3000);
+  setTimeout(() => redirectToLogin(true), 600);
+}
+
+function startIdleTimeout() {
+  // 로그인 상태(getToken truthy)에서만 시작. DOMContentLoaded 인증 검증 후 호출.
+  if (!getToken()) return;
+  if (_idleCheckHandle) return;  // 중복 시작 방지
+  _idleLastActivity = Date.now();
+  // 활동 이벤트 — passive 로 스크롤/터치 성능 저해 없음. 기존 click/keydown 리스너와 충돌 X.
+  const events = ["mousemove", "keydown", "scroll", "click", "touchstart"];
+  for (const ev of events) {
+    document.addEventListener(ev, _idleMarkActivity, { passive: true });
+  }
+  _idleCheckHandle = setInterval(_idleCheck, IDLE_CHECK_INTERVAL_MS);
+}
+
 async function _call(method, path, { body, form, signal, timeoutMs = 60000 } = {}) {
   const ctrl = new AbortController();
   const signals = [ctrl.signal];
@@ -225,6 +262,8 @@ async function _call(method, path, { body, form, signal, timeoutMs = 60000 } = {
       // 단, /api/auth/login 같은 인증 endpoint 의 401 은 로그인 실패 (UI 가 처리)
       if (r.status === 401 && !path.startsWith("/api/auth/")) {
         clearToken();
+        // Spec Frontend-Idle-Timeout — 24h JWT 절대 만료 튕김 시 안내(작업 중 갑작 튕김 방지)
+        toast("세션이 만료됐어요. 다시 로그인해 주세요.", "ok", 2500);
         redirectToLogin();
         // redirect 직전이라도 caller 가 throw 받도록 error 진행
       }
@@ -2271,7 +2310,13 @@ async function downloadBudgetXlsx(data) {
       },
       body: JSON.stringify(reqBody),
     });
-    if (r.status === 401) { clearToken(); redirectToLogin(); return; }
+    if (r.status === 401) {
+      clearToken();
+      // Spec Frontend-Idle-Timeout — _call 래퍼와 동일 안내(엑셀 다운로드 지점).
+      toast("세션이 만료됐어요. 다시 로그인해 주세요.", "ok", 2500);
+      redirectToLogin();
+      return;
+    }
     if (!r.ok) {
       const err = await r.json().catch(() => ({ detail: r.statusText }));
       throw new Error(err.detail || "엑셀 다운로드 실패");
@@ -6752,6 +6797,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 체류시간 인체 캐릭터 (bootBodyCharacter) 호출은 Spec 5 (5/16) 폐기.
   // 반응형 햄버거 토글
   bootNavToggle();
+  // Spec Frontend-Idle-Timeout — 로그인 상태에서만 유휴 3h 감지 시작(내부에서 getToken() 재검증).
+  startIdleTimeout();
   // route() 영역 영역 영역 영역 호출 — window.__nightoff_user 영역 영역 영역 영역
   // (사이드바 사용자 영역 div 영역 미렌더 race condition 회피).
   // public 페이지(/, /landing 등)는 fetch 분기 skip 후 즉시 도달, 비공개 페이지는

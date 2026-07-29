@@ -1125,7 +1125,12 @@ import jwt as _jwt
 from datetime import timedelta, timezone
 
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRY_DAYS = 7
+# Spec JWT-Expiry-Shorten — 절대 만료 7일 → 24시간 단축.
+# 유휴(idle) 만료가 아니라 발급 시점 기준 절대 만료. 사용자 활동 무관하게
+# 발급 후 24시간 지나면 무효. 새 로그인부터 적용 — 기존 발급 토큰은
+# 발급 시점 exp 로 자연 만료(강제 로그아웃 없음).
+# 프론트 유휴 감지 타이머는 별도 spec 에서.
+JWT_EXPIRY_HOURS = 24
 BCRYPT_ROUNDS = 12
 
 # 비밀번호 정책 — 8자 이상 + 영문 + 숫자 모두 포함
@@ -1189,13 +1194,16 @@ def _jwt_secret() -> str:
     return secret
 
 
-def encode_jwt(user_id: str, expires_in_days: int = JWT_EXPIRY_DAYS) -> str:
-    """user_id 로 JWT 발급 (HS256, 7일 만료)."""
+def encode_jwt(user_id: str, expires_in_hours: int = JWT_EXPIRY_HOURS) -> str:
+    """user_id 로 JWT 발급 (HS256, JWT_EXPIRY_HOURS 시간 만료).
+
+    Spec JWT-Expiry-Shorten — 기본 24시간 (절대 만료, 유휴 무관).
+    """
     now = datetime.now(timezone.utc)
     payload = {
         "sub": user_id,
         "iat": int(now.timestamp()),
-        "exp": int((now + timedelta(days=expires_in_days)).timestamp()),
+        "exp": int((now + timedelta(hours=expires_in_hours)).timestamp()),
     }
     return _jwt.encode(payload, _jwt_secret(), algorithm=JWT_ALGORITHM)
 

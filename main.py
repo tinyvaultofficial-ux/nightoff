@@ -3612,7 +3612,60 @@ def _format_chat_block_intel(intel_row) -> str:
     return "\n".join(lines)
 
 
-def _build_chat_system_prompt(client_id: str) -> str:
+def _format_chat_block_proposal(payload: Optional[dict]) -> str:
+    """블록 #7 현재 생성된 제안서 — outline 자연어 요약 (Spec Chat-Reads-Proposal).
+
+    챗봇이 "3쪽 왜 이래" 류 후속 질문에 답하려면 실 콘텐츠가 컨텍스트에
+    있어야 함. 대화 이력의 raw JSON 은 _summarize_proposal_json 축약 필터로
+    "[제안서 N장 생성됨]" 한 줄로 대체되므로(무변경) 여기서 자연어 요약을
+    별도 주입한다.
+
+    ★ raw slides JSON 은 절대 넣지 않는다 — 도형 좌표/색/viz 메타 제외,
+      outline 자연어 필드(section, governing_main)만 페이지당 한 줄.
+      원 필터의 목적(LLM 이 도형 JSON 패턴을 학습해 채팅 답변으로 재현하는 사고)
+      을 깨지 않기 위함.
+
+    payload 없음(생성 전) / outline 비어있음 → 빈 문자열 (블록 통째 생략).
+    """
+    if not payload or not isinstance(payload, dict):
+        return ""
+    outline = payload.get("outline")
+    if not isinstance(outline, list) or not outline:
+        return ""
+    slides = payload.get("slides") if isinstance(payload.get("slides"), list) else []
+    n_pages = len(slides) if slides else len(outline)
+
+    lines: list[str] = [
+        f"[현재 생성된 제안서 — 총 {n_pages}장. 사용자가 이 내용을 두고 후속 질문할 수 있음]"
+    ]
+    for item in outline:
+        if not isinstance(item, dict):
+            continue
+        page = item.get("page")
+        if not isinstance(page, int):
+            continue
+        section = str(item.get("section") or "").strip()[:30]
+        gm = str(item.get("governing_main") or "").strip()[:120]
+        if section and gm:
+            lines.append(f"p{page}. {section}: {gm}")
+        elif gm:
+            lines.append(f"p{page}. {gm}")
+        elif section:
+            lines.append(f"p{page}. {section}")
+
+    if len(lines) <= 1:
+        return ""
+
+    lines.append(
+        "→ 사용자가 특정 페이지를 물으면 위 요약을 근거로 답하되, 실제 본문 문장을 "
+        "지어내지 말 것. 요약에 없는 세부는 \"채팅 헤더의 📄 페이지 재생성 버튼으로 "
+        "해당 장을 다시 뽑을 수 있어요\"로 안내. 페이지 수정·재생성은 채팅에서 직접 "
+        "실행하지 말 것(기존 [별도 기능과의 분리] 유지)."
+    )
+    return "\n".join(lines)
+
+
+def _build_chat_system_prompt(client_id: str, conv_id: Optional[str] = None) -> str:
     """채팅용 시스템 프롬프트.
 
     CHAT_SYSTEM_PROMPT 정적 본문 (기획 파트너 정체성) +
@@ -3626,6 +3679,7 @@ def _build_chat_system_prompt(client_id: str) -> str:
     api_chat (자연어 채팅) 전용. 캐시 X (PROPOSAL 패턴과 일관).
     """
     # DB 조회
+    proposal_payload: Optional[dict] = None
     with get_db() as db:
         client = db.execute("SELECT * FROM clients WHERE id=?", (client_id,)).fetchone()
         refs = db.execute(
@@ -3644,6 +3698,13 @@ def _build_chat_system_prompt(client_id: str) -> str:
             "SELECT title FROM conversations WHERE client_id=? AND outcome='lost' ORDER BY updated_at DESC LIMIT 5",
             (client_id,),
         ).fetchall()
+        # Spec Chat-Reads-Proposal — conv_id 주어지면 최근 제안서 payload 로드 (없으면 None).
+        # 로드 실패/생성 전 → None → 블록 미추가 (기존과 동일).
+        if conv_id:
+            try:
+                proposal_payload = _load_proposal_payload_for_conv(db, conv_id)
+            except Exception:
+                proposal_payload = None
     rfp_analysis = _get_rfp_aggregated(client_id)
 
     parts = [CHAT_SYSTEM_PROMPT]
@@ -3659,6 +3720,10 @@ def _build_chat_system_prompt(client_id: str) -> str:
     if (block := _format_chat_block_intel(intel_row)):
         parts.append(block)
     if (block := _format_chat_block_outcomes(won_rows, lost_rows)):
+        parts.append(block)
+    # Spec Chat-Reads-Proposal — 블록 #7 현재 제안서 outline 자연어 요약.
+    # payload 없거나 outline 비어있으면 helper 가 "" 반환 → append 안 됨(기존과 동일).
+    if (block := _format_chat_block_proposal(proposal_payload)):
         parts.append(block)
 
     return "\n\n".join(parts)
@@ -3760,7 +3825,8 @@ def api_chat(conv_id: str, body: ChatIn, user: dict = Depends(get_current_user))
         ).fetchall()
 
     # 자연어 채팅 = 전략 토론 모드 → CHAT_SYSTEM_PROMPT 사용 (PROPOSAL 분리)
-    system_prompt = _build_chat_system_prompt(client_id)
+    # Spec Chat-Reads-Proposal — conv_id 전달로 현재 생성된 제안서 outline 요약 블록 #7 주입 활성.
+    system_prompt = _build_chat_system_prompt(client_id, conv_id)
     # ⚠ 도형 JSON 메시지는 LLM 컨텍스트에서 요약 텍스트로 대체 — in-context examples 오염 차단.
     # 풀 생성 (proposal_multi_pass) 완료 시 도형 JSON 이 assistant 메시지로 저장되므로
     # raw JSON 을 그대로 컨텍스트에 넣으면 LLM 이 패턴 학습 → "X쪽만 다시 뽑아줘" 시 JSON 응답 사고.

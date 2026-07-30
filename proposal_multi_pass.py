@@ -31,7 +31,7 @@ import os
 import random
 import re
 import time
-from dataclasses import dataclass, field, replace as dataclass_replace
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import AsyncIterator, Optional
 
@@ -3592,29 +3592,6 @@ _VIZ_TO_PRESET: dict = {
 }
 
 
-# ─── Spec Remove-Phantom-Presets — shape 트랙 유령 별칭 4종 리매핑 ────
-# 배경: 2col / cards3 / cards_grid / before_after 는 HTML 트랙 전용 별칭(SLIDE_SYSTEM_PROMPT_HTML
-#   L2408-2470 에 좌표 카탈로그 완비)이지만, 도형 트랙에는 대응 dispatch/카탈로그가 부재.
-#   OUTLINE 화이트리스트(_VIZ_PATTERN_SAFE)는 두 트랙 공유라 shape 트랙에서도 배정 가능.
-#   결과: 배정되면 SLIDE elif 미매치 → [배정된 레이아웃 패턴] 블록 미주입 → LLM 자율 shapes
-#         (긴 문단 rect) 로 떨어져 시각화 소실 (홍보 계획 페이지 사고).
-# 처방: shape 트랙 진입 시 4종 → 실제 시각형 프리셋으로 리매핑. HTML 트랙 완전 무영향
-#   (SLIDE_SYSTEM_PROMPT_HTML 은 4종 카탈로그 완비, 리매핑 발동 X — output_mode 게이트).
-# 리매핑 표 (spec 가이드: hero_cards / numbered_columns / flow_detail 계열):
-#   · 2col        → hsplit_top       (거버닝 강조 + 좌우 2항목, 대등 두 축)
-#   · cards3      → numbered_columns (3~4열 병렬 + 결론 밴드, 3항목 서사 완결)
-#   · cards_grid  → quad             (4개 색면 4분할, 6~8개는 손실 있으나 대안 없음)
-#   · before_after → hsplit_top      (거버닝 + 좌우 2항목, Before ↔ After 2상태 대비)
-# 리매핑 후 실제 프리셋의 role 가드가 살아있어 role != body 페이지에선 자연 강등 → 자율 shapes
-#   (지금과 동일 결과지만, body 페이지 대다수는 리매핑 후 정상 시각화 획득).
-_SHAPE_TRACK_ALIAS_REMAP: dict[str, str] = {
-    "2col":          "hsplit_top",
-    "cards3":        "numbered_columns",
-    "cards_grid":    "quad",
-    "before_after":  "hsplit_top",
-}
-
-
 def _build_slide_user_prompt(
     item: OutlineItem,
     outline_summary: str,
@@ -3628,20 +3605,6 @@ def _build_slide_user_prompt(
     strategy: dict | None = None,  # Spec Strategy-Step3 — 확정 대전략 (align 페이지에만 주입)
     research: dict | None = None,  # Spec Research-Inject — 확정 근거 자료 (align 페이지에만 주입)
 ) -> str:
-    # ─── Spec Remove-Phantom-Presets — shape 트랙 유령 별칭 4종 리매핑 (진입 초입) ────
-    # HTML 트랙(output_mode == "html") 은 SLIDE_SYSTEM_PROMPT_HTML 안에 4종 카탈로그 완비 →
-    #   리매핑 게이트로 완전 무영향. shape 트랙에서만 실제 시각형 프리셋으로 재바인딩.
-    # dataclasses.replace 로 새 OutlineItem 인스턴스를 만들어 로컬 item 을 shadow —
-    #   원본 outline dict / OutlineResult.items 리스트는 무변경 (부분 재생성 저장분에도 영향 없음).
-    # 이 리매핑 뒤 elif 체인이 새 viz_pattern 기준으로 매치 → LLM 프롬프트에 실제 프리셋
-    #   [배정된 레이아웃 패턴] 블록이 주입 → LLM 이 해당 스키마로 shapes 생성.
-    if output_mode != "html" and item.viz_pattern in _SHAPE_TRACK_ALIAS_REMAP:
-        _remapped = _SHAPE_TRACK_ALIAS_REMAP[item.viz_pattern]
-        log.info(
-            "Remove-Phantom-Presets 리매핑 p=%s %s → %s (shape 트랙, HTML 무영향)",
-            item.page, item.viz_pattern, _remapped,
-        )
-        item = dataclass_replace(item, viz_pattern=_remapped)
     # 본인 회사명 inject 제거 (한국 공공입찰 청렴제 — 회사명 본문 등장 비정상)
     parts = [
         f"[슬라이드 캔버스] slide_width={canvas[0]}, slide_height={canvas[1]}",

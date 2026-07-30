@@ -2523,6 +2523,11 @@ K. narrative style:'contrast' — "A가 아니라 B" 대비 (컨셉·차별점)
 ─── viz_hint 해석 가이드 (자연어 → 카탈로그 키 매핑) ───
 outline AI 가 viz_hint 에 자연어 힌트를 박는다. 카탈로그 키로 매핑하는 법:
 - "stat / KPI 3~4개 / 큰 숫자 / 정량 강조"        → quant (E)
+  ※ ★ Spec Quant-Support-Guard — quant 는 role=body 페이지 전용 (진짜 KPI/예산/규모 자랑용).
+    "일정 / 마일스톤 / 추진체계 / 보고체계 / 사후관리 / 리스크관리" 등 role=support 성격
+    페이지는 숫자가 있어도 quant 배정 금지 (스키마에 서사 필드 부재 → 큰 숫자만 뜨고 관리
+    체계·산출물·담당 서사가 통째로 소실). support 성격의 단계·일정 페이지는 process
+    (가로 단계 흐름) 우선. 코드 가드가 role != body 시 강등하지만 애초에 배정하지 마라.
 - "comparison / AS-IS / TO-BE / 전후 비교"        → 2col (A)
 - "before / after / 도입 효과 / 개선 사례"         → before_after (D)
   ※ AS-IS/TO-BE 로 매핑 시 — AS-IS 칸 사실은 출처([RFP 분석]/[과업 리서치]) 있는 것만.
@@ -3394,6 +3399,24 @@ async def generate_outline(
                 log.info(
                     "Preset-Connect-FullbleedOverlay 강등 p=%s role=%s st=%s",
                     it.get("page"), _rl_fo, _st_fo,
+                )
+                viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
+        # ★ Spec Quant-Support-Guard — quant 강등 가드 (timeline/split 등 15+ 프리셋과 동일 강도).
+        #   quant = "정량 강조 (큰 숫자 + 라벨 / KPI · 예산 · 규모)" 이므로 role=body 페이지에만 적합.
+        #   support(예산 자체가 아니라 일정/보고체계/사후관리 등 정형 관리)·hero(컨셉/표지)·simple_box 에
+        #   박히면 서사 필드 부재로 큰 숫자만 뜨고 관리 서사 소실 → 반드시 무력화.
+        #   진단: "추진일정·관리 체계" 페이지(role=support)에 quant 배정돼 큰 숫자 3개만 렌더된 사고.
+        #   기존 15+ 프리셋 가드에 quant 만 누락돼 있어 이번 spec 으로 정합.
+        #   강등 후: viz_pattern="" → SLIDE 프롬프트 [배정된 레이아웃 패턴] 블록 미주입 →
+        #   LLM 이 페이지 내용 기반으로 자율 shapes 생성 (기존 fallback 메커니즘 재사용, 하드코딩 X).
+        #   ★ body role 의 quant(진짜 KPI/예산/규모 자랑 페이지)는 무영향 — role != body 일 때만 강등.
+        elif viz_pattern == "quant":
+            _rl_q = str(it.get("role", "")).strip().lower()
+            _st_q = str(it.get("slide_type", "")).strip().lower()
+            if _rl_q != "body" or _st_q == "hero":
+                log.info(
+                    "Quant-Support-Guard 강등 p=%s role=%s st=%s",
+                    it.get("page"), _rl_q, _st_q,
                 )
                 viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
         # Spec D-Fix-BodyRole-1 — role 화이트리스트 (body/support/"" 만 허용).

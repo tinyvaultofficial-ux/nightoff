@@ -44,7 +44,7 @@ log = logging.getLogger("multi_pass")
 #   · 단계2(후속): OUTLINE 프롬프트에 strategy 반영 skip
 #   · 단계3(후속): SLIDE 프롬프트에 strategy 주입 skip
 # True 로 켜야만 전략 수립 LLM 호출 발생. 사고 시 False 로 즉시 원복.
-STRATEGY_INJECTION_ENABLED = False
+STRATEGY_INJECTION_ENABLED = True
 
 
 # ─── Spec Research-Inject — 근거 자료(과업 리서치) SLIDE 주입 on/off ────
@@ -53,7 +53,7 @@ STRATEGY_INJECTION_ENABLED = False
 # True 시: align 페이지 SLIDE 프롬프트에 검증 사실(subject_facts /
 #   past_editions / context / summary / sources) 주입 → 본론이 근거 기반으로 깊어짐.
 #   ★ inspiration 필드는 제외 (영감 재료, 사실 아님 — 팩트 게이트 정합).
-RESEARCH_INJECTION_ENABLED = False
+RESEARCH_INJECTION_ENABLED = True
 
 
 # ─── 도메인 톤 매트릭스 (도메인별 어미·톤·어휘·레지스터) ─────────────

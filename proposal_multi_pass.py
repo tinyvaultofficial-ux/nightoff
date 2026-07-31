@@ -56,6 +56,22 @@ STRATEGY_INJECTION_ENABLED = True
 RESEARCH_INJECTION_ENABLED = True
 
 
+# ─── Spec Concreteness-Boost — 구체성 강화 on/off (플래그 게이트) ────
+# 진단 결과: 구체성 부족 3원인 = (b)"구체적으로" 지시가 "짧게" 지시 대비 6:1 열세 +
+#   (c)팩트게이트가 "예측 수치 금지"만 명시하고 "RFP 데이터 활용 허용"은 없어 수치 회피 +
+#   (a)박스당 30~60자 밀도 규칙이 방법·근거 서술 자리 압박.
+# 처방: 세 원인을 SLIDE user prompt 마지막에 override 블록으로 함께 주입.
+#   프롬프트 마지막 지시가 가장 강한 특성 활용 → 앞선 시스템 규칙을 조건부 재정의.
+# ★ SLIDE_SYSTEM_PROMPT baseline 무수정 원칙 준수 — 시스템 프롬프트는 한 글자도 손대지 않고,
+#   신규 지시는 전부 user prompt 블록으로만 주입. 플래그 False 면 블록 append X → 기존 100% 동일.
+# ★ 팩트게이트 "지어낸 예측 수치 금지" 핵심(L1479-1548)은 무손상 — 경계만 명확히
+#   (RFP 명시 데이터 활용 허용, 계획 구조 수치 권장).
+# ★ auto_size(TEXT_TO_SHAPE_FIT, pptx_generator.py:1605)가 넘침 안전망 → 글자 완화 안전.
+# True 로 켜야만 SLIDE user prompt 에 override 블록 주입. 사고 시 False 로 즉시 원복
+#   (플래그 1줄 원복, git revert 불필요).
+CONCRETENESS_BOOST_ENABLED = False
+
+
 # ─── 도메인 톤 매트릭스 (도메인별 어미·톤·어휘·레지스터) ─────────────
 # Phase 2 슬라이드별 호출 시 outline.domain 값에 따라 해당 도메인의 톤 가이드를
 # user prompt 에 동적 inline. main.py 의 _format_chat_block_domain_tone 과 동일 source.
@@ -2989,6 +3005,60 @@ def _format_research_slide_block(research: dict) -> str:
     return "\n".join(lines)
 
 
+# ─── Spec Concreteness-Boost — SLIDE user prompt 마지막 override 블록 헬퍼 ───
+# 진단 3원인 (b/c/a) 를 하나의 블록으로 묶어 프롬프트 마지막에 주입.
+# LLM 은 프롬프트 마지막 지시를 가장 강하게 따르는 특성 → 시스템 프롬프트의 앞선 규칙을
+#   조건부 재정의(override) 하는 방식. SLIDE_SYSTEM_PROMPT 는 한 글자도 안 건드림.
+# ★ 플래그 CONCRETENESS_BOOST_ENABLED=False 면 이 헬퍼 자체 호출 안 됨 → 기존 100% 동일.
+# ★ 팩트게이트 핵심(예측 수치 금지 3중 게이트) 무손상 — 경계만 명확히.
+def _format_concreteness_boost_block() -> str:
+    """Spec Concreteness-Boost — 구체성 강화 override 블록.
+
+    세 처방을 하나로 묶음:
+      (b) 구체성 요구 — "짧게" 지시와 균형, 방법·절차 서술 요구
+      (c) 팩트게이트 경계 명확화 — RFP 명시 데이터 활용 허용 명시
+      (a) 글자 제한 완화 — 방법·근거 필요 시 100~150자까지 허용
+    """
+    return (
+        "[★ Spec Concreteness-Boost — 구체성 강화 override (이 블록이 앞선 규칙보다 우선)]\n"
+        "\n"
+        "(b) 구체성 요구 — \"짧게\" 와 균형:\n"
+        "- 앞선 시스템 프롬프트의 \"짧게/함축/핵심만\" 지시는 유지하되, 그것이 \"추상 라벨화\"로 "
+        "  흘러가면 안 된다. 핵심은 짧게, 단 **방법·절차·근거는 구체적으로 서술**하라.\n"
+        "- \"~강화 / ~진단 / ~수립 / ~분석 / ~고도화\" 같은 추상 명사구로 페이지를 끝내지 마라. "
+        "  \"무엇을 어떻게\" 를 방법·절차로 풀어라.\n"
+        "  ❌ 나쁜 예: \"채널별 강약 진단\"\n"
+        "  ✅ 좋은 예: \"인스타 팔로워를 성별·연령으로 분석해 상위 3개 세그먼트를 도출하고, "
+        "세그먼트별 콘텐츠 톤을 차별화\"\n"
+        "  ❌ 나쁜 예: \"3단계 검수 체계\"\n"
+        "  ✅ 좋은 예: \"1차 실무 검수(오탈자·규격) → 2차 PM 검수(메시지 일관성) → 3차 "
+        "발주처 최종 확인, 각 단계 24시간 이내\"\n"
+        "\n"
+        "(c) 팩트게이트 경계 명확화 — RFP 데이터 활용 허용:\n"
+        "- 앞선 팩트게이트의 \"지어낸 예측 수치 금지\" 원칙은 그대로 유지 (환각 방지 핵심).\n"
+        "- ★ 단, **RFP 에 명시된 데이터(팔로워 수·예산·규모·행사일자·장소 등)는 "
+        "  목표·근거로 활용하라**. 이는 지어내기가 아니라 주어진 사실 활용이다.\n"
+        "  예: RFP 에 \"현재 인스타 팔로워 6,889명\" 명시 → 목표 \"3개월 내 10,000명 도달\" 로 활용 OK.\n"
+        "- **계획 구조 수치**(주 2회 보고 / 월 1회 리포트 / 3단계 검수 / 2주 단위 점검 등)는 "
+        "  구체적일수록 좋다. 이건 우리가 정하는 운영 방식이라 환각 아님.\n"
+        "- 여전히 금지: RFP 미명시 성과 예측 수치(CTR/도달률/전환율 예상값), 근거 없는 "
+        "  전년 실적·시청률·참가팀 수, RAG 발췌 수치를 새 사업에 옮기기.\n"
+        "\n"
+        "(a) 글자 제한 완화 — 방법·근거 담기 위해:\n"
+        "- 앞선 \"박스당 30~60자 / 1~2줄 / 정보 1~2개\" 밀도 규칙보다 이 지시가 우선.\n"
+        "- 박스에 **방법·절차·수치가 들어가야 하면 100~150자까지 늘려도 된다**.\n"
+        "  (넘침은 코드 auto_size 가 폰트 자동 축소로 안전망 처리)\n"
+        "- 다만 늘리는 것은 \"구체 내용 담기 위해\" 만. 형용사 나열 / 만연체 수식으로 늘리지 마라.\n"
+        "- 정보 개수도 \"1~2개\" 규칙보다 \"단계·요소가 자연스러우면 3~5개까지\" 우선.\n"
+        "\n"
+        "★ 우선순위 정리 (앞선 규칙과 충돌 시):\n"
+        "  1) 이 [Concreteness-Boost] 블록 (프롬프트 마지막 = 가장 강함)\n"
+        "  2) 팩트게이트 핵심(예측 수치 금지) — 여전히 유효\n"
+        "  3) 앞선 밀도 규칙(30~60자) — 이 블록의 100~150자 허용에 override 됨\n"
+        "  4) 앞선 \"짧게/함축\" 지시 — 이 블록의 \"핵심은 짧게, 방법은 구체적\" 로 정제됨"
+    )
+
+
 # ─── Spec Strategy-Step1 — 전략 확정 생성 (OUTLINE 이전 신설 단계) ──────────
 # generate_outline 과 동일 입력 (rfp/rag/intel/conv/extra) 를 받아 대전략·핵심
 # 콘셉트를 하나로 확정. STRATEGY_INJECTION_ENABLED=True 일 때만 orchestrate 가
@@ -4682,6 +4752,15 @@ def _build_slide_user_prompt(
             "★  색·배경은 신경 쓰지 마라. 너는 평소대로 작성하고, 강조할 명사구만\n"
             "   accent:true 로 표시하면 된다."
         )
+    # ─── Spec Concreteness-Boost — 구체성 강화 override 블록 (플래그 게이트) ──
+    # 프롬프트 마지막(dark 블록 뒤)에 주입 → LLM 이 가장 강하게 따르는 위치.
+    # 플래그 CONCRETENESS_BOOST_ENABLED=False 면 append 미실행 → 프롬프트 100% 기존 동일.
+    # ★ SLIDE_SYSTEM_PROMPT baseline 무수정 원칙 준수 — 시스템 프롬프트 무접촉,
+    #   신규 지시는 전부 user prompt 마지막 override 로만 주입 (dark 블록 패턴 재사용).
+    # ★ 팩트게이트 핵심(예측 수치 금지) 무손상 — 헬퍼가 경계만 명확화 (RFP 데이터 활용 허용).
+    if CONCRETENESS_BOOST_ENABLED:
+        parts.append("")
+        parts.append(_format_concreteness_boost_block())
     return "\n".join(parts)
 
 

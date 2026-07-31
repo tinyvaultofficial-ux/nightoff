@@ -69,7 +69,7 @@ RESEARCH_INJECTION_ENABLED = True
 # ★ auto_size(TEXT_TO_SHAPE_FIT, pptx_generator.py:1605)가 넘침 안전망 → 글자 완화 안전.
 # True 로 켜야만 SLIDE user prompt 에 override 블록 주입. 사고 시 False 로 즉시 원복
 #   (플래그 1줄 원복, git revert 불필요).
-CONCRETENESS_BOOST_ENABLED = False
+CONCRETENESS_BOOST_ENABLED = True
 
 
 # ─── 도메인 톤 매트릭스 (도메인별 어미·톤·어휘·레지스터) ─────────────

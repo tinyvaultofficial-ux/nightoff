@@ -100,16 +100,59 @@ DARK_MAP = {
 }
 
 
-def _map_color(hex_str, role, theme="light"):
-    """role-aware 다크 매핑.
+# Spec Navy-Palette-MVP — 첫 컬러 팔레트 매핑표 (DARK_MAP 과 동일 구조·키 형식).
+# 명도 대비 구조 그대로 유지: 진검정 → 진네이비 / 회색 단계 → 네이비 명도 스케일 / 흰 → 옅은청회.
+# ★ DARK_MAP 의 20 키(text 9 / fill 7 / stroke 4) 를 전부 대응 — 빠지면 그 색만 흑백으로 남음.
+# ★ ("#FFFFFF", "text") 는 매핑 안 함(pass-through) — 진네이비 밴드(#0F1E3D fill) 위
+#   흰 글씨(#FFFFFF text) 그대로 유지가 최고 대비. spec 지시 명시.
+NAVY_MAP = {
+    # 글자색 (role='text') — 검정 계열 → 진네이비, 회색 단계 → 네이비 명도 스케일.
+    ("#1A1A1A", "text"): "#0F1E3D",   # 본문/헤드라인 검정 → 진네이비 FG
+    ("#444444", "text"): "#3E5378",   # 부차 진회색 → 중네이비 FG_SUB
+    ("#666666", "text"): "#3E5378",   # 부차 중회색 → 중네이비 FG_SUB
+    ("#999999", "text"): "#8A96AC",   # 메타 옅은 회색 → 옅은청회 FG_META
+    ("#BBBBBB", "text"): "#8A96AC",   # eyebrow 옅은 → 옅은청회 FG_META
+    ("#333333", "text"): "#3E5378",   # 진회색 글자 → 중네이비 FG_SUB
+    ("#555555", "text"): "#3E5378",   # 진회색 글자 → 중네이비 FG_SUB
+    # ("#FFFFFF", "text") 는 매핑 안 함 — 진네이비 밴드 위 흰 글씨 대비 유지 (spec 지시).
+    ("#DDDDDD", "text"): "#C4CFDE",   # 진네이비 밴드 위 부차 글씨 → 옅은 파랑 (밴드 위 가독).
+    # 채움 (role='fill') — 진검정 → 진네이비 밴드, 흰/옅은회색 → 옅은청회 배경.
+    ("#1A1A1A", "fill"): "#0F1E3D",   # 검정 밴드/강조 면 → 진네이비 밴드 (PANEL_FILL)
+    ("#000000", "fill"): "#0F1E3D",   # 같은 의미의 #000 → 진네이비 밴드
+    ("#FFFFFF", "fill"): "#F5F7FB",   # 흰 면/배경 → 옅은청회 BG
+    ("#F5F5F5", "fill"): "#E8EDF5",   # 이미지 placeholder 옅은 회색 면 → 옅은청
+    ("#FAFAFA", "fill"): "#E8EDF5",   # 같은 의미의 옅은 회색 면 → 옅은청
+    ("#ECECEC", "fill"): "#E8EDF5",   # 옅은 회색 면 → 옅은청
+    ("#DDDDDD", "fill"): "#D6DEEA",   # 연한 회색 면 → 옅은청 LINE 계열
+    # 선/테두리 (role='stroke') — 진검정 선 → 진네이비 선, 회색 선 → 네이비 명도.
+    ("#1A1A1A", "stroke"): "#0F1E3D", # 진한 구분선/테두리 → 진네이비
+    ("#DDDDDD", "stroke"): "#D6DEEA", # 연한 구분선 → 옅은청 LINE
+    ("#999999", "stroke"): "#8A96AC", # 중간 회색 선 → 옅은청회 FG_META
+    ("#CCCCCC", "stroke"): "#B8C4D6", # placeholder 테두리 → 옅은청
+}
 
-    theme != "dark" → 입력색 그대로 (★ 라이트 비트 단위 무변경 보장).
-    hex_str falsy(None/"") → 그대로 (fill=None 같은 "투명/지우기" 시그널 보존).
-    DARK_MAP 에 없는 색 → 그대로 (임의 변환 금지 / 명시색 무변환 = 안전).
+
+# Spec Navy-Palette-MVP — 팔레트별 매핑표 dispatcher.
+# 신규 팔레트 추가 시 여기에만 등록 (팔레트별 XX_MAP + 이 dict 항목).
+# 'light' 는 항상 pass-through (매핑 무 → 원본 hex 그대로) — 흑백 원복 안전장치.
+_THEME_MAPS: dict[str, dict] = {
+    "dark": DARK_MAP,
+    "navy": NAVY_MAP,
+}
+
+
+def _map_color(hex_str, role, theme="light"):
+    """role-aware 팔레트 매핑 (dispatcher).
+
+    theme == "light" 또는 hex_str falsy → 입력색 그대로 (★ 라이트/흑백 비트 단위 무변경).
+    _THEME_MAPS 에 등록된 theme(dark/navy 등) 는 그 매핑표 조회.
+    미등록 theme → 빈 dict 로 fallback → 결과적으로 입력색 그대로(안전 pass-through).
+    매핑표에 없는 (색, role) → 그대로 (임의 변환 금지 / 명시색 무변환 = 안전).
     """
-    if theme != "dark" or not hex_str:
+    if theme == "light" or not hex_str:
         return hex_str
-    return DARK_MAP.get((_norm_hex(hex_str), role), hex_str)
+    color_map = _THEME_MAPS.get(theme, {})
+    return color_map.get((_norm_hex(hex_str), role), hex_str)
 
 
 log = logging.getLogger("pptx_gen")
@@ -1807,11 +1850,18 @@ def _add_image_placeholder(slide, x, y, w, h, hint="이미지 추가", *, theme=
       theme='dark' 면 본문 내 직접 분기 — 다크 placeholder 색 사용.
       light(현재): fill=#ECECEC, stroke=#CCCCCC, text=#888888
       dark       : fill=#1F1F1F, stroke=#444444, text=#888888 (text 는 동일 — 안내문구 가독 유지)
+
+    Spec Navy-Palette-MVP:
+      navy : fill=#E8EDF5, stroke=#B8C4D6, text=#8A96AC (NAVY_MAP placeholder 계열 정합)
     """
     if theme == "dark":
         _fill_rgb = RGBColor(0x1F, 0x1F, 0x1F)   # 어두운 회색 면 (다크 배경보다 살짝 들뜸)
         _stroke_rgb = RGBColor(0x44, 0x44, 0x44) # 어두운 테두리
         _text_rgb = RGBColor(0x88, 0x88, 0x88)   # 동일한 중회색 안내문구
+    elif theme == "navy":
+        _fill_rgb = RGBColor(0xE8, 0xED, 0xF5)   # 옅은청 placeholder 면 (NAVY_MAP #ECECEC fill 매핑과 정합)
+        _stroke_rgb = RGBColor(0xB8, 0xC4, 0xD6) # 옅은청 테두리 (NAVY_MAP #CCCCCC stroke 매핑과 정합)
+        _text_rgb = RGBColor(0x8A, 0x96, 0xAC)   # 옅은청회 안내문구 (FG_META 정합)
     else:
         _fill_rgb = RGBColor(0xEC, 0xEC, 0xEC)   # 현재값 그대로 (라이트 무변경)
         _stroke_rgb = RGBColor(0xCC, 0xCC, 0xCC)
@@ -5110,13 +5160,15 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
     # Spec D-Build-ThemeConnect 1-b — theme 토큰 해석.
     # 라이트는 분기 미진입이므로 토큰 dict 만 가져와 두고 사용 안 함(아래 가드 참조).
     # default_text_color: 라이트=#1A1A1A (현재 운영 그대로) / 다크=tokens["FG"]=#FFFFFF.
-    _tokens = _get_theme(theme) if theme == "dark" else None
-    if theme == "dark" and _tokens:
+    # Spec Navy-Palette-MVP — navy 도 동일 패턴 (배경 rect + default text 색 팔레트 정합).
+    _needs_bg = theme in ("dark", "navy")
+    _tokens = _get_theme(theme) if _needs_bg else None
+    if _needs_bg and _tokens:
         default_text_color = _tokens.get("FG", "#FFFFFF")
-        dark_bg = _tokens.get("BG", "#0A0A0A")
+        slide_bg = _tokens.get("BG")
     else:
         default_text_color = "#1A1A1A"  # 라이트 = 현재 운영 기본값(무변경 보장)
-        dark_bg = None
+        slide_bg = None
 
     rendered_total = 0
     errors_total = []
@@ -5130,15 +5182,16 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
             prs.slides.add_slide(blank_layout)
             continue
         slide = prs.slides.add_slide(blank_layout)
-        # Spec D-Build-ThemeConnect 1-b — 다크 모드만 검정 배경 rect prepend.
+        # Spec D-Build-ThemeConnect 1-b — 다크/navy 모드는 슬라이드 배경 rect prepend.
         # 라이트는 이 블록 미진입 → 흰 바탕 inherit (PPT 기본, 현재 동작 그대로).
         # 다른 모든 도형 위에 깔리지 않도록 슬라이드 첫 도형으로 추가(추가 순=하단).
-        if theme == "dark" and dark_bg:
+        # Spec Navy-Palette-MVP — navy 도 옅은청회 배경 (#F5F7FB) 을 슬라이드 뒤에 깔음.
+        if _needs_bg and slide_bg:
             try:
-                _add_rect(slide, 0, 0, sw, sh, fill=dark_bg, stroke=None)
+                _add_rect(slide, 0, 0, sw, sh, fill=slide_bg, stroke=None)
             except Exception as _bg_err:
                 errors_total.append(
-                    "slide" + str(slide_idx) + ":dark_bg: " +
+                    "slide" + str(slide_idx) + ":theme_bg: " +
                     type(_bg_err).__name__ + ": " + str(_bg_err)
                 )
         # Spec D-Fix-Preset1 / D-Fix-PresetNoOverlap — 옵트인 레이아웃 프리셋.

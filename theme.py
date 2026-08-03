@@ -50,6 +50,20 @@ THEMES: dict[str, dict[str, str]] = {
         "PANEL_FG":    "#1A1A1A",   # 흰 면 위 검정 글씨
         "ACCENT":      "#A78BFA",   # 브랜드 보라 강조 (다크 테마 시그니처)
     },
+    "navy": {
+        # Spec Navy-Palette-MVP — 첫 컬러 팔레트. 명도 대비 구조는 흑백 그대로 유지,
+        # 검정→진네이비 / 회색 단계→네이비 명도 스케일 / 흰→옅은청회 배경 치환.
+        # 흑백('light') 대비 구조와 1:1 대응 (BG↔FG 대비, PANEL_FILL↔PANEL_FG 대비).
+        # 서브색(ACCENT) = 코럴 — 진네이비 대비 강한 포인트 (role="governing" 자동 적용).
+        "BG":          "#F5F7FB",   # 옅은청회 배경 (흰의 자리)
+        "FG":          "#0F1E3D",   # 진네이비 본문 (검정의 자리)
+        "FG_SUB":      "#3E5378",   # 중네이비 부차 텍스트
+        "FG_META":     "#8A96AC",   # 옅은청회 메타·캡션
+        "LINE":        "#D6DEEA",   # 옅은청 구분선·테두리
+        "PANEL_FILL":  "#0F1E3D",   # 진네이비 강조 면 (검정 밴드의 자리)
+        "PANEL_FG":    "#FFFFFF",   # 밴드 위 흰 글씨 (대비 유지 — 흑백과 동일)
+        "ACCENT":      "#E85A4F",   # 코럴 포인트 (진네이비 대비 강한 서브색)
+    },
 }
 
 

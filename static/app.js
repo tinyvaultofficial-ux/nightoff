@@ -536,6 +536,20 @@ const routes = [
 ];
 
 function navigate(path) {
+  // Spec GenerationLeaveGuard-Internal — 앱 내부 SPA 라우팅 이탈 가드.
+  //   기존 popstate 리스너(L588)는 브라우저 native 이벤트(뒤로가기/백스페이스)만 커버.
+  //   navigate() 는 사이드바 과업 클릭·로고·"+ 새 과업"·<a data-link> 앵커의 단일 진입점.
+  //   여기 한 곳에 가드를 넣어 앱 내부 화면 전환 이탈 실수 방어.
+  //   ★ confirm 문구·플래그 해제 처리는 popstate 리스너(L596-608)와 동일 재사용.
+  //   비생성 시(flag falsy) 이 블록 미진입 → 평소 navigate 동작 100% 동일 (회귀 X).
+  if (window.__nightoff_generating) {
+    const leave = confirm(
+      "제안서 생성 중이에요. 나가시겠어요?\n" +
+      "(생성은 백그라운드에서 계속되며, 다시 들어오면 결과를 볼 수 있어요.)"
+    );
+    if (!leave) return;
+    window.__nightoff_generating = false;
+  }
   history.pushState({}, "", path);
   route();
 }

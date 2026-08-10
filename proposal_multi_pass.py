@@ -4648,6 +4648,101 @@ def _build_slide_user_prompt(
                 '"shapes":[{"type":"text","x":0.9,"y":7.9,"w":10,"h":0.3,'
                 '"text":"축제장 전체 조감","size":11,"weight":400,"color":"#666"}]}'
             )
+        elif item.viz_pattern == "process":
+            # Spec Process-Quant-Preset-Connect — 유령 상태였던 process 안내 신설.
+            # 렌더 함수 (_build_preset_horizontal_process, pptx_generator.py:2269) 는 이미
+            # 존재했으나 SLIDE elif 부재로 LLM 이 preset 키 안 붙임 → 자율 shapes 로 폴백.
+            # 이 블록 추가로 LLM 이 정확한 스키마(preset='process' + steps)를 낼 수 있게.
+            # 스키마 정합: steps 3~7개 필수, 각 {label 필수, desc 선택 — desc 쉼표 자동 불릿 분해}.
+            # _VIZ_TO_PRESET["process"] = "process" (identity, proposal_multi_pass.py:3546 참조).
+            parts.append(
+                "[배정된 레이아웃 패턴] process (가로 단계 흐름 — chevron 3~7단계 + 각 단계 상세 카드)\n"
+                "★ 용도: 순서/절차/추진 단계/운영 흐름을 가로로 한눈에. 각 단계는 짧은 라벨 +\n"
+                "  하단 상세 카드(쉼표 구분 자동 불릿). 예: 계약→준비→운영→정산 4단계 +\n"
+                "  각 단계의 세부 실행 항목, 온라인 모집→영상 심사→본선 3단계 + 심사 기준.\n"
+                "★ 다른 패턴과 구분:\n"
+                "  · 세로 흐름 3~4단계(단계별 설명 상세) → timeline (세로)\n"
+                "  · 5+ 단계 + 하단 각 축 세부까지 → flow_detail (고밀도)\n"
+                "  · 대등 3항목 병렬(순서 무관) → cards3 / numbered_columns / triad\n"
+                "  · 큰 숫자만 강조(KPI/예산) → quant\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "process"  (필수)\n'
+                '  · "title": 페이지 거버닝 (선택, 있을 때만 상단 28pt 자동 배치, 25~40자 명사형)\n'
+                '                     ★ role:"governing" 자동 부착 — theme 별 accent 색 자동 적용\n'
+                '  · "subtitle": title 아래 서브 거버닝 (선택, 13pt 회색)\n'
+                '  · "steps": [{"label": 단계명(필수, 짧게 — 3단계 5~10자 / 5단계 4~6자 / 7단계 2~4자),\n'
+                '               "desc": 단계 세부 항목(선택, 쉼표 구분 시 자동 불릿 최대 5개로 분해)}, ...]\n'
+                '             ★ steps 3~7개 필수 — 3 미만/7 초과면 preset 무효로 빈 리스트 반환.\n'
+                "  → chevron 좌표·상세 카드 좌표·색은 코드가 자동 배치 — 신경 쓰지 말 것.\n"
+                "  ⚠ chevron 은 auto_size 미적용 (텍스트 박스 전용) — label 짧게 강제 권장.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
+                "    절대 금지: rect / 박스 / chevron / 그 외 모든 shape(type='text' 외).\n"
+                "    chevron·상세 카드는 코드(_build_preset_horizontal_process)가 자동으로 그린다.\n"
+                "    shapes 에 rect 를 넣으면 preset 카드를 덮어 회귀한다.\n"
+                "    백업으로 넣을 것 (text 만, 3개 내외): 페이지 제목 + 각 단계 요약 text.\n"
+                "  ★ preset='process' 키 누락 시 페이지가 자율 shapes(긴 서술형 2단)로 회귀 — 반드시 포함.\n"
+                "\n"
+                "★ 완성 예시 (4단계 추진 절차):\n"
+                '{"preset":"process",'
+                '"title":"계약부터 정산까지 4단계 통합 추진 체계",'
+                '"steps":['
+                '{"label":"계약·착수","desc":"착수 보고, 킥오프 미팅, 사전 협의"},'
+                '{"label":"기획·준비","desc":"콘텐츠 확정, 인력 배치, 사전 리허설"},'
+                '{"label":"현장 운영","desc":"3일간 상시 대응, 안전 관리, 실시간 보고"},'
+                '{"label":"결과·정산","desc":"결과 보고서, 정산 서류, 산출물 납품"}'
+                '],'
+                '"shapes":[{"type":"text","x":0.9,"y":0.4,"w":10,"h":0.4,'
+                '"text":"4단계 통합 추진","size":14,"weight":700,"color":"#1A1A1A"}]}'
+            )
+        elif item.viz_pattern == "quant":
+            # Spec Process-Quant-Preset-Connect — 유령 상태였던 quant 안내 신설.
+            # 렌더 함수 (_build_preset_quantitative_emphasis, pptx_generator.py:2170) 는 이미
+            # 존재했으나 SLIDE elif 부재로 LLM 이 preset 키 안 붙임 → 자율 shapes 로 폴백.
+            # ★ Quant-Support-Guard (proposal_multi_pass.py:3483 근처) 가 role != body 페이지의
+            #   quant 를 이미 강등 처리 → 이 elif 는 body role + 진짜 KPI/예산/규모 페이지만 진입.
+            # _VIZ_TO_PRESET["quant"] = "quantitative" — preset 키 이름은 "quantitative" (매핑 다름!).
+            parts.append(
+                "[배정된 레이아웃 패턴] quant (정량 강조 — 큰 숫자 1~3개 + 라벨)\n"
+                "★ 용도: KPI / 예산 / 규모 / 기간처럼 페이지의 핵심이 \"큰 숫자 그 자체\"인 페이지.\n"
+                "  예: 총 예산 6억원, 참여 목표 1만 명, 3대 KPI 지표.\n"
+                "★ 다른 패턴과 구분:\n"
+                "  · 항목이 3~4개 병렬 서사 필요 → numbered_columns (숫자 배경 + 결론 밴드)\n"
+                "  · 원형 지표 나열 → circles\n"
+                "  · 단계 흐름 → process / timeline\n"
+                "  · 서사·설명이 필요한 페이지엔 quant 부적합 (숫자만 뜨고 서사 소실)\n"
+                "  · ★ 일정/보고체계/사후관리 등 support 성격 페이지엔 절대 금지\n"
+                "    (Quant-Support-Guard 가 role!=body 시 이미 강등 처리 — 이 안내는 body 만 도달)\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "quantitative"  (필수, ★ 이름 주의 — viz_pattern="quant" 이지만\n'
+                '                                preset 키는 "quantitative" — _VIZ_TO_PRESET 매핑)\n'
+                '  · "title": 페이지 거버닝 (선택, 있을 때만 상단 28pt 자동 배치, 25~40자 명사형)\n'
+                '                     ★ role:"governing" 자동 부착 — theme 별 accent 색 자동 적용\n'
+                '  · "subtitle": title 아래 서브 거버닝 (선택, 13pt 회색)\n'
+                '  · "metrics": [{"value": 큰 숫자(필수, ★ 단위 포함 짧게 — "50억"/"5만명"/"92점"),\n'
+                '                 "label": 그 숫자의 이름(선택, 라벨 한 줄)}, ...]\n'
+                '             ★ metrics 1~3개 필수 — 최대 3개 초과분 자동 절단.\n'
+                '             ★ 각 value 는 3자 이하 권장 (4자 이상은 자동 폰트 축소 발동).\n'
+                "  → 90~120pt 큰 숫자 좌표·정렬·자동 축소는 코드가 배치 — 신경 쓰지 말 것.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 ★★\n"
+                "    절대 금지: rect / 박스 / line / 그 외 모든 shape(type='text' 외).\n"
+                "    큰 숫자·라벨은 코드(_build_preset_quantitative_emphasis)가 자동으로 그린다.\n"
+                "    shapes 에 rect 를 넣으면 preset 자리를 덮어 회귀한다.\n"
+                "    백업으로 넣을 것 (text 만, 최대 3개): 페이지 제목 + 각 metric 요약 정도.\n"
+                "  ★ preset='quantitative' 키 누락 시 페이지가 자율 shapes(긴 서술형)로 회귀 — 반드시 포함.\n"
+                "\n"
+                "★ 완성 예시 (3대 KPI):\n"
+                '{"preset":"quantitative",'
+                '"title":"3대 지표로 사업 성과를 정확히 측정",'
+                '"metrics":['
+                '{"value":"92점","label":"참여자 만족도"},'
+                '{"value":"5만","label":"누적 참여자 수"},'
+                '{"value":"3회","label":"연간 반복 개최"}'
+                '],'
+                '"shapes":[{"type":"text","x":0.9,"y":0.4,"w":10,"h":0.4,'
+                '"text":"핵심 지표 3","size":14,"weight":700,"color":"#1A1A1A"}]}'
+            )
         else:
             parts.append(
                 f"[배정된 레이아웃 패턴] {item.viz_pattern} — 본 페이지는 이 패턴으로 구성하라. "

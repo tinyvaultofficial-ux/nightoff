@@ -5061,6 +5061,197 @@ def _build_preset_fullbleed_overlay(slide_data):
     return shapes
 
 
+# ─── Spec Ghost-Preset-Resolve — 유령 별칭 2col / cards_grid 렌더 함수 신설 ────
+# 배경: 2col / cards_grid 는 HTML 트랙 카탈로그(SLIDE_SYSTEM_PROMPT_HTML)엔 있으나
+#   shape 트랙 렌더 함수 부재로 유령 — SLIDE elif 미매치 → LLM 자율 shapes(긴 서술형)
+#   폴백. 설계 진단(승인) 그대로 이식. before_after → 2col / cards3 → numbered_columns
+#   프롬프트 유도로 대체(별도 변경).
+# 재사용: 시그니처·shape dict 포맷·캔버스 상수·auto_size(_add_text 자동)·_map_color
+#   자동 · role="governing" 부착. 신규 산술은 2col 화살표 자리·cards_grid 2×3 격자만.
+# 필드 절단(서술문 유입 차단): title[:40], head[:20]/[:18], items each[:45]/desc[:60].
+# 미충족 시 return [] → LLM 자율 shapes fallback (기존 프리셋 표준 패턴).
+
+def _build_preset_2col(slide_data: dict) -> list:
+    """Spec Ghost-Preset-Resolve — 좌우 대등 카드 2개 + 중앙 화살표 (AS-IS/TO-BE 등).
+
+    slide_data 스키마:
+      "title"    : str (필수, 25~40자 명사형 거버닝)
+      "subtitle" : str (선택, 서브 거버닝)
+      "eyebrow"  : str (선택, breadcrumb 11pt 회색)
+      "left"     : {"head": str(필수 10~15자 명사형),
+                    "items": list[str] (2~5개, 각 20~40자 명사형)}
+      "right"    : left 미러
+      "arrow"    : bool (선택, default True, 중앙 → 표시)
+    반환 = shape dict 리스트. 필수 미충족(title/head/items<2) 시 빈 리스트.
+
+    좌표 (인치, A4 가로 11.69×8.27):
+      · 상단 거버닝 3층 y=0.35~1.7 (eyebrow/title/subtitle)
+      · 좌 카드 x=0.5 / 우 카드 x=6.345 / card_w=4.845 / card_top=2.3 / card_h=5.57
+      · 중앙 화살표 자리 폭 1.0" — 카드 사이 gap
+      · 카드 안 head (20pt weight 700) + items(· 불릿 세로 스택 y=card_top+0.9+i*0.65)
+    """
+    # 1. 필드 파싱 + 절단 (서술문 유입 차단)
+    title = str(slide_data.get("title", "")).strip()[:40]
+    if not title:
+        return []
+    subtitle = str(slide_data.get("subtitle", "")).strip()[:60]
+    eyebrow  = str(slide_data.get("eyebrow", "")).strip()[:50]
+    show_arrow = bool(slide_data.get("arrow", True))
+
+    def _parse_side(side_raw):
+        if not isinstance(side_raw, dict):
+            return None
+        head = str(side_raw.get("head", "")).strip()[:20]
+        items_raw = side_raw.get("items") or []
+        if not isinstance(items_raw, list):
+            return None
+        items = [str(x).strip()[:45] for x in items_raw if str(x).strip()][:5]
+        if not head or len(items) < 2:
+            return None
+        return {"head": head, "items": items}
+
+    left  = _parse_side(slide_data.get("left"))
+    right = _parse_side(slide_data.get("right"))
+    if not left or not right:
+        return []
+
+    # 2. 캔버스·좌표 상수
+    W, H = 11.69, 8.27
+    margin = 0.5
+    card_top = 2.3
+    card_h = H - card_top - 0.4          # 5.57
+    gap = 1.0
+    card_w = (W - 2 * margin - gap) / 2  # 4.845
+    left_x = margin                       # 0.5
+    right_x = margin + card_w + gap       # 6.345
+
+    shapes: list = []
+    # 3. 상단 거버닝 3층 (eyebrow / title / subtitle) — 기존 프리셋 표준
+    if eyebrow:
+        shapes.append({"type":"text","x":0.5,"y":0.35,"w":10.69,"h":0.25,
+                       "text":eyebrow,"size":11,"weight":400,"color":"#999999",
+                       "align":"left","valign":"middle"})
+    shapes.append({"type":"text","x":0.5,"y":0.65,"w":10.69,"h":0.7,
+                   "text":title,"size":28,"weight":800,"color":"#1A1A1A",
+                   "align":"left","valign":"middle","role":"governing"})
+    if subtitle:
+        shapes.append({"type":"text","x":0.5,"y":1.4,"w":10.69,"h":0.3,
+                       "text":subtitle,"size":13,"weight":500,"color":"#666666",
+                       "align":"left","valign":"top"})
+
+    # 4. 좌/우 카드 (rect + head + items 세로 스택)
+    for side, base_x in ((left, left_x), (right, right_x)):
+        shapes.append({"type":"rect","x":base_x,"y":card_top,"w":card_w,"h":card_h,
+                       "fill":"#FFFFFF","stroke":"#DDDDDD","stroke_width":1})
+        shapes.append({"type":"text","x":base_x+0.2,"y":card_top+0.2,
+                       "w":card_w-0.4,"h":0.5,
+                       "text":side["head"],"size":20,"weight":700,"color":"#1A1A1A",
+                       "align":"left","valign":"top"})
+        for i, it in enumerate(side["items"]):
+            iy = card_top + 0.9 + i * 0.65
+            shapes.append({"type":"text","x":base_x+0.25,"y":iy,
+                           "w":card_w-0.5,"h":0.55,
+                           "text":f"· {it}","size":14,"weight":400,"color":"#444444",
+                           "align":"left","valign":"top"})
+
+    # 5. 중앙 화살표 (카드 사이 gap 1.0" 안 x=W/2-0.2~+0.2 안전)
+    if show_arrow:
+        arrow_y = card_top + card_h / 2 - 0.25
+        shapes.append({"type":"text","x":W/2-0.2,"y":arrow_y,"w":0.4,"h":0.5,
+                       "text":"→","size":22,"weight":700,"color":"#1A1A1A",
+                       "align":"center","valign":"middle"})
+    return shapes
+
+
+def _build_preset_cards_grid(slide_data: dict) -> list:
+    """Spec Ghost-Preset-Resolve — 2×3 카드 격자 6개 (팀원·사례·zone).
+
+    ★ 6개 고정 — 4~5개는 numbered_columns/quad 로, 7+는 별도 프리셋 대상.
+    미달 시 return [] → 자율 shapes fallback.
+
+    slide_data 스키마:
+      "title"    : str (필수)
+      "subtitle" : str (선택)
+      "eyebrow"  : str (선택)
+      "items"    : list[{"head": str(필수 10~15자), "desc": str(선택 30~50자)}] × 정확히 6개
+    반환 = shape dict 리스트. items != 6 시 빈 리스트.
+
+    좌표 (2×3 격자):
+      · 상단 거버닝 3층 (2col 과 동일)
+      · card_gap_x=0.2 / card_gap_y=0.25
+      · card_w=(inner_w - 0.4)/3 ≈ 3.43 / card_h=(grid_area_h - 0.25)/2 ≈ 2.66
+      · grid_top=2.3
+    """
+    # 1. items 파싱 + 6개 정확 검증 (미달 시 자율 fallback)
+    items_raw = slide_data.get("items") or []
+    if not isinstance(items_raw, list):
+        return []
+    items = []
+    for it in items_raw:
+        if not isinstance(it, dict):
+            continue
+        head = str(it.get("head", "")).strip()[:18]
+        if not head:
+            continue
+        desc = str(it.get("desc", "")).strip()[:60]
+        items.append({"head": head, "desc": desc})
+        if len(items) >= 6:
+            break
+    if len(items) != 6:
+        return []   # 6개 미달 → 자율 shapes fallback (레이아웃 깨짐 방지)
+
+    title = str(slide_data.get("title", "")).strip()[:40]
+    if not title:
+        return []
+    subtitle = str(slide_data.get("subtitle", "")).strip()[:60]
+    eyebrow  = str(slide_data.get("eyebrow", "")).strip()[:50]
+
+    # 2. 캔버스·좌표 상수
+    W, H = 11.69, 8.27
+    margin = 0.5
+    inner_w = W - 2 * margin              # 10.69
+    card_gap_x = 0.2
+    card_gap_y = 0.25
+    cols, rows = 3, 2
+    card_w = (inner_w - card_gap_x * (cols - 1)) / cols   # 3.430
+    grid_top = 2.3
+    grid_area_h = H - grid_top - 0.4                       # 5.57
+    card_h = (grid_area_h - card_gap_y * (rows - 1)) / rows # 2.66
+
+    shapes: list = []
+    # 3. 상단 거버닝 3층 — 2col 과 동일 패턴
+    if eyebrow:
+        shapes.append({"type":"text","x":0.5,"y":0.35,"w":10.69,"h":0.25,
+                       "text":eyebrow,"size":11,"weight":400,"color":"#999999",
+                       "align":"left","valign":"middle"})
+    shapes.append({"type":"text","x":0.5,"y":0.65,"w":10.69,"h":0.7,
+                   "text":title,"size":28,"weight":800,"color":"#1A1A1A",
+                   "align":"left","valign":"middle","role":"governing"})
+    if subtitle:
+        shapes.append({"type":"text","x":0.5,"y":1.4,"w":10.69,"h":0.3,
+                       "text":subtitle,"size":13,"weight":500,"color":"#666666",
+                       "align":"left","valign":"top"})
+
+    # 4. 6 카드 2×3 격자
+    for i, item in enumerate(items):
+        col = i % cols
+        row = i // cols
+        cx = margin + col * (card_w + card_gap_x)
+        cy = grid_top + row * (card_h + card_gap_y)
+        shapes.append({"type":"rect","x":cx,"y":cy,"w":card_w,"h":card_h,
+                       "fill":"#FFFFFF","stroke":"#DDDDDD","stroke_width":1})
+        shapes.append({"type":"text","x":cx+0.15,"y":cy+0.15,
+                       "w":card_w-0.3,"h":0.45,
+                       "text":item["head"],"size":15,"weight":700,"color":"#1A1A1A",
+                       "align":"left","valign":"top"})
+        if item["desc"]:
+            shapes.append({"type":"text","x":cx+0.2,"y":cy+0.7,
+                           "w":card_w-0.4,"h":card_h-0.85,
+                           "text":item["desc"],"size":11,"weight":400,"color":"#666666",
+                           "align":"left","valign":"top"})
+    return shapes
+
+
 def generate_from_shape_json(json_data, output_path, *, theme="light"):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -5390,6 +5581,28 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
             # ★ 본 spec 단계: 코드 + dispatch 만 등록 — SLIDE 프롬프트·화이트리스트 미연결.
             try:
                 preset_shapes = _build_preset_fullbleed_overlay(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "2col":
+            # Spec Ghost-Preset-Resolve — 좌우 대등 카드 2개 + 중앙 화살표 (AS-IS/TO-BE).
+            # 유령 별칭 4종 중 렌더 함수 신설분. 실패(필수 미충족) 시 LLM 백업 fallback.
+            try:
+                preset_shapes = _build_preset_2col(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "cards_grid":
+            # Spec Ghost-Preset-Resolve — 2×3 카드 격자 (팀원·사례·zone).
+            # 6개 고정. 미달 시 return [] → LLM 자율 shapes fallback.
+            try:
+                preset_shapes = _build_preset_cards_grid(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

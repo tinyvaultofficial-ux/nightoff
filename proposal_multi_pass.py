@@ -909,13 +909,28 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
 
 안전 카탈로그 (이 외 값 배정 금지 — 위험 4종은 절대 카탈로그에 X):
   · 2col          — 좌우 2분할 (현재/개선·문제/해결·전후)
+                    ※ ★ Spec Ghost-Preset-Resolve — 대비·반전 내용에만 사용
+                      (AS-IS/TO-BE, 문제/해결, 현재/개선, BEFORE/AFTER).
+                      단순 3항목 나열은 timeline / numbered_columns 로. 대등 두 축 병렬은
+                      hsplit_top / split 도 가능.
   · cards3        — 3카드 등분 비교 (평행 분류·차별점)
+                    ※ ★ Spec Ghost-Preset-Resolve — shape 트랙: 대신 numbered_columns 우선
+                      (상단 검정 헤더 + 배경 숫자 + 하단 결론 밴드로 서사 완결). cards3 는
+                      shape 트랙 렌더 함수 부재 — 자율 shapes 로 폴백되므로 numbered_columns
+                      가 시각적으로 훨씬 정돈됨.
   · process       — 가로 단계 흐름 (절차·추진 단계·일정 흐름)
   · before_after  — Before/After 점층 카드 (도입 효과·개선 사례)
                     ※ AS-IS(기존/현재) 칸은 [RFP 분석]/[과업 리서치] 에 근거 있을 때만 구체적으로.
                       없으면 일반적 한계로만, 특정 사실 단정 X. (Spec C-Build-BeforeAfterCap)
+                    ※ ★ Spec Ghost-Preset-Resolve — shape 트랙: 대신 2col 우선
+                      (BEFORE/AFTER 를 left/right head 로, items 에 정량 효과).
+                      before_after 는 shape 트랙 렌더 함수 부재 — 자율 shapes 폴백보다
+                      2col 이 훨씬 정돈됨.
   · quant         — 정량 강조 (큰 숫자 + 라벨, KPI·예산·규모)
-  · cards_grid    — 카드 그리드 2x3 / 2x4 (팀원·사례·zone 분리)
+  · cards_grid    — 카드 그리드 2x3 (팀원·사례·zone 분리, 정확히 6개)
+                    ※ ★ Spec Ghost-Preset-Resolve — 정확히 6개 항목일 때만 배정.
+                      4~5개는 numbered_columns / quad 로, 7+개는 timeline 이나 항목 축약.
+                      6개 미만/초과 시 렌더 함수가 자율 shapes 폴백.
   · text_quote       — 텍스트 위계형 (큰 인용 + 흐름 1~3 + 결론 / 도식 없음)
                        ★ 적합: slide_type=text_box AND role=body 페이지의
                               "전략 선언·접근 방향·도메인 인사이트·시장 분석·논리 전개"
@@ -3656,9 +3671,14 @@ _VIZ_TO_PRESET: dict = {
     "flow_detail":        "flow_detail",
     "quad_detail":        "quad_detail",
     "fullbleed_overlay":  "fullbleed_overlay",
+    # Spec Ghost-Preset-Resolve — 유령 별칭 중 2 종에 shape 트랙 렌더 함수 신설 → identity 매핑.
+    #   before_after / cards3 는 여전히 HTML 트랙 전용 (프롬프트 유도로 대체: before_after→2col,
+    #   cards3→numbered_columns, OUTLINE 카탈로그 sub-note 참조).
+    "2col":               "2col",
+    "cards_grid":         "cards_grid",
     # NOT included (의도 제외):
-    #   2col / cards3 / cards_grid / before_after — HTML 트랙 전용, 도형 dispatch 없음.
-    #   이들이 viz_pattern 으로 배정되면 preset 키 없이 shapes-only 로 자율 렌더 → 안전.
+    #   cards3 / before_after — HTML 트랙 전용, 도형 dispatch 없음. OUTLINE 카탈로그 sub-note
+    #   에서 shape 트랙엔 numbered_columns / 2col 우선 유도.
 }
 
 
@@ -4742,6 +4762,94 @@ def _build_slide_user_prompt(
                 '],'
                 '"shapes":[{"type":"text","x":0.9,"y":0.4,"w":10,"h":0.4,'
                 '"text":"핵심 지표 3","size":14,"weight":700,"color":"#1A1A1A"}]}'
+            )
+        elif item.viz_pattern == "2col":
+            # Spec Ghost-Preset-Resolve — 유령 별칭 2col 에 shape 트랙 렌더 함수 신설.
+            # 렌더 함수 (_build_preset_2col, pptx_generator.py) 는 이번 spec 으로 신설됨.
+            # 스키마 정합: title + left/right {head, items[2~5]}. before_after 도 이 프리셋으로
+            # 대체 유도 (BEFORE/AFTER 를 head 로, items 에 정량 효과).
+            # _VIZ_TO_PRESET["2col"] = "2col" (identity).
+            parts.append(
+                "[배정된 레이아웃 패턴] 2col (좌우 대등 카드 2개 + 중앙 화살표 — AS-IS/TO-BE 등)\n"
+                "★ 용도: 대비·반전이 본질인 페이지. AS-IS/TO-BE, 문제/해결, 현재/개선, BEFORE/AFTER.\n"
+                "  좌우 카드 각각 head + 항목 리스트(불릿 세로 스택), 중앙에 → 화살표로 전환 방향.\n"
+                "★ 다른 패턴과 구분:\n"
+                "  · 좌우 극단 흑백 색면 대비 → split (색면 2분할, 카드 아님)\n"
+                "  · 상단 검정 밴드 + 하단 좌우 head/body → hsplit_top (밴드 강조)\n"
+                "  · 두 축이 대등하지 않고 나열 → numbered_columns / timeline\n"
+                "  · 3항목 이상은 numbered_columns / cards_grid\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "2col"  (필수, identity)\n'
+                '  · "title": 페이지 거버닝 (필수, 25~40자 명사형 — role="governing" 자동 부착)\n'
+                '  · "subtitle": 서브 거버닝 (선택, 13pt 회색)\n'
+                '  · "eyebrow": 좌상단 breadcrumb (선택, 11pt 회색)\n'
+                '  · "left":  {"head": 좌 카드 제목(필수, 10~15자 명사형, 예 "AS-IS 현재 운영"),\n'
+                '              "items": [문자열, 2~5개, 각 20~40자 명사형 — 문장 아닌 명사구]}\n'
+                '  · "right": 좌 미러 (동일 스키마 — head 필수, items 2~5개 명사형)\n'
+                '  · "arrow": true/false (선택, default true, 중앙 → 표시 여부)\n'
+                "  → 카드 rect / head / items 세로 스택 / 화살표는 코드가 자동 배치 — 신경 X.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 (rect / 박스 절대 X) ★★\n"
+                "    좌우 카드·화살표는 코드(_build_preset_2col)가 자동으로 그린다.\n"
+                "    백업 (text 만, 3개 내외): 페이지 제목 + 좌/우 요약.\n"
+                "  ★ preset='2col' 키 누락 시 페이지가 자율 shapes(긴 서술형 2단)로 회귀 — 반드시 포함.\n"
+                "\n"
+                "★ 완성 예시 (AS-IS/TO-BE):\n"
+                '{"preset":"2col",'
+                '"title":"현재 운영 한계를 넘어 3배 성장 구조로의 전환",'
+                '"subtitle":"방문객 4천 → 1만 2천 / 참여율 22% → 65%",'
+                '"left":{"head":"AS-IS 현재 운영","items":['
+                '"단일 채널 홍보 의존","재방문 유도 장치 부재","데이터 수집·활용 체계 없음",'
+                '"협력 파트너 3개사 한정"]},'
+                '"right":{"head":"TO-BE 개선 전략","items":['
+                '"온·오프 4채널 통합 홍보","스탬프 재방문 3회 유도","KPI 5종 실시간 대시보드",'
+                '"지역 파트너 12개사 확대"]},'
+                '"shapes":[{"type":"text","x":0.5,"y":7.9,"w":10,"h":0.3,'
+                '"text":"대비 · 개선 전략","size":11,"weight":400,"color":"#666"}]}'
+            )
+        elif item.viz_pattern == "cards_grid":
+            # Spec Ghost-Preset-Resolve — 유령 별칭 cards_grid 에 shape 트랙 렌더 함수 신설.
+            # 렌더 함수 (_build_preset_cards_grid) 는 6개 정확 요구 (2×3 격자).
+            # 미달/초과 시 return [] → 자율 shapes fallback (레이아웃 깨짐 방지).
+            # _VIZ_TO_PRESET["cards_grid"] = "cards_grid" (identity).
+            parts.append(
+                "[배정된 레이아웃 패턴] cards_grid (2×3 카드 격자 — 6개 정확)\n"
+                "★ 용도: 여러 항목 격자 나열. 팀원 6인, 사례 6건, zone 6개, 카테고리 6분류 등.\n"
+                "  각 카드 head + 짧은 desc. 시각 리듬은 격자가 자동 조성.\n"
+                "★ 다른 패턴과 구분:\n"
+                "  · 3항목 병렬 → numbered_columns (상단 헤더 + 배경 숫자 + 결론 밴드) or triad\n"
+                "  · 4개 색면 강조 → quad (세로 흑/백/흑/백)\n"
+                "  · 좌우 대비 → 2col / split / hsplit_top\n"
+                "  · ★ items 6개 정확 (5 이하 → numbered_columns/quad, 7+ → 별도 처리 or 나눔)\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "cards_grid"  (필수, identity)\n'
+                '  · "title": 페이지 거버닝 (필수, 25~40자 명사형 — role="governing" 자동)\n'
+                '  · "subtitle": 서브 거버닝 (선택)\n'
+                '  · "eyebrow": 좌상단 breadcrumb (선택)\n'
+                '  · "items": [{"head": 카드 제목(필수, 10~15자 명사형),\n'
+                '               "desc": 카드 부연(선택, 30~50자 명사형 — 문장 아닌 명사구)}, ...]\n'
+                '             ★ 정확히 6개 — 6개 미만/초과 시 preset 무효로 자율 shapes fallback.\n'
+                "  → 격자 좌표(cols=3 rows=2 자동), 카드 rect, head/desc 위치는 코드가 자동.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 (rect / 박스 절대 X) ★★\n"
+                "    2×3 카드 격자는 코드(_build_preset_cards_grid)가 자동으로 그린다.\n"
+                "    백업 (text 만, 3개 내외): 페이지 제목 + 6항목 총평.\n"
+                "  ★ preset='cards_grid' 키 누락 or items != 6 시 자율 shapes 로 회귀 — 반드시 포함.\n"
+                "\n"
+                "★ 완성 예시 (6인 팀 소개):\n"
+                '{"preset":"cards_grid",'
+                '"title":"현장·기획·기술 3축을 잇는 6인 실행 조직",'
+                '"subtitle":"각 축 2인 배치 · PM 1인 통합 지휘",'
+                '"items":['
+                '{"head":"PM · 김OO","desc":"총괄 지휘 · 유사 사업 12건"},'
+                '{"head":"기획 리드 · 이OO","desc":"콘텐츠 기획 · 축제 5회 총괄"},'
+                '{"head":"기술 리드 · 박OO","desc":"무대·음향·조명 시스템"},'
+                '{"head":"현장 매니저 · 최OO","desc":"당일 운영 · 인력 배치"},'
+                '{"head":"디자이너 · 정OO","desc":"브랜딩 · 인쇄 · 영상"},'
+                '{"head":"SNS 매니저 · 강OO","desc":"콘텐츠 제작 · 실시간 대응"}'
+                '],'
+                '"shapes":[{"type":"text","x":0.5,"y":7.9,"w":10,"h":0.3,'
+                '"text":"실행 조직 6인","size":11,"weight":400,"color":"#666"}]}'
             )
         else:
             parts.append(

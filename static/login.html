@@ -104,7 +104,22 @@
           return;
         }
         localStorage.setItem(AUTH_TOKEN_KEY, data.token);
-        location.href = "/";
+        // Spec Login-ReturnUrl — 로그인 성공 후 next 파라미터 있으면 그리로 복귀, 없으면 "/".
+        //   ★★ open-redirect 취약점 차단: _isSafeNext 로 내부 경로만 허용.
+        //     "/" 로 시작 + "//" 로 시작 X (프로토콜 상대 URL 차단: //evil.com)
+        //     + ":" 미포함 (스킴 차단: http:/https:/javascript:/data:)
+        //     실패 시 기본값 "/" 로 안전 폴백.
+        const _isSafeNext = (n) => (
+          typeof n === "string" &&
+          n.length > 0 &&
+          n.charAt(0) === "/" &&
+          n.charAt(1) !== "/" &&
+          n.indexOf(":") === -1 &&
+          n.indexOf("\\") === -1
+        );
+        const _params = new URLSearchParams(location.search);
+        const _next = _params.get("next");
+        location.href = _isSafeNext(_next) ? _next : "/";
       } catch (err) {
         showError("서버에 연결할 수 없어요. 네트워크를 확인해 주세요.");
       } finally {

@@ -16,7 +16,11 @@ function clearToken() {
 }
 
 function redirectToLogin() {
-  window.location.href = "/login.html";
+  // Spec Login-ReturnUrl — 원래 가려던 어드민 페이지(/admin) 정보를 next 로 부착.
+  //   로그인 성공 후 login.html 이 이 값을 읽어 복귀 (_isSafeNext 로 open-redirect 방지).
+  //   ★ admin.js 는 /admin 에서만 실행되므로 next 는 항상 /admin (+ 현 query).
+  const currentPath = location.pathname + location.search;
+  window.location.href = "/login.html?next=" + encodeURIComponent(currentPath);
 }
 
 // ─── API helpers ───────────────────────────────────────────────────────────

@@ -198,7 +198,15 @@ function isGuestMode() {
 function redirectToLogin(force = false) {
   // force=true: 명시적 로그아웃 등 — 공개 페이지 가드 우회. 디폴트=false (기존 호출처 동작 보존).
   if (!force && AUTH_PUBLIC_PAGES.has(location.pathname)) return;  // 이미 공개 페이지
-  location.href = "/login.html";
+  // Spec Login-ReturnUrl — 원래 가려던 보호 페이지 정보를 next 파라미터로 부착.
+  //   로그인 성공 후 login.html 이 이 값을 읽어 복귀 (_isSafeNext 로 open-redirect 방지).
+  //   ★ 공개 페이지(로그인 페이지 자체 포함)에서 호출 시엔 next 안 붙임 — 무한루프·불필요 방지.
+  //   ★ force=true 로 공개 페이지에서 호출된 경우(로그아웃)에도 next 안 붙임 — "/" 로 이동만 자연스러움.
+  const currentPath = location.pathname + location.search;
+  const shouldAttachNext = !AUTH_PUBLIC_PAGES.has(location.pathname);
+  location.href = shouldAttachNext
+    ? "/login.html?next=" + encodeURIComponent(currentPath)
+    : "/login.html";
 }
 
 // ---------- Idle Timeout — 유휴 3시간 자동 로그아웃 (Spec Frontend-Idle-Timeout) ----------

@@ -91,7 +91,7 @@ CONCRETENESS_BOOST_ENABLED = True
 #   재료 자체를 분화해 같은 페이지에서 같은 수치 2번 노출 위험 낮춤.
 # True 로 켜야만 OUTLINE user prompt 에 블록 주입 + 조건부 지시 발동. 사고 시 False 로
 #   즉시 원복 (플래그 1줄 원복, git revert 불필요).
-FRONT_NARRATIVE_ENABLED = False
+FRONT_NARRATIVE_ENABLED = True
 
 
 # ─── Spec GovEnding-Fix — 거버닝 서술형 종결 감지 정규식 (감지 로그용, 값 무변경) ────

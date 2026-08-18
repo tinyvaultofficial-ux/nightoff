@@ -72,6 +72,28 @@ RESEARCH_INJECTION_ENABLED = True
 CONCRETENESS_BOOST_ENABLED = True
 
 
+# ─── Spec Front-Narrative — 앞단 배경 페이지 서사 강화 on/off (플래그 게이트) ────
+# 진단 결과: past_editions(web_search 로 검증된 전년도 실적)가 이미 RESEARCH 단계에서
+#   수집되고 SLIDE 단계 align 페이지에는 주입되나, 배경 페이지(Ⅰ.1 사업 이해/추진 배경)는
+#   두 곳에서 막혀 도달 못함:
+#     (1) section 명 "사업 이해/추진 배경" 이 _STRATEGY_ALIGN_KW/EXEC_KW 어느 쪽도 매칭 X
+#         → α-fallback 결과 strategy_relevant="" → SLIDE 게이트 통과 X
+#     (2) OUTLINE 단계 research 주입 헬퍼 자체 부재 (SLIDE 헬퍼만 존재)
+# 처방: OUTLINE 프롬프트에 past_editions 위주 [전년도 현황] 블록을 조건부 주입 →
+#   배경 페이지 key_msgs 를 문제제기 서사로 짜라고 유도. before_after 프리셋과 자연 정합
+#   (AS-IS=전년도 실적, TO-BE=올해 개선).
+# ★ 안전장치 3개 무손상: (a) RESEARCH_PROMPT "검색 없으면 비워라 추측금지" (무접촉)
+#   (b) 헬퍼 5필드 빈 dict → "" 반환 → 주입 skip (동일 패턴 강제)
+#   (c) OUTLINE_SYSTEM_PROMPT L418~423 "근거 없으면 접근 방향으로" 규칙 (무접촉)
+# ★ 왜곡 방지: 평가 형용사·감정 어휘·근거 없는 인과 프롬프트로 금지.
+# ★ 중복 방지: OUTLINE 헬퍼는 past_editions + summary 위주,
+#   SLIDE 헬퍼(_format_research_slide_block) 는 기존대로 subject_facts + context 위주 —
+#   재료 자체를 분화해 같은 페이지에서 같은 수치 2번 노출 위험 낮춤.
+# True 로 켜야만 OUTLINE user prompt 에 블록 주입 + 조건부 지시 발동. 사고 시 False 로
+#   즉시 원복 (플래그 1줄 원복, git revert 불필요).
+FRONT_NARRATIVE_ENABLED = False
+
+
 # ─── Spec GovEnding-Fix — 거버닝 서술형 종결 감지 정규식 (감지 로그용, 값 무변경) ────
 # 진단: D-Fix-GovEnding-1 규칙 (거버닝 명사형 종결) 위반 실빈도 파악용.
 # ★ 로그만 남기고 값은 절대 안 건드림 — 자동 교정 시 오탐 위험 큼 (한국어 동사→명사
@@ -1232,6 +1254,9 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
     · 프로그램 구성 / 콘텐츠 큐레이션 / 참여 유도
     · 홍보 계획 / 확산 전략 / 관객 여정
     · 서비스 방향 / 대상자 접점
+    · ★ Ⅰ.1 사업 이해 / 추진 배경 / 사업 배경 페이지 (Spec Front-Narrative) —
+      배경 페이지도 관통 전략과 문제제기 서사가 반영돼야 하는 대상이므로 "align" 판정.
+      (α 키워드 fallback 도 "배경"·"이해" 를 잡지만 γ LLM 판정을 우선.)
   → 이 페이지들은 단계3 에서 SLIDE 프롬프트에 대전략 블록이 주입된다.
 - "exec" (실행 세부 — 관통 불필요):
     · 무대·공간·설치·구조·조감
@@ -1253,6 +1278,32 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
 - role='body' 중 무대·공간·설치·안전류 → "exec".
 - 코드가 α 키워드 fallback 으로 보정하나(strategy_relevant 미출력 시),
   LLM 판정이 우선. 애매하면 "" 로 두면 fallback 이 처리한다.
+
+
+[★ Spec Front-Narrative — 앞단 배경 페이지 문제제기 서사 (조건부)]
+★ 조건: user prompt 에 [전년도 회차·유사 사업의 실제 현황] 블록이 있을 때만 발동.
+  블록이 없으면(FRONT_NARRATIVE_ENABLED off / research 결과 부재) 이 지시는 완전 무시 →
+  기존 규칙 그대로 (배경 페이지 근거 없으면 접근 방향으로 대체, 위 정성 사실 단정 금지 규칙).
+
+- Ⅰ.1 사업 이해 / 추진 배경 / 사업 배경 페이지의 key_msgs 를 블록의 past_editions
+  기반 문제제기 서사로 짜라.
+  · viz_pattern = "before_after" 로 배정 권장 (AS-IS=전년도 실적, TO-BE=이번 회차 개선).
+  · strategy_relevant = "align" 판정 (관통 대상 — 위 (b) 판정 규칙 참조).
+
+- 담백한 문제의식 톤. B2G 공공 문서 톤 준수:
+  · "전년도 A → 이번 회차 A' 로 확장/보완" 형태 담백한 대비 프레임 (허용)
+  · "전년도 A 를 기반으로 B 강화" (전년도 → 이번 회차 계승 프레임, 허용)
+
+- ★★ 왜곡 절대 금지 (팩트 게이트 확장):
+  · 평가 형용사 금지: "겨우", "고작", "저조한", "미흡한", "기대에 못 미치는"
+  · 근거 없는 인과 금지: "○○ 부족으로", "○○ 때문에" (원인 근거가 블록에 없으면 X)
+  · 감정·위기 어휘 금지: "심각한", "위기의", "우려되는", "시급한 대응"
+  · 과장 금지 — 사실 인용 + 개선 방향만.
+
+- ★★★ 절대 원칙 재확인 (기존 규칙 정합):
+  · 블록의 past_editions 에 없는 배경 사실을 상식/발상으로 지어내지 마라.
+  · 블록이 비면(주입 skip) 배경 페이지 key_msgs 는 기존 규칙대로 "우리의 접근 방향"
+    으로 대체 (위 정성 사실 단정 금지 블록 참조). 그 경우에도 상식으로 배경 채우기 X.
 """
 
 
@@ -2944,6 +2995,13 @@ def _format_strategy_block(strategy: dict) -> str:
 _STRATEGY_ALIGN_KW = frozenset({
     "프로그램", "홍보", "참여", "콘텐츠", "확산", "큐레이션",
     "서비스", "전략", "차별화", "컨셉", "특장점", "여정", "체험",
+    # Spec Front-Narrative — 앞단 배경 페이지(Ⅰ.1 사업 이해/추진 배경)를 align 로 포섭.
+    # ★ "현황"·"필요성" 은 의도적 제외:
+    #   · "현황" = Ⅱ.1 제안사 일반 현황 / Ⅴ장 인력·예산 현황 등 support/exec 에도 광범위 등장 → 오배정 위험
+    #   · "필요성" = 프롬프트 실용례 희소, 확장 필요성 낮음
+    # ★ role != "body" 인 항목은 _strategy_relevant_fallback 이 무조건 "" 반환하므로
+    #   support/특수 페이지는 자동 차단 (α-fallback L2966).
+    "배경", "이해",
 })
 _STRATEGY_EXEC_KW = frozenset({
     "무대", "공간", "설치", "구조", "조감", "안전", "예산", "산출",
@@ -3067,7 +3125,60 @@ def _format_research_slide_block(research: dict) -> str:
     lines.append(
         "→ 위는 web_search 로 검증된 사실이다. 이 페이지의 실행·주장을 이 근거에 "
         "연결해 구체화하라. 근거에 없는 사실·수치는 지어내지 말 것 (팩트 게이트 정합). "
-        "inspiration(영감) 은 여기 포함 안 됨 — 사실로 인용할 것 없음."
+        "inspiration(영감) 은 여기 포함 안 됨 — 사실로 인용할 것 없음. "
+        "★ (Spec Front-Narrative 정합) past_editions 가 OUTLINE 단계에서 이미 배경 페이지 "
+        "key_msgs 에 반영되었을 수 있다 — 같은 전년도 수치를 이 페이지에서 재나열하지 말고, "
+        "확장·구체화(방법·절차·근거)로만 활용하라."
+    )
+    return "\n".join(lines)
+
+
+# ─── Spec Front-Narrative — OUTLINE 단계 [전년도 현황] 블록 헬퍼 ─────────
+# research dict → OUTLINE 프롬프트용 문자열. SLIDE 헬퍼(_format_research_slide_block)
+# 와 재료 분리:
+#   · OUTLINE 용: past_editions + summary + sources 위주 (배경/문제제기 재료)
+#   · SLIDE  용: subject_facts + context + past_editions 전부 (본론 실행 근거)
+# 재료 분화로 같은 페이지(배경)에 같은 수치가 2번 노출되는 위험 최소화.
+# ★ inspiration 필드는 렌더 제외 (영감 재료, 사실 아님 — 팩트 게이트 정합).
+# ★ past_editions + summary 둘 다 비면 "" 반환 (호출부 truthy 검사로 skip).
+#   → 검색 실패 시 블록 자체가 안 들어감 → OUTLINE_SYSTEM_PROMPT 조건부 지시도
+#   발동 X → 기존 규칙 (L418~423 "근거 없으면 접근 방향으로") 그대로 작동.
+def _format_research_outline_block(research: dict) -> str:
+    """Spec Front-Narrative — 확정 리서치 dict → OUTLINE 프롬프트용 [전년도 현황] 블록."""
+    if not isinstance(research, dict) or not research:
+        return ""
+
+    def _list_field(key: str) -> list:
+        raw = research.get(key) or []
+        if not isinstance(raw, list):
+            return []
+        return [str(x).strip() for x in raw if str(x).strip()]
+
+    past_editions = _list_field("past_editions")
+    sources       = _list_field("sources")
+    summary       = str(research.get("summary", "")).strip()
+
+    # past_editions + summary 둘 다 비면 블록 무의미 → skip.
+    # (subject_facts/context 는 SLIDE 헬퍼가 담당 — 여기서는 판정 근거로도 미사용)
+    if not past_editions and not summary:
+        return ""
+
+    lines = ["[전년도 회차·유사 사업의 실제 현황 — 배경/문제제기 재료 (web_search 검증)]"]
+    if past_editions:
+        lines.append("지난 회차/유사 사업 실적:")
+        for p in past_editions:
+            lines.append(f"  · {p}")
+    if summary:
+        lines.append(f"리서치 요약: {summary}")
+    if sources:
+        lines.append(f"(출처: {' / '.join(sources[:5])})")
+    lines.append(
+        "→ 위는 web_search 로 검증된 전년도/유사 사업 실적이다. "
+        "Ⅰ.1 사업 이해/추진 배경 페이지의 key_msgs 를 이 근거 기반 문제제기 서사로 "
+        "짜라 (AS-IS=전년도 실적, TO-BE=이번 회차 개선 방향). viz_pattern=\"before_after\" 권장. "
+        "★ 왜곡 금지: 평가 형용사(겨우/고작/저조한/미흡한), 근거 없는 인과(○○ 부족으로/○○ 때문에), "
+        "감정 어휘(심각한/위기의/우려되는) 사용 금지. 담백한 대비 프레임만 허용. "
+        "★ 이 블록에 없는 배경 사실을 상식/발상으로 지어내지 마라 — 팩트 게이트 정합."
     )
     return "\n".join(lines)
 
@@ -3219,11 +3330,13 @@ async def generate_outline(
     model: str = "",
     pages_override: Optional[int] = None,
     strategy_block: str = "",   # Spec Strategy-Step2 — 확정 대전략 블록 (조건부)
+    research_block: str = "",   # Spec Front-Narrative — 전년도 현황 블록 (조건부)
 ) -> OutlineResult:
     """Phase 1: 가벼운 호출 1번으로 outline 짠다.
 
     user_parts 순서 — conversation_block 영역 맨 앞 (NightOff 본질 영역 — 사용자 영역
-    가장 강한 신호). RFP / RAG / intel / extra / (Strategy-Step2) strategy 영역 순서.
+    가장 강한 신호). RFP / RAG / intel / extra / (Strategy-Step2) strategy /
+    (Front-Narrative) research 영역 순서.
 
     pages_override: 사용자가 명시적으로 선택한 페이지 수 (1~100).
       - None: RFP page_limit / AI 자율 판단 (기존 동작)
@@ -3233,6 +3346,12 @@ async def generate_outline(
       - "" (기본): 기존 동작 100% 동일. OUTLINE 프롬프트에 전략 지시 미발동.
       - 비어있지 않음: extra_block 다음에 삽입 → OUTLINE_SYSTEM_PROMPT 안
         "확정 대전략 반영 + strategy_relevant 판정" 지시(L1121+)가 이 블록을 보고 발동.
+
+    research_block: Spec Front-Narrative — 전년도 현황 블록 문자열 (조건부).
+      - "" (기본, FRONT_NARRATIVE_ENABLED=False 시 항상): 기존 동작 100% 동일.
+      - 비어있지 않음: strategy_block 다음에 삽입 → OUTLINE_SYSTEM_PROMPT 안
+        "[Spec Front-Narrative — 조건부]" 지시가 이 블록을 보고 발동.
+        past_editions 기반 Ⅰ.1 배경 페이지 서사 유도.
     """
     user_parts: list[str] = []
     if conversation_block:
@@ -3247,6 +3366,10 @@ async def generate_outline(
     # Spec Strategy-Step2 — 확정 대전략 블록 (조건부). 빈 문자열이면 append X → 기존 동작.
     if strategy_block:
         user_parts.append(strategy_block)
+    # Spec Front-Narrative — 전년도 현황 블록 (조건부). 빈 문자열이면 append X → 기존 동작.
+    #   호출부 게이트 (FRONT_NARRATIVE_ENABLED + research non-empty) 통과 시만 채워짐.
+    if research_block:
+        user_parts.append(research_block)
     # Step 2 — 사용자가 모달에서 선택한 페이지 수가 있으면 RFP page_limit 보다 절대 우선.
     # prompt 맨 끝에 inject — LLM 이 가장 최근 지시를 우선시하는 특성 활용.
     if pages_override is not None and 1 <= pages_override <= 100:
@@ -5595,6 +5718,19 @@ async def orchestrate(
     # → generate_outline user_parts 에 append 안 함 → 기존 동작 100% 동일.
     strategy_block = _format_strategy_block(strategy) if STRATEGY_INJECTION_ENABLED else ""
 
+    # Spec Front-Narrative — 전년도 현황 블록을 OUTLINE 에 주입 (조건부).
+    # 게이트 3중:
+    #   (1) FRONT_NARRATIVE_ENABLED (기능 스위치, 기본 False)
+    #   (2) research_dict 가 dict 이고 비어있지 않음
+    #   (3) _format_research_outline_block 이 truthy 문자열 반환
+    #       (past_editions + summary 둘 다 비면 "" 반환 → 자동 skip → 검색 실패 안전장치)
+    # 세 조건 모두 만족해야 append → False/빈 research/past_editions 부재 시 100% 기존 동작.
+    front_narr_block = ""
+    if (FRONT_NARRATIVE_ENABLED
+            and isinstance(research_dict, dict)
+            and research_dict):
+        front_narr_block = _format_research_outline_block(research_dict)
+
     # outline 호출은 60~180초 소요 → Cloudflare/Railway proxy idle timeout (~60-100s) 회피
     # 25초 간격 heartbeat event yield. asyncio.shield 로 task 취소 방지.
     outline_task = asyncio.create_task(
@@ -5603,6 +5739,7 @@ async def orchestrate(
             intel_block, conversation_block, extra_block, model,
             pages_override=pages_override,
             strategy_block=strategy_block,   # Spec Strategy-Step2 (빈 문자열이면 기존과 동일)
+            research_block=front_narr_block, # Spec Front-Narrative (빈 문자열이면 기존과 동일)
         )
     )
     outline = None

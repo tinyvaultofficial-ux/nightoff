@@ -94,6 +94,26 @@ CONCRETENESS_BOOST_ENABLED = True
 FRONT_NARRATIVE_ENABLED = True
 
 
+# ─── Spec Vertical-Stack-Bands — "항목 세로 나열 + 결론밴드" 프리셋 활성 on/off ─
+# 진단 근거 (test97 slide 24 실측): "홍보 전략" 페이지가 자율 shapes 폴백으로
+#   렌더돼 문단 shape 3개 (h=0.55" 고정) 에 텍스트 100자+ 가 들어가면서 auto_size
+#   폰트 축소 실패 시 다음 박스로 시각 침범 (좌표 겹침 0쌍이지만 오버플로우 발생).
+#   기존 conclusion_cards 는 가로 카드 + W폭 밴드 구조라 "세로 나열" 골격과 불일치.
+# 처방: pptx_generator.py 의 _build_preset_vertical_stack_bands (신설) 를 활성화.
+#   h 자동 계산 (가용세로/n) + 좌표 순차 + 필드 코드 절단 (관대) + 항목 3~5 clamp.
+# 플래그 격리 (오늘 2col/cards_grid, front-narrative 패턴 답습):
+#   · False: _VIZ_TO_PRESET 미포함 → preset 힌트 미주입 → LLM 이 배정 못 함
+#            + OUTLINE 카탈로그·viz_hint sub-note 도 조건부 replace 로 제외됨
+#            → 결과: 렌더함수는 코드에 있으나 잠듦, 기존 100% 동일 동작
+#   · True : 매핑·카탈로그·힌트 모두 활성 → LLM 이 "항목 세로 나열 + 결론" 골격의
+#            페이지를 이 프리셋으로 배정 → h 자동으로 오버플로우 원천 차단
+# ★ dispatch (pptx_generator.py L5601 뒤) 는 add-only 로 항상 존재 (플래그와 무관).
+#   플래그 False 시 LLM 이 preset:"vertical_stack_bands" 를 절대 안 내므로 dispatch
+#   elif 미진입. True 로 켜야만 실제 렌더 발동.
+# 사고 시 False 로 즉시 원복 (플래그 1줄 원복, git revert 불필요).
+VERTICAL_STACK_ENABLED = False
+
+
 # ─── Spec GovEnding-Fix — 거버닝 서술형 종결 감지 정규식 (감지 로그용, 값 무변경) ────
 # 진단: D-Fix-GovEnding-1 규칙 (거버닝 명사형 종결) 위반 실빈도 파악용.
 # ★ 로그만 남기고 값은 절대 안 건드림 — 자동 교정 시 오탐 위험 큼 (한국어 동사→명사
@@ -1089,6 +1109,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
                           "이 셋이 맞물릴 때 → 이런 결과" 논리가 있는 페이지에만.
                           cards3 는 등분 비교, triad 는 이미지 자리 + 비대칭. conclusion_cards 는 "3개 → 결론" 서사.
                           items 정확히 3개 + conclusion 필수. 미충족 시 코드가 preset 무효 처리.
+{VERTICAL_STACK_CATALOG_PH}
   · numbered_columns — 상단 검정 헤더 + 초대형 배경 숫자 3~4열 + 하단 결론 2줄 (밴드 없음)
                        ★ 적합: role=body 페이지의 "N대 원칙/축/전략을 번호로 구조화해 병렬 제시" 페이지
                               (예: 3대 운영 원칙, 4대 접근 방향, N대 핵심 축, 우리 제안의 N대 특징)
@@ -3414,6 +3435,17 @@ async def generate_outline(
     outline_system_prompt = OUTLINE_SYSTEM_PROMPT.replace(
         "{SKELETON_INDEX_PLACEHOLDER}", skeleton_index_text,
     )
+    # Spec Vertical-Stack-Bands — OUTLINE 카탈로그 조건부 replace.
+    # VERTICAL_STACK_ENABLED=False → placeholder 를 빈 문자열로 → LLM 이 프리셋 존재
+    #   자체를 몰라서 배정 시도 안 함 (완전 격리). 기존 카탈로그 diff 0.
+    # True → 실 문구로 replace → 카탈로그 등재 활성 → LLM 이 "항목 세로 나열 + 결론
+    #   밴드" 골격을 이 프리셋으로 배정.
+    # (viz_hint 매핑 sub-note 는 SLIDE_SYSTEM_PROMPT_HTML 소속이라 이 조립 지점에서
+    #  못 처리 — 유도는 카탈로그 등재 + SLIDE elif 안내가 담당, sub-note 는 생략.)
+    outline_system_prompt = outline_system_prompt.replace(
+        "{VERTICAL_STACK_CATALOG_PH}",
+        _VERTICAL_STACK_CATALOG_STR if VERTICAL_STACK_ENABLED else "",
+    )
     # max_tokens 64000 — Sonnet 4.5 native 한계까지 활용 → 100 슬라이드 영역까지 안전.
     # 사고 영역 history:
     #   49f3ccc: 50 슬라이드 = 16000 도달 → 32000 영역 ↑
@@ -3886,6 +3918,36 @@ _VIZ_TO_PRESET: dict = {
     #   cards3 / before_after — HTML 트랙 전용, 도형 dispatch 없음. OUTLINE 카탈로그 sub-note
     #   에서 shape 트랙엔 numbered_columns / 2col 우선 유도.
 }
+
+# Spec Vertical-Stack-Bands — 플래그 조건부 매핑 (add-only 격리).
+# VERTICAL_STACK_ENABLED=False 시 매핑 미포함 → SLIDE 프롬프트 preset 힌트에서
+#   "vertical_stack_bands" 미노출 → LLM 이 preset:"vertical_stack_bands" 를 절대 안 냄
+#   → dispatch elif (pptx_generator.py L5601 뒤) 미진입 → 기존 100% 동일 동작.
+# True 로 켜야만 매핑 활성 → LLM 이 preset 힌트 받고 배정 → 렌더 함수 발동.
+if VERTICAL_STACK_ENABLED:
+    _VIZ_TO_PRESET["vertical_stack_bands"] = "vertical_stack_bands"
+
+
+# Spec Vertical-Stack-Bands — OUTLINE_SYSTEM_PROMPT 조건부 카탈로그 sub-note.
+# 이 상수는 generate_outline 에서 플래그로 조건부 replace 됨 (플래그 False 시 빈 문자열).
+# 카탈로그: conclusion_cards 뒤·numbered_columns 앞에 삽입 (유사한 "N항목+결론" 계열).
+# viz_hint 매핑 sub-note 는 SLIDE_SYSTEM_PROMPT_HTML 소속이라 이 조립 지점에서 처리 X.
+#   유도는 카탈로그 + SLIDE elif 안내로 충분.
+_VERTICAL_STACK_CATALOG_STR = (
+    "  · vertical_stack_bands — 상단 거버닝 + 중단 세로 카드 3~5개 + 하단 검정 결론 밴드 (세로 나열 서사)\n"
+    "                       ★ 적합: role=body 페이지의 \"항목 3~5개를 세로로 나열하고 하단 결론 문장으로\n"
+    "                              수렴하는\" 페이지. 카드가 세로라 한 항목 = 한 줄 카드 (h 자동 계산).\n"
+    "                              (예: 홍보 전략 3채널 + 결론, 운영 원칙 N개 + 결론,\n"
+    "                                   관리 체계 N축 + 결론, 참여 유도 N단계 + 결론)\n"
+    "                       ⚠ 부적합: 가로 카드가 자연스러움 → conclusion_cards / 결론 문장 없음 → numbered_columns /\n"
+    "                              항목 6개+ → cards_grid / 순차 흐름 → process / role=support / slide_type=hero\n"
+    "                       ※ ★ 세로 스택 = h 자동 계산 (가용세로/n). 오늘 test97 slide 24 실측 확인 —\n"
+    "                          자율 shapes 로 세로 나열 시 h 고정 부족으로 텍스트 오버플로우 발생 → 이 프리셋이\n"
+    "                          그 골격을 안전 렌더. 각 항목 head 15~25자 명사형, desc 60~80자 (상세는 결론밴드로).\n"
+    "                          items 3~5 + conclusion 필수. 미충족 시 코드가 preset 무효 처리(자율 shapes 폴백).\n"
+    "                          conclusion_cards 와의 구분: conclusion_cards 는 카드 가로 배치(횡),\n"
+    "                          vertical_stack_bands 는 카드 세로 스택(종). 항목 방향으로 선택."
+)
 
 
 def _build_slide_user_prompt(
@@ -5056,6 +5118,64 @@ def _build_slide_user_prompt(
                 '],'
                 '"shapes":[{"type":"text","x":0.5,"y":7.9,"w":10,"h":0.3,'
                 '"text":"실행 조직 6인","size":11,"weight":400,"color":"#666"}]}'
+            )
+        elif item.viz_pattern == "vertical_stack_bands":
+            # Spec Vertical-Stack-Bands — 항목 세로 나열 + 하단 결론밴드 (신설).
+            # 렌더 함수 (_build_preset_vertical_stack_bands) 는 h 자동 계산 (가용세로/n)
+            #   + 좌표 순차 + 필드 절단 (관대 상한) + 항목 3~5 clamp 4층 방어벽.
+            # test97 slide 24 실측 확인 근거: 자율 shapes 폴백 시 h=0.55" 고정 박스에
+            #   100자+ 텍스트 오버플로우 발생 → 이 프리셋이 h 자동으로 원천 차단.
+            # _VIZ_TO_PRESET["vertical_stack_bands"] = "vertical_stack_bands" (플래그 게이트).
+            # ★ 플래그 False 시 이 elif 는 미진입 (LLM 이 preset 힌트 못 받아 이 값 안 냄).
+            parts.append(
+                "[배정된 레이아웃 패턴] vertical_stack_bands (세로 카드 스택 3~5개 + 하단 결론밴드)\n"
+                "★ 용도: 항목 3~5개를 세로로 나열하고 하단 결론 문장으로 수렴하는 서사 페이지.\n"
+                "  각 카드는 한 줄 카드(head + desc)로 세로 스택, 하단은 W 폭 검정 결론밴드.\n"
+                "  (예: 홍보 전략 3채널 + 결론, 운영 원칙 N개 + 결론, 관리 체계 N축 + 결론,\n"
+                "       참여 유도 N단계 + 결론)\n"
+                "★ 다른 패턴과 구분:\n"
+                "  · 가로 카드가 자연스러움 → conclusion_cards (가로 배치)\n"
+                "  · 결론 문장 없음 → numbered_columns / cards3\n"
+                "  · 항목 6개 이상 → cards_grid\n"
+                "  · 순차 흐름 → process / timeline\n"
+                "\n"
+                "★★ 함축 유도 — 이 프리셋 페이지 한정 (Spec Vertical-Stack-Bands):\n"
+                "  · 각 항목 head 15~25자 명사형 (요점만).\n"
+                "  · 각 항목 desc **60~80자로 짧게** (요점만).\n"
+                "  · 상세 서술·근거·전개는 **결론밴드(conclusion)** 에 담아라 (여기가 상세 자리).\n"
+                "  · ★ Concreteness-Boost 지시(100~150자)는 이 프리셋 페이지에서는 완화:\n"
+                "     항목 desc 를 100~150자로 늘리지 말 것. \"항목 카드는 요점, 결론밴드가 상세\" 원칙.\n"
+                "  · 근거: test97 slide 24 실측 — 항목 100자+ 넣으면 h 자동계산에도 오버플로우 위험.\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "vertical_stack_bands"  (필수, identity)\n'
+                '  · "title": 페이지 거버닝 (필수, 25~40자 명사형 — role="governing" 자동)\n'
+                '  · "subtitle": 서브 거버닝 (선택, 60자 이내)\n'
+                '  · "eyebrow": 좌상단 breadcrumb (선택, 50자 이내)\n'
+                '  · "items": [{"head": 카드 제목(필수, 15~25자 명사형),\n'
+                '               "desc": 카드 본문(선택, 60~80자 명사형 — 상세는 conclusion 으로)}, ...]\n'
+                '             ★ 3~5개 (미만 → preset 무효 자율 폴백, 초과 → 앞 5개만).\n'
+                '  · "conclusion": 하단 결론밴드 문장 (필수, 90자 이내 — 여기에 상세 서술).\n'
+                '  · "conclusion_lead": 밴드 상단 리드 (선택, 60자 이내).\n'
+                "  → 상단 거버닝·중단 카드 스택(h 자동)·하단 밴드는 코드가 자동 배치.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 (rect / 밴드 절대 X) ★★\n"
+                "    세로 카드 · 결론밴드는 코드(_build_preset_vertical_stack_bands)가 자동으로 그린다.\n"
+                "    백업 (text 만, 3개 내외): 페이지 제목 + 항목 요약 + 결론 요약.\n"
+                "  ★ preset='vertical_stack_bands' 키 누락 시 자율 shapes (문단 세로 오버플로우) 회귀.\n"
+                "\n"
+                "★ 완성 예시 (홍보 3채널 + 결론):\n"
+                '{"preset":"vertical_stack_bands",'
+                '"title":"콘셉트 일관성으로 어젠다를 각인하는 3채널 통합 홍보",'
+                '"subtitle":"국문 카드뉴스 · 영문 브리프 · 현장 사이니지 병행",'
+                '"items":['
+                '{"head":"콘셉트 일관성 확보","desc":"등록 페이지·초청장·프레스킷의 색·서체·그리드를 하나의 키비주얼로 통합"},'
+                '{"head":"3단계 실행 (인지→관심→확산)","desc":"D-30 티저, D-14 라인업 공개, D-Day 실황·D+7 아카이빙"},'
+                '{"head":"참가층별 채널·톤 분리","desc":"외교단·석학 영문 브리프, 청년·지역 국문 카드뉴스"}'
+                '],'
+                '"conclusion":"화려한 캠페인 대신 콘셉트 일관성과 국영문 병행 도달에 집중해 하루의 담론을 국제 어젠다로 확장",'
+                '"conclusion_lead":"핵심 원칙 — 일관성 × 병행 × 분리",'
+                '"shapes":[{"type":"text","x":0.5,"y":7.9,"w":10,"h":0.3,'
+                '"text":"3채널 통합 홍보","size":11,"weight":400,"color":"#666"}]}'
             )
         else:
             parts.append(

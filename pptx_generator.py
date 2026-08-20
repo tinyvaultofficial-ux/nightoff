@@ -5252,6 +5252,155 @@ def _build_preset_cards_grid(slide_data: dict) -> list:
     return shapes
 
 
+# ─── Spec Vertical-Stack-Bands — 세로 카드 스택 + 하단 결론밴드 ────────────
+# "항목 세로 나열 + 하단 결론밴드" 골격을 위한 신설 프리셋 (add-only).
+# 진단 근거: test97 slide 24 실측 — 자율 shapes 폴백에서 문단 shape 3개가 h=0.55"
+#   고정인데 텍스트 100자+ → auto_size 폰트 축소 실패 시 다음 박스로 오버플로우
+#   (좌표 겹침 0쌍인데 시각 침범). 기존 conclusion_cards 는 "가로" 카드 + W 폭 검정
+#   밴드 구조라 "세로" 나열 골격과 불일치. 세로 버전 부재 → 자율 shapes 로 밀림.
+#
+# 이 프리셋의 방어벽 4층 (오늘 2col/cards_grid 패턴 답습):
+#   ① h 자동 계산 — 카드 스택 가용 세로를 항목 수로 나눠 각 카드 h 자동 산정
+#      → LLM 이 h 부족 실수 원천 차단 + 텍스트량 확보(오버플로우 방지)
+#   ② 좌표 순차 — iy = card_top + i * (card_h + gap) → 물리적 겹침 불가
+#   ③ 필드 코드 절단 (관대 상한): title[:40], head[:25], desc[:90], conclusion[:90]
+#      2col 의 [:45] 보다 관대 — 정보 손실 최소화하되 물리 상한은 유지
+#   ④ 개수 clamp: items[:5]; if len(items) < 3: return [] → 자율 shapes 폴백
+#
+# 색 정합 (theme 자동 매핑):
+#   상단 title / 하단 conclusion → role="governing" → _get_theme(theme)["ACCENT"] 자동
+#   카드 stroke #DDDDDD / head #1A1A1A / desc #666666 → _map_color 로 dark/navy 자동 대응
+#   결론밴드 rect #1B1B1B → dark 는 유지 (하드코딩 검정, 다크 매핑 목록 대상 아님)
+#     conclusion 텍스트는 검정 밴드 위 흰 계열 fallback + role="governing" → theme 자동
+#
+# ★ 플래그 VERTICAL_STACK_ENABLED=False 시 이 함수 자체는 코드에 존재하나:
+#   · _VIZ_TO_PRESET 미포함 → LLM 이 preset 힌트 못 받음
+#   · OUTLINE 카탈로그·SLIDE elif 안내에서 조건부 replace 로 제외됨
+#   · 결과: LLM 이 preset:"vertical_stack_bands" 를 절대 안 냄 → dispatch 미매치 →
+#     자율 shapes 폴백 (기존 100% 동일 동작)
+def _build_preset_vertical_stack_bands(slide_data: dict) -> list:
+    """Spec Vertical-Stack-Bands — 세로 카드 스택 + 하단 결론밴드 프리셋.
+
+    slide_data 스키마:
+      "title"      : str (필수, 25~40자 명사형 거버닝)
+      "subtitle"   : str (선택, 서브 거버닝 13pt 회색)
+      "eyebrow"    : str (선택, breadcrumb 11pt 회색)
+      "items"      : [{"head": str(필수 15~25자 명사형),
+                       "desc": str(선택 60~80자, 상세는 conclusion 으로)}, ...]
+                     ★ 3~5개 (부족·초과 시 조정)
+      "conclusion" : str (필수, 결론밴드 문장 — 상세 서술 담기)
+      "conclusion_lead" : str (선택, 밴드 상단 리드 13pt)
+
+    반환 = shape dict 리스트. 필수 미충족 (title/items<3/conclusion) 시 빈 리스트
+      → LLM 자율 shapes fallback (기존 프리셋 표준 패턴).
+    """
+    # 1. 필드 파싱 + 절단 (오버플로우/서술문 유입 차단)
+    title = str(slide_data.get("title", "")).strip()[:40]
+    if not title:
+        return []
+    conclusion = str(slide_data.get("conclusion", "")).strip()[:90]
+    if not conclusion:
+        return []
+
+    subtitle = str(slide_data.get("subtitle", "")).strip()[:60]
+    eyebrow  = str(slide_data.get("eyebrow", "")).strip()[:50]
+    conclusion_lead = str(slide_data.get("conclusion_lead", "")).strip()[:60]
+
+    items_raw = slide_data.get("items") or []
+    if not isinstance(items_raw, list):
+        return []
+    items: list = []
+    for it in items_raw:
+        if not isinstance(it, dict):
+            continue
+        head = str(it.get("head", "")).strip()[:25]
+        if not head:
+            continue
+        desc = str(it.get("desc", "")).strip()[:90]
+        items.append({"head": head, "desc": desc})
+    if len(items) > 5:
+        items = items[:5]
+    if len(items) < 3:
+        return []   # 3 미만 → 다른 프리셋 폴백 유도
+
+    # 2. 캔버스·좌표 상수
+    W, H = 11.69, 8.27
+    margin = 0.9
+
+    # 상단 거버닝 블록 (eyebrow / title / subtitle) — y=0.30~2.10
+    # 중단 카드 스택 — card_top=2.30 ~ card_bot=band_top - 0.30
+    # 하단 결론밴드 — band_h=1.5" 고정, band_top = H - band_h - 0.2 = 6.57
+    band_h = 1.5
+    band_top = H - band_h - 0.2                # 6.57
+    card_top = 2.30
+    card_bot = band_top - 0.30                 # 6.27
+    stack_h = card_bot - card_top              # 3.97
+    gap = 0.15
+    n = len(items)
+    card_h = (stack_h - gap * (n - 1)) / n     # n=3 → 1.22 / n=4 → 0.88 / n=5 → 0.67
+
+    shapes: list = []
+
+    # 3. 상단 거버닝 3층
+    if eyebrow:
+        shapes.append({"type":"text","x":margin,"y":0.30,"w":W-2*margin,"h":0.30,
+                       "text":eyebrow,"size":11,"weight":400,"color":"#999999",
+                       "align":"left","valign":"middle"})
+    shapes.append({"type":"text","x":margin,"y":0.65,"w":W-2*margin,"h":0.85,
+                   "text":title,"size":28,"weight":800,"color":"#1A1A1A",
+                   "align":"left","valign":"middle","role":"governing"})
+    if subtitle:
+        shapes.append({"type":"text","x":margin,"y":1.55,"w":W-2*margin,"h":0.35,
+                       "text":subtitle,"size":13,"weight":500,"color":"#666666",
+                       "align":"left","valign":"top"})
+
+    # 4. 세로 카드 스택 (rect stroke + head + desc, 좌표 순차)
+    inner_w = W - 2 * margin
+    for i, it in enumerate(items):
+        iy = card_top + i * (card_h + gap)
+        # 카드 stroke rect (fill 흰색, stroke 옅은 회색)
+        shapes.append({"type":"rect","x":margin,"y":iy,"w":inner_w,"h":card_h,
+                       "fill":"#FFFFFF","stroke":"#DDDDDD","stroke_width":1})
+        # head — 카드 상단 좌측 (h 여유 유지)
+        head_h = 0.40 if it["desc"] else min(card_h - 0.20, 0.60)
+        shapes.append({"type":"text","x":margin+0.25,"y":iy+0.15,
+                       "w":inner_w-0.5,"h":head_h,
+                       "text":it["head"],"size":17,"weight":700,"color":"#1A1A1A",
+                       "align":"left","valign":"top"})
+        # desc — head 아래, 카드 남은 세로 활용
+        if it["desc"]:
+            desc_y = iy + 0.15 + head_h + 0.05
+            desc_h = card_h - (desc_y - iy) - 0.15
+            if desc_h > 0.20:
+                shapes.append({"type":"text","x":margin+0.25,"y":desc_y,
+                               "w":inner_w-0.5,"h":desc_h,
+                               "text":it["desc"],"size":12,"weight":400,"color":"#666666",
+                               "align":"left","valign":"top"})
+
+    # 5. 하단 결론밴드 (전체 폭 검정 rect + 아래 화살표 + conclusion)
+    shapes.append({"type":"rect","x":0,"y":band_top,"w":W,"h":band_h,
+                   "fill":"#1B1B1B"})
+    # 아래 방향 화살표 (검정 밴드 위 흰 화살표)
+    shapes.append({"type":"arrow","x1":W/2,"y1":band_top+0.15,
+                   "x2":W/2,"y2":band_top+0.50,
+                   "color":"#FEFEFE","width":1.5})
+    if conclusion_lead:
+        shapes.append({"type":"text","x":0.5,"y":band_top+0.62,"w":W-1.0,"h":0.30,
+                       "text":conclusion_lead,"size":13,"weight":400,"color":"#FEFEFE",
+                       "align":"center","valign":"middle"})
+        conclusion_y = band_top + 0.95
+    else:
+        conclusion_y = band_top + 0.75
+    conclusion_h = band_top + band_h - conclusion_y - 0.15
+    if conclusion_h < 0.4:
+        conclusion_h = 0.4
+    # conclusion 은 거버닝 — role="governing" → 검정 밴드 위 흰 계열 → 자동 accent 매핑.
+    shapes.append({"type":"text","x":0.5,"y":conclusion_y,"w":W-1.0,"h":conclusion_h,
+                   "text":conclusion,"size":22,"weight":800,"color":"#FEFEFE",
+                   "align":"center","valign":"middle","role":"governing"})
+    return shapes
+
+
 def generate_from_shape_json(json_data, output_path, *, theme="light"):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -5603,6 +5752,21 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
             # 6개 고정. 미달 시 return [] → LLM 자율 shapes fallback.
             try:
                 preset_shapes = _build_preset_cards_grid(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "vertical_stack_bands":
+            # Spec Vertical-Stack-Bands — 세로 카드 스택 + 하단 결론밴드.
+            # 상단 거버닝 + 중단 카드 3~5개(h 자동계산 = 겹침·오버플로우 원천 차단)
+            #   + 하단 결론밴드 W폭. 미달(title/items<3/conclusion) 시 자율 shapes fallback.
+            # ★ 플래그 게이트는 proposal_multi_pass.py 의 _VIZ_TO_PRESET 조건부 매핑에
+            #   존재 — 플래그 False 시 LLM 이 preset:"vertical_stack_bands" 를 절대 안
+            #   내므로 이 elif 는 미진입. dispatch 는 add-only 로 항상 존재.
+            try:
+                preset_shapes = _build_preset_vertical_stack_bands(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

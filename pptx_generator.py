@@ -5323,21 +5323,42 @@ def _build_preset_vertical_stack_bands(slide_data: dict) -> list:
     if len(items) < 3:
         return []   # 3 미만 → 다른 프리셋 폴백 유도
 
-    # 2. 캔버스·좌표 상수
+    # 2. 캔버스·좌표 상수 (Fix: h 배분 결함 수정 — n=4/5 desc 미표시 해결)
+    #    이전(1.5" 밴드/2.30 top/여백0.15)에서 n=4는 desc_h=0.13, n=5는 -0.08 로
+    #    12pt desc 가 못 담기거나 방어 로직에 걸려 아예 사라졌음. PNG 실측 확인.
+    #    Fix:
+    #      · band_h 1.5→1.20 (카드 스택 가용 세로 확보: 3.97→4.42)
+    #      · card_top 2.30→2.20 + card_bot 여백 0.30→0.25 (약간 위로 + 여유)
+    #      · 카드 내부 여백 0.15→0.10 (top/bot 각각)
+    #      · head↔desc 갭 0.05→0.03
+    #      · head 폰트·h 를 n 에 따라 축소 (n=3:17pt, n=4:15pt, n=5:13pt)
+    #      · desc 폰트도 n=5 는 11pt 로 축소
+    #      · desc_min_h 안전망: 0.20 이하로 떨어지면 head_h 를 더 축소해 확보
     W, H = 11.69, 8.27
     margin = 0.9
-
-    # 상단 거버닝 블록 (eyebrow / title / subtitle) — y=0.30~2.10
-    # 중단 카드 스택 — card_top=2.30 ~ card_bot=band_top - 0.30
-    # 하단 결론밴드 — band_h=1.5" 고정, band_top = H - band_h - 0.2 = 6.57
-    band_h = 1.5
-    band_top = H - band_h - 0.2                # 6.57
-    card_top = 2.30
-    card_bot = band_top - 0.30                 # 6.27
-    stack_h = card_bot - card_top              # 3.97
+    band_h = 1.20                             # 1.5 → 1.20 (Fix)
+    band_top = H - band_h - 0.20              # 6.87
+    card_top = 2.20                           # 2.30 → 2.20 (Fix)
+    card_bot = band_top - 0.25                # 6.62
+    stack_h = card_bot - card_top             # 4.42 (기존 3.97)
     gap = 0.15
     n = len(items)
-    card_h = (stack_h - gap * (n - 1)) / n     # n=3 → 1.22 / n=4 → 0.88 / n=5 → 0.67
+    card_h = (stack_h - gap * (n - 1)) / n    # n=3: 1.437 / n=4: 1.043 / n=5: 0.784
+
+    # n 따른 head/desc 폰트·h 파라미터 (Fix)
+    if n <= 3:
+        head_size, head_h_target = 17, 0.42
+        desc_size = 12
+    elif n == 4:
+        head_size, head_h_target = 15, 0.36
+        desc_size = 12
+    else:  # n == 5
+        head_size, head_h_target = 13, 0.30
+        desc_size = 11
+
+    # 카드 내부 여백 축소 (Fix: 0.15 → 0.10)
+    pad_top, pad_bot = 0.10, 0.10
+    gap_hd = 0.03  # head↔desc 갭 (0.05 → 0.03)
 
     shapes: list = []
 
@@ -5346,57 +5367,72 @@ def _build_preset_vertical_stack_bands(slide_data: dict) -> list:
         shapes.append({"type":"text","x":margin,"y":0.30,"w":W-2*margin,"h":0.30,
                        "text":eyebrow,"size":11,"weight":400,"color":"#999999",
                        "align":"left","valign":"middle"})
-    shapes.append({"type":"text","x":margin,"y":0.65,"w":W-2*margin,"h":0.85,
+    shapes.append({"type":"text","x":margin,"y":0.65,"w":W-2*margin,"h":0.80,
                    "text":title,"size":28,"weight":800,"color":"#1A1A1A",
                    "align":"left","valign":"middle","role":"governing"})
     if subtitle:
-        shapes.append({"type":"text","x":margin,"y":1.55,"w":W-2*margin,"h":0.35,
+        shapes.append({"type":"text","x":margin,"y":1.50,"w":W-2*margin,"h":0.30,
                        "text":subtitle,"size":13,"weight":500,"color":"#666666",
                        "align":"left","valign":"top"})
 
-    # 4. 세로 카드 스택 (rect stroke + head + desc, 좌표 순차)
+    # 4. 세로 카드 스택 (rect stroke + head + desc, 좌표 순차, h 자동)
     inner_w = W - 2 * margin
     for i, it in enumerate(items):
         iy = card_top + i * (card_h + gap)
         # 카드 stroke rect (fill 흰색, stroke 옅은 회색)
         shapes.append({"type":"rect","x":margin,"y":iy,"w":inner_w,"h":card_h,
                        "fill":"#FFFFFF","stroke":"#DDDDDD","stroke_width":1})
-        # head — 카드 상단 좌측 (h 여유 유지)
-        head_h = 0.40 if it["desc"] else min(card_h - 0.20, 0.60)
-        shapes.append({"type":"text","x":margin+0.25,"y":iy+0.15,
-                       "w":inner_w-0.5,"h":head_h,
-                       "text":it["head"],"size":17,"weight":700,"color":"#1A1A1A",
-                       "align":"left","valign":"top"})
-        # desc — head 아래, 카드 남은 세로 활용
-        if it["desc"]:
-            desc_y = iy + 0.15 + head_h + 0.05
-            desc_h = card_h - (desc_y - iy) - 0.15
-            if desc_h > 0.20:
-                shapes.append({"type":"text","x":margin+0.25,"y":desc_y,
-                               "w":inner_w-0.5,"h":desc_h,
-                               "text":it["desc"],"size":12,"weight":400,"color":"#666666",
-                               "align":"left","valign":"top"})
 
-    # 5. 하단 결론밴드 (전체 폭 검정 rect + 아래 화살표 + conclusion)
+        # head_h 결정 — desc 없으면 head 만 크게, desc 있으면 desc 최소 확보 위해 축소
+        has_desc = bool(it["desc"])
+        if not has_desc:
+            head_h = min(card_h - pad_top - pad_bot, 0.60)
+            desc_h = 0.0
+        else:
+            # desc_h ≥ 0.20 안전망: head_h_target 로 계산 → desc_h 부족 시 head_h 축소
+            head_h = head_h_target
+            desc_h = card_h - pad_top - head_h - gap_hd - pad_bot
+            if desc_h < 0.20:
+                # 최소 desc 0.20 확보 위해 head_h 압축
+                head_h = max(card_h - pad_top - 0.20 - gap_hd - pad_bot, 0.20)
+                desc_h = card_h - pad_top - head_h - gap_hd - pad_bot
+
+        # head
+        shapes.append({"type":"text","x":margin+0.25,"y":iy+pad_top,
+                       "w":inner_w-0.5,"h":head_h,
+                       "text":it["head"],"size":head_size,"weight":700,"color":"#1A1A1A",
+                       "align":"left","valign":"top" if has_desc else "middle"})
+        # desc — head 아래
+        if has_desc and desc_h > 0.15:
+            desc_y = iy + pad_top + head_h + gap_hd
+            shapes.append({"type":"text","x":margin+0.25,"y":desc_y,
+                           "w":inner_w-0.5,"h":desc_h,
+                           "text":it["desc"],"size":desc_size,"weight":400,"color":"#666666",
+                           "align":"left","valign":"top"})
+
+    # 5. 하단 결론밴드 (band_h=1.20) — Fix: lead↔conclusion 갭 0.03→0.12 확보
+    #    (n=3 PNG 실측에서 lead 가 conclusion 위 라인에 침범한 결함 해소).
     shapes.append({"type":"rect","x":0,"y":band_top,"w":W,"h":band_h,
                    "fill":"#1B1B1B"})
-    # 아래 방향 화살표 (검정 밴드 위 흰 화살표)
-    shapes.append({"type":"arrow","x1":W/2,"y1":band_top+0.15,
-                   "x2":W/2,"y2":band_top+0.50,
+    # 아래 방향 화살표 — 밴드 상단에 짧게
+    shapes.append({"type":"arrow","x1":W/2,"y1":band_top+0.05,
+                   "x2":W/2,"y2":band_top+0.22,
                    "color":"#FEFEFE","width":1.5})
     if conclusion_lead:
-        shapes.append({"type":"text","x":0.5,"y":band_top+0.62,"w":W-1.0,"h":0.30,
-                       "text":conclusion_lead,"size":13,"weight":400,"color":"#FEFEFE",
+        # lead: 밴드 위쪽, 짧게
+        shapes.append({"type":"text","x":0.5,"y":band_top+0.28,"w":W-1.0,"h":0.22,
+                       "text":conclusion_lead,"size":12,"weight":400,"color":"#FEFEFE",
                        "align":"center","valign":"middle"})
-        conclusion_y = band_top + 0.95
+        # conclusion: lead 뒤 0.12" 갭 확보 (Fix)
+        conclusion_y = band_top + 0.62   # lead 끝(0.50) + 0.12 갭
     else:
-        conclusion_y = band_top + 0.75
-    conclusion_h = band_top + band_h - conclusion_y - 0.15
-    if conclusion_h < 0.4:
-        conclusion_h = 0.4
+        conclusion_y = band_top + 0.32
+    conclusion_h = band_top + band_h - conclusion_y - 0.10
+    if conclusion_h < 0.40:
+        conclusion_h = 0.40
     # conclusion 은 거버닝 — role="governing" → 검정 밴드 위 흰 계열 → 자동 accent 매핑.
     shapes.append({"type":"text","x":0.5,"y":conclusion_y,"w":W-1.0,"h":conclusion_h,
-                   "text":conclusion,"size":22,"weight":800,"color":"#FEFEFE",
+                   "text":conclusion,"size":20,"weight":800,"color":"#FEFEFE",
                    "align":"center","valign":"middle","role":"governing"})
     return shapes
 

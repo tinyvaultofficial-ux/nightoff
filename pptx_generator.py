@@ -113,19 +113,36 @@ COLOR_MODE_ENABLED = False
 _COLOR_MODE_PALETTES = frozenset({"navy", "green", "slate"})
 
 # 프리셋 흑백 강조요소 → 팔레트 토큰 매핑.
-# 화이트 베이스이므로 대부분 색은 그대로 통과(본문 검정·회색·흰 배경 = 팔레트 정합).
-# 오직 "강조 면(검정)" + "그 위 흰 텍스트" 만 팔레트 색으로 치환.
+# 화이트 베이스이므로 본문 검정·흰 배경은 그대로 통과 (팔레트 정합).
+# 강조 요소 + 옅은/중간 회색 자리를 팔레트 계열 색으로 치환 → 입체 색감.
+# ─── Spec Color-Multilayer (실험 검증 이식) ───
+# 프리셋 20개에 이미 존재하는 옅은/중간 회색 자리(#F5F5F5/#EEEEEE/#DDDDDD 등)
+# 를 팔레트 신규 토큰(TINT/SOFT/MID/TINT_STROKE)으로 매핑 → "딥네이비 점 하나"
+# 문제 해소. 프리셋 코드 무접촉, 매핑 표만 확장.
 _PALETTE_TOKEN_MAP: dict[tuple[str, str], str] = {
-    # 검정 강조 면 (split/asymmetric/numbered_columns/conclusion_cards/vertical_stack_bands 결론밴드)
+    # ── 강조 면 (Spec Color-Mode 기존) ──
     ("#1A1A1A", "fill"):   "PANEL_FILL",   # 표준 검정 면
     ("#000000", "fill"):   "PANEL_FILL",   # 순수 검정 (동의어)
     ("#1B1B1B", "fill"):   "PANEL_FILL",   # 살짝 들뜬 검정 (numbered_columns 등)
-    # 검정 진한 stroke (팔레트 색으로 통일)
+    # ── 강조 stroke (Spec Color-Mode 기존) ──
     ("#1A1A1A", "stroke"): "PANEL_FILL",
     ("#1B1B1B", "stroke"): "PANEL_FILL",
-    # 강조 면 위 흰 텍스트 (팔레트에서도 흰 유지 — PANEL_FG 정의값)
+    # ── 강조 면 위 흰 텍스트 (Spec Color-Mode 기존) ──
     ("#FEFEFE", "text"):   "PANEL_FG",
-    ("#FFFFFF", "text"):   "PANEL_FG",     # 검정면 위 흰 (split 좌측 텍스트 등)
+    ("#FFFFFF", "text"):   "PANEL_FG",     # 검정면 위 흰 (split 좌측 등)
+    # ─── Spec Color-Multilayer (add-only) — 옅은/중간 자리 신규 매핑 ───
+    # 옅은 회색 fill 4종 → TINT / TINT_STRONG (카드 배경·데스크 카드 등)
+    ("#F5F5F5", "fill"):   "TINT",         # conclusion_cards desc 카드 배경
+    ("#FBFBFB", "fill"):   "TINT",         # 유사 옅은 회색
+    ("#ECECEC", "fill"):   "TINT",         # 유사 옅은 회색
+    ("#E8E8E8", "fill"):   "TINT_STRONG",  # 조금 진한 옅은 회색 (라벨 등)
+    # 중간 회색 stroke → TINT_STROKE / MID
+    ("#DDDDDD", "stroke"): "TINT_STROKE",  # 표준 LINE (카드 stroke)
+    ("#CCCCCC", "stroke"): "TINT_STROKE",  # placeholder 테두리
+    ("#999999", "stroke"): "MID",          # 중간 회색 선 → MID 팔레트
+    # 옅은 텍스트 → SOFT (배경 큰 숫자 등 시각 앵커)
+    ("#EEEEEE", "text"):   "SOFT",         # numbered_columns 대형 배경 숫자
+    ("#DDDDDD", "text"):   "MID",          # 검정 면 위 부차 텍스트 (split 좌측 pts)
 }
 
 

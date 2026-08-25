@@ -27,3 +27,7 @@ apscheduler==3.10.4
 # admin 전용 토글 (policy_settings.output_mode_enabled='Y') 활성 시에만 사용. OFF 시 미사용.
 # 설치 후: playwright install chromium
 playwright==1.60.0
+# Spec KeyVisual-2 — 2D 키비주얼 (Google Gemini / Nano Banana Pro).
+# image_provider.py 에서만 사용. 미설치 시 image_provider.generate_keyvisual 이
+# graceful ImportError → dry_run=True 자동 유지 (다른 기능 무영향).
+google-genai==2.19.0

@@ -69,6 +69,16 @@ THEMES: dict[str, dict[str, str]] = {
         "PANEL_FILL":  "#1F3B5C",   # 딥네이비 강조 면 (검정 대신)
         "PANEL_FG":    "#FFFFFF",   # 딥네이비 면 위 흰 글씨
         "ACCENT":      "#1F3B5C",   # 거버닝/강조 = 딥네이비 (흰 배경 위 대비 11.4:1)
+        # ─── Spec Color-Multilayer (add-only) — 입체 색감용 신규 토큰 5종 ───
+        # 실험(_sim_multilayer_palette.py) 검증 색 그대로 이식. 흑백 프리셋의
+        # 옅은/중간 자리(#F5F5F5/#DDDDDD/#EEEEEE 등)를 이 팔레트 계열 틴트로
+        # 매핑하면 "딥네이비 점 하나" → 다층 색감 (특히 conclusion_cards/
+        # numbered_columns 처럼 층 많은 프리셋에서 뚜렷).
+        "MID":         "#4A5F7F",   # 서브 강조 (기존 stroke=#999999 자리) — 대비 6.5:1
+        "SOFT":        "#6E82A0",   # 아주 부드러운 강조 (배경 큰 숫자=#EEEEEE 자리) — 3.9:1 시각 앵커
+        "TINT":        "#EDF0F5",   # 카드 배경 (기존 fill=#F5F5F5 자리) — 본문 대비 15.2:1
+        "TINT_STRONG": "#D6DEEB",   # 조금 진한 틴트 (기존 fill=#E8E8E8 자리) — 본문 대비 12.9:1
+        "TINT_STROKE": "#B8C4D6",   # 옅은 stroke (기존 stroke=#DDDDDD 자리)
     },
     "green": {
         # 딥그린 강조 — 실험 g4_A 대비비 10.0:1 (WCAG AAA)
@@ -80,6 +90,12 @@ THEMES: dict[str, dict[str, str]] = {
         "PANEL_FILL":  "#1E4A3A",   # 딥그린 강조 면
         "PANEL_FG":    "#FFFFFF",   # 딥그린 면 위 흰 글씨
         "ACCENT":      "#1E4A3A",   # 거버닝/강조 = 딥그린 (흰 배경 위 대비 10.0:1)
+        # Spec Color-Multilayer — 신규 5토큰 (실험 검증 색)
+        "MID":         "#4B7562",
+        "SOFT":        "#7A9686",
+        "TINT":        "#EEF3F0",
+        "TINT_STRONG": "#D5E3DC",
+        "TINT_STROKE": "#B8CFC4",
     },
     "slate": {
         # 슬레이트 강조 — 실험 g2_A 대비비 12.5:1 (WCAG AAA)
@@ -91,6 +107,12 @@ THEMES: dict[str, dict[str, str]] = {
         "PANEL_FILL":  "#2C3442",   # 슬레이트 강조 면
         "PANEL_FG":    "#FFFFFF",   # 슬레이트 면 위 흰 글씨
         "ACCENT":      "#2C3442",   # 거버닝/강조 = 슬레이트 (흰 배경 위 대비 12.5:1)
+        # Spec Color-Multilayer — 신규 5토큰 (실험 검증 색)
+        "MID":         "#525C6E",
+        "SOFT":        "#7C8595",
+        "TINT":        "#EEF0F3",
+        "TINT_STRONG": "#D8DBE1",
+        "TINT_STROKE": "#BABEC6",
     },
 }
 

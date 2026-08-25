@@ -107,7 +107,7 @@ DARK_MAP = {
 # ★ 플래그 게이트: COLOR_MODE_ENABLED=False (기본) 시 신규 theme 이름이 들어와도
 #   매핑 미적용 → light 처럼 입력 hex 그대로 통과 → 기존 100% 동일 동작.
 # ★ theme in {"light","dark"} 경로는 기존 로직 완전 보존 (한 글자도 안 건드림).
-COLOR_MODE_ENABLED = False
+COLOR_MODE_ENABLED = True
 
 # 신규 팔레트 이름 (theme.py THEMES 정의 정합).
 _COLOR_MODE_PALETTES = frozenset({"navy", "green", "slate"})

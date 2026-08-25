@@ -111,7 +111,7 @@ FRONT_NARRATIVE_ENABLED = True
 #   플래그 False 시 LLM 이 preset:"vertical_stack_bands" 를 절대 안 내므로 dispatch
 #   elif 미진입. True 로 켜야만 실제 렌더 발동.
 # 사고 시 False 로 즉시 원복 (플래그 1줄 원복, git revert 불필요).
-VERTICAL_STACK_ENABLED = False
+VERTICAL_STACK_ENABLED = True
 
 
 # ─── Spec GovEnding-Fix — 거버닝 서술형 종결 감지 정규식 (감지 로그용, 값 무변경) ────

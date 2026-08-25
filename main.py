@@ -1446,6 +1446,74 @@ def extract_text(path: Path) -> str:
     return ""
 
 
+# ─── Spec RFP-Empty-Extraction-Guard (add-only) ─────────────────────
+# extract_text 는 실패 시 예외 대신 안내 문자열("[HWP 파일 텍스트 자동 추출이
+# 지원되지 않아요...]" 등) 을 반환. 이 문자열이 rfp_files.raw_text 로 저장돼
+# _run_rfp_aggregate → LLM 호출 → 빈 결과 → "분석 완료" 표시 + 크레딧 차감.
+# ★ 관문 부재가 근본 원인. 이 헬퍼 2개로 병렬 분석 진입 전 감지·차단.
+#
+# 판정 원칙 (구조적, "실패" 키워드 의존 X):
+#   · 100자 미만 (strip 후) = 실질 본문 없음
+#   · "[...]" 로 감싸진 300자 미만 = extract_text 의 안내 메시지 패턴
+#   · 그 외 = 유효 텍스트로 간주 (통상 RFP 는 수천~수만 자, [...] 아님)
+def _is_extraction_failure(text: str) -> bool:
+    """rfp_files.raw_text 가 유효 본문인지 판정 (False) or 안내/빈 문자열 (True).
+
+    구조적 감지 — 키워드("실패" 등) 의존 X.
+    보수적 판정 — 정상 RFP (수천 자, 자유 본문) 는 절대 True 안 되게.
+    """
+    if not text:
+        return True
+    stripped = text.strip()
+    if len(stripped) < 100:
+        return True   # 실질 본문 없음 (안내 60자 or 완전 빈 것)
+    # 안내 문자열 패턴: [...] 로 시작/끝, 짧고, 개행 거의 없음
+    if (stripped.startswith("[") and stripped.endswith("]")
+            and len(stripped) < 300
+            and stripped.count("\n") < 3):
+        return True
+    return False
+
+
+def _has_valid_rfp_text(cid: str) -> tuple[bool, str]:
+    """cid 의 rfp_files 중 유효 텍스트 파일이 하나라도 있는지 확인.
+
+    반환: (valid: bool, message: str)
+      · valid=True → 하나 이상 유효, message=""
+      · valid=False → 전부 실패, message=사용자 안내 (안내 문자열 or 기본 안내)
+    ★ 병렬 분석·크레딧 차감 전 관문 용도.
+    """
+    with get_db() as db:
+        try:
+            rows = db.execute(
+                "SELECT filename, raw_text FROM rfp_files WHERE client_id=? ORDER BY created_at",
+                (cid,),
+            ).fetchall()
+        except Exception as e:
+            log.warning("_has_valid_rfp_text DB 조회 실패 (cid=%s): %s", cid, e)
+            return (False, "업로드된 파일을 조회하지 못했어요.")
+    if not rows:
+        return (False, "업로드된 파일이 없어요.")
+    # 유효 파일 하나라도 있으면 진행
+    for r in rows:
+        text = r["raw_text"] or ""
+        if not _is_extraction_failure(text):
+            return (True, "")
+    # 전부 실패 → 첫 파일의 안내 문자열이 [...] 형식이면 그대로 재사용 (이미 친절)
+    first_text = (rows[0]["raw_text"] or "").strip()
+    if (first_text.startswith("[") and first_text.endswith("]")
+            and len(first_text) < 300):
+        # [ ] 감싼 안내는 이미 사용자 친화 문구 → 그대로 노출 (대괄호는 제거)
+        detail = first_text.lstrip("[").rstrip("]").strip()
+    else:
+        detail = (
+            "업로드한 파일에서 본문 텍스트를 읽지 못했어요. "
+            "HWP 파일은 한글 프로그램에서 PDF 또는 Word(.docx) 로 변환한 뒤 "
+            "다시 올려주시면 분석됩니다."
+        )
+    return (False, detail)
+
+
 def _extract_hwp_text(path: Path) -> str:
     """최소 HWP 텍스트 추출 — olefile 우회. 대부분 깨끗하진 않지만 키워드는 잡힘."""
     try:
@@ -4618,6 +4686,14 @@ async def api_rfp_upload_single(
         # D-Fix-CreditExt: RFP 분석 사전 검증 (잔액 부족 시 402)
         _check_credits(db, user["id"], 300, "RFP 분석")
     info = await _save_rfp_file(cid, file, role)
+    # ─── Spec RFP-Empty-Extraction-Guard — 병렬 분석·크레딧 차감 전 관문 ───
+    # extract_text 가 실패 시 안내 문자열 반환 → 유효 본문 판정 후 진행 결정.
+    # 유효 없음 → 422 즉시 중단 (크레딧 차감 X, 병렬 분석 진입 X).
+    _valid, _msg = _has_valid_rfp_text(cid)
+    if not _valid:
+        log.info("RFP 관문 차단(single) cid=%s file=%s reason=%s",
+                 cid, info.get("filename"), _msg[:120])
+        raise HTTPException(422, _msg)
     # 갈래 1: 과업 분석
     analysis = _run_rfp_aggregate(cid)
     # ★ Spec Fix-CreditDeductGuard — 분석 실패(error 키) 시 차감 안 함.
@@ -4669,6 +4745,15 @@ async def api_rfp_upload_multi(
         role = role_list[idx] if idx < len(role_list) else "기타"
         info = await _save_rfp_file(cid, f, role)
         saved.append(info)
+
+    # ─── Spec RFP-Empty-Extraction-Guard — 병렬 분석·크레딧 차감 전 관문 ───
+    # 여러 파일 중 하나라도 유효 텍스트가 있으면 진행 (일부 실패는 통과).
+    # 전부 실패면 422 즉시 중단 (크레딧 차감 X, 병렬 분석 진입 X).
+    _valid, _msg = _has_valid_rfp_text(cid)
+    if not _valid:
+        log.info("RFP 관문 차단(multi) cid=%s files=%d reason=%s",
+                 cid, len(saved), _msg[:120])
+        raise HTTPException(422, _msg)
 
     # 갈래 1: 과업 분석 (기존 RFP 분석)
     analysis = _run_rfp_aggregate(cid)

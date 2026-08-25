@@ -190,6 +190,93 @@ def pick_fg_over(base, overlay, alpha: float, **kwargs) -> str:
     return pick_fg(blend(base, overlay, alpha), **kwargs)
 
 
+# ─── Spec Color-Derive (add-only) — 사업 성격 → 팔레트 자동 매핑 ─────
+# 결정론적 키워드 매핑 (LLM 미사용, 크레딧 0).
+# "정교할 필요 없음, 사용자가 색감 참고하라고 주는 시작점" 수준.
+# 사용자가 admin/UI 에서 다른 색으로 교체 자유 — 자동 선택은 첫 제안일 뿐.
+#
+# 매핑 규칙:
+#   green: 친환경·생태·업사이클·탄소중립·지속가능·그린·환경·자원순환·재활용
+#   navy : 스마트·AI·디지털·ICT·미래·테크·혁신·기술·데이터·플랫폼
+#   slate: 그 외 (문화·복지·행정·일반 행사 등) — 기본 폴백
+# 우선순위: green > navy > slate (환경 키워드가 있으면 우선 배정)
+#
+# 검색 대상 텍스트: RFP title/summary + strategy strategy/concept/rationale/target/needs/pillars
+#   ★ RFP 분석 dict 는 선택 (없어도 strategy 만으로 판단 가능)
+#
+# 반환: ("navy"|"green"|"slate", matched_keyword)
+#   · 매칭 발견 시: (color, 매칭된 키워드)
+#   · 매칭 실패 시: ("slate", "") — 안전 폴백
+_DERIVE_KEYWORDS: dict[str, tuple[str, ...]] = {
+    # 우선순위 dict 순서 보장 (Python 3.7+)
+    "green": (
+        "친환경", "생태", "업사이클", "탄소중립", "지속가능", "그린",
+        "환경", "자원순환", "재활용", "저탄소", "친환경성", "에코",
+        "기후", "저감", "녹색", "탈탄소", "제로웨이스트",
+    ),
+    "navy": (
+        "스마트", "AI", "인공지능", "디지털", "ICT", "미래", "테크",
+        "혁신", "기술", "데이터", "플랫폼", "메타버스", "블록체인",
+        "IoT", "빅데이터", "R&D", "연구개발", "특이점", "지능형",
+    ),
+}
+_DERIVE_DEFAULT = "slate"
+
+
+def derive_palette(strategy=None, rfp_analysis=None) -> tuple[str, str]:
+    """사업 성격 → 팔레트 자동 매핑 (결정론적, 크레딧 0).
+
+    Args:
+        strategy: dict — {"strategy","concept","rationale","target","needs","pillars":[...]}
+            or None. generate_strategy 반환값.
+        rfp_analysis: dict — {"title","summary","project_domain_label",...}
+            or None. RFP 분석 결과.
+
+    Returns:
+        (theme_name, matched_keyword) — theme_name in {"navy","green","slate"}.
+        매칭 실패 시 ("slate", "") 안전 폴백.
+
+    검색 대상: rfp title/summary/domain + strategy 6개 필드 텍스트 이어붙여
+      키워드 부분 문자열 검색 (대소문 유지 — 한글 위주).
+    """
+    parts: list[str] = []
+    # RFP 분석에서 텍스트 추출
+    if isinstance(rfp_analysis, dict):
+        for k in ("title", "summary", "project_domain_label",
+                  "project_tone_hint", "target_audience"):
+            v = rfp_analysis.get(k)
+            if isinstance(v, str) and v.strip():
+                parts.append(v)
+        # key_requirements 도 리스트로 올 수 있음 — 문자열 결합
+        reqs = rfp_analysis.get("key_requirements") or []
+        if isinstance(reqs, list):
+            for r in reqs[:5]:
+                if isinstance(r, str):
+                    parts.append(r)
+    # strategy 에서 텍스트 추출
+    if isinstance(strategy, dict):
+        for k in ("strategy", "concept", "rationale", "target", "needs"):
+            v = strategy.get(k)
+            if isinstance(v, str) and v.strip():
+                parts.append(v)
+        pillars = strategy.get("pillars") or []
+        if isinstance(pillars, list):
+            for p in pillars:
+                if isinstance(p, (str, int, float)):
+                    parts.append(str(p))
+
+    haystack = " ".join(parts)
+    if not haystack.strip():
+        return (_DERIVE_DEFAULT, "")
+
+    # 우선순위 dict 순회 (green 먼저 → navy → 폴백)
+    for palette, keywords in _DERIVE_KEYWORDS.items():
+        for kw in keywords:
+            if kw in haystack:
+                return (palette, kw)
+    return (_DERIVE_DEFAULT, "")
+
+
 # ═══════════════════════════════════════════════════════
 # 자체 검증 (모듈 직접 실행 시 assert)
 # ═══════════════════════════════════════════════════════

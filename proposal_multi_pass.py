@@ -111,7 +111,7 @@ FRONT_NARRATIVE_ENABLED = True
 #   플래그 False 시 LLM 이 preset:"vertical_stack_bands" 를 절대 안 내므로 dispatch
 #   elif 미진입. True 로 켜야만 실제 렌더 발동.
 # 사고 시 False 로 즉시 원복 (플래그 1줄 원복, git revert 불필요).
-VERTICAL_STACK_ENABLED = False
+VERTICAL_STACK_ENABLED = True
 
 
 # ─── Spec GovEnding-Fix — 거버닝 서술형 종결 감지 정규식 (감지 로그용, 값 무변경) ────
@@ -5910,6 +5910,28 @@ async def orchestrate(
         for _oitem in outline.outline:
             if not _oitem.strategy_relevant:
                 _oitem.strategy_relevant = _strategy_relevant_fallback(_oitem)
+
+    # ─── Spec Color-Derive (add-only, 플래그 뒤) — 컬러모드 활성 시 자동 팔레트 선택 ───
+    # 결정론적 키워드 매핑 (color_utils.derive_palette, LLM 미사용 → 크레딧 0).
+    # ★ pptx_generator.COLOR_MODE_ENABLED=False 시 미발동 → 기존 theme(policy 조회값)
+    #   그대로 유지 = 기존 100% 동일 동작.
+    # ON 시: policy theme(light 등) 을 자동 팔레트(navy/green/slate) 로 override.
+    #   이는 "AI가 사업 성격 보고 색 자동 선택 (사용자에게 시작점 제공)" 목적.
+    #   사용자가 admin/UI 에서 다른 색으로 교체 자유 — 자동 선택은 첫 제안일 뿐.
+    # 예외 발생 시 조용히 기존 theme 유지 (안전 폴백).
+    try:
+        import pptx_generator as _pg_cm
+        if getattr(_pg_cm, "COLOR_MODE_ENABLED", False):
+            from color_utils import derive_palette as _derive_palette
+            _auto_theme, _auto_kw = _derive_palette(strategy=strategy)
+            if _auto_theme and _auto_theme != theme:
+                log.info(
+                    "Color-Derive: theme %r → %r (매칭 키워드=%r) [사용자 override 가능]",
+                    theme, _auto_theme, _auto_kw or "(기본 폴백)"
+                )
+                theme = _auto_theme
+    except Exception as _cd_err:
+        log.warning("Color-Derive 예외 (무시, 기존 theme 유지): %s", _cd_err)
 
     yield {
         "type": "outline_done",

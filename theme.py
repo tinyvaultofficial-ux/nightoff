@@ -50,6 +50,48 @@ THEMES: dict[str, dict[str, str]] = {
         "PANEL_FG":    "#1A1A1A",   # 흰 면 위 검정 글씨
         "ACCENT":      "#A78BFA",   # 브랜드 보라 강조 (다크 테마 시그니처)
     },
+
+    # ─── Spec Color-Utils-2 — 화이트 베이스 컬러 팔레트 3종 (add-only) ───
+    # 실험(_sim_contrast_safe_experiment.py, 8/8 WCAG 통과) 검증 색 그대로 이식.
+    # 설계 원칙:
+    #   · 화이트 베이스 유지 (BG=#FFFFFF / FG=#1A1A1A / 6색 회색 계열 = light 정합)
+    #   · 강조 면·강조 텍스트만 팔레트 색 (온통 색칠 X)
+    #   · PANEL_FILL / ACCENT = 실험의 "짙은 bg 색" (흰 배경 대비 WCAG AAA)
+    #   · PANEL_FG = 흰 (짙은 팔레트 색 위 흰 글씨)
+    # 이 팔레트들은 get_theme(name) 자동 확장 대상. 어디서도 아직 참조 X (신설 단계).
+    "navy": {
+        # 딥네이비 강조 — 실험 g1_A 대비비 11.4:1 (WCAG AAA)
+        "BG":          "#FFFFFF",   # 흰 바탕 (light 정합)
+        "FG":          "#1A1A1A",   # 본문·헤드라인 먹
+        "FG_SUB":      "#444444",   # 부차 진회색
+        "FG_META":     "#999999",   # 메타·캡션 옅은 회색
+        "LINE":        "#DDDDDD",   # 구분선·테두리 연회색
+        "PANEL_FILL":  "#1F3B5C",   # 딥네이비 강조 면 (검정 대신)
+        "PANEL_FG":    "#FFFFFF",   # 딥네이비 면 위 흰 글씨
+        "ACCENT":      "#1F3B5C",   # 거버닝/강조 = 딥네이비 (흰 배경 위 대비 11.4:1)
+    },
+    "green": {
+        # 딥그린 강조 — 실험 g4_A 대비비 10.0:1 (WCAG AAA)
+        "BG":          "#FFFFFF",
+        "FG":          "#1A1A1A",
+        "FG_SUB":      "#444444",
+        "FG_META":     "#999999",
+        "LINE":        "#DDDDDD",
+        "PANEL_FILL":  "#1E4A3A",   # 딥그린 강조 면
+        "PANEL_FG":    "#FFFFFF",   # 딥그린 면 위 흰 글씨
+        "ACCENT":      "#1E4A3A",   # 거버닝/강조 = 딥그린 (흰 배경 위 대비 10.0:1)
+    },
+    "slate": {
+        # 슬레이트 강조 — 실험 g2_A 대비비 12.5:1 (WCAG AAA)
+        "BG":          "#FFFFFF",
+        "FG":          "#1A1A1A",
+        "FG_SUB":      "#444444",
+        "FG_META":     "#999999",
+        "LINE":        "#DDDDDD",
+        "PANEL_FILL":  "#2C3442",   # 슬레이트 강조 면
+        "PANEL_FG":    "#FFFFFF",   # 슬레이트 면 위 흰 글씨
+        "ACCENT":      "#2C3442",   # 거버닝/강조 = 슬레이트 (흰 배경 위 대비 12.5:1)
+    },
 }
 
 

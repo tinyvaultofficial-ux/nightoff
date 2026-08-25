@@ -100,16 +100,80 @@ DARK_MAP = {
 }
 
 
-def _map_color(hex_str, role, theme="light"):
-    """role-aware 다크 매핑.
+# ─── Spec Color-Mode-Palette (add-only) — 화이트 베이스 팔레트 매핑 ─────────
+# 목적: theme.py 의 navy/green/slate 팔레트를 실제 렌더에 흘러가게. 프리셋 함수
+#   20개의 흑백 하드코딩색(#1A1A1A / #1B1B1B / #FFFFFF 등)은 무접촉, _map_color
+#   매핑 단계에서만 팔레트 토큰으로 치환. 프리셋 코드에는 한 줄도 안 넣음.
+# ★ 플래그 게이트: COLOR_MODE_ENABLED=False (기본) 시 신규 theme 이름이 들어와도
+#   매핑 미적용 → light 처럼 입력 hex 그대로 통과 → 기존 100% 동일 동작.
+# ★ theme in {"light","dark"} 경로는 기존 로직 완전 보존 (한 글자도 안 건드림).
+COLOR_MODE_ENABLED = False
 
-    theme != "dark" → 입력색 그대로 (★ 라이트 비트 단위 무변경 보장).
-    hex_str falsy(None/"") → 그대로 (fill=None 같은 "투명/지우기" 시그널 보존).
-    DARK_MAP 에 없는 색 → 그대로 (임의 변환 금지 / 명시색 무변환 = 안전).
+# 신규 팔레트 이름 (theme.py THEMES 정의 정합).
+_COLOR_MODE_PALETTES = frozenset({"navy", "green", "slate"})
+
+# 프리셋 흑백 강조요소 → 팔레트 토큰 매핑.
+# 화이트 베이스이므로 대부분 색은 그대로 통과(본문 검정·회색·흰 배경 = 팔레트 정합).
+# 오직 "강조 면(검정)" + "그 위 흰 텍스트" 만 팔레트 색으로 치환.
+_PALETTE_TOKEN_MAP: dict[tuple[str, str], str] = {
+    # 검정 강조 면 (split/asymmetric/numbered_columns/conclusion_cards/vertical_stack_bands 결론밴드)
+    ("#1A1A1A", "fill"):   "PANEL_FILL",   # 표준 검정 면
+    ("#000000", "fill"):   "PANEL_FILL",   # 순수 검정 (동의어)
+    ("#1B1B1B", "fill"):   "PANEL_FILL",   # 살짝 들뜬 검정 (numbered_columns 등)
+    # 검정 진한 stroke (팔레트 색으로 통일)
+    ("#1A1A1A", "stroke"): "PANEL_FILL",
+    ("#1B1B1B", "stroke"): "PANEL_FILL",
+    # 강조 면 위 흰 텍스트 (팔레트에서도 흰 유지 — PANEL_FG 정의값)
+    ("#FEFEFE", "text"):   "PANEL_FG",
+    ("#FFFFFF", "text"):   "PANEL_FG",     # 검정면 위 흰 (split 좌측 텍스트 등)
+}
+
+
+def _map_color_palette(hex_str: str, role: str, theme: str) -> str:
+    """Spec Color-Mode-Palette — 팔레트 토큰 매핑 + 대비 안전망.
+
+    프리셋 흑백 강조요소를 팔레트 색으로 치환. 매핑 없는 색은 그대로 통과
+    (본문 검정·회색·흰 배경 = 팔레트에서도 그대로 적용).
+    ★ 대비 안전망: 팔레트 PANEL_FG(정의값 흰) 가 PANEL_FILL 대비 WCAG AA(4.5:1)
+      미달일 때만 color_utils.pick_fg 로 폴백 (theme.py 검증 결과 3팔레트 모두
+      10:1+ 이라 실 발동 X, 향후 팔레트 추가/오염 시 대비 파괴 방지 안전망).
     """
-    if theme != "dark" or not hex_str:
+    palette = _get_theme(theme)
+    token_name = _PALETTE_TOKEN_MAP.get((_norm_hex(hex_str), role))
+    if not token_name:
+        return hex_str  # 매핑 없음 → 그대로 통과 (본문 검정/회색/흰 배경)
+    mapped = palette.get(token_name, hex_str)
+    # PANEL_FG 매핑 시 PANEL_FILL 대비 안전망 (색 오염 방어)
+    if token_name == "PANEL_FG":
+        try:
+            from color_utils import contrast_ratio, pick_fg, WCAG_AA
+            panel_fill = palette.get("PANEL_FILL", "#1A1A1A")
+            if contrast_ratio(mapped, panel_fill) < WCAG_AA:
+                mapped = pick_fg(panel_fill)   # 흰/검정 중 대비 큰 것 자동 선택
+        except Exception:
+            pass  # color_utils 부재 등 → 팔레트 정의값 그대로 (기존 안전 동작)
+    return mapped
+
+
+def _map_color(hex_str, role, theme="light"):
+    """role-aware 색 매핑.
+
+    theme == "dark" → DARK_MAP 매핑 (기존 로직 무변경).
+    theme in _COLOR_MODE_PALETTES 이고 COLOR_MODE_ENABLED=True → 신규 팔레트 매핑.
+    그 외 (light 포함, 플래그 OFF 시 신규 팔레트 이름 포함) → 입력 그대로.
+
+    ★ 라이트 비트 단위 무변경 보장 (theme="light" 는 옛 경로 100% 동일).
+    ★ hex_str falsy(None/"") → 그대로 (fill=None 같은 "투명/지우기" 시그널 보존).
+    """
+    if not hex_str:
         return hex_str
-    return DARK_MAP.get((_norm_hex(hex_str), role), hex_str)
+    if theme == "dark":
+        return DARK_MAP.get((_norm_hex(hex_str), role), hex_str)
+    # Spec Color-Mode-Palette — 플래그 게이트 신규 경로
+    if COLOR_MODE_ENABLED and theme in _COLOR_MODE_PALETTES:
+        return _map_color_palette(hex_str, role, theme)
+    # 기존 light 경로 (플래그 OFF 시 신규 theme 이름도 여기로 → 입력 그대로)
+    return hex_str
 
 
 log = logging.getLogger("pptx_gen")

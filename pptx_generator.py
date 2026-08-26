@@ -5895,6 +5895,38 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
         if not isinstance(shapes, list):
             errors_total.append("slide" + str(slide_idx) + ": shapes not list")
             continue
+
+        # ─── Spec Running-Header-Fixed-Position (add-only) — 목차 좌상단 고정 ───
+        # 25개 프리셋이 eyebrow(러닝헤더)를 각자 하드코딩 → 정렬 5개 center 위배 +
+        # x 3가지 시작점 + 11개 프리셋 미지원 = 위치 흔들림·중앙 이동·누락.
+        # ★ 처방: dispatch 층 자동 삽입 (프리셋 25개 완전 무접촉).
+        #   1) slide_data["eyebrow"] 텍스트와 완전 일치하는 기존 shape 제거
+        #      (heuristic 아님 — 부제·다른 텍스트는 문자 다르니 안 걸림, 안전)
+        #   2) 좌상단 표준 좌표로 재삽입 (narrative/asymmetric/zigzag/hsplit 등
+        #      정상 좌상단 프리셋 4개가 이미 사용 중인 값 = 다수결 채택,
+        #      기존 정상 케이스는 시각 회귀 0)
+        # 표준: x=0.9, y=0.5, w=9.89, h=0.4, size=11, color=#BBBBBB,
+        #       align=left, valign=top
+        _eyebrow_text = str(slide_data.get("eyebrow", "") or "").strip()
+        if _eyebrow_text:
+            def _is_running_header_dup(sh):
+                """텍스트가 eyebrow_text 와 완전 일치하는 text shape 만 True."""
+                if not isinstance(sh, dict):
+                    return False
+                if sh.get("type") != "text":
+                    return False
+                sh_text = str(sh.get("text", "") or "").strip()
+                return sh_text == _eyebrow_text   # 완전 일치만 (부제 안전)
+            shapes = [s for s in shapes if not _is_running_header_dup(s)]
+            shapes.insert(0, {
+                "type": "text",
+                "x": 0.9, "y": 0.5, "w": 9.89, "h": 0.4,
+                "text": _eyebrow_text,
+                "size": 11, "weight": 400, "color": "#BBBBBB",
+                "align": "left", "valign": "top",
+                "role": "running_header",
+            })
+
         for shape_idx, shape_def in enumerate(shapes):
             try:
                 # Spec D-Build-ThemeConnect 1-b — default_text_color 주입.

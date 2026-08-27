@@ -2508,6 +2508,27 @@ def spa_landing():
     return HTMLResponse(_render_index())
 
 
+# Spec D-Build-TossPayments-1c (조각3) — 결제 3페이지 SPA 진입 라우트.
+# ★ 토스가 /success · /fail 로 리다이렉트 → 서버가 index.html 반환 필수.
+# app.js 의 renderCheckoutPage / renderPaymentSuccessPage / renderPaymentFailPage 가 처리.
+@app.get("/checkout")
+def spa_checkout():
+    """SPA — 결제 주문서 (요금제 선택 후 위젯 렌더). 클라이언트 라우터가 처리."""
+    return HTMLResponse(_render_index())
+
+
+@app.get("/success")
+def spa_payment_success():
+    """SPA — 토스 결제 성공 리다이렉트 (?paymentKey&orderId&amount). 클라이언트 라우터가 처리."""
+    return HTMLResponse(_render_index())
+
+
+@app.get("/fail")
+def spa_payment_fail():
+    """SPA — 토스 결제 실패 리다이렉트 (?code&message). 클라이언트 라우터가 처리."""
+    return HTMLResponse(_render_index())
+
+
 # ---------- Models ----------
 class SettingsIn(BaseModel):
     api_key: Optional[str] = None

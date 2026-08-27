@@ -5918,7 +5918,12 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
                 sh_text = str(sh.get("text", "") or "").strip()
                 return sh_text == _eyebrow_text   # 완전 일치만 (부제 안전)
             shapes = [s for s in shapes if not _is_running_header_dup(s)]
-            shapes.insert(0, {
+            # ★ append 로 z-order 최상단 배치 (insert(0)=최하단이면 검정 배경
+            # rect 6개 프리셋 circles/hero_cards/hsplit_top/numbered_columns/
+            # split/quad 에서 검정 rect 가 목차를 시각적으로 덮음 — 확정된
+            # 원인). 색 대비는 #BBBBBB 위 검정 = 9.27 (AAA) 이미 충분해
+            # 색 로직 없이 z-order 만 교정.
+            shapes.append({
                 "type": "text",
                 "x": 0.9, "y": 0.5, "w": 9.89, "h": 0.4,
                 "text": _eyebrow_text,

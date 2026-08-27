@@ -616,6 +616,33 @@ def init_db() -> None:
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             );
             CREATE INDEX IF NOT EXISTS idx_oc_docs_user ON our_company_docs(user_id, created_at DESC);
+
+            -- ───────── 토스페이먼츠 결제 이력 ─────────
+            -- Spec D-Build-TossPayments-1a (심사 최소흐름 · 조각1: 스키마만)
+            -- 흐름: 프론트 결제위젯 → 서버 orders 생성 (status='pending') →
+            --       토스 승인 API 콜백 → status='paid' 또는 'failed' 로 갱신.
+            -- granted_credits: 2단계에서 users.credits 지급 로직 연결 시 채움
+            --                  (현재는 지급 트리거 없음 → 항상 0).
+            -- payment_key   : 토스 승인 응답의 paymentKey (승인 성공 후 채움).
+            --                 미승인 상태 = '' (기존 verified_at 패턴).
+            -- paid_at       : 승인 완료 시각 (미승인 = '').
+            -- order_id      : 토스 orderId (UNIQUE — 중복 승인 방지).
+            -- tier          : 'starter' / 'pro' / 'business' (요금제 3티어).
+            -- amount        : 결제 금액 (원, KRW).
+            CREATE TABLE IF NOT EXISTS payments (
+                id               TEXT PRIMARY KEY,
+                user_id          TEXT NOT NULL,
+                order_id         TEXT UNIQUE NOT NULL,
+                tier             TEXT NOT NULL,
+                amount           INTEGER NOT NULL,
+                payment_key      TEXT DEFAULT '',
+                status           TEXT DEFAULT 'pending',
+                granted_credits  INTEGER DEFAULT 0,
+                created_at       TEXT DEFAULT (datetime('now','localtime')),
+                paid_at          TEXT DEFAULT '',
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id, created_at DESC);
         """)
 
         # 구버전 competitors 테이블 흔적 제거 (있으면)

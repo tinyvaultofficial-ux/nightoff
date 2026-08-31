@@ -8599,6 +8599,108 @@ def api_admin_users_detail(user_id: str, admin: dict = Depends(require_admin)):
     }
 
 
+# Spec D-Build-AdminUserHistory-1a (조각1) — 어드민 사용자별 생성 이력 반환.
+# 배경: 수주 인증 이벤트 검토용 — "이 사용자가 이 과업을 NightOff 로 했나" 대조.
+# 진단(별건): 기존 GET /api/admin/users/{uid} 는 개수만 · 프론트 미연결(죽음).
+# ★ 신규 엔드포인트 신설 (기존 endpoint 무접촉 — 리스크 0).
+# ★ read-only: SELECT + JOIN 만. INSERT/UPDATE/DELETE 없음.
+# ★ 어드민 UI 연결은 조각2 (본 커밋 밖).
+@app.get("/api/admin/users/{user_id}/history")
+def api_admin_users_history(
+    user_id: str,
+    limit: int = 50,
+    admin: dict = Depends(require_admin),
+) -> dict:
+    """관리자용 · 특정 사용자의 제안서 생성 이력 리스트 반환 (최근순).
+
+    각 항목:
+    - created_at        : 대화(과업) 생성 일시
+    - client_name       : clients.name (사용자 입력 발주처명)
+    - conv_title        : conversations.title (과업명)
+    - conv_id           : PPTX 다운로드 링크용 (/api/proposals/{cid}/download)
+    - has_pptx          : conversations.pptx_path != '' (실제 뽑았는지)
+    - pptx_updated_at   : 마지막 PPTX 갱신 시각
+    - last_proposal_pages: 마지막 생성 페이지 수
+    - rfp_organization  : rfp_aggregated.analysis_json.organization (RFP 자동 추출 발주처)
+    - rfp_title         : analysis_json.title (RFP 자동 추출 과업명)
+    - rfp_budget        : analysis_json.budget
+    - rfp_deadline      : analysis_json.deadline
+
+    ★ analysis_json 안전:
+    - LEFT JOIN 이라 rfp_aggregated 없어도 대화는 리스트에 포함 (rfp_* 필드 = "(없음)")
+    - JSON 깨진 경우 폴백 (에러로 터지지 않음)
+    """
+    # 사용자 존재 확인 (404 명확화)
+    with get_db() as db:
+        u = db.execute(
+            "SELECT id, email, company FROM users WHERE id=?", (user_id,)
+        ).fetchone()
+        if not u:
+            raise HTTPException(404, "사용자를 찾을 수 없어요.")
+
+        # 안전 정수 클램프 (limit 남용 방지)
+        try:
+            lim = max(1, min(int(limit), 500))
+        except (ValueError, TypeError):
+            lim = 50
+
+        rows = db.execute(
+            "SELECT c.name AS client_name, "
+            "       cv.id AS conv_id, cv.title AS conv_title, "
+            "       cv.pptx_path, cv.pptx_updated_at, cv.last_proposal_pages, "
+            "       cv.created_at, "
+            "       a.analysis_json AS analysis_json "
+            "FROM clients c "
+            "JOIN conversations cv ON cv.client_id = c.id "
+            "LEFT JOIN rfp_aggregated a ON a.client_id = c.id "
+            "WHERE c.user_id = ? "
+            "ORDER BY cv.created_at DESC "
+            "LIMIT ?",
+            (user_id, lim),
+        ).fetchall()
+
+    items = []
+    NA = "(없음)"
+    for r in rows:
+        aj_raw = r["analysis_json"] or ""
+        rfp_org = rfp_title = rfp_budget = rfp_deadline = NA
+        if aj_raw:
+            try:
+                aj = json.loads(aj_raw)
+                if isinstance(aj, dict):
+                    rfp_org      = str(aj.get("organization") or "").strip() or NA
+                    rfp_title    = str(aj.get("title") or "").strip() or NA
+                    rfp_budget   = str(aj.get("budget") or "").strip() or NA
+                    rfp_deadline = str(aj.get("deadline") or "").strip() or NA
+            except (ValueError, TypeError):
+                # 깨진 JSON — 폴백만, 로그만 warn (에러로 안 터짐)
+                log.warning("[admin/history] analysis_json parse fail cid=%s", r["conv_id"])
+        items.append({
+            "created_at":          r["created_at"] or "",
+            "client_name":         r["client_name"] or NA,
+            "conv_id":             r["conv_id"],
+            "conv_title":          (r["conv_title"] or "").strip() or NA,
+            "has_pptx":            bool((r["pptx_path"] or "").strip()),
+            "pptx_updated_at":     r["pptx_updated_at"] or "",
+            "last_proposal_pages": int(r["last_proposal_pages"] or 0),
+            "rfp_organization":    rfp_org,
+            "rfp_title":           rfp_title,
+            "rfp_budget":          rfp_budget,
+            "rfp_deadline":        rfp_deadline,
+        })
+
+    return {
+        "user": {
+            "id":      u["id"],
+            "email":   u["email"],
+            "company": u["company"] or "",
+        },
+        "items":  items,
+        "count":  len(items),
+        "limit":  lim,
+    }
+
+
 class AdminUserPatch(BaseModel):
     credits: Optional[int] = None
     credits_used_this_month: Optional[int] = None

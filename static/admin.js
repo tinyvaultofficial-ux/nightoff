@@ -327,6 +327,15 @@ function openUserModal(userId) {
             <option value="1" ${u.is_suspended ? "selected" : ""}>정지</option>
           </select>
         </div>
+
+        <!-- Spec D-Build-AdminUserHistory-1b (조각2) — 생성 이력 섹션 (add-only).
+             기존 크레딧 편집 폼 (m-prop-quota / m-reset / m-suspend + 저장 버튼) 무접촉.
+             조각1 (6bcab24) GET /api/admin/users/{uid}/history 를 호출해 채움. -->
+        <div id="user-history-section" style="margin-top:24px; padding-top:16px; border-top:1px solid var(--border,#e5e5ea);">
+          <h4 style="margin:0 0 8px; font-size:14px; color:var(--fg-2,#666);">생성 이력 (최근 50건)</h4>
+          <div id="user-history-body" style="font-size:13px; color:var(--fg-2,#888);">불러오는 중...</div>
+        </div>
+
         <div class="modal-footer">
           <button class="btn" onclick="closeModal()">취소</button>
           <button class="btn btn-primary" id="user-save-btn" onclick="saveUserModal('${escapeHtml(userId)}')">저장</button>
@@ -334,6 +343,70 @@ function openUserModal(userId) {
       </div>
     </div>`;
   attachEscHandler();
+  // 생성 이력 fire-and-forget 로 채움 (실패해도 모달 자체는 정상)
+  loadUserHistorySection(userId);
+}
+
+// Spec D-Build-AdminUserHistory-1b (조각2) — 생성 이력 섹션 로드/렌더.
+// GET /api/admin/users/{uid}/history 호출 → 테이블로 채움.
+// ★ 실패해도 모달 자체는 안 깨짐 ("이력을 불러오지 못했어요" 표시만).
+async function loadUserHistorySection(userId) {
+  const body = document.getElementById("user-history-body");
+  if (!body) return;   // 모달이 이미 닫혔으면 무시
+  try {
+    const data = await apiGet(`/api/admin/users/${encodeURIComponent(userId)}/history?limit=50`);
+    // 재렌더 시점에 모달이 닫혔거나 다른 user 모달로 바뀌었을 수 있음 → 재확인
+    const bodyNow = document.getElementById("user-history-body");
+    if (!bodyNow) return;
+    if (!data || data.count === 0 || !Array.isArray(data.items) || data.items.length === 0) {
+      bodyNow.innerHTML = '<div class="empty" style="padding:12px 0; color:var(--fg-2,#888);">생성 이력 없음</div>';
+      return;
+    }
+    const rows = data.items.map((it) => {
+      const created = escapeHtml((it.created_at || "").slice(0, 16));
+      const clientName = escapeHtml(it.client_name || "(없음)");
+      const convTitle = escapeHtml(it.conv_title || "(없음)");
+      const rfpOrg = escapeHtml(it.rfp_organization || "(없음)");
+      const rfpTitle = escapeHtml(it.rfp_title || "(없음)");
+      const rfpBudget = escapeHtml(it.rfp_budget || "(없음)");
+      const pptxCell = it.has_pptx
+        ? `<a href="/api/proposals/${encodeURIComponent(it.conv_id)}/download" target="_blank" rel="noopener" title="PPTX 다운로드">✓ 다운로드</a>`
+        : '<span style="color:var(--fg-2,#aaa);">-</span>';
+      return `
+        <tr>
+          <td style="white-space:nowrap;">${created}</td>
+          <td style="max-width:120px; word-break:break-word;">${clientName}</td>
+          <td style="max-width:200px; word-break:break-word;">${convTitle}</td>
+          <td style="max-width:140px; word-break:break-word;">${rfpOrg}</td>
+          <td style="max-width:260px; word-break:break-word;">${rfpTitle}</td>
+          <td style="white-space:nowrap;">${rfpBudget}</td>
+          <td style="white-space:nowrap;">${pptxCell}</td>
+        </tr>`;
+    }).join("");
+    bodyNow.innerHTML = `
+      <div class="table-scroll" style="max-height:320px; overflow:auto;">
+        <table class="data-table" style="font-size:12px;">
+          <thead>
+            <tr>
+              <th>생성일시</th>
+              <th>발주처</th>
+              <th>과업명</th>
+              <th>RFP 발주처</th>
+              <th>RFP 과업명</th>
+              <th>RFP 예산</th>
+              <th>PPTX</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div style="margin-top:6px; font-size:11px; color:var(--fg-2,#aaa);">총 ${data.count}건${data.count >= data.limit ? ` (최근 ${data.limit}건 표시)` : ""}</div>`;
+  } catch (e) {
+    const bodyNow = document.getElementById("user-history-body");
+    if (bodyNow) {
+      bodyNow.innerHTML = `<div class="error-banner" style="padding:8px; font-size:12px;">이력을 불러오지 못했어요: ${escapeHtml(e.message || "오류")}</div>`;
+    }
+  }
 }
 
 function closeModal() {

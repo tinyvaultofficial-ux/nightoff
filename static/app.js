@@ -185,7 +185,10 @@ async function _parseErrorResponse(r) {
 const AUTH_TOKEN_KEY = "nightoff_jwt";
 // 인증 면제 페이지 — 미가입 방문자가 접근 가능 (랜딩 노출용 / + /landing 포함)
 // Spec D-Fix-22 Stage A: "/preview" 추가 — 비회원 둘러보기 모드.
-const AUTH_PUBLIC_PAGES = new Set(["/", "/landing", "/login.html", "/register.html", "/preview"]);
+// Spec D-Build-PricingPage-5b (2026-09-01) — /pricing 을 공개 페이지로 추가.
+// 요금제는 공개 정보 (심사관·잠재 고객이 로그인 없이 봐야 함).
+// "시작하기" 클릭 시에만 renderCheckoutPage 안에서 getToken() 검증 → 로그인 유도 (조각4a).
+const AUTH_PUBLIC_PAGES = new Set(["/", "/landing", "/pricing", "/login.html", "/register.html", "/preview"]);
 
 function getToken() { return localStorage.getItem(AUTH_TOKEN_KEY) || ""; }
 function clearToken() { localStorage.removeItem(AUTH_TOKEN_KEY); }
@@ -546,6 +549,9 @@ const routes = [
   { re: /^\/checkout$/, handler: renderCheckoutPage },
   { re: /^\/success$/,  handler: renderPaymentSuccessPage },
   { re: /^\/fail$/,     handler: renderPaymentFailPage },
+  // Spec D-Build-PricingPage-5b (2026-09-01) — 요금제 독립 페이지 라우트 (renderPricingSection 재사용).
+  //   로그인/비로그인 both 접근. 사이드바 진입점은 조각5c (본 커밋 밖).
+  { re: /^\/pricing$/,  handler: renderPricingPage },
 ];
 
 function navigate(path) {
@@ -783,6 +789,20 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
           }, children);
         })(),
       ] : []),
+      // Spec D-Build-PricingPage-5c (2026-09-01) — 사이드바 "크레딧 충전" 진입점.
+      // 위치: 제안서 크레딧 잔여 표시 (sidebar-quota-wrap) 바로 다음 = FAQ 위.
+      //   → 잔여 크레딧 확인 → 바로 충전 클릭 흐름 자연스러움.
+      // 동작: navigate("/pricing") (조각5b 신설 라우트) → renderPricingPage 렌더.
+      // ★ 로그인 사용자만 사이드바 노출 (isGuestMode() 분기 위, 이 else 블록 안).
+      //   비회원은 위쪽 게스트 CTA (로그인/회원가입) 로 진입 후 결제.
+      h("button", {
+        class: "sidebar-footer-btn",
+        title: "크레딧 충전 (요금제 페이지)",
+        onclick: () => navigate("/pricing"),
+      }, [
+        h("span", { class: "sidebar-footer-btn-icon" }, "💳"),
+        h("span", {}, "크레딧 충전"),
+      ]),
       // Spec D-Build-FaqSidebarLink (2026-06-13) — 자주 묻는 질문 (FAQ) 영구 진입점.
       // 모든 페이지 공통 노출 · admin/일반 양쪽 동일 (role 분기 위 배치) · 같은 탭 이동(/faq).
       // ICO.help (Feather help-circle) + iconHtml 헬퍼 — 설정/마이페이지/로그아웃 SVG 패턴 정합.
@@ -862,6 +882,164 @@ function fmtSize(bytes) {
   while (bytes >= 1024 && i < 3) { bytes /= 1024; i++; }
   return `${bytes.toFixed(i ? 1 : 0)}${u[i]}`;
 }
+
+// ============================================================
+// Spec D-Build-PricingPage-5a (2026-09-01) — 요금제 렌더 함수 (순수 추출)
+// ============================================================
+// 기존 renderLanding 안에 인라인이던 landing-pricing 섹션을 별도 함수로 분리.
+// ★ 동작 무변화: 반환 HTMLElement 를 그대로 appendChild → 렌더 결과 100% 동일.
+// TIERS · FEATURE_GROUPS 상수 · "시작하기" 핸들러 (조각4a navigate) 모두 이 안에.
+// /pricing 라우트 · 진입점 링크는 5b · 5c (별도 조각).
+function renderPricingSection() {
+  // ── 가격 (Spec D-Fix-21: 3 티어 비교 표)
+  const TIERS = [
+    { name: "스타터", en: "Starter", emoji: "🌱",
+      promo: "31만원", regular: "36만원", discount: "-15%",
+      credits: "14,000", conversion: "50매 제안서 약 2건 분량", best: false },
+    { name: "프로", en: "Pro", emoji: "🚀",
+      promo: "64만원", regular: "85만원", discount: "-25%",
+      credits: "30,000", conversion: "50매 제안서 약 6건 분량", best: true },
+    { name: "비즈니스", en: "Business", emoji: "💎",
+      promo: "132만원", regular: "165만원", discount: "-20%",
+      credits: "62,000", conversion: "50매 제안서 약 12건 분량", best: false },
+  ];
+  const FEATURE_GROUPS = [
+    { category: "AI 분석",     items: ["RFP 분석", "발주처 분석", "전략 대화 AI"] },
+    { category: "제안서 생성", items: ["편집 가능한 PPTX", "다양한 레이아웃", "국내 제안서 표준 형식"] },
+    { category: "검증·산출",   items: ["자체 검증", "산출내역서"] },
+  ];
+
+  return h("section", { class: "landing-pricing" }, [
+    h("div", { class: "landing-pricing-inner" }, [
+      h("div", { class: "landing-section-eyebrow accent" }, "PRICING"),
+      h("h2", { class: "landing-section-title" }, "요금제(plans)"),
+      // Spec D-Fix-40: lead 자리 → 상단 띠 대체 (프로모션 자료 강조)
+      h("div", { class: "landing-pricing-promo" }, [
+        h("div", { class: "landing-pricing-promo-title" }, "🎉 공식 런칭 기념 / 3개월 한정 특가"),
+        h("div", { class: "landing-pricing-promo-sub" }, "지금 가입하면 정가 대비 최대 25% 절약"),
+      ]),
+
+      h("div", { class: "landing-pricing-table" }, [
+        // 헤더 행
+        h("div", { class: "pt-cell pt-row-label pt-header" }, ""),
+        ...TIERS.map(t => h("div", {
+          class: `pt-cell pt-header pt-plan ${t.best ? "pt-best" : ""}`,
+        }, [
+          t.best ? h("span", { class: "pt-best-badge" }, "BEST") : null,
+          h("div", { class: "pt-plan-emoji" }, t.emoji),
+          h("h3", { class: "pt-plan-name" }, [
+            h("span", { class: "pt-plan-name-ko" }, t.name),
+            h("span", { class: "pt-plan-name-en" }, t.en),
+          ]),
+        ])),
+
+        // 가격 행 (취소선 정가 + 런칭가)
+        h("div", { class: "pt-cell pt-row-label" }, "패키지"),
+        ...TIERS.map(t => h("div", { class: `pt-cell ${t.best ? "pt-best" : ""}` }, [
+          h("div", { class: "pt-price-row" }, [
+            // Spec D-Fix-40: 정가 + 할인 라벨 wrapper (인라인 정렬)
+            h("div", { class: "pt-price-regular-wrap" }, [
+              h("s", { class: "pt-price-regular" }, t.regular),
+              h("span", { class: "pt-price-discount" }, t.discount),
+            ]),
+            h("span", { class: "pt-price-promo" }, [
+              h("strong", { class: "pt-price-amount" }, t.promo),
+              h("span", { class: "pt-price-per" }, ""),
+            ]),
+          ]),
+        ])),
+
+        // 사용량 행 — 제공 크레딧 + 플랜별 환산 보조 문구
+        h("div", { class: "pt-cell pt-row-label" }, "제공 크레딧"),
+        ...TIERS.map(t => h("div", { class: `pt-cell ${t.best ? "pt-best" : ""}` }, [
+          h("span", { class: "pt-usage-amount" }, t.credits + " 크레딧"),
+          h("span", { class: "pt-usage-meta" }, t.conversion),
+        ])),
+
+        // 기능 행 — FEATURE_GROUPS 카테고리별 그룹화 (각 그룹: 카테고리 헤더 1행 + 그룹 안 기능 N행)
+        ...FEATURE_GROUPS.flatMap(g => [
+          // 카테고리 헤더 행 — span 1줄 (grid-column: 1 / -1 전체 가로지름)
+          h("div", {
+            class: "pt-cell pt-feature-category",
+            style: "grid-column: 1 / -1",
+          }, g.category),
+          // 그룹 안 기능 행들 (라벨 + 플랜별 ✅ — 전 플랜 풀기능, 차등 없음)
+          ...g.items.flatMap(item => [
+            h("div", { class: "pt-cell pt-row-label pt-feature-label" }, item),
+            ...TIERS.map(t => h("div", {
+              class: `pt-cell pt-feature ${t.best ? "pt-best" : ""}`,
+            }, "✅")),
+          ]),
+        ]),
+
+        // CTA 행
+        // Spec D-Fix-NightoffBoxClose (2026-06-14): CTA 행 BEST 셀에 pt-best-last-row 추가
+        // → BEST(Pro, 가운데 컬럼)가 :last-child 로 못 잡혀 하단 보더 0 이던 결함 해소.
+        h("div", { class: "pt-cell pt-row-label" }, ""),
+        ...TIERS.map(t => h("div", {
+          class: `pt-cell pt-cta-cell ${t.best ? "pt-best pt-best-last-row" : ""}`,
+        }, [
+          h("button", {
+            class: `btn ${t.best ? "btn-primary" : "btn-ghost"} pt-cta-btn`,
+            // Spec D-Build-TossPayments-1d (조각4a) — 요금제 → /checkout 진입점.
+            //   /checkout?tier=<t.en 소문자> 로 navigate. tier 값 (starter/pro/business)
+            //   은 서버 TOSS_TIERS 키 (main.py) 와 정확히 일치.
+            //   비로그인 시: renderCheckoutPage 첫 부분에서 getToken() 없으면
+            //   redirectToLogin() 자동 호출 (기존 next 부착 흐름 준수).
+            onclick: () => navigate(`/checkout?tier=${t.en.toLowerCase()}`),
+          }, "시작하기"),
+        ])),
+      ]),
+      // Spec D-Fix-40: 하단 부가 자료 (보험사 약관 톤 / 작게)
+      h("p", { class: "landing-pricing-note" },
+        "* 프로모션 종료 후 정가 전환 / 정기 할인 이벤트 진행 예정"),
+    ]),
+  ]);
+}
+
+
+// ============================================================
+// Spec D-Build-PricingPage-5b (2026-09-01) — 요금제 독립 페이지 (/pricing)
+// ============================================================
+// 랜딩(/landing) 안에도 요금제 있고, /pricing 은 그 섹션만 감싸 독립 페이지로.
+// ★ renderPricingSection 재사용 (조각5a) — TIERS/이벤트 핸들러 단일 진실원.
+// ★ 로그인/비로그인 both 접근 가능 (인증 체크 X — 요금제는 공개 정보).
+//   "시작하기" → /checkout?tier=X → 비로그인 시 renderCheckoutPage 첫 부분에서
+//   redirectToLogin 자동 (조각4a 흐름 그대로).
+// 진입점 링크는 조각5c (사이드바 or 헤더).
+function renderPricingPage() {
+  const root = document.getElementById("app-root");
+  if (!root) return;
+  root.innerHTML = "";
+  document.body.classList.remove("landing-fullscreen");
+
+  const authed = !!getToken();
+  // 상단 nav — 로고 홈 이동 + 우측 뒤로가기/대시보드
+  const nav = h("nav", { class: "landing-nav" }, [
+    h("div", { class: "landing-nav-inner" }, [
+      h("img", { class: "landing-logo", src: "/static/logo.png", alt: "NightOff",
+        role: "button", tabindex: "0", style: "cursor:pointer;",
+        onclick: () => navigate("/"),
+        onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } },
+      }),
+      h("button", {
+        class: "btn btn-ghost",
+        onclick: () => {
+          if (authed) navigate("/dashboard");
+          else navigate("/landing");
+        },
+      }, authed ? "← 대시보드" : "← 홈으로"),
+    ]),
+  ]);
+
+  // 페이지 조립: nav + 요금제 섹션 (renderPricingSection 재사용)
+  const wrap = h("div", { class: "landing-shell", id: "pricing-page-shell" }, [
+    nav,
+    renderPricingSection(),
+  ]);
+  root.appendChild(wrap);
+}
+
 
 // ---------- Landing Page (첫 진입 시) ----------
 function renderLanding() {
@@ -1100,112 +1278,11 @@ function renderLanding() {
     ]),
   ]));
 
-  // ── 가격 (Spec D-Fix-21: 3 티어 비교 표)
-  const TIERS = [
-    { name: "스타터", en: "Starter", emoji: "🌱",
-      promo: "31만원", regular: "36만원", discount: "-15%",
-      credits: "14,000", conversion: "50매 제안서 약 2건 분량", best: false },
-    { name: "프로", en: "Pro", emoji: "🚀",
-      promo: "64만원", regular: "85만원", discount: "-25%",
-      credits: "30,000", conversion: "50매 제안서 약 6건 분량", best: true },
-    { name: "비즈니스", en: "Business", emoji: "💎",
-      promo: "132만원", regular: "165만원", discount: "-20%",
-      credits: "62,000", conversion: "50매 제안서 약 12건 분량", best: false },
-  ];
-  const FEATURE_GROUPS = [
-    { category: "AI 분석",     items: ["RFP 분석", "발주처 분석", "전략 대화 AI"] },
-    { category: "제안서 생성", items: ["편집 가능한 PPTX", "다양한 레이아웃", "국내 제안서 표준 형식"] },
-    { category: "검증·산출",   items: ["자체 검증", "산출내역서"] },
-  ];
-
-  wrap.appendChild(h("section", { class: "landing-pricing" }, [
-    h("div", { class: "landing-pricing-inner" }, [
-      h("div", { class: "landing-section-eyebrow accent" }, "PRICING"),
-      h("h2", { class: "landing-section-title" }, "요금제(plans)"),
-      // Spec D-Fix-40: lead 자리 → 상단 띠 대체 (프로모션 자료 강조)
-      h("div", { class: "landing-pricing-promo" }, [
-        h("div", { class: "landing-pricing-promo-title" }, "🎉 공식 런칭 기념 / 3개월 한정 특가"),
-        h("div", { class: "landing-pricing-promo-sub" }, "지금 가입하면 정가 대비 최대 25% 절약"),
-      ]),
-
-      h("div", { class: "landing-pricing-table" }, [
-        // 헤더 행
-        h("div", { class: "pt-cell pt-row-label pt-header" }, ""),
-        ...TIERS.map(t => h("div", {
-          class: `pt-cell pt-header pt-plan ${t.best ? "pt-best" : ""}`,
-        }, [
-          t.best ? h("span", { class: "pt-best-badge" }, "BEST") : null,
-          h("div", { class: "pt-plan-emoji" }, t.emoji),
-          h("h3", { class: "pt-plan-name" }, [
-            h("span", { class: "pt-plan-name-ko" }, t.name),
-            h("span", { class: "pt-plan-name-en" }, t.en),
-          ]),
-        ])),
-
-        // 가격 행 (취소선 정가 + 런칭가)
-        h("div", { class: "pt-cell pt-row-label" }, "패키지"),
-        ...TIERS.map(t => h("div", { class: `pt-cell ${t.best ? "pt-best" : ""}` }, [
-          h("div", { class: "pt-price-row" }, [
-            // Spec D-Fix-40: 정가 + 할인 라벨 wrapper (인라인 정렬)
-            h("div", { class: "pt-price-regular-wrap" }, [
-              h("s", { class: "pt-price-regular" }, t.regular),
-              h("span", { class: "pt-price-discount" }, t.discount),
-            ]),
-            h("span", { class: "pt-price-promo" }, [
-              h("strong", { class: "pt-price-amount" }, t.promo),
-              h("span", { class: "pt-price-per" }, ""),
-            ]),
-          ]),
-        ])),
-
-        // 사용량 행 — 제공 크레딧 + 플랜별 환산 보조 문구
-        h("div", { class: "pt-cell pt-row-label" }, "제공 크레딧"),
-        ...TIERS.map(t => h("div", { class: `pt-cell ${t.best ? "pt-best" : ""}` }, [
-          h("span", { class: "pt-usage-amount" }, t.credits + " 크레딧"),
-          h("span", { class: "pt-usage-meta" }, t.conversion),
-        ])),
-
-        // 기능 행 — FEATURE_GROUPS 카테고리별 그룹화 (각 그룹: 카테고리 헤더 1행 + 그룹 안 기능 N행)
-        ...FEATURE_GROUPS.flatMap(g => [
-          // 카테고리 헤더 행 — span 1줄 (grid-column: 1 / -1 전체 가로지름)
-          h("div", {
-            class: "pt-cell pt-feature-category",
-            style: "grid-column: 1 / -1",
-          }, g.category),
-          // 그룹 안 기능 행들 (라벨 + 플랜별 ✅ — 전 플랜 풀기능, 차등 없음)
-          ...g.items.flatMap(item => [
-            h("div", { class: "pt-cell pt-row-label pt-feature-label" }, item),
-            ...TIERS.map(t => h("div", {
-              class: `pt-cell pt-feature ${t.best ? "pt-best" : ""}`,
-            }, "✅")),
-          ]),
-        ]),
-
-        // CTA 행
-        // Spec D-Fix-NightoffBoxClose (2026-06-14): CTA 행 BEST 셀에 pt-best-last-row 추가
-        // → BEST(Pro, 가운데 컬럼)가 :last-child 로 못 잡혀 하단 보더 0 이던 결함 해소.
-        h("div", { class: "pt-cell pt-row-label" }, ""),
-        ...TIERS.map(t => h("div", {
-          class: `pt-cell pt-cta-cell ${t.best ? "pt-best pt-best-last-row" : ""}`,
-        }, [
-          h("button", {
-            class: `btn ${t.best ? "btn-primary" : "btn-ghost"} pt-cta-btn`,
-            // Spec D-Build-TossPayments-1d (조각4a) — 요금제 → /checkout 진입점 교체.
-            //   기존: showSubscribeComingSoonModal (문의 안내 모달) — 함수 자체는 L1849 에 보존.
-            //   신규: /checkout?tier=<t.en 소문자> 로 navigate. tier 값 (starter/pro/business)
-            //         은 서버 TOSS_TIERS 키 (main.py) 와 정확히 일치.
-            //   비로그인 시: renderCheckoutPage (app.js) 첫 부분에서 getToken() 없으면
-            //         redirectToLogin() 자동 호출 (기존 next 부착 흐름 준수).
-            //   ★ 크레딧 지급은 조각4b (본 커밋 밖).
-            onclick: () => navigate(`/checkout?tier=${t.en.toLowerCase()}`),
-          }, "시작하기"),
-        ])),
-      ]),
-      // Spec D-Fix-40: 하단 부가 자료 (보험사 약관 톤 / 작게)
-      h("p", { class: "landing-pricing-note" },
-        "* 프로모션 종료 후 정가 전환 / 정기 할인 이벤트 진행 예정"),
-    ]),
-  ]));
+  // Spec D-Build-PricingPage-5a (2026-09-01) — 요금제 섹션을 renderPricingSection()
+  // 으로 순수 추출. 반환 HTMLElement 를 그대로 appendChild → 렌더 결과 100% 동일.
+  // TIERS · FEATURE_GROUPS · 이벤트 핸들러 (조각4a navigate) 모두 함수 안으로 이동.
+  // /pricing 라우트 · 진입점 링크는 5b · 5c (본 커밋 밖).
+  wrap.appendChild(renderPricingSection());
 
   // ── 푸터 CTA
   wrap.appendChild(h("section", { class: "landing-bottom-cta" }, [

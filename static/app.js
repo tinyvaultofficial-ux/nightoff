@@ -993,6 +993,12 @@ function renderPricingSection() {
       // Spec D-Fix-40: 하단 부가 자료 (보험사 약관 톤 / 작게)
       h("p", { class: "landing-pricing-note" },
         "* 프로모션 종료 후 정가 전환 / 정기 할인 이벤트 진행 예정"),
+      // Spec D-Build-PricingValidity (2026-09-01) — 토스 심사 요구:
+      // "구매자가 서비스 제공기간을 상품 페이지에서 인지 가능해야".
+      // 크레딧 유효기간 = 구매일로부터 12개월 (내부 정책 확정).
+      // 랜딩 + /pricing 두 곳 다 이 renderPricingSection 재사용 → 한 곳 add 로 양쪽 반영.
+      h("p", { class: "landing-pricing-note" },
+        "* 구매하신 크레딧은 구매일로부터 12개월간 유효합니다."),
     ]),
   ]);
 }

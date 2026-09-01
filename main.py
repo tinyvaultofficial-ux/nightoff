@@ -2529,6 +2529,15 @@ def spa_payment_fail():
     return HTMLResponse(_render_index())
 
 
+# Spec D-Build-PricingPage-5b (2026-09-01) — /pricing 독립 페이지 SPA 진입 라우트.
+# 요금제(3티어)를 랜딩 밖 독립 페이지로 접근 (로그인 사용자·심사관 모두 자연 진입).
+# app.js 의 renderPricingPage 가 처리 (renderPricingSection 재사용 · 단일 진실원).
+@app.get("/pricing")
+def spa_pricing():
+    """SPA — 요금제 독립 페이지 직접 URL 접근 허용. 클라이언트 라우터가 처리."""
+    return HTMLResponse(_render_index())
+
+
 # ---------- Models ----------
 class SettingsIn(BaseModel):
     api_key: Optional[str] = None

@@ -185,7 +185,10 @@ async function _parseErrorResponse(r) {
 const AUTH_TOKEN_KEY = "nightoff_jwt";
 // 인증 면제 페이지 — 미가입 방문자가 접근 가능 (랜딩 노출용 / + /landing 포함)
 // Spec D-Fix-22 Stage A: "/preview" 추가 — 비회원 둘러보기 모드.
-const AUTH_PUBLIC_PAGES = new Set(["/", "/landing", "/login.html", "/register.html", "/preview"]);
+// Spec D-Build-PricingPage-5b (2026-09-01) — /pricing 을 공개 페이지로 추가.
+// 요금제는 공개 정보 (심사관·잠재 고객이 로그인 없이 봐야 함).
+// "시작하기" 클릭 시에만 renderCheckoutPage 안에서 getToken() 검증 → 로그인 유도 (조각4a).
+const AUTH_PUBLIC_PAGES = new Set(["/", "/landing", "/pricing", "/login.html", "/register.html", "/preview"]);
 
 function getToken() { return localStorage.getItem(AUTH_TOKEN_KEY) || ""; }
 function clearToken() { localStorage.removeItem(AUTH_TOKEN_KEY); }
@@ -546,6 +549,9 @@ const routes = [
   { re: /^\/checkout$/, handler: renderCheckoutPage },
   { re: /^\/success$/,  handler: renderPaymentSuccessPage },
   { re: /^\/fail$/,     handler: renderPaymentFailPage },
+  // Spec D-Build-PricingPage-5b (2026-09-01) — 요금제 독립 페이지 라우트 (renderPricingSection 재사용).
+  //   로그인/비로그인 both 접근. 사이드바 진입점은 조각5c (본 커밋 밖).
+  { re: /^\/pricing$/,  handler: renderPricingPage },
 ];
 
 function navigate(path) {
@@ -975,6 +981,49 @@ function renderPricingSection() {
         "* 프로모션 종료 후 정가 전환 / 정기 할인 이벤트 진행 예정"),
     ]),
   ]);
+}
+
+
+// ============================================================
+// Spec D-Build-PricingPage-5b (2026-09-01) — 요금제 독립 페이지 (/pricing)
+// ============================================================
+// 랜딩(/landing) 안에도 요금제 있고, /pricing 은 그 섹션만 감싸 독립 페이지로.
+// ★ renderPricingSection 재사용 (조각5a) — TIERS/이벤트 핸들러 단일 진실원.
+// ★ 로그인/비로그인 both 접근 가능 (인증 체크 X — 요금제는 공개 정보).
+//   "시작하기" → /checkout?tier=X → 비로그인 시 renderCheckoutPage 첫 부분에서
+//   redirectToLogin 자동 (조각4a 흐름 그대로).
+// 진입점 링크는 조각5c (사이드바 or 헤더).
+function renderPricingPage() {
+  const root = document.getElementById("app-root");
+  if (!root) return;
+  root.innerHTML = "";
+  document.body.classList.remove("landing-fullscreen");
+
+  const authed = !!getToken();
+  // 상단 nav — 로고 홈 이동 + 우측 뒤로가기/대시보드
+  const nav = h("nav", { class: "landing-nav" }, [
+    h("div", { class: "landing-nav-inner" }, [
+      h("img", { class: "landing-logo", src: "/static/logo.png", alt: "NightOff",
+        role: "button", tabindex: "0", style: "cursor:pointer;",
+        onclick: () => navigate("/"),
+        onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } },
+      }),
+      h("button", {
+        class: "btn btn-ghost",
+        onclick: () => {
+          if (authed) navigate("/dashboard");
+          else navigate("/landing");
+        },
+      }, authed ? "← 대시보드" : "← 홈으로"),
+    ]),
+  ]);
+
+  // 페이지 조립: nav + 요금제 섹션 (renderPricingSection 재사용)
+  const wrap = h("div", { class: "landing-shell", id: "pricing-page-shell" }, [
+    nav,
+    renderPricingSection(),
+  ]);
+  root.appendChild(wrap);
 }
 
 

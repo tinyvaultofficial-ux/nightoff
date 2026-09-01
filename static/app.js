@@ -2062,10 +2062,27 @@ async function renderPaymentSuccessPage() {
     });
     if (res.status === "paid") {
       document.getElementById("success-title").textContent = "결제가 완료되었어요 ✅";
-      // ★ 조각3 은 크레딧 지급 없음 (조각4 예정). 심사·테스트용 문구.
+      // Spec D-Build-TossPayments-1e (조각4b) — 크레딧 자동 지급 후 문구.
+      //   res.granted_credits: 이번 호출에서 지급된 크레딧 수 (조각4b conditional UPDATE).
+      //   res.already: 이미 이전에 승인·지급된 주문 (idempotent 재요청).
+      //     · already && granted_credits>0 → "이전 지급 완료" 문구
+      //     · granted_credits>0 (신규 지급) → "N 크레딧 지급되었어요"
+      //     · granted_credits==0 (레이스 가드 or 서버 오류) → 승인만 표기, 크레딧 안내 없이
+      const gc = Number(res.granted_credits || 0);
+      const gcStr = gc.toLocaleString("ko-KR");
+      let creditLine;
+      if (gc > 0 && res.already) {
+        creditLine = `<br><strong style="color:#6B46E5">${gcStr} 크레딧이 이미 지급되었어요.</strong>`
+          + '<br><small style="color:#888">지금 바로 사용하실 수 있어요.</small>';
+      } else if (gc > 0) {
+        creditLine = `<br><strong style="color:#6B46E5">${gcStr} 크레딧이 지급되었어요 🎉</strong>`
+          + '<br><small style="color:#888">지금 바로 사용하실 수 있어요.</small>';
+      } else {
+        creditLine = '<br><small style="color:#888">※ 크레딧 지급 처리 중 문제가 있었어요. 관리자에게 문의해 주세요.</small>';
+      }
       document.getElementById("success-detail").innerHTML =
-        `주문 <code>${orderId}</code> · <strong>${amount.toLocaleString("ko-KR")}원</strong> 승인 완료 (테스트).`
-        + '<br><small style="color:#888">※ 현재는 결제 승인까지만 처리돼요. 크레딧 자동 지급은 곧 활성화됩니다.</small>';
+        `주문 <code>${orderId}</code> · <strong>${amount.toLocaleString("ko-KR")}원</strong> 승인 완료.`
+        + creditLine;
       document.getElementById("success-home-link").style.display = "";
     } else {
       document.getElementById("success-title").textContent = "결제 결과 확인 필요";

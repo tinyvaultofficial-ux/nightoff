@@ -9756,19 +9756,25 @@ def api_payment_confirm(
     body: TossConfirmIn,
     user: dict = Depends(get_current_user),
 ) -> dict:
-    """토스 결제승인 처리 — 서버 금액 검증 + 중복 방지 + 실제 승인 API.
+    """토스 결제승인 처리 — 서버 금액 검증 + 중복 방지 + 실제 승인 API + 크레딧 지급.
 
-    Spec D-Build-TossPayments-1b (조각2).
-    ★ users.credits 지급 X — 다음 조각에서 granted_credits 컬럼 채움.
+    Spec D-Build-TossPayments-1b (조각2) + 1e (조각4b — 크레딧 지급).
 
     검증 순서 (엄격):
       (a) orderId 조회, 없으면 404
       (b) 소유자 대조 (다른 사용자 주문 승인 차단)
-      (c) 이미 status=paid → idempotent (성공 재반환, 재처리 X)
+      (c) 이미 status=paid → idempotent (성공 재반환, 재처리 X, granted_credits 응답 포함)
       (d) 서버 amount 대조 (위변조 차단)
       (e) 토스 승인 API 호출
       (f) 응답 totalAmount 재검증
-      (g) status=paid 갱신 (payment_key, paid_at)
+      (g) ★ 원자적 status=paid + granted_credits 갱신 (조건부 UPDATE 로 중복지급 방지)
+      (h) ★ (g) 가 실제로 갱신했을 때만 users.credits += TOSS_TIERS[tier][credits]
+
+    ★★ 중복지급 방지 (조각4b 핵심):
+    - (g) UPDATE 는 WHERE order_id=? AND granted_credits=0 조건부 실행
+    - rowcount==1 일 때만 (h) users.credits 증가 → 원자성 확보
+    - concurrent 요청 두 개가 (a)~(f) 통과해도 conditional UPDATE 로 한 번만 성공
+    - payments.granted_credits > 0 자체가 지급 완료 표식 겸용 (재지급 방지)
     """
     payment_key = str(body.paymentKey or "").strip()
     order_id = str(body.orderId or "").strip()
@@ -9779,7 +9785,7 @@ def api_payment_confirm(
     # (a) orderId 조회
     with get_db() as db:
         row = db.execute(
-            "SELECT id, user_id, tier, amount, status FROM payments WHERE order_id=?",
+            "SELECT id, user_id, tier, amount, status, granted_credits FROM payments WHERE order_id=?",
             (order_id,),
         ).fetchone()
     if not row:
@@ -9792,10 +9798,17 @@ def api_payment_confirm(
                     order_id, row["user_id"], user["id"])
         raise HTTPException(403, "다른 사용자의 주문이에요.")
 
-    # (c) 이미 paid → idempotent (중복 승인 방지)
+    # (c) 이미 paid → idempotent (중복 승인 방지, granted_credits 포함 응답)
     if row["status"] == "paid":
-        log.info("[payment] confirm skip · 이미 승인됨 order=%s", order_id)
-        return {"ok": True, "status": "paid", "orderId": order_id, "already": True}
+        log.info("[payment] confirm skip · 이미 승인됨 order=%s (granted_credits=%s)",
+                 order_id, row["granted_credits"])
+        return {
+            "ok": True, "status": "paid", "orderId": order_id,
+            "amount": int(row["amount"]),
+            "tier": row["tier"],
+            "granted_credits": int(row["granted_credits"] or 0),
+            "already": True,
+        }
     if row["status"] == "failed":
         raise HTTPException(400, "이전에 실패한 주문이에요. 다시 결제해 주세요.")
 
@@ -9831,19 +9844,45 @@ def api_payment_confirm(
             db.execute("UPDATE payments SET status='failed' WHERE order_id=?", (order_id,))
         raise HTTPException(402, "결제 금액 검증에 실패했어요.")
 
-    # (g) status=paid 갱신 (★ users.credits 지급 없음 — 조각3)
+    # (g) ★ 원자적 status=paid + granted_credits 갱신 (중복지급 방지 · 조각4b 핵심)
+    #     조건부 UPDATE — granted_credits=0 일 때만 성공. concurrent 두 요청 중 하나만 통과.
+    #     rowcount==1 : 실제로 이번 호출이 지급 처리 → (h) 로 크레딧 증가
+    #     rowcount==0 : 이미 다른 호출이 처리 → 재지급 안 함
+    tier_key = row["tier"]
+    grant_amount = int(TOSS_TIERS.get(tier_key, {}).get("credits", 0))
+    granted_now = 0
     with get_db() as db:
-        db.execute(
+        cur = db.execute(
             "UPDATE payments SET status='paid', payment_key=?, "
-            "paid_at=datetime('now','localtime') WHERE order_id=?",
-            (payment_key, order_id),
+            "paid_at=datetime('now','localtime'), granted_credits=? "
+            "WHERE order_id=? AND granted_credits=0",
+            (payment_key, grant_amount, order_id),
         )
-    log.info("[payment] confirmed · order=%s amount=%d (★ users.credits 지급은 조각3)",
-             order_id, server_amount)
+        if cur.rowcount == 1:
+            # (h) ★ users.credits 증가 (같은 트랜잭션 안, 원자적)
+            db.execute(
+                "UPDATE users SET credits = credits + ? WHERE id=?",
+                (grant_amount, row["user_id"]),
+            )
+            granted_now = grant_amount
+            log.info("[payment] confirmed + granted · order=%s tier=%s amount=%d credits=+%d user=%s",
+                     order_id, tier_key, server_amount, grant_amount, row["user_id"])
+        else:
+            # rowcount==0 — 이미 다른 요청이 처리했거나 order_id 사라짐 (should not happen)
+            log.warning("[payment] confirm race guard · granted_credits 이미 채워짐 or row 없음 order=%s",
+                        order_id)
+            # 그래도 이미 paid 상태일 것 — 현재 상태 재조회 응답
+            row2 = db.execute(
+                "SELECT granted_credits FROM payments WHERE order_id=?", (order_id,)
+            ).fetchone()
+            if row2:
+                granted_now = int(row2["granted_credits"] or 0)
+
     return {
         "ok": True, "status": "paid",
         "orderId": order_id, "amount": server_amount,
-        "tier": row["tier"],
+        "tier": tier_key,
+        "granted_credits": granted_now,
     }
 
 

@@ -1190,7 +1190,14 @@ function renderLanding() {
         }, [
           h("button", {
             class: `btn ${t.best ? "btn-primary" : "btn-ghost"} pt-cta-btn`,
-            onclick: showSubscribeComingSoonModal,
+            // Spec D-Build-TossPayments-1d (조각4a) — 요금제 → /checkout 진입점 교체.
+            //   기존: showSubscribeComingSoonModal (문의 안내 모달) — 함수 자체는 L1849 에 보존.
+            //   신규: /checkout?tier=<t.en 소문자> 로 navigate. tier 값 (starter/pro/business)
+            //         은 서버 TOSS_TIERS 키 (main.py) 와 정확히 일치.
+            //   비로그인 시: renderCheckoutPage (app.js) 첫 부분에서 getToken() 없으면
+            //         redirectToLogin() 자동 호출 (기존 next 부착 흐름 준수).
+            //   ★ 크레딧 지급은 조각4b (본 커밋 밖).
+            onclick: () => navigate(`/checkout?tier=${t.en.toLowerCase()}`),
           }, "시작하기"),
         ])),
       ]),

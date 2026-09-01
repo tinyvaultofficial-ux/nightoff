@@ -3199,10 +3199,12 @@ async function renderDashboard() {
   const content = h("div", { class: "main-content" });
   main.appendChild(content);
 
-  // ── 최상단 (1): 히어로 배너 5 슬라이드 자동 롤링 (Spec 7 — 5/16)
-  content.appendChild(renderHero5Slides());
-
-  // ── 최상단 (2): NightOff 핵심 기능 5 카드 (Spec 6 — 옛 renderHeroBanner 영역 교체)
+  // Spec D-Build-DashboardRefresh-1 (2026-09-01) — 롤링 히어로 배너 제거.
+  //   기존 renderHero5Slides (5장 자동 롤링 · 4장 "곧 출시" 미출시 티저) 는
+  //   자리만 차지 + 실 사용자 가치 낮음 → 최상단에서 제거.
+  //   → renderCoreFeatures5 (핵심 기능 5카드) 가 자연스럽게 최상단으로 승격.
+  //   ★ 함수·상수·CSS·이미지는 별도 정리 조각에서 (호출 안 하면 무해).
+  // ── 최상단: NightOff 핵심 기능 5 카드
   content.appendChild(renderCoreFeatures5());
 
   // ── Stats 4개 영역 → 사이드바로 이동됨. 자리 = 업계 뉴스 가로 롤링 위젯.
@@ -3314,9 +3316,8 @@ async function renderGuestDashboard() {
   const content = h("div", { class: "main-content" });
   main.appendChild(content);
 
-  // 히어로 배너 5 슬라이드 (정적)
-  content.appendChild(renderHero5Slides());
-
+  // Spec D-Build-DashboardRefresh-1 (2026-09-01) — 롤링 히어로 배너 제거 (비회원 대시보드).
+  //   회원 대시보드와 동일 처리. renderCoreFeatures5 가 최상단 승격.
   // 핵심 기능 5 카드 (정적)
   content.appendChild(renderCoreFeatures5());
 

@@ -2,34 +2,40 @@
    NightOff Design System — "야근 OFF · 퇴근 동료" 토큰
    ============================================================ */
 :root {
-  /* ─── 배경 (따뜻한 화이트 — 노을 직전 거실 톤) ─── */
-  --bg:           #FAF8F5;   /* 화면 전체 — warm white */
-  --bg-2:         #F3EFE9;   /* 섹션 배경 — warm cream */
-  --bg-3:         #EBE5DC;   /* 비활성/구분 — warm beige */
-  --card:         #FFFFFF;   /* 카드 — pure white (대비) */
+  /* ─── 배경.
+     Spec Fix-RootConsolidation (2026-09-01): 이중 :root 통합 — v0 스코프 (L3735~,
+     4개월간 실효 지배) 값을 원 :root 에 정식 반영. 렌더 무변화가 원칙. */
+  --bg:           #FDFDFD;   /* v0 oklch(0.995 0 0) — 사이트 전체 배경, 실효값 */
+  --bg-2:         #FAFAFA;   /* v0 oklch(0.965 0 0) — 섹션 배경, 실효값 */
+  --bg-3:         #EBE5DC;   /* 비활성/구분 (v0 미정의, 원 값 유지) */
+  --card:         #FFFFFF;   /* 카드 — pure white (v0 미정의, 원 값 유지) */
 
   /* ─── 글자 4단계 ─── */
-  --fg-strong:    #1F1A14;   /* 헤드라인, 강조 (warm black) */
-  --fg:           #3C342B;   /* 본문 (warm slate) */
-  --fg-soft:      #6E6458;   /* 메타, 라벨 */
+  --fg-strong:    #1F1A14;   /* 헤드라인, 강조 (v0 미정의, 원 값 유지) */
+  --fg:           #252525;   /* v0 oklch(0.145 0 0) — Spec Fix-RootConsolidation 반영 */
+  --fg-soft:      #6E6458;   /* 메타, 라벨 (v0 미정의, 원 값 유지) */
   /* Spec D-Build-UIContrast-1 (2026-09-01) — WCAG AA 4.5:1 이상.
      기존 #A89E91 (2.64:1) 은 미달 → #7A7268 (4.74:1) 로 상향.
      --fg-soft (#6E6458, 5.79:1) 와 위계 유지 (1.05 차이, 여전히 "가장 흐림"). */
   --fg-muted:     #7A7268;   /* placeholder, 비활성, 힌트 (AA 4.74:1) */
-  /* 호환 alias (기존 코드) */
-  --fg-2:         #6E6458;
-  --muted:        #7A7268;
+  /* 호환 alias — Spec Fix-RootConsolidation (2026-09-01) 반영.
+     ── --fg-2: v0 실효값 (#6F6F6F) 로 반영. 원 값 (#6E6458) 대비 시각 무변화.
+     ── --muted: ★ v0 값 (#A8A8A8, 3.02:1 미달) 은 채택하지 않고 원 값 유지.
+        조각1 접근성 상향(--fg-muted #7A7268)이 v0 오버라이드로 무효화됐던
+        것을 이번 통합으로 함께 복구 (이 조각의 유일한 의도적 색 변경). */
+  --fg-2:         #6F6F6F;
+  --muted:        #7A7268;   /* 접근성 복구 — v0 A8A8A8 미달 채택 안 함 */
 
-  /* ─── 보더 ─── */
-  --border:       #E9E2D6;   /* warm light */
-  --border-strong:#D6CCB8;
-  --border-card:  rgba(0,0,0,0.04);   /* 카드용 미세 보더 */
+  /* ─── 보더 — Spec Fix-RootConsolidation (2026-09-01): v0 실효값 반영 */
+  --border:       #E5E5E5;   /* v0 oklch(0.92 0 0) */
+  --border-strong:#D4D4D4;   /* v0 */
+  --border-card:  rgba(0,0,0,0.04);   /* 카드용 미세 보더 (v0 미정의, 원 값 유지) */
 
-  /* ─── 메인 컬러 — 보라 (저녁 황혼색) ─── */
-  --primary:      #6B46E5;
-  --primary-hover:#5A38D1;
-  --primary-soft: #EDE7FF;
-  --primary-fg:   #FFFFFF;
+  /* ─── 메인 컬러 — Spec Fix-RootConsolidation (2026-09-01): v0 실효값 반영 */
+  --primary:      #7C3AED;   /* v0 oklch(0.55 0.22 285) */
+  --primary-hover:#6D28D9;   /* v0 */
+  --primary-soft: #F3EFFF;   /* v0 */
+  --primary-fg:   #FFFFFF;   /* (v0 미정의, 원 값 유지) */
 
   /* ─── 노을 액센트 (퇴근 시간 / 마감 임박) ─── */
   --sunset:       #FF8E5C;   /* 노을 오렌지 */
@@ -42,48 +48,37 @@
   --gold:         #FFCB77;   /* 황금시간 / 마감 임박 */
   --gold-soft:    #FFF3DD;
 
-  /* ─── 보조 (의미별) ─── */
-  /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
-  --accent:       #F4F0FF;
-  /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
-  --accent-fg:    #5A38D1;
-  /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
-  --secondary:    #F3F0FC;
-  /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
-  --secondary-fg: #4E31BF;
-  --success:      #2D9D78;   /* 따뜻한 민트 */
-  --success-soft: #D6F0E6;
-  --warning:      #E8843D;   /* 노을빛 */
-  --warning-soft: #FFE8D6;
-  --danger:       #D9534A;   /* 따뜻한 적 */
-  --danger-soft:  #FBE0DC;
+  /* ─── 보조 (의미별) — Spec Fix-RootConsolidation (2026-09-01): v0 실효값 반영.
+     Spec A (5/18) 폐기 표시는 v0 스코프에서 재사용되므로 실효 참조 있음 → 정리. */
+  --accent:       #F5F0FF;   /* v0 */
+  --accent-fg:    #5B21B6;   /* v0 */
+  --secondary:    #F4F0FC;   /* v0 */
+  --secondary-fg: #4E31BF;   /* (v0 미정의, 원 값 유지) */
+  /* Spec Fix-RootConsolidation (2026-09-01): v0 실효값 반영. -soft 계열은
+     v0 미정의 → 원 값 유지 (실효 무변화). */
+  --success:      #16A34A;   /* v0 oklch(0.62 0.17 145) */
+  --success-soft: #D6F0E6;   /* (v0 미정의, 원 값 유지) */
+  --warning:      #D97706;   /* v0 oklch(0.78 0.14 70) */
+  --warning-soft: #FFE8D6;   /* (v0 미정의, 원 값 유지) */
+  --danger:       #DC2626;   /* v0 oklch(0.6 0.22 25) */
+  --danger-soft:  #FBE0DC;   /* (v0 미정의, 원 값 유지) */
 
-  /* ─── 라운드 (의미별) ─── */
-  /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
-  --radius-xs:    6px;       /* 배지, 작은 버튼 */
-  --radius-sm:    10px;      /* 인풋, 칩 */
-  --radius:       14px;      /* 카드 (메인) */
-  --radius-lg:    20px;      /* 모달, 큰 배너 */
-  /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
-  --radius-xl:    24px;
+  /* ─── 라운드 (의미별) — Spec Fix-RootConsolidation (2026-09-01):
+     v0 실효값 반영 + 참조 0 폐기 정리.
+     ── --radius-sm/--radius/--radius-lg: v0 실효 0.5rem/0.75rem/1rem 을 px 통일 표기.
+        원 값 (10/14/20) 은 v0 오버라이드로 4개월간 실효 없었음 → 실효값 채택.
+     ── --radius-xs (6px), --radius-xl (v0 1.25rem/원 24px) 삭제 — var 참조 0 재확인. */
+  --radius-sm:    8px;       /* 인풋, 칩 */
+  --radius:       12px;      /* 카드 (메인) */
+  --radius-lg:    16px;      /* 모달, 큰 배너 */
   --radius-pill:  999px;
 
-  /* ─── 그림자 (다층 — 종이 위 종이 느낌) ─── */
-  --shadow-sm:
-    0 0 0 1px var(--border-card),
-    0 1px 2px rgba(0,0,0,0.04);
-  --shadow:
-    0 0 0 1px var(--border-card),
-    0 1px 3px rgba(0,0,0,0.04),
-    0 4px 12px -4px rgba(0,0,0,0.05);
-  --shadow-md:
-    0 0 0 1px var(--border-card),
-    0 2px 6px rgba(0,0,0,0.04),
-    0 12px 28px -8px rgba(0,0,0,0.07);
-  --shadow-lg:
-    0 0 0 1px var(--border-card),
-    0 4px 12px rgba(0,0,0,0.05),
-    0 24px 48px -16px rgba(0,0,0,0.12);
+  /* ─── 그림자 — Spec Fix-RootConsolidation (2026-09-01): v0 shadcn 스택 반영.
+     원 "종이 위 종이" 스택은 v0 오버라이드로 4개월간 실효 없었음 → 실효값 채택. */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+  --shadow:    0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.05);
+  --shadow-md: 0 6px 14px -4px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.04);
+  --shadow-lg: 0 16px 32px -10px rgb(0 0 0 / 0.10), 0 6px 10px -4px rgb(0 0 0 / 0.05);
   /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
   --shadow-primary: 0 12px 32px -12px rgba(107, 70, 229, 0.32);
   /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
@@ -3725,41 +3720,16 @@ body, .msg-bubble, .card, .strengths-intro,
 }
 
 /* ============================================================
-   v0 디자인 토큰 매핑 + 새 섹션 스타일 (강점/발주처들여다보기/푸터/체크리스트)
+   v0 기반 컴포넌트 (강점/발주처들여다보기/푸터/체크리스트 등)
+   ── Spec Fix-RootConsolidation (2026-09-01): 이전에 이 섹션 시작부에 있던
+      "v0 디자인 토큰 적용" :root 블록 (색 19 + radius 4 + shadow 4 = 총 27개
+      변수) 은 원 :root (L4~) 를 완전 오버라이드했었음 (같은 selector · 나중 정의 승).
+   ── 4개월간 실효 지배하던 그 값들을 원 :root 에 정식 반영하면서 이 :root 블록은 제거.
+   ── 예외 --muted: v0 #A8A8A8 (대비 3.02, WCAG AA 미달) 은 채택 안 함 →
+      원 값 #7A7268 (AA 4.74) 로 유지. 접근성 회귀 방지.
+   ── 예외 --radius-xl: var 참조 0 재확인 후 삭제.
+   ── 아래 v0 기반 컴포넌트 CSS (.card, .btn hover, .btn-tiny, ...) 는 그대로 유지.
    ============================================================ */
-
-/* v0 디자인 토큰 적용 — Next.js shadcn 의 핵심 색·라운드·그림자만 추출 */
-:root {
-  /* 색 */
-  --primary: #7C3AED;          /* v0 oklch(0.55 0.22 285) */
-  --primary-hover: #6D28D9;
-  --primary-soft: #F3EFFF;
-  --accent: #F5F0FF;
-  --accent-fg: #5B21B6;
-  --secondary: #F4F0FC;
-  --border: #E5E5E5;           /* v0 oklch(0.92 0 0) */
-  --border-strong: #D4D4D4;
-  --bg-2: #FAFAFA;             /* v0 oklch(0.965 0 0) — 더 라이트 */
-  --bg: #FDFDFD;               /* v0 oklch(0.995 0 0) */
-  --fg: #252525;               /* v0 oklch(0.145 0 0) — 살짝 부드럽게 */
-  --fg-2: #6F6F6F;             /* v0 oklch(0.45 0 0) */
-  --muted: #A8A8A8;
-  --success: #16A34A;          /* v0 oklch(0.62 0.17 145) */
-  --warning: #D97706;          /* v0 oklch(0.78 0.14 70) */
-  --danger:  #DC2626;          /* v0 oklch(0.6 0.22 25) */
-
-  /* radius — v0 default 0.75rem */
-  --radius-sm: 0.5rem;
-  --radius:    0.75rem;        /* card / button 기본 */
-  --radius-lg: 1rem;
-  --radius-xl: 1.25rem;
-
-  /* 그림자 — v0 의 shadcn 류 부드러운 스택 */
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.04);
-  --shadow:    0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.05);
-  --shadow-md: 0 6px 14px -4px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.04);
-  --shadow-lg: 0 16px 32px -10px rgb(0 0 0 / 0.10), 0 6px 10px -4px rgb(0 0 0 / 0.05);
-}
 
 /* v0 카드 미세 튜닝 — 라운드·보더 일관성 */
 .card {

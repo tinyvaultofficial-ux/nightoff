@@ -1012,28 +1012,44 @@ function renderPricingPage() {
   if (!root) return;
   root.innerHTML = "";
   document.body.classList.remove("landing-fullscreen");
+  // Spec D-Build-PricingPage-5b-fix (2026-09-01) — 좌측 쏠림 수정.
+  //   #app-root 는 기본 .app-shell (display:flex; min-width:1280px) 이라 자식이
+  //   flex-item 으로 좌측 뭉침. renderLanding 은 landing-active 클래스로 flex 해제
+  //   (#app-root.landing-active { display:block; min-width:auto }) → 중앙정렬 정상.
+  //   /pricing 도 동일 클래스 붙여 랜딩과 같은 컨테이너 규칙 재사용.
+  root.classList.add("landing-active");
 
   const authed = !!getToken();
+  // 뒤로가기 버튼 공통 핸들러 — landing-active 제거 후 이동 (다른 페이지 잔존 방지).
+  const goBack = () => {
+    root.classList.remove("landing-active");
+    if (authed) navigate("/dashboard");
+    else navigate("/landing");
+  };
+  const goHome = () => {
+    root.classList.remove("landing-active");
+    navigate("/");
+  };
+
   // 상단 nav — 로고 홈 이동 + 우측 뒤로가기/대시보드
   const nav = h("nav", { class: "landing-nav" }, [
     h("div", { class: "landing-nav-inner" }, [
       h("img", { class: "landing-logo", src: "/static/logo.png", alt: "NightOff",
         role: "button", tabindex: "0", style: "cursor:pointer;",
-        onclick: () => navigate("/"),
-        onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } },
+        onclick: goHome,
+        onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goHome(); } },
       }),
       h("button", {
         class: "btn btn-ghost",
-        onclick: () => {
-          if (authed) navigate("/dashboard");
-          else navigate("/landing");
-        },
+        onclick: goBack,
       }, authed ? "← 대시보드" : "← 홈으로"),
     ]),
   ]);
 
   // 페이지 조립: nav + 요금제 섹션 (renderPricingSection 재사용)
-  const wrap = h("div", { class: "landing-shell", id: "pricing-page-shell" }, [
+  // ★ wrapper class = "landing-wrap" (기존 CSS 재사용 · min-height 100vh + flex column
+  //   + 그라디언트 배경 — renderLanding 과 동일 레이아웃 규칙, 중앙정렬 자연 확보).
+  const wrap = h("div", { class: "landing-wrap", id: "pricing-page-wrap" }, [
     nav,
     renderPricingSection(),
   ]);

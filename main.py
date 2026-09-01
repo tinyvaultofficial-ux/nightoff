@@ -616,6 +616,33 @@ def init_db() -> None:
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             );
             CREATE INDEX IF NOT EXISTS idx_oc_docs_user ON our_company_docs(user_id, created_at DESC);
+
+            -- ───────── 토스페이먼츠 결제 이력 ─────────
+            -- Spec D-Build-TossPayments-1a (심사 최소흐름 · 조각1: 스키마만)
+            -- 흐름: 프론트 결제위젯 → 서버 orders 생성 (status='pending') →
+            --       토스 승인 API 콜백 → status='paid' 또는 'failed' 로 갱신.
+            -- granted_credits: 2단계에서 users.credits 지급 로직 연결 시 채움
+            --                  (현재는 지급 트리거 없음 → 항상 0).
+            -- payment_key   : 토스 승인 응답의 paymentKey (승인 성공 후 채움).
+            --                 미승인 상태 = '' (기존 verified_at 패턴).
+            -- paid_at       : 승인 완료 시각 (미승인 = '').
+            -- order_id      : 토스 orderId (UNIQUE — 중복 승인 방지).
+            -- tier          : 'starter' / 'pro' / 'business' (요금제 3티어).
+            -- amount        : 결제 금액 (원, KRW).
+            CREATE TABLE IF NOT EXISTS payments (
+                id               TEXT PRIMARY KEY,
+                user_id          TEXT NOT NULL,
+                order_id         TEXT UNIQUE NOT NULL,
+                tier             TEXT NOT NULL,
+                amount           INTEGER NOT NULL,
+                payment_key      TEXT DEFAULT '',
+                status           TEXT DEFAULT 'pending',
+                granted_credits  INTEGER DEFAULT 0,
+                created_at       TEXT DEFAULT (datetime('now','localtime')),
+                paid_at          TEXT DEFAULT '',
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id, created_at DESC);
         """)
 
         # 구버전 competitors 테이블 흔적 제거 (있으면)
@@ -2478,6 +2505,27 @@ def spa_dashboard():
 @app.get("/landing")
 def spa_landing():
     """SPA — 랜딩 직접 URL 접근 허용. 클라이언트 라우터가 처리."""
+    return HTMLResponse(_render_index())
+
+
+# Spec D-Build-TossPayments-1c (조각3) — 결제 3페이지 SPA 진입 라우트.
+# ★ 토스가 /success · /fail 로 리다이렉트 → 서버가 index.html 반환 필수.
+# app.js 의 renderCheckoutPage / renderPaymentSuccessPage / renderPaymentFailPage 가 처리.
+@app.get("/checkout")
+def spa_checkout():
+    """SPA — 결제 주문서 (요금제 선택 후 위젯 렌더). 클라이언트 라우터가 처리."""
+    return HTMLResponse(_render_index())
+
+
+@app.get("/success")
+def spa_payment_success():
+    """SPA — 토스 결제 성공 리다이렉트 (?paymentKey&orderId&amount). 클라이언트 라우터가 처리."""
+    return HTMLResponse(_render_index())
+
+
+@app.get("/fail")
+def spa_payment_fail():
+    """SPA — 토스 결제 실패 리다이렉트 (?code&message). 클라이언트 라우터가 처리."""
     return HTMLResponse(_render_index())
 
 
@@ -9656,6 +9704,288 @@ def _shutdown_scheduler() -> None:
         except Exception as e:
             log.warning("[scheduler] shutdown 중 오류 (무시): %s", e)
         _SCHEDULER = None
+
+
+# ============================================================
+# Spec D-Build-TossPayments-1b (조각2) — 서버 결제 엔드포인트 + 키 배선
+# ============================================================
+# 조각1 (da1947b) payments 테이블 위에 서버 결제 로직 add-only.
+# ★ 이 조각은 status 만 갱신 · users.credits 지급 X (2단계 예정).
+# ★ 프론트 (/checkout · /success · /fail) 는 다음 조각 (3).
+#
+# 서버 티어 단일 진실원 — 프론트 (static/app.js:1099~1108) 런칭 특가와 일치 필수.
+#   스타터  · 프로모션 31만원 · 정가 36만원 · 14,000 크레딧
+#   프로    · 프로모션 64만원 · 정가 85만원 · 30,000 크레딧
+#   비즈니스· 프로모션 132만원· 정가 165만원· 62,000 크레딧
+# ★ 정가 아니라 현재 노출 중인 런칭 특가(promo) 적용 (app.js:1122 "🎉 공식 런칭 기념").
+# ★ credits 값 (14000/30000/62000) 은 다음 조각(users.credits 지급) 에서 사용.
+TOSS_TIERS = {
+    "starter":  {"amount":  310000, "credits": 14000, "label": "스타터"},
+    "pro":      {"amount":  640000, "credits": 30000, "label": "프로"},
+    "business": {"amount": 1320000, "credits": 62000, "label": "비즈니스"},
+}
+
+# 토스 키 (env-first · ANTHROPIC_API_KEY / RESEND_API_KEY 패턴 그대로).
+# ★ CLIENT_KEY 는 프론트 노출 OK (public). SECRET_KEY 는 서버 전용 (절대 노출 X).
+TOSS_CLIENT_KEY = os.environ.get("TOSS_CLIENT_KEY", "").strip()
+TOSS_SECRET_KEY = os.environ.get("TOSS_SECRET_KEY", "").strip()
+if TOSS_CLIENT_KEY:
+    _ck_tail = TOSS_CLIENT_KEY[-4:] if len(TOSS_CLIENT_KEY) >= 4 else "****"
+    log.info("TOSS_CLIENT_KEY source = ENV · ···%s", _ck_tail)
+else:
+    log.warning("TOSS_CLIENT_KEY 미설정 — 결제위젯 비활성 (graceful skip)")
+if TOSS_SECRET_KEY:
+    _sk_tail = TOSS_SECRET_KEY[-4:] if len(TOSS_SECRET_KEY) >= 4 else "****"
+    log.info("TOSS_SECRET_KEY source = ENV · ···%s", _sk_tail)
+else:
+    log.warning("TOSS_SECRET_KEY 미설정 — 결제승인 비활성 (graceful skip)")
+
+TOSS_CONFIRM_URL = "https://api.tosspayments.com/v1/payments/confirm"
+TOSS_CONFIRM_TIMEOUT_SEC = 15
+
+
+class TossOrderIn(BaseModel):
+    """POST /api/payment/orders 입력 — tier 만 받음 (★ amount 안 받음)."""
+    tier: str  # starter / pro / business
+
+
+class TossConfirmIn(BaseModel):
+    """POST /api/payment/confirm 입력 — 토스 성공 리다이렉트가 준 값."""
+    paymentKey: str
+    orderId: str
+    amount: int
+
+
+def _generate_toss_order_id(user_id: str) -> str:
+    """토스 orderId — 6~64자 유니크. 형식: nightoff_{user_prefix}_{ts}_{rand}.
+
+    토스 spec: 6~64자, 영문/숫자/-/_. UNIQUE 는 payments.order_id CONSTRAINT
+    로 DB 층에서 보장.
+    """
+    import time as _time
+    import secrets as _secrets
+    ts = int(_time.time() * 1000)  # ms
+    rand = _secrets.token_urlsafe(6).replace("-", "").replace("_", "")[:6]
+    user_prefix = str(user_id).replace("-", "").replace("_", "")[:12]
+    order_id = f"nightoff_{user_prefix}_{ts}_{rand}"
+    return order_id[:64]
+
+
+def _call_toss_confirm(payment_key: str, order_id: str, amount: int) -> tuple:
+    """토스 결제승인 API 호출. (성공여부, 응답JSON, 에러설명) 반환.
+
+    ★ 모킹 훅 — 환경변수 TOSS_MOCK_CONFIRM=1 이면 실제 호출 대신 모킹 응답 반환
+    (단위테스트/심사용 · 프로덕션에서는 반드시 unset).
+    ★ 10분 만료 등 토스 에러는 message 필드에 담겨 옴 → confirm 엔드포인트에서
+    문구 판별.
+    """
+    if os.environ.get("TOSS_MOCK_CONFIRM", "") == "1":
+        return True, {
+            "paymentKey": payment_key, "orderId": order_id,
+            "totalAmount": amount, "status": "DONE",
+            "_mock": True,
+        }, ""
+    if not TOSS_SECRET_KEY:
+        return False, {}, "TOSS_SECRET_KEY 미설정"
+    try:
+        import urllib.request as _urlr
+        import urllib.error as _urle
+        import base64 as _b64
+        auth = _b64.b64encode(f"{TOSS_SECRET_KEY}:".encode()).decode()
+        payload = json.dumps({
+            "paymentKey": payment_key,
+            "orderId": order_id,
+            "amount": amount,
+        }).encode()
+        req = _urlr.Request(
+            TOSS_CONFIRM_URL, data=payload, method="POST",
+            headers={
+                "Authorization": f"Basic {auth}",
+                "Content-Type": "application/json",
+            },
+        )
+        with _urlr.urlopen(req, timeout=TOSS_CONFIRM_TIMEOUT_SEC) as resp:
+            body = json.loads(resp.read().decode())
+        return True, body, ""
+    except _urle.HTTPError as e:
+        try:
+            body = json.loads(e.read().decode())
+            msg = body.get("message") or body.get("code") or str(e)
+        except Exception:
+            body, msg = {}, str(e)
+        return False, body, msg
+    except Exception as e:
+        return False, {}, f"{type(e).__name__}: {e}"
+
+
+@app.post("/api/payment/orders")
+def api_payment_orders_create(
+    body: TossOrderIn,
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """결제 주문 생성 (pending) — 서버가 금액 확정. 프론트 amount 안 믿음.
+
+    Spec D-Build-TossPayments-1b (조각2).
+    로그인 필수 (Depends(get_current_user) 기존 미들웨어).
+    """
+    tier = str(body.tier or "").strip().lower()
+    if tier not in TOSS_TIERS:
+        raise HTTPException(400, f"알 수 없는 요금제예요: {body.tier}")
+    conf = TOSS_TIERS[tier]
+    amount = int(conf["amount"])   # ★ 서버 확정 금액
+    order_id = _generate_toss_order_id(user["id"])
+    with get_db() as db:
+        db.execute(
+            "INSERT INTO payments(id, user_id, order_id, tier, amount, status) "
+            "VALUES(?, ?, ?, ?, ?, 'pending')",
+            (str(uuid.uuid4()), user["id"], order_id, tier, amount),
+        )
+    log.info("[payment] order created · user=%s tier=%s amount=%d order_id=%s",
+             user["id"], tier, amount, order_id)
+    return {
+        "orderId": order_id,
+        "amount": amount,
+        "tier": tier,
+        "tierLabel": conf["label"],
+        "clientKey": TOSS_CLIENT_KEY,      # 프론트 위젯용 (public)
+        "customerName": user.get("nickname") or user.get("email") or "고객",
+        "orderName": f"NightOff {conf['label']} 요금제",
+    }
+
+
+@app.post("/api/payment/confirm")
+def api_payment_confirm(
+    body: TossConfirmIn,
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """토스 결제승인 처리 — 서버 금액 검증 + 중복 방지 + 실제 승인 API + 크레딧 지급.
+
+    Spec D-Build-TossPayments-1b (조각2) + 1e (조각4b — 크레딧 지급).
+
+    검증 순서 (엄격):
+      (a) orderId 조회, 없으면 404
+      (b) 소유자 대조 (다른 사용자 주문 승인 차단)
+      (c) 이미 status=paid → idempotent (성공 재반환, 재처리 X, granted_credits 응답 포함)
+      (d) 서버 amount 대조 (위변조 차단)
+      (e) 토스 승인 API 호출
+      (f) 응답 totalAmount 재검증
+      (g) ★ 원자적 status=paid + granted_credits 갱신 (조건부 UPDATE 로 중복지급 방지)
+      (h) ★ (g) 가 실제로 갱신했을 때만 users.credits += TOSS_TIERS[tier][credits]
+
+    ★★ 중복지급 방지 (조각4b 핵심):
+    - (g) UPDATE 는 WHERE order_id=? AND granted_credits=0 조건부 실행
+    - rowcount==1 일 때만 (h) users.credits 증가 → 원자성 확보
+    - concurrent 요청 두 개가 (a)~(f) 통과해도 conditional UPDATE 로 한 번만 성공
+    - payments.granted_credits > 0 자체가 지급 완료 표식 겸용 (재지급 방지)
+    """
+    payment_key = str(body.paymentKey or "").strip()
+    order_id = str(body.orderId or "").strip()
+    frontend_amount = int(body.amount)
+    if not payment_key or not order_id:
+        raise HTTPException(400, "결제 정보가 누락되었어요.")
+
+    # (a) orderId 조회
+    with get_db() as db:
+        row = db.execute(
+            "SELECT id, user_id, tier, amount, status, granted_credits FROM payments WHERE order_id=?",
+            (order_id,),
+        ).fetchone()
+    if not row:
+        log.warning("[payment] confirm · orderId 없음: %s", order_id)
+        raise HTTPException(404, "존재하지 않는 주문이에요.")
+
+    # (b) 소유자 대조 — 다른 사용자 주문 승인 차단
+    if row["user_id"] != user["id"]:
+        log.warning("[payment] confirm · 소유자 불일치 order=%s (owner=%s, current=%s)",
+                    order_id, row["user_id"], user["id"])
+        raise HTTPException(403, "다른 사용자의 주문이에요.")
+
+    # (c) 이미 paid → idempotent (중복 승인 방지, granted_credits 포함 응답)
+    if row["status"] == "paid":
+        log.info("[payment] confirm skip · 이미 승인됨 order=%s (granted_credits=%s)",
+                 order_id, row["granted_credits"])
+        return {
+            "ok": True, "status": "paid", "orderId": order_id,
+            "amount": int(row["amount"]),
+            "tier": row["tier"],
+            "granted_credits": int(row["granted_credits"] or 0),
+            "already": True,
+        }
+    if row["status"] == "failed":
+        raise HTTPException(400, "이전에 실패한 주문이에요. 다시 결제해 주세요.")
+
+    # (d) 서버 amount 대조 — 위변조 차단
+    server_amount = int(row["amount"])
+    if frontend_amount != server_amount:
+        log.warning("[payment] confirm · 금액 위변조 감지 order=%s server=%d client=%d",
+                    order_id, server_amount, frontend_amount)
+        with get_db() as db:
+            db.execute("UPDATE payments SET status='failed' WHERE order_id=?", (order_id,))
+        raise HTTPException(400, "결제 금액이 일치하지 않아요.")
+
+    # (e) 토스 승인 API
+    ok, resp, err = _call_toss_confirm(payment_key, order_id, server_amount)
+    if not ok:
+        # 10분 만료 등 명시 안내
+        err_lower = (err or "").lower()
+        if "expired" in err_lower or "만료" in (err or "") or "10분" in (err or "") or "not_found_payment" in err_lower:
+            msg = "결제 유효시간(10분)이 지났거나 결제 정보를 찾을 수 없어요. 다시 시도해 주세요."
+        else:
+            msg = f"결제 승인에 실패했어요: {err}"
+        log.warning("[payment] toss confirm 실패 order=%s err=%s", order_id, err)
+        with get_db() as db:
+            db.execute("UPDATE payments SET status='failed' WHERE order_id=?", (order_id,))
+        raise HTTPException(402, msg)
+
+    # (f) 응답 totalAmount 재검증 (토스가 다른 금액 반환하는 이상 케이스 방어)
+    resp_amount = int(resp.get("totalAmount", 0) or 0)
+    if resp_amount != server_amount:
+        log.warning("[payment] toss 응답 금액 불일치 order=%s server=%d resp=%d",
+                    order_id, server_amount, resp_amount)
+        with get_db() as db:
+            db.execute("UPDATE payments SET status='failed' WHERE order_id=?", (order_id,))
+        raise HTTPException(402, "결제 금액 검증에 실패했어요.")
+
+    # (g) ★ 원자적 status=paid + granted_credits 갱신 (중복지급 방지 · 조각4b 핵심)
+    #     조건부 UPDATE — granted_credits=0 일 때만 성공. concurrent 두 요청 중 하나만 통과.
+    #     rowcount==1 : 실제로 이번 호출이 지급 처리 → (h) 로 크레딧 증가
+    #     rowcount==0 : 이미 다른 호출이 처리 → 재지급 안 함
+    tier_key = row["tier"]
+    grant_amount = int(TOSS_TIERS.get(tier_key, {}).get("credits", 0))
+    granted_now = 0
+    with get_db() as db:
+        cur = db.execute(
+            "UPDATE payments SET status='paid', payment_key=?, "
+            "paid_at=datetime('now','localtime'), granted_credits=? "
+            "WHERE order_id=? AND granted_credits=0",
+            (payment_key, grant_amount, order_id),
+        )
+        if cur.rowcount == 1:
+            # (h) ★ users.credits 증가 (같은 트랜잭션 안, 원자적)
+            db.execute(
+                "UPDATE users SET credits = credits + ? WHERE id=?",
+                (grant_amount, row["user_id"]),
+            )
+            granted_now = grant_amount
+            log.info("[payment] confirmed + granted · order=%s tier=%s amount=%d credits=+%d user=%s",
+                     order_id, tier_key, server_amount, grant_amount, row["user_id"])
+        else:
+            # rowcount==0 — 이미 다른 요청이 처리했거나 order_id 사라짐 (should not happen)
+            log.warning("[payment] confirm race guard · granted_credits 이미 채워짐 or row 없음 order=%s",
+                        order_id)
+            # 그래도 이미 paid 상태일 것 — 현재 상태 재조회 응답
+            row2 = db.execute(
+                "SELECT granted_credits FROM payments WHERE order_id=?", (order_id,)
+            ).fetchone()
+            if row2:
+                granted_now = int(row2["granted_credits"] or 0)
+
+    return {
+        "ok": True, "status": "paid",
+        "orderId": order_id, "amount": server_amount,
+        "tier": tier_key,
+        "granted_credits": granted_now,
+    }
 
 
 if __name__ == "__main__":

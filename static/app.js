@@ -541,6 +541,11 @@ const routes = [
   { re: /^\/client\/([^/]+)\/chat\/([^/]+)$/, handler: (m) => renderChat(m[1], m[2]) },
   { re: /^\/client\/([^/]+)\/submission-docs$/, handler: (m) => renderClientSubmissionDocs(m[1]) },
   { re: /^\/client\/([^/]+)$/, handler: (m) => renderClientDetail(m[1]) },
+  // Spec D-Build-TossPayments-1c (조각3) — 결제 프론트 3페이지 (add-only).
+  //   ★ 진입점(요금제 버튼) 교체·크레딧 지급은 조각4. 지금은 URL 직접 접근 테스트용.
+  { re: /^\/checkout$/, handler: renderCheckoutPage },
+  { re: /^\/success$/,  handler: renderPaymentSuccessPage },
+  { re: /^\/fail$/,     handler: renderPaymentFailPage },
 ];
 
 function navigate(path) {
@@ -1185,7 +1190,14 @@ function renderLanding() {
         }, [
           h("button", {
             class: `btn ${t.best ? "btn-primary" : "btn-ghost"} pt-cta-btn`,
-            onclick: showSubscribeComingSoonModal,
+            // Spec D-Build-TossPayments-1d (조각4a) — 요금제 → /checkout 진입점 교체.
+            //   기존: showSubscribeComingSoonModal (문의 안내 모달) — 함수 자체는 L1849 에 보존.
+            //   신규: /checkout?tier=<t.en 소문자> 로 navigate. tier 값 (starter/pro/business)
+            //         은 서버 TOSS_TIERS 키 (main.py) 와 정확히 일치.
+            //   비로그인 시: renderCheckoutPage (app.js) 첫 부분에서 getToken() 없으면
+            //         redirectToLogin() 자동 호출 (기존 next 부착 흐름 준수).
+            //   ★ 크레딧 지급은 조각4b (본 커밋 밖).
+            onclick: () => navigate(`/checkout?tier=${t.en.toLowerCase()}`),
           }, "시작하기"),
         ])),
       ]),
@@ -1867,6 +1879,243 @@ function showSubscribeComingSoonModal() {
   ]));
   backdrop.appendChild(modal);
   document.body.appendChild(backdrop);
+}
+
+
+// ============================================================
+// Spec D-Build-TossPayments-1c (조각3) — 결제 프론트 3페이지
+// ============================================================
+// /checkout · /success · /fail — 토스 결제위젯 v2 standard SDK 사용.
+// ★ 진입점(요금제 버튼) 교체는 조각4 — 지금은 URL 직접 접근 테스트용.
+// ★ users.credits 지급 로직 없음 (조각4).
+// ★ 서버 API: /api/payment/orders (pending 생성) · /api/payment/confirm (승인)
+
+async function renderCheckoutPage() {
+  const root = document.getElementById("app-root");
+  root.innerHTML = "";
+  document.body.classList.remove("landing-fullscreen");
+
+  // 로그인 필수 (기존 redirectToLogin 재사용, next= 자동 부착)
+  if (!getToken()) {
+    toast("결제는 로그인 후 이용할 수 있어요.", "", 2500);
+    redirectToLogin();
+    return;
+  }
+
+  // ?tier=starter|pro|business
+  const tier = (new URLSearchParams(location.search).get("tier") || "").toLowerCase();
+  const TIER_LABELS = { starter: "스타터", pro: "프로", business: "비즈니스" };
+  if (!TIER_LABELS[tier]) {
+    root.appendChild(h("div", { class: "checkout-page checkout-error",
+      style: "max-width:600px;margin:60px auto;padding:32px;text-align:center;" }, [
+      h("h1", { style: "margin-bottom:12px;" }, "잘못된 접근이에요"),
+      h("p", { class: "muted", style: "margin-bottom:24px;" },
+        "요금제 정보가 없어요. 요금제 선택으로 돌아가 주세요."),
+      h("a", { href: "/landing", class: "btn btn-primary" }, "요금제 보러 가기"),
+    ]));
+    return;
+  }
+
+  // 페이지 뼈대
+  const container = h("div", { class: "checkout-page",
+    style: "max-width:720px;margin:40px auto;padding:24px;" }, [
+    h("div", { class: "checkout-header",
+      style: "text-align:center;margin-bottom:24px;" }, [
+      h("h1", { style: "margin:0 0 8px;" }, "결제하기"),
+      h("div", { id: "checkout-tier-summary", class: "muted",
+        style: "font-size:15px;" }, "주문 정보 준비 중…"),
+    ]),
+    h("div", { class: "checkout-body" }, [
+      h("div", { id: "payment-method", class: "toss-widget-container",
+        style: "margin-bottom:16px;" }),
+      h("div", { id: "agreement", class: "toss-widget-container",
+        style: "margin-bottom:24px;" }),
+      h("div", { class: "checkout-cta",
+        style: "display:flex;flex-direction:column;gap:12px;align-items:center;" }, [
+        h("button", { id: "checkout-pay-btn", class: "btn btn-primary",
+          disabled: "true", style: "min-width:280px;" }, "결제 준비 중…"),
+        h("a", { href: "/landing", class: "checkout-back-link muted small" },
+          "취소하고 요금제로 돌아가기"),
+      ]),
+      h("div", { class: "checkout-notice small muted",
+        style: "text-align:center;margin-top:16px;" },
+        "테스트 환경에서는 실제 결제가 발생하지 않아요. (심사·검증용)"),
+    ]),
+  ]);
+  root.appendChild(container);
+
+  // 1) 서버 order 생성 요청 (★ tier 만 · 서버가 amount 확정)
+  let order;
+  try {
+    order = await _call("POST", "/api/payment/orders", { body: { tier } });
+  } catch (e) {
+    document.getElementById("checkout-tier-summary").textContent = "주문 생성에 실패했어요.";
+    const btn = document.getElementById("checkout-pay-btn");
+    btn.textContent = "다시 시도";
+    btn.disabled = false;
+    btn.onclick = () => location.reload();
+    toast(e.message || "결제 주문 생성 실패", "err", 3000);
+    return;
+  }
+
+  // 티어 요약 (사용자가 뭘 사는지 명확히)
+  document.getElementById("checkout-tier-summary").innerHTML =
+    `<strong>${TIER_LABELS[tier]}</strong> 요금제 · <strong>${order.amount.toLocaleString("ko-KR")}원</strong>`;
+
+  // 2) 위젯 SDK 확인
+  if (typeof window.TossPayments !== "function") {
+    document.getElementById("checkout-tier-summary").textContent = "결제 위젯 로드 실패";
+    toast("결제 위젯을 불러오지 못했어요. 새로고침해 주세요.", "err", 3000);
+    return;
+  }
+  if (!order.clientKey) {
+    document.getElementById("checkout-tier-summary").textContent = "결제 설정 미완료";
+    toast("결제 키가 설정되지 않았어요. 관리자에게 문의해 주세요.", "err", 3000);
+    return;
+  }
+
+  // 3) 위젯 초기화 · setAmount · renderPaymentMethods · renderAgreement
+  const tp = window.TossPayments(order.clientKey);
+  // customerKey — 결제 개인화 식별자 (반복 결제 시 재사용). user 식별 문자열로 안전 확보.
+  const customerKey = "nightoff_" + String(order.customerName || "guest")
+    .replace(/[^a-zA-Z0-9_]/g, "_").slice(0, 40);
+  let widgets;
+  try {
+    widgets = tp.widgets({ customerKey });
+    await widgets.setAmount({ currency: "KRW", value: order.amount });
+    await Promise.all([
+      widgets.renderPaymentMethods({ selector: "#payment-method", variantKey: "DEFAULT" }),
+      widgets.renderAgreement({ selector: "#agreement", variantKey: "AGREEMENT" }),
+    ]);
+  } catch (e) {
+    console.error("[checkout] widget init 실패", e);
+    document.getElementById("checkout-tier-summary").textContent = "결제 위젯 초기화 실패";
+    toast(e?.message || "결제 위젯 초기화에 실패했어요.", "err", 3000);
+    return;
+  }
+
+  // 4) 결제하기 버튼 활성화 (위젯 requestPayment → 성공 시 /success, 실패 시 /fail 로 리다이렉트)
+  const btn = document.getElementById("checkout-pay-btn");
+  btn.disabled = false;
+  btn.textContent = order.amount.toLocaleString("ko-KR") + "원 결제하기";
+  btn.onclick = async () => {
+    btn.disabled = true;
+    btn.textContent = "결제창 여는 중…";
+    try {
+      await widgets.requestPayment({
+        orderId: order.orderId,
+        orderName: order.orderName,
+        customerName: order.customerName,
+        successUrl: window.location.origin + "/success",
+        failUrl:    window.location.origin + "/fail",
+      });
+    } catch (e) {
+      console.error("[checkout] requestPayment 실패", e);
+      btn.disabled = false;
+      btn.textContent = order.amount.toLocaleString("ko-KR") + "원 결제하기";
+      toast(e?.message || "결제창 호출 실패", "err", 3000);
+    }
+  };
+}
+
+async function renderPaymentSuccessPage() {
+  const root = document.getElementById("app-root");
+  root.innerHTML = "";
+  document.body.classList.remove("landing-fullscreen");
+
+  // 인증 필요 (토스는 우리 도메인으로 리다이렉트 → 로그인 세션 유지 상태여야 confirm 가능)
+  if (!getToken()) {
+    toast("로그인 후 다시 확인해 주세요.", "", 2500);
+    redirectToLogin();
+    return;
+  }
+
+  const qs = new URLSearchParams(location.search);
+  const paymentKey = qs.get("paymentKey") || "";
+  const orderId    = qs.get("orderId") || "";
+  const amount     = parseInt(qs.get("amount") || "0", 10);
+
+  const container = h("div", { class: "checkout-page checkout-success",
+    style: "max-width:600px;margin:80px auto;padding:32px;text-align:center;" }, [
+    h("h1", { id: "success-title", style: "margin:0 0 12px;" }, "결제 승인 처리 중…"),
+    h("p", { id: "success-detail", class: "muted", style: "margin:0 0 24px;" }, "잠시만 기다려 주세요."),
+    h("div", { class: "checkout-cta",
+      style: "display:flex;justify-content:center;gap:12px;" }, [
+      h("a", { href: "/dashboard", class: "btn btn-ghost",
+        id: "success-home-link", style: "display:none" }, "대시보드로 이동"),
+    ]),
+  ]);
+  root.appendChild(container);
+
+  if (!paymentKey || !orderId || !amount) {
+    document.getElementById("success-title").textContent = "결제 정보가 부족해요";
+    document.getElementById("success-detail").textContent =
+      "결제 파라미터가 누락되었어요. 다시 시도해 주세요.";
+    document.getElementById("success-home-link").style.display = "";
+    return;
+  }
+
+  try {
+    // ★ 10분 내 승인 필수 (토스 정책). 즉시 호출.
+    const res = await _call("POST", "/api/payment/confirm", {
+      body: { paymentKey, orderId, amount },
+    });
+    if (res.status === "paid") {
+      document.getElementById("success-title").textContent = "결제가 완료되었어요 ✅";
+      // Spec D-Build-TossPayments-1e (조각4b) — 크레딧 자동 지급 후 문구.
+      //   res.granted_credits: 이번 호출에서 지급된 크레딧 수 (조각4b conditional UPDATE).
+      //   res.already: 이미 이전에 승인·지급된 주문 (idempotent 재요청).
+      //     · already && granted_credits>0 → "이전 지급 완료" 문구
+      //     · granted_credits>0 (신규 지급) → "N 크레딧 지급되었어요"
+      //     · granted_credits==0 (레이스 가드 or 서버 오류) → 승인만 표기, 크레딧 안내 없이
+      const gc = Number(res.granted_credits || 0);
+      const gcStr = gc.toLocaleString("ko-KR");
+      let creditLine;
+      if (gc > 0 && res.already) {
+        creditLine = `<br><strong style="color:#6B46E5">${gcStr} 크레딧이 이미 지급되었어요.</strong>`
+          + '<br><small style="color:#888">지금 바로 사용하실 수 있어요.</small>';
+      } else if (gc > 0) {
+        creditLine = `<br><strong style="color:#6B46E5">${gcStr} 크레딧이 지급되었어요 🎉</strong>`
+          + '<br><small style="color:#888">지금 바로 사용하실 수 있어요.</small>';
+      } else {
+        creditLine = '<br><small style="color:#888">※ 크레딧 지급 처리 중 문제가 있었어요. 관리자에게 문의해 주세요.</small>';
+      }
+      document.getElementById("success-detail").innerHTML =
+        `주문 <code>${orderId}</code> · <strong>${amount.toLocaleString("ko-KR")}원</strong> 승인 완료.`
+        + creditLine;
+      document.getElementById("success-home-link").style.display = "";
+    } else {
+      document.getElementById("success-title").textContent = "결제 결과 확인 필요";
+      document.getElementById("success-detail").textContent = JSON.stringify(res);
+      document.getElementById("success-home-link").style.display = "";
+    }
+  } catch (e) {
+    document.getElementById("success-title").textContent = "결제 승인에 실패했어요";
+    document.getElementById("success-detail").textContent = e?.message || "알 수 없는 오류";
+    document.getElementById("success-home-link").style.display = "";
+  }
+}
+
+async function renderPaymentFailPage() {
+  const root = document.getElementById("app-root");
+  root.innerHTML = "";
+  document.body.classList.remove("landing-fullscreen");
+
+  const qs = new URLSearchParams(location.search);
+  const code    = qs.get("code") || "";
+  const message = qs.get("message") || "결제가 취소되었거나 실패했어요.";
+
+  root.appendChild(h("div", { class: "checkout-page checkout-fail",
+    style: "max-width:600px;margin:80px auto;padding:32px;text-align:center;" }, [
+    h("h1", { style: "margin:0 0 12px;" }, "결제를 완료하지 못했어요"),
+    h("p", { class: "muted", style: "margin:0 0 8px;" }, message),
+    code ? h("p", { class: "small muted", style: "margin:0 0 24px;" }, "코드: " + code) : null,
+    h("div", { class: "checkout-cta",
+      style: "display:flex;justify-content:center;gap:12px;margin-top:24px;" }, [
+      h("a", { href: "/landing", class: "btn btn-primary" }, "요금제로 돌아가기"),
+      h("a", { href: "/dashboard", class: "btn btn-ghost" }, "대시보드로"),
+    ]),
+  ]));
 }
 
 

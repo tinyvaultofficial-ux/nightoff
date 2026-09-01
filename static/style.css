@@ -63,11 +63,13 @@
   --danger:       #DC2626;   /* v0 oklch(0.6 0.22 25) */
   --danger-soft:  #FBE0DC;   /* (v0 미정의, 원 값 유지) */
 
-  /* ─── 라운드 (의미별) — Spec Fix-RootConsolidation (2026-09-01):
-     v0 실효값 반영 + 참조 0 폐기 정리.
-     ── --radius-sm/--radius/--radius-lg: v0 실효 0.5rem/0.75rem/1rem 을 px 통일 표기.
-        원 값 (10/14/20) 은 v0 오버라이드로 4개월간 실효 없었음 → 실효값 채택.
-     ── --radius-xs (6px), --radius-xl (v0 1.25rem/원 24px) 삭제 — var 참조 0 재확인. */
+  /* ─── 라운드 (의미별) — 4단계 통일.
+     ── Spec Fix-RootConsolidation (2026-09-01): 이중 :root 통합 시 v0 실효값
+        (0.5rem/0.75rem/1rem = 8/12/16px) 을 원 :root 에 정식 반영.
+        --radius-xs (6px), --radius-xl (v0 1.25rem/원 24px) 은 var 참조 0
+        재확인 후 삭제.
+     ── Spec D-Build-DashboardRefresh-3 (2026-09-01): Linear 방향 4단계 확정
+        (sm 8 / base 12 / lg 16 / pill 999). 위 통합 결과와 값 일치. */
   --radius-sm:    8px;       /* 인풋, 칩 */
   --radius:       12px;      /* 카드 (메인) */
   --radius-lg:    16px;      /* 모달, 큰 배너 */
@@ -114,13 +116,23 @@
   /* Spec A (5/18) 폐기 — 사용 0건 grep 검증 완료, 회귀 방지 신호용 보존 */
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  /* ─── Spec A (5/18) 신규 — 폰트 사이즈 토큰 6단계. Spec B/C/D 영역 점진 도입 예정 ─── */
-  --text-xs:   11px;  /* 캡션, 작은 라벨 */
-  --text-sm:   12px;  /* 보조 정보, 메타 */
-  --text-base: 13px;  /* 본문 (현재 가장 많이 쓰는 사이즈) */
-  --text-md:   15px;  /* 소제목, 카드 타이틀 */
+  /* ─── 폰트 사이즈 토큰 6단계.
+     ── Spec A (5/18): 신규 도입.
+     ── Spec D-Build-DashboardRefresh-3 (2026-09-01): Linear 방향으로 값 재정의
+        (본문 13→14, xs 11→12, sm 12→13, md 15→16, xl 26→24; lg 20 유지).
+     ── ★ 현재 var(--text-*) 참조 48건뿐. 조각4~에서 화면별 하드코딩 변수화 예정. */
+  --text-xs:   12px;  /* 캡션, 작은 라벨 */
+  --text-sm:   13px;  /* 보조 정보, 메타 */
+  --text-base: 14px;  /* 본문 (현재 가장 많이 쓰는 사이즈) */
+  --text-md:   16px;  /* 소제목, 카드 타이틀 */
   --text-lg:   20px;  /* 섹션 타이틀 */
-  --text-xl:   26px;  /* 페이지 타이틀 */
+  --text-xl:   24px;  /* 페이지 타이틀 */
+
+  /* ─── line-height 토큰 2단계 — Spec D-Build-DashboardRefresh-3 (2026-09-01) 신설.
+     ── UI/버튼/카드 타이틀은 --lh-tight (1.4), 본문/설명은 --lh-base (1.6).
+     ── ★ 현재 참조 0. 조각4~에서 화면별 하드코딩 line-height 변수화 예정. */
+  --lh-tight: 1.4;
+  --lh-base:  1.6;
 
   /* ─── Spec A (5/18) 신규 — 다크 톤 namespace. Spec B 사이드바 다크화 영역 사용 예정 ─── */
   --dark-bg:          #1A1A1F;

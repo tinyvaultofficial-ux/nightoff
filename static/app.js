@@ -789,6 +789,20 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
           }, children);
         })(),
       ] : []),
+      // Spec D-Build-PricingPage-5c (2026-09-01) — 사이드바 "크레딧 충전" 진입점.
+      // 위치: 제안서 크레딧 잔여 표시 (sidebar-quota-wrap) 바로 다음 = FAQ 위.
+      //   → 잔여 크레딧 확인 → 바로 충전 클릭 흐름 자연스러움.
+      // 동작: navigate("/pricing") (조각5b 신설 라우트) → renderPricingPage 렌더.
+      // ★ 로그인 사용자만 사이드바 노출 (isGuestMode() 분기 위, 이 else 블록 안).
+      //   비회원은 위쪽 게스트 CTA (로그인/회원가입) 로 진입 후 결제.
+      h("button", {
+        class: "sidebar-footer-btn",
+        title: "크레딧 충전 (요금제 페이지)",
+        onclick: () => navigate("/pricing"),
+      }, [
+        h("span", { class: "sidebar-footer-btn-icon" }, "💳"),
+        h("span", {}, "크레딧 충전"),
+      ]),
       // Spec D-Build-FaqSidebarLink (2026-06-13) — 자주 묻는 질문 (FAQ) 영구 진입점.
       // 모든 페이지 공통 노출 · admin/일반 양쪽 동일 (role 분기 위 배치) · 같은 탭 이동(/faq).
       // ICO.help (Feather help-circle) + iconHtml 헬퍼 — 설정/마이페이지/로그아웃 SVG 패턴 정합.

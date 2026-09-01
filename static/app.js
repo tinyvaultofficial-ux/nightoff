@@ -2172,12 +2172,12 @@ async function renderPaymentSuccessPage() {
       let creditLine;
       if (gc > 0 && res.already) {
         creditLine = `<br><strong style="color:#6B46E5">${gcStr} 크레딧이 이미 지급되었어요.</strong>`
-          + '<br><small style="color:#888">지금 바로 사용하실 수 있어요.</small>';
+          + '<br><small style="color:var(--fg-soft)">지금 바로 사용하실 수 있어요.</small>';
       } else if (gc > 0) {
         creditLine = `<br><strong style="color:#6B46E5">${gcStr} 크레딧이 지급되었어요 🎉</strong>`
-          + '<br><small style="color:#888">지금 바로 사용하실 수 있어요.</small>';
+          + '<br><small style="color:var(--fg-soft)">지금 바로 사용하실 수 있어요.</small>';
       } else {
-        creditLine = '<br><small style="color:#888">※ 크레딧 지급 처리 중 문제가 있었어요. 관리자에게 문의해 주세요.</small>';
+        creditLine = '<br><small style="color:var(--fg-soft)">※ 크레딧 지급 처리 중 문제가 있었어요. 관리자에게 문의해 주세요.</small>';
       }
       document.getElementById("success-detail").innerHTML =
         `주문 <code>${orderId}</code> · <strong>${amount.toLocaleString("ko-KR")}원</strong> 승인 완료.`

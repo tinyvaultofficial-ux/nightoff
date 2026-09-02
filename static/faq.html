@@ -11,23 +11,28 @@
   <link rel="preload" as="font" href="/static/fonts/Paperlogy-4Regular.ttf" type="font/ttf" crossorigin />
   <link rel="stylesheet" href="/static/style.css" />
   <style>
-    body { background: #FAFAFA; font-family: 'Paperlogy', sans-serif; color: #1A1A1A; }
+    /* Spec D-Build-StaticDocsLinear (2026-09-02) — Linear 정합 (3파일 legal-* 동일 편집).
+       ── body bg #FAFAFA → var(--bg) · color #1A1A1A → var(--fg-strong).
+       ── 헤더 border 1→0.5px · footer #666 → --fg-muted (조각1 방향 · AA 4.74).
+       ── link #6B46E5 → var(--primary)(#7C3AED · 인증/account 정합).
+       ── 하드코딩 색·폰트·radius 정합. */
+    body { background: var(--bg); font-family: 'Paperlogy', sans-serif; color: var(--fg-strong); }
     .legal-shell { min-height: 100vh; display: flex; flex-direction: column; }
     .legal-header {
       display: flex; align-items: center; justify-content: space-between;
       padding: 18px 24px;
-      background: #fff; border-bottom: 1px solid #EEE;
+      background: var(--card); border-bottom: 0.5px solid var(--border);
     }
     .legal-brand {
-      font-weight: 900; font-size: 22px; color: #1A1A1A;
+      font-weight: 900; font-size: 22px; color: var(--fg-strong);
       letter-spacing: -0.5px; text-decoration: none;
     }
     .legal-back {
-      font-size: 13.5px; font-weight: 500; color: #666;
-      text-decoration: none; padding: 8px 14px; border-radius: 6px;
+      font-size: var(--text-sm); font-weight: 500; color: var(--fg-soft);
+      text-decoration: none; padding: 8px 14px; border-radius: var(--radius-sm);
       transition: background .15s ease, color .15s ease;
     }
-    .legal-back:hover { background: #F0F0F0; color: #1A1A1A; }
+    .legal-back:hover { background: var(--bg-2); color: var(--fg-strong); }
     .legal-main {
       flex: 1;
       max-width: 800px; width: 100%; margin: 0 auto;
@@ -35,57 +40,57 @@
     }
     .legal-main h1 {
       font-size: 28px; font-weight: 900; margin: 0 0 24px;
-      letter-spacing: -0.5px; color: #1A1A1A;
+      letter-spacing: -0.5px; color: var(--fg-strong);
     }
     .legal-main h2 {
       font-size: 19px; font-weight: 700; margin: 36px 0 14px;
-      color: #1A1A1A; letter-spacing: -0.3px;
+      color: var(--fg-strong); letter-spacing: -0.3px;
     }
     .legal-main h3 {
       font-size: 15.5px; font-weight: 600; margin: 22px 0 10px;
-      color: #1A1A1A;
+      color: var(--fg-strong);
     }
     .legal-main p {
-      font-size: 14.5px; line-height: 1.75;
-      color: #333; margin: 0 0 14px; word-break: keep-all;
+      font-size: var(--text-sm); line-height: var(--lh-base);
+      color: var(--fg); margin: 0 0 14px; word-break: keep-all;
     }
-    .legal-main strong { font-weight: 600; color: #1A1A1A; }
+    .legal-main strong { font-weight: 600; color: var(--fg-strong); }
     .legal-main ul, .legal-main ol {
-      font-size: 14.5px; line-height: 1.85;
-      color: #333; padding-left: 22px; margin: 0 0 16px;
+      font-size: var(--text-sm); line-height: 1.85;
+      color: var(--fg); padding-left: 22px; margin: 0 0 16px;
     }
     .legal-main ul li, .legal-main ol li { margin-bottom: 4px; word-break: keep-all; }
     .legal-main ul ul, .legal-main ol ul, .legal-main ul ol {
       margin: 6px 0 6px;
     }
     .legal-main a {
-      color: #6B46E5; text-decoration: underline; text-underline-offset: 2px;
+      color: var(--primary); text-decoration: underline; text-underline-offset: 2px;
     }
-    .legal-main a:hover { color: #5A38D1; }
+    .legal-main a:hover { color: var(--primary-hover); }
     .legal-main hr {
-      border: 0; border-top: 1px solid #DDD;
+      border: 0; border-top: 0.5px solid var(--border);
       margin: 32px 0;
     }
     .legal-table-wrap { overflow-x: auto; margin: 14px 0 18px; }
     .legal-table {
       width: 100%; border-collapse: collapse;
-      font-size: 13px; line-height: 1.55;
+      font-size: var(--text-xs); line-height: 1.55;
     }
     .legal-table th, .legal-table td {
-      border: 1px solid #DDD; padding: 9px 12px;
+      border: 0.5px solid var(--border); padding: 9px 12px;
       text-align: left; vertical-align: top; word-break: keep-all;
     }
     .legal-table th {
-      background: #F5F5F5; font-weight: 600; color: #1A1A1A;
+      background: var(--bg-2); font-weight: 600; color: var(--fg-strong);
     }
     .legal-footer {
-      background: #fff; border-top: 1px solid #EEE;
-      padding: 24px 32px; font-size: 12.5px; color: #666;
+      background: var(--card); border-top: 0.5px solid var(--border);
+      padding: 24px 32px; font-size: var(--text-xs); color: var(--fg-muted);
       text-align: center; line-height: 1.7;
     }
     .legal-footer .lf-row { margin-bottom: 4px; }
-    .legal-footer .lf-row span + span { margin-left: 6px; padding-left: 6px; border-left: 1px solid #DDD; }
-    .legal-footer a { color: #6B46E5; text-decoration: none; }
+    .legal-footer .lf-row span + span { margin-left: 6px; padding-left: 6px; border-left: 0.5px solid var(--border); }
+    .legal-footer a { color: var(--primary); text-decoration: none; }
     .legal-footer a:hover { text-decoration: underline; }
     @media (max-width: 600px) {
       .legal-header { padding: 14px 16px; }
@@ -98,59 +103,62 @@
       .legal-footer .lf-row span + span { margin-left: 4px; padding-left: 4px; }
     }
 
-    /* ── FAQ 전용 추가 스타일 (HTML 네이티브 <details> 아코디언 · JS 0줄) ── */
+    /* ── FAQ 전용 추가 스타일 (HTML 네이티브 <details> 아코디언 · JS 0줄) ──
+       Spec D-Build-StaticDocsLinear (2026-09-02) — Linear 정합.
+       ── #6B46E5 → var(--primary), #F5F0FF → var(--primary-soft), #E5E5E5 → var(--border).
+       ── #1A1A1A → var(--fg-strong), #444 → var(--fg). */
     h2.faq-category {
       font-size: 19px; font-weight: 700; margin: 36px 0 14px;
-      color: #1A1A1A; letter-spacing: -0.3px;
-      border-left: 4px solid #6B46E5;
+      color: var(--fg-strong); letter-spacing: -0.3px;
+      border-left: 4px solid var(--primary);
       padding-left: 12px;
     }
     details.faq-item {
-      border-bottom: 1px solid #E5E5E5;
+      border-bottom: 0.5px solid var(--border);
       padding: 4px 14px;
       transition: background .15s ease;
     }
     details.faq-item[open] {
-      background: #F5F0FF;
-      border-radius: 8px;
+      background: var(--primary-soft);
+      border-radius: var(--radius-sm);
     }
     summary.faq-question {
       cursor: pointer; user-select: none; list-style: none;
-      font-weight: 600; font-size: 15.5px;
+      font-weight: 600; font-size: var(--text-sm);
       padding: 14px 0;
-      color: #1A1A1A; line-height: 1.55;
+      color: var(--fg-strong); line-height: 1.55;
       word-break: keep-all;
     }
     summary.faq-question::-webkit-details-marker { display: none; }
     details.faq-item[open] summary.faq-question::after {
-      content: " ▾"; float: right; color: #6B46E5; margin-left: 12px;
+      content: " ▾"; float: right; color: var(--primary); margin-left: 12px;
     }
     details.faq-item:not([open]) summary.faq-question::after {
-      content: " ▸"; float: right; color: #6B46E5; margin-left: 12px;
+      content: " ▸"; float: right; color: var(--primary); margin-left: 12px;
     }
     .faq-answer { padding: 0 0 16px; }
     .faq-answer p {
-      font-size: 14.5px; line-height: 1.75; color: #444;
+      font-size: var(--text-sm); line-height: var(--lh-base); color: var(--fg);
       margin: 0 0 10px; word-break: keep-all;
     }
     .faq-answer p:last-child { margin-bottom: 0; }
     .faq-answer ul {
-      font-size: 14.5px; line-height: 1.75; color: #444;
+      font-size: var(--text-sm); line-height: var(--lh-base); color: var(--fg);
       padding-left: 20px; margin: 8px 0;
     }
     .faq-answer ul li { margin-bottom: 6px; word-break: keep-all; }
     .faq-answer a {
-      color: #6B46E5; text-decoration: underline; text-underline-offset: 2px;
+      color: var(--primary); text-decoration: underline; text-underline-offset: 2px;
     }
-    .faq-answer a:hover { color: #5A38D1; }
+    .faq-answer a:hover { color: var(--primary-hover); }
     .faq-download {
       display: inline-block; padding: 10px 18px; margin: 8px 0 12px;
-      background: #6B46E5; color: #fff !important;
+      background: var(--primary); color: var(--primary-fg) !important;
       text-decoration: none !important;
-      border-radius: 8px; font-size: 14px; font-weight: 600;
+      border-radius: var(--radius-sm); font-size: var(--text-sm); font-weight: 600;
       transition: background .15s ease;
     }
-    .faq-download:hover { background: #5A38D1; color: #fff !important; }
+    .faq-download:hover { background: var(--primary-hover); color: var(--primary-fg) !important; }
   </style>
 </head>
 <body>

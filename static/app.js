@@ -4364,12 +4364,11 @@ async function renderClientSubmissionDocs(cid) {
       navigate("/");
       return;
     }
-    main.appendChild(h("div", {
-      style: "padding: 60px 28px; text-align: center; max-width: 640px; margin: 0 auto;",
-    }, [
-      h("h2", { style: "margin: 0 0 8px; font-size: 18px; font-weight: 700;" }, "과업 정보를 불러오지 못했어요"),
-      h("p", { class: "muted small", style: "margin: 0 0 16px;" }, e?.message || String(e)),
-      h("div", { style: "display: flex; gap: 10px; justify-content: center;" }, [
+    // Spec D-Build-SubmissionDocsLinear (2026-09-02) — client-detail 조각 재사용 (인라인 → 클래스)
+    main.appendChild(h("div", { class: "client-detail-error-card" }, [
+      h("h2", { class: "client-detail-error-title" }, "과업 정보를 불러오지 못했어요"),
+      h("p", { class: "muted small client-detail-error-msg" }, e?.message || String(e)),
+      h("div", { class: "client-detail-error-actions" }, [
         h("button", { class: "btn btn-primary", onclick: () => renderClientSubmissionDocs(cid) }, "다시 시도"),
         h("button", { class: "btn btn-outline", onclick: () => navigate(`/client/${cid}`) }, "과업 화면으로"),
       ]),
@@ -4384,7 +4383,10 @@ async function renderClientSubmissionDocs(cid) {
     ]),
   ]));
 
-  const content = h("div", { class: "main-content", style: "max-width: 1100px;" });
+  // Spec D-Build-SubmissionDocsLinear (2026-09-02):
+  //   .client-detail-content (max-width 1100 · client-detail 조각 재사용) + .submission-docs-page
+  //   (컨테이너 .card 국지 오버라이드 scope).
+  const content = h("div", { class: "main-content client-detail-content submission-docs-page" });
   main.appendChild(content);
 
   content.appendChild(h("a", { class: "back-link", href: `/client/${cid}`, "data-link": "" }, [

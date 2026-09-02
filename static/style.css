@@ -7147,85 +7147,160 @@ body.landing-fullscreen .nav-backdrop {
   .dashboard-intro-cta-bar { padding: 16px 24px 24px; }
 }
 
-/* Spec D-Build-SubmissionGuide-1 — 제출서류 가이드 (정량서류 자동화 조각 5) */
-.subdoc-meta { background:#FAFAFA; border-radius:8px; padding:10px 12px; margin-bottom:4px; display:flex; flex-direction:column; gap:3px; }
-.subdoc-hint { background:#F5F0FF; border-radius:8px; padding:10px 12px; font-size:13px; color:#1F1147; line-height:1.6; }
-.subdoc-link { color:#6B46E5; font-weight:700; text-decoration:none; }
-.subdoc-link:hover { text-decoration:underline; }
-.subdoc-list { display:flex; flex-direction:column; gap:10px; }
-.subdoc-row { border:1px solid #E5E5E5; border-radius:10px; padding:12px 14px; }
-.subdoc-row-head { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
-.subdoc-name-wrap { display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; }
-.subdoc-name { font-size:14px; font-weight:700; color:#1F1147; }
-.subdoc-attach { font-size:11px; color:#6B46E5; background:#F5F0FF; border-radius:5px; padding:2px 6px; }
-.subdoc-badges { display:flex; gap:4px; flex-shrink:0; }
-.subdoc-tag { font-size:11px; color:#666; background:#F2F2F2; border-radius:5px; padding:2px 8px; }
-.subdoc-tag-cond { color:#A06A00; background:#FFF3E0; }
-.subdoc-meta-line { margin-top:6px; }
-.subdoc-status { margin-top:8px; font-size:13px; padding:6px 10px; border-radius:7px; }
-.subdoc-status-ok { color:#1B7A43; background:#E8F5EC; }
-.subdoc-status-warn { color:#A05200; background:#FFF3E0; }
-.subdoc-status-info { color:#1F1147; background:#FAFAFA; }
-.subdoc-fill { margin-top:8px; background:#FAFAFA; border-radius:8px; padding:8px 10px; }
-.subdoc-fill-title { margin-bottom:4px; }
-.subdoc-fill-item { display:flex; gap:8px; padding:2px 0; font-size:13px; }
-.subdoc-fill-label { color:#666; min-width:96px; flex-shrink:0; }
-.subdoc-fill-value { color:#1F1147; font-weight:600; }
-.subdoc-fill-empty { color:var(--fg-muted); }
+/* Spec D-Build-SubmissionGuide-1 — 제출서류 가이드 (정량서류 자동화 조각 5)
+   Spec D-Build-SubmissionDocsLinear (2026-09-02) — Linear 방향 정합:
+   ── 하드코딩 색 (#6B46E5/#1F1147/#F5F0FF/#666/#F2F2F2/#FAFAFA/#E5E5E5) → 변수 참조
+   ── 상태색 (준비됨 초록 / 주의 주황) 은 의미 유지, 앱표준 --success/--warning 변수로
+   ── 폰트 하드코딩 → var(--text-*), lh var(--lh-*)
+   ── radius 하드코딩 (5/7/8/10) → var(--radius-sm)(8)/var(--radius)(12)
+   ── ★ summary-num 22px (KPI 강조 · 대시보드 status-card value 정합) 는 유지 */
+.subdoc-meta {
+  background: var(--bg-2); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 4px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.subdoc-hint {
+  background: var(--primary-soft); border-radius: var(--radius); padding: 10px 12px;
+  font-size: var(--text-sm); color: var(--fg-strong); line-height: var(--lh-base);
+}
+.subdoc-link { color: var(--primary); font-weight: 700; text-decoration: none; }
+.subdoc-link:hover { text-decoration: underline; }
+.subdoc-list { display: flex; flex-direction: column; gap: 10px; }
+.subdoc-row { border: 0.5px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+.subdoc-row-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.subdoc-name-wrap { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.subdoc-name {
+  font-size: var(--text-sm); font-weight: 700; color: var(--fg-strong); line-height: var(--lh-tight);
+}
+.subdoc-attach {
+  font-size: var(--text-xs); color: var(--primary); background: var(--primary-soft);
+  border-radius: var(--radius-sm); padding: 2px 6px;
+}
+.subdoc-badges { display: flex; gap: 4px; flex-shrink: 0; }
+.subdoc-tag {
+  font-size: var(--text-xs); color: var(--fg-soft); background: var(--bg-2);
+  border-radius: var(--radius-sm); padding: 2px 8px;
+}
+/* 상태색: warm 계열 의미 유지, 앱표준 var 사용 */
+.subdoc-tag-cond { color: var(--warning); background: var(--warning-soft); }
+.subdoc-meta-line { margin-top: 6px; }
+.subdoc-status {
+  margin-top: 8px; font-size: var(--text-sm); padding: 6px 10px; border-radius: var(--radius-sm);
+  line-height: var(--lh-tight);
+}
+.subdoc-status-ok   { color: var(--success); background: var(--success-soft); }
+.subdoc-status-warn { color: var(--warning); background: var(--warning-soft); }
+.subdoc-status-info { color: var(--fg-strong); background: var(--bg-2); }
+.subdoc-fill {
+  margin-top: 8px; background: var(--bg-2); border-radius: var(--radius); padding: 8px 10px;
+}
+.subdoc-fill-title { margin-bottom: 4px; }
+.subdoc-fill-item { display: flex; gap: 8px; padding: 2px 0; font-size: var(--text-sm); }
+.subdoc-fill-label { color: var(--fg-soft); min-width: 96px; flex-shrink: 0; }
+.subdoc-fill-value { color: var(--fg-strong); font-weight: 600; }
+.subdoc-fill-empty { color: var(--fg-muted); }
 
 /* Spec D-Build-SubmissionDocs-Grid (조각 C-1) — 요약 바 + 그룹 + 2열 카드 그리드 */
-.subdoc-summary { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
-.subdoc-summary-item { flex:1; min-width:80px; background:#FAFAFA; border:1px solid #E5E5E5; border-radius:10px; padding:12px; text-align:center; }
-.subdoc-summary-num { display:block; font-size:22px; font-weight:700; color:#1F1147; }
-.subdoc-summary-num.ok   { color:#1B7A43; }
-.subdoc-summary-num.warn { color:#A05200; }
-.subdoc-summary-num.fill { color:#6B46E5; }
-.subdoc-summary-label { font-size:12px; color:#666; }
+.subdoc-summary { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+.subdoc-summary-item {
+  flex: 1; min-width: 80px;
+  background: var(--card); border: 0.5px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 12px; text-align: center;
+}
+/* summary-num 22px 은 KPI 강조 (대시보드 status-card value 패턴) — 유지 */
+.subdoc-summary-num {
+  display: block; font-size: 22px; font-weight: 700; color: var(--fg-strong);
+  line-height: var(--lh-tight);
+}
+.subdoc-summary-num.ok   { color: var(--success); }
+.subdoc-summary-num.warn { color: var(--warning); }
+.subdoc-summary-num.fill { color: var(--primary); }
+.subdoc-summary-label { font-size: var(--text-xs); color: var(--fg-soft); line-height: var(--lh-tight); }
 
-.subdoc-group { margin-bottom:16px; }
-.subdoc-group-head { cursor:pointer; display:flex; justify-content:space-between; align-items:center; padding:10px 4px; list-style:none; border-bottom:2px solid #F5F0FF; }
-.subdoc-group-head::-webkit-details-marker { display:none; }
-.subdoc-group-title { font-size:15px; font-weight:700; color:#1F1147; }
-.subdoc-group-count { font-size:12px; color:var(--fg-muted); }
+.subdoc-group { margin-bottom: 16px; }
+.subdoc-group-head {
+  cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 4px; list-style: none;
+  border-bottom: 2px solid var(--primary-soft);
+}
+.subdoc-group-head::-webkit-details-marker { display: none; }
+.subdoc-group-title { font-size: var(--text-md); font-weight: 700; color: var(--fg-strong); line-height: var(--lh-tight); }
+.subdoc-group-count { font-size: var(--text-xs); color: var(--fg-muted); }
 
-.subdoc-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; padding-top:12px; }
-@media (max-width:720px) { .subdoc-grid { grid-template-columns:1fr; } }
+.subdoc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 12px; }
+@media (max-width: 720px) { .subdoc-grid { grid-template-columns: 1fr; } }
 
-.subdoc-card { border:1px solid #E5E5E5; border-radius:10px; background:#fff; overflow:hidden; }
-.subdoc-card.open { border-color:#6B46E5; }
-.subdoc-card-head { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; padding:12px 14px; cursor:pointer; }
-.subdoc-card-head:hover { background:#FAFAFA; }
-.subdoc-card-name-wrap { display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; min-width:0; }
-.subdoc-card-name { font-size:14px; font-weight:600; color:#1F1147; }
-.subdoc-card-badges { display:flex; gap:4px; flex-shrink:0; flex-wrap:wrap; justify-content:flex-end; }
-.subdoc-chip { font-size:11px; border-radius:5px; padding:2px 7px; white-space:nowrap; }
-.subdoc-chip.ok   { color:#1B7A43; background:#E8F5EC; }
-.subdoc-chip.warn { color:#A05200; background:#FFF3E0; }
-.subdoc-card-detail { padding:0 14px 14px; }
-.subdoc-card-detail.hidden { display:none; }
+.subdoc-card {
+  border: 0.5px solid var(--border); border-radius: var(--radius);
+  background: var(--card); overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.subdoc-card.open { border-color: var(--primary); }
+.subdoc-card-head {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;
+  padding: 12px 14px; cursor: pointer;
+}
+.subdoc-card-head:hover { background: var(--bg-2); }
+.subdoc-card-name-wrap { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.subdoc-card-name { font-size: var(--text-sm); font-weight: 600; color: var(--fg-strong); line-height: var(--lh-tight); }
+.subdoc-card-badges { display: flex; gap: 4px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+.subdoc-chip { font-size: var(--text-xs); border-radius: var(--radius-sm); padding: 2px 7px; white-space: nowrap; }
+.subdoc-chip.ok   { color: var(--success); background: var(--success-soft); }
+.subdoc-chip.warn { color: var(--warning); background: var(--warning-soft); }
+.subdoc-card-detail { padding: 0 14px 14px; }
+.subdoc-card-detail.hidden { display: none; }
 
 /* Spec D-Build-SubmissionDocs-Drawer (조각 C-2) — 우측 슬라이드 드로어 */
-.subdoc-drawer-backdrop { position:fixed; inset:0; background:rgba(31,17,71,0.25); z-index:1000; opacity:0; transition:opacity .2s; }
-.subdoc-drawer-backdrop.open { opacity:1; }
-.subdoc-drawer-backdrop.hidden { display:none; }
-.subdoc-drawer {
-  position:fixed; top:0; right:0; height:100vh; width:420px; max-width:92vw;
-  background:#fff; z-index:1001; box-shadow:-8px 0 32px rgba(0,0,0,0.12);
-  transform:translateX(100%); transition:transform .22s ease; overflow-y:auto;
-  display:flex; flex-direction:column;
+.subdoc-drawer-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(31, 17, 71, 0.25);   /* 오버레이 mask · 브랜드 다크 보라 · 유지 */
+  z-index: 1000; opacity: 0; transition: opacity .2s;
 }
-.subdoc-drawer.open { transform:translateX(0); }
-.subdoc-drawer.hidden { display:none; }
-.subdoc-drawer-head { position:relative; padding:24px 24px 16px; border-bottom:1px solid #E5E5E5; }
-.subdoc-drawer-title { font-size:17px; font-weight:700; color:#1F1147; margin:0 28px 4px 0; line-height:1.4; }
-.subdoc-drawer-sub { margin:0; }
-.subdoc-drawer-close { position:absolute; top:18px; right:18px; width:30px; height:30px; border:none; background:transparent; font-size:26px; line-height:1; color:var(--fg-muted); cursor:pointer; border-radius:8px; }
-.subdoc-drawer-close:hover { background:#FAFAFA; color:#1F1147; }
-.subdoc-drawer-body { padding:20px 24px; flex:1; }
-@media (max-width:560px) { .subdoc-drawer { width:100%; max-width:100%; } }
+.subdoc-drawer-backdrop.open { opacity: 1; }
+.subdoc-drawer-backdrop.hidden { display: none; }
+.subdoc-drawer {
+  position: fixed; top: 0; right: 0; height: 100vh; width: 420px; max-width: 92vw;
+  background: var(--card); z-index: 1001;
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.12);
+  transform: translateX(100%); transition: transform .22s ease; overflow-y: auto;
+  display: flex; flex-direction: column;
+}
+.subdoc-drawer.open { transform: translateX(0); }
+.subdoc-drawer.hidden { display: none; }
+.subdoc-drawer-head {
+  position: relative; padding: 24px 24px 16px;
+  border-bottom: 0.5px solid var(--border);
+}
+.subdoc-drawer-title {
+  font-size: var(--text-md); font-weight: 700; color: var(--fg-strong);
+  margin: 0 28px 4px 0; line-height: var(--lh-tight);
+}
+.subdoc-drawer-sub { margin: 0; }
+.subdoc-drawer-close {
+  position: absolute; top: 18px; right: 18px; width: 30px; height: 30px;
+  border: none; background: transparent; font-size: 26px; line-height: 1;
+  color: var(--fg-muted); cursor: pointer; border-radius: var(--radius-sm);
+}
+.subdoc-drawer-close:hover { background: var(--bg-2); color: var(--fg-strong); }
+.subdoc-drawer-body { padding: 20px 24px; flex: 1; }
+@media (max-width: 560px) { .subdoc-drawer { width: 100%; max-width: 100%; } }
 
-.subdoc-card.clickable { cursor:pointer; transition:border-color .15s, box-shadow .15s; }
-.subdoc-card.clickable:hover { border-color:#6B46E5; box-shadow:0 2px 8px rgba(107,70,229,0.08); }
+.subdoc-card.clickable { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+.subdoc-card.clickable:hover {
+  border-color: var(--primary);
+  box-shadow: var(--shadow);
+}
+
+/* Spec D-Build-SubmissionDocsLinear (2026-09-02) — 컨테이너 .card 국지 오버라이드.
+   ── renderClientSubmissionDocs content 에 .submission-docs-page wrapper 부착.
+   ── !important 로 v0 .card 튠 (radius 16 · border 1 · shadow 없음) 확실 오버라이드.
+   ── 다른 화면 (.submission-docs-page 없는 곳) 완전 무영향. */
+div.submission-docs-page > div.card {
+  border-radius: var(--radius) !important;
+  border: 0.5px solid var(--border) !important;
+  box-shadow: var(--shadow-sm) !important;
+  background: var(--card) !important;
+}
 
 /* ============================================================
    Spec D-Build-RfpUploadLinear (2026-09-02) — RFP 화면 Linear 정합.

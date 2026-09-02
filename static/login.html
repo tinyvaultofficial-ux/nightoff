@@ -11,23 +11,27 @@
   <link rel="preload" as="font" href="/static/fonts/Paperlogy-4Regular.ttf" type="font/ttf" crossorigin />
   <link rel="stylesheet" href="/static/style.css" />
   <style>
-    body { background: #FAFAFF; font-family: 'Paperlogy', sans-serif; color: #1F1147; }
+    /* Spec D-Build-AuthPagesLinear (2026-09-02) — 인증 3화면 Linear 정합.
+       ── body 배경 #FAFAFF → var(--bg), 카드 12/0.5/shadow-sm 통일.
+       ── button gradient → var(--primary) 단색, 하드코딩 색 → 변수 (에러 = --danger).
+       ── 조각1 반영된 --fg-soft/--fg-muted 는 무접촉. */
+    body { background: var(--bg); font-family: 'Paperlogy', sans-serif; color: var(--fg-strong); }
     .auth-shell { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
-    .auth-card { width: 100%; max-width: 380px; background: #fff; border: 1px solid #EAE4FA; border-radius: 14px; padding: 32px 28px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
-    .auth-brand { font-weight: 900; font-size: 28px; margin-bottom: 4px; color: #1F1147; letter-spacing: -0.5px; }
-    .auth-tagline { font-size: 12px; color: var(--fg-soft); margin-bottom: 28px; }
-    .auth-h1 { font-weight: 700; font-size: 18px; margin-bottom: 18px; color: #1F1147; }
-    .auth-field { margin-bottom: 14px; }
-    .auth-field label { display: block; font-size: 12px; color: #666; margin-bottom: 6px; }
-    .auth-field input { width: 100%; padding: 10px 12px; font-size: 14px; border: 1px solid #DDD; border-radius: 6px; background: #FAFAFA; box-sizing: border-box; font-family: inherit; transition: border-color 0.15s ease, background 0.15s ease; }
-    .auth-field input:focus { outline: none; border-color: #6E56CF; background: #fff; }
-    .auth-btn { width: 100%; padding: 13px; background: linear-gradient(135deg, #6E56CF 0%, #9D8AE6 100%); color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 8px; font-family: inherit; transition: opacity 0.15s ease; }
-    .auth-btn:hover:not(:disabled) { opacity: 0.9; }
+    .auth-card { width: 100%; max-width: 380px; background: var(--card); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 32px 28px; box-shadow: var(--shadow-sm); }
+    .auth-brand { font-weight: 900; font-size: 28px; margin-bottom: 4px; color: var(--fg-strong); letter-spacing: -0.5px; }
+    .auth-tagline { font-size: var(--text-xs); color: var(--fg-soft); margin-bottom: 28px; }
+    .auth-h1 { font-weight: 700; font-size: var(--text-md); margin-bottom: 18px; color: var(--fg-strong); line-height: var(--lh-tight); }
+    .auth-field { margin-bottom: var(--space-4); }
+    .auth-field label { display: block; font-size: var(--text-xs); color: var(--fg-soft); margin-bottom: 6px; }
+    .auth-field input { width: 100%; padding: 10px 12px; font-size: var(--text-sm); border: 0.5px solid var(--border); border-radius: var(--radius-sm); background: var(--card); color: var(--fg); box-sizing: border-box; font-family: inherit; line-height: var(--lh-base); transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+    .auth-field input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px color-mix(in oklab, var(--primary) 12%, transparent); }
+    .auth-btn { width: 100%; padding: 13px; background: var(--primary); color: var(--primary-fg); border: none; border-radius: var(--radius); font-size: var(--text-sm); font-weight: 700; line-height: var(--lh-tight); cursor: pointer; margin-top: 8px; font-family: inherit; transition: background 0.15s ease, opacity 0.15s ease; }
+    .auth-btn:hover:not(:disabled) { background: var(--primary-hover); }
     .auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .auth-footer { text-align: center; font-size: 12px; color: var(--fg-soft); margin-top: 18px; }
-    .auth-footer a { color: #6E56CF; font-weight: 600; text-decoration: none; }
+    .auth-footer { text-align: center; font-size: var(--text-xs); color: var(--fg-soft); margin-top: 18px; }
+    .auth-footer a { color: var(--primary); font-weight: 600; text-decoration: none; }
     .auth-footer a:hover { text-decoration: underline; }
-    .auth-error { font-size: 12px; color: #C0392B; margin-top: 12px; padding: 8px 10px; background: #FDEDEC; border-left: 3px solid #C0392B; border-radius: 4px; display: none; }
+    .auth-error { font-size: var(--text-xs); color: var(--danger); margin-top: 12px; padding: 8px 10px; background: var(--danger-soft); border-left: 3px solid var(--danger); border-radius: var(--radius-sm); display: none; line-height: var(--lh-base); }
     .auth-error.show { display: block; }
   </style>
 </head>

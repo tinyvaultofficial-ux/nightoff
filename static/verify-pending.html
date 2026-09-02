@@ -8,10 +8,18 @@
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
   <link rel="preload" as="font" href="/static/fonts/Paperlogy-7Bold.ttf" type="font/ttf" crossorigin />
   <link rel="preload" as="font" href="/static/fonts/Paperlogy-4Regular.ttf" type="font/ttf" crossorigin />
+  <!-- Spec D-Build-AuthPagesLinear (2026-09-02): style.css 링크 추가 (:root 변수 참조 위해). -->
+  <link rel="stylesheet" href="/static/style.css" />
   <style>
-    /* Spec D-Fix-8 (5/18) — 이메일 인증 안내 페이지 */
+    /* Spec D-Fix-8 (5/18) — 이메일 인증 안내 페이지.
+       Spec D-Build-AuthPagesLinear (2026-09-02) — Linear 정합:
+       ── body bg #FAFAFF → var(--bg), color → var(--fg-strong).
+       ── 카드 radius 14→12 · shadow 튀는값 → var(--shadow-sm) · bg → var(--card).
+       ── resend gradient bg → var(--primary) 단색 · radius 10 → var(--radius).
+       ── 하드코딩 색 (#6E56CF/#1F1147/#555/#F5F0FF/#2D9D78/#C0392B) → 앱 변수.
+       ── ★ .verify-pending-hint/-login 은 조각1 --fg-soft 무접촉. */
     body {
-      background: #FAFAFF;
+      background: var(--bg);
       font-family: 'Paperlogy', -apple-system, BlinkMacSystemFont, sans-serif;
       margin: 0;
       min-height: 100vh;
@@ -19,15 +27,16 @@
       align-items: center;
       justify-content: center;
       padding: 24px;
-      color: #1F1147;
+      color: var(--fg-strong);
     }
     .verify-pending {
       max-width: 480px;
       width: 100%;
-      background: white;
-      border-radius: 14px;
+      background: var(--card);
+      border: 0.5px solid var(--border);
+      border-radius: var(--radius);
       padding: 48px 40px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+      box-shadow: var(--shadow-sm);
       text-align: center;
     }
     .verify-pending-icon {
@@ -35,72 +44,77 @@
       margin-bottom: 16px;
     }
     .verify-pending h1 {
-      font-size: 22px;
+      font-size: var(--text-md);
       font-weight: 700;
-      color: #1F1147;
+      color: var(--fg-strong);
       margin: 0 0 12px;
       letter-spacing: -0.3px;
+      line-height: var(--lh-tight);
     }
     .verify-pending-desc {
-      font-size: 15px;
-      color: #555;
-      line-height: 1.6;
+      font-size: var(--text-sm);
+      color: var(--fg);
+      line-height: var(--lh-base);
       margin: 0 0 20px;
     }
     .verify-pending-email {
       display: inline-block;
       padding: 8px 16px;
-      background: #F5F0FF;
-      border-radius: 8px;
-      font-size: 14px;
+      background: var(--primary-soft);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-sm);
       font-weight: 600;
-      color: #6E56CF;
+      color: var(--primary);
       margin-bottom: 28px;
       max-width: 100%;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .verify-pending-hint {
-      font-size: 13px;
+      font-size: var(--text-sm);
       color: var(--fg-soft);
-      line-height: 1.6;
+      line-height: var(--lh-base);
       margin: 0 0 20px;
     }
+    /* 인라인 style="margin-top:24px" → 클래스 (2번째 hint 블록) */
+    .verify-pending-hint-block { margin-top: 24px; }
     .verify-pending-resend {
       width: 100%;
       padding: 13px 24px;
-      background: linear-gradient(135deg, #6E56CF 0%, #9D8AE6 100%);
-      color: white;
-      font-size: 14px;
+      background: var(--primary);
+      color: var(--primary-fg);
+      font-size: var(--text-sm);
       font-weight: 700;
+      line-height: var(--lh-tight);
       border: 0;
-      border-radius: 10px;
+      border-radius: var(--radius);
       cursor: pointer;
-      transition: opacity 0.15s ease;
+      transition: background 0.15s ease, opacity 0.15s ease;
       font-family: inherit;
     }
     .verify-pending-resend:hover:not(:disabled) {
-      opacity: 0.9;
+      background: var(--primary-hover);
     }
     .verify-pending-resend:disabled {
       opacity: 0.5;
       cursor: not-allowed;
     }
     .verify-pending-status {
-      font-size: 13px;
-      color: #555;
+      font-size: var(--text-sm);
+      color: var(--fg-soft);
       margin: 12px 0 0;
       min-height: 18px;
+      line-height: var(--lh-base);
     }
-    .verify-pending-status.success { color: #2D9D78; }
-    .verify-pending-status.error { color: #C0392B; }
+    .verify-pending-status.success { color: var(--success); }
+    .verify-pending-status.error { color: var(--danger); }
     .verify-pending-login {
       margin: 24px 0 0;
-      font-size: 13px;
+      font-size: var(--text-sm);
       color: var(--fg-soft);
     }
     .verify-pending-login a {
-      color: #6E56CF;
+      color: var(--primary);
       font-weight: 600;
       text-decoration: none;
     }
@@ -119,7 +133,7 @@
     </p>
     <button class="verify-pending-resend" id="resend-btn" type="button">재발송</button>
     <p class="verify-pending-status" id="resend-status"></p>
-    <p class="verify-pending-hint" style="margin-top:24px;">
+    <p class="verify-pending-hint verify-pending-hint-block">
       인증을 완료하면 이 탭이 자동으로 대시보드로 이동해요.<br>
       다른 기기에서 인증했다면 아래 '로그인'을 눌러주세요.
     </p>

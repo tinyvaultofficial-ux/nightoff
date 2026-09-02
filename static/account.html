@@ -9,47 +9,60 @@
   <link rel="preload" as="font" href="/static/fonts/Paperlogy-7Bold.ttf" type="font/ttf" crossorigin />
   <link rel="preload" as="font" href="/static/fonts/Paperlogy-4Regular.ttf" type="font/ttf" crossorigin />
   <style>
-    /* Spec D-Fix-10 (5/19) — 일반 사용자 마이페이지 (이메일 + 회원 탈퇴 링크) */
+    /* Spec D-Fix-10 (5/19) — 일반 사용자 마이페이지 (이메일 + 회원 탈퇴 링크)
+       Spec D-Build-AccountLinear (2026-09-02) — Linear 방향 통째 변수화.
+       ── #6B46E5 → var(--primary)(#7C3AED · v0 통합값) · #1F1147 → var(--fg-strong)(#1F1A14)
+       ── body bg #FAFAFA/#FAFAFF → var(--bg) 흰 통일 (인증화면 정합)
+       ── 카드 radius 14/10 → var(--radius)(12) · shadow 튀는값 → var(--shadow-sm) 절제
+       ── 폰트 하드코딩 (12/13/14/15/16/22) → var(--text-*) · lh var(--lh-*)
+       ── border 1/1.5 → 0.5px (Linear 섬세, dashed 는 1.5 유지)
+       ── ★ 조각1 반영된 6곳 (--fg-soft/--fg-muted 참조) 무접촉.
+       ── ★ 색 이동: 브랜드 보라 #6B46E5 → --primary(#7C3AED) · 인증화면과 일관.
+    */
     body {
-      background: #FAFAFA;
+      background: var(--bg);
       font-family: 'Paperlogy', -apple-system, BlinkMacSystemFont, sans-serif;
       margin: 0;
       min-height: 100vh;
       padding: 40px 20px;
-      color: #1F1147;
+      color: var(--fg-strong);
     }
     .account-page {
       max-width: 640px;
       margin: 40px auto;
       padding: 40px 36px;
-      background: white;
-      border-radius: 14px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+      background: var(--card);
+      border: 0.5px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
     }
     .account-page h1 {
-      font-size: 22px;
+      font-size: var(--text-xl);
       font-weight: 700;
-      color: #1F1147;
+      color: var(--fg-strong);
+      line-height: var(--lh-tight);
       margin: 0 0 32px;
       letter-spacing: -0.3px;
     }
     .account-info-box {
-      background: #FAFAFF;
-      border: 1px solid #EEE;
-      border-radius: 10px;
+      background: var(--bg-2);
+      border: 0.5px solid var(--border);
+      border-radius: var(--radius);
       padding: 20px 24px;
       margin-bottom: 28px;
     }
     .account-info-label {
-      font-size: 13px;
+      font-size: var(--text-sm);
       color: var(--fg-soft);
       font-weight: 600;
+      line-height: var(--lh-tight);
       margin: 0 0 6px;
     }
     .account-info-value {
-      font-size: 15px;
-      color: #1F1147;
+      font-size: var(--text-sm);
+      color: var(--fg-strong);
       font-weight: 600;
+      line-height: var(--lh-base);
       margin: 0;
       word-break: break-all;
     }
@@ -59,107 +72,119 @@
       justify-content: space-between;
       gap: 12px;
       padding-top: 20px;
-      border-top: 1px solid #EEE;
+      border-top: 0.5px solid var(--border);
     }
     .account-btn-back {
       padding: 11px 20px;
-      background: #6B46E5;
-      color: white;
+      background: var(--primary);
+      color: var(--primary-fg);
       border: 0;
-      border-radius: 10px;
-      font-size: 14px;
+      border-radius: var(--radius);
+      font-size: var(--text-sm);
       font-weight: 600;
+      line-height: var(--lh-tight);
       cursor: pointer;
       text-decoration: none;
-      transition: opacity 0.15s ease;
+      transition: background 0.15s ease, opacity 0.15s ease;
       font-family: inherit;
     }
     .account-btn-back:hover {
-      opacity: 0.9;
+      background: var(--primary-hover);
     }
     .account-withdraw-link {
-      font-size: 13px;
+      font-size: var(--text-sm);
       color: var(--fg-muted);
       text-decoration: underline;
       cursor: pointer;
       transition: color 0.15s ease;
     }
     .account-withdraw-link:hover {
-      color: #E74C3C;
+      color: var(--danger);
     }
     /* Spec D-Build-OurCompany-2 — 회사 정보 폼 */
     .account-company-section { margin-top: 24px; text-align: left; }
-    .account-company-title { font-size: 16px; font-weight: 700; margin: 0 0 4px; color: #1F1147; }
-    .account-company-desc { font-size: 13px; color: #6B6B6B; margin: 0 0 16px; }
-    .company-acc { border: 1px solid #E5E5E5; border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
-    .company-acc-title { cursor: pointer; padding: 12px 16px; font-size: 14px; font-weight: 600; color: #1F1147; list-style: none; border-left: 3px solid #6B46E5; }
-    .company-acc[open] .company-acc-title { background: #F5F0FF; }
+    .account-company-title { font-size: var(--text-md); font-weight: 700; margin: 0 0 4px; color: var(--fg-strong); line-height: var(--lh-tight); }
+    .account-company-desc { font-size: var(--text-sm); color: var(--fg-soft); margin: 0 0 16px; line-height: var(--lh-base); }
+    .company-acc { border: 0.5px solid var(--border); border-radius: var(--radius); margin-bottom: 10px; overflow: hidden; }
+    .company-acc-title { cursor: pointer; padding: 12px 16px; font-size: var(--text-sm); font-weight: 600; color: var(--fg-strong); line-height: var(--lh-tight); list-style: none; border-left: 3px solid var(--primary); }
+    .company-acc[open] .company-acc-title { background: var(--primary-soft); }
     .company-acc-title::-webkit-details-marker { display: none; }
-    .company-acc-hint { font-size: 12px; font-weight: 400; color: var(--fg-muted); margin-left: 4px; }
+    .company-acc-hint { font-size: var(--text-xs); font-weight: 400; color: var(--fg-muted); margin-left: 4px; }
     .company-acc-body { padding: 14px 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
     .company-field { display: flex; flex-direction: column; }
-    .company-field label { font-size: 12px; color: #666; margin-bottom: 5px; }
+    .company-field label { font-size: var(--text-xs); color: var(--fg-soft); margin-bottom: 5px; }
     .company-field input, .company-field textarea, .company-field select {
-      padding: 10px 12px; font-size: 14px; border: 1px solid #DDD; border-radius: 8px;
-      background: #FAFAFA; font-family: inherit; color: #1F1147; outline: none;
+      padding: 10px 12px; font-size: var(--text-sm); border: 0.5px solid var(--border); border-radius: var(--radius-sm);
+      background: var(--card); font-family: inherit; color: var(--fg); line-height: var(--lh-base); outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
-    .company-field input:focus, .company-field textarea:focus, .company-field select:focus { border-color: #6B46E5; background: #fff; }
+    .company-field input:focus, .company-field textarea:focus, .company-field select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px color-mix(in oklab, var(--primary) 12%, transparent);
+    }
     .company-field textarea { resize: vertical; }
     .company-field:has(textarea) { grid-column: 1 / -1; }
     .account-btn-save {
-      margin-top: 8px; width: 100%; padding: 12px; font-size: 15px; font-weight: 600;
-      color: #fff; background: #6B46E5; border: none; border-radius: 10px; cursor: pointer;
+      margin-top: 8px; width: 100%; padding: 12px; font-size: var(--text-sm); font-weight: 600;
+      line-height: var(--lh-tight);
+      color: var(--primary-fg); background: var(--primary); border: none; border-radius: var(--radius); cursor: pointer;
       font-family: inherit;
+      transition: background 0.15s ease;
     }
-    .account-btn-save:hover { background: #5A37D4; }
+    .account-btn-save:hover { background: var(--primary-hover); }
     .account-btn-save:disabled { opacity: 0.6; cursor: default; }
     @media (max-width: 560px) { .company-acc-body { grid-template-columns: 1fr; } }
     /* Spec D-Build-CompanyDocs-1b — 보관 서류 섹션 */
     .account-docs-section { margin-top: 24px; text-align: left; }
-    .account-docs-title { font-size: 16px; font-weight: 700; margin: 0 0 4px; color: #1F1147; }
-    .account-docs-desc { font-size: 13px; color: #666; margin: 0 0 16px; }
+    .account-docs-title { font-size: var(--text-md); font-weight: 700; margin: 0 0 4px; color: var(--fg-strong); line-height: var(--lh-tight); }
+    .account-docs-desc { font-size: var(--text-sm); color: var(--fg-soft); margin: 0 0 16px; line-height: var(--lh-base); }
     .docs-upload-row { margin-bottom: 10px; }
     .docs-type-select {
-      padding: 10px 12px; font-size: 14px; border: 1px solid #DDD; border-radius: 8px;
-      background: #FAFAFA; font-family: inherit; color: #1F1147; outline: none; width: 100%;
+      padding: 10px 12px; font-size: var(--text-sm); border: 0.5px solid var(--border); border-radius: var(--radius-sm);
+      background: var(--card); font-family: inherit; color: var(--fg); line-height: var(--lh-base); outline: none; width: 100%;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
-    .docs-type-select:focus { border-color: #6B46E5; background: #fff; }
+    .docs-type-select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px color-mix(in oklab, var(--primary) 12%, transparent);
+    }
     .docs-drop-area {
-      border: 1.5px dashed #DDD; border-radius: 10px; padding: 24px; text-align: center;
-      cursor: pointer; transition: border-color .15s, background .15s; background: #FAFAFA;
+      border: 1.5px dashed var(--border); border-radius: var(--radius); padding: 24px; text-align: center;
+      cursor: pointer; transition: border-color .15s, background .15s; background: var(--bg-2);
     }
-    .docs-drop-area.over { border-color: #6B46E5; background: #F5F0FF; }
+    .docs-drop-area.over { border-color: var(--primary); background: var(--primary-soft); }
     .docs-drop-inner { display: flex; flex-direction: column; gap: 4px; }
-    .docs-drop-text { font-size: 14px; color: #1F1147; }
-    .docs-drop-hint { font-size: 12px; color: var(--fg-muted); }
+    .docs-drop-text { font-size: var(--text-sm); color: var(--fg-strong); line-height: var(--lh-tight); }
+    .docs-drop-hint { font-size: var(--text-xs); color: var(--fg-muted); line-height: var(--lh-base); }
     .docs-list { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
     .docs-item {
       display: flex; align-items: center; gap: 12px;
-      padding: 10px 12px; border: 1px solid #E5E5E5; border-radius: 10px; background: #fff;
+      padding: 10px 12px; border: 0.5px solid var(--border); border-radius: var(--radius); background: var(--card);
     }
     .docs-item-info { flex: 1; min-width: 0; }
-    .docs-item-name { font-size: 14px; color: #1F1147; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .docs-item-meta { font-size: 12px; color: var(--fg-muted); margin-top: 2px; }
+    .docs-item-name { font-size: var(--text-sm); color: var(--fg-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: var(--lh-tight); }
+    .docs-item-meta { font-size: var(--text-xs); color: var(--fg-muted); margin-top: 2px; }
     .docs-item-actions { display: flex; gap: 6px; flex-shrink: 0; }
     .docs-item-btn {
-      font-size: 12px; padding: 5px 10px; border-radius: 8px; cursor: pointer;
-      border: 1px solid #DDD; background: #fff; color: #1F1147; font-family: inherit;
+      font-size: var(--text-xs); padding: 5px 10px; border-radius: var(--radius-sm); cursor: pointer;
+      border: 0.5px solid var(--border); background: var(--card); color: var(--fg-strong); font-family: inherit;
+      transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
     }
-    .docs-item-btn:hover { border-color: #6B46E5; color: #6B46E5; }
-    .docs-item-btn.danger:hover { border-color: #E74C3C; color: #E74C3C; }
-    .docs-empty { font-size: 13px; color: var(--fg-muted); padding: 8px 0; }
+    .docs-item-btn:hover { border-color: var(--primary); color: var(--primary); }
+    .docs-item-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+    .docs-empty { font-size: var(--text-sm); color: var(--fg-muted); padding: 8px 0; }
     /* Spec D-Build-CompanyDocs-2b — 안심 문구 + 추출 채우기 */
     .docs-privacy-note {
       display: flex; gap: 10px; align-items: flex-start;
-      background: #F5F0FF; border-radius: 10px; padding: 12px 14px; margin-bottom: 16px;
+      background: var(--primary-soft); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 16px;
     }
     .docs-privacy-icon { font-size: 16px; line-height: 1.5; flex-shrink: 0; }
-    .docs-privacy-text { font-size: 12px; color: #1F1147; line-height: 1.7; }
-    .docs-privacy-text b { color: #6B46E5; font-weight: 700; }
-    .docs-item-btn.primary { border-color: #6B46E5; color: #6B46E5; }
-    .docs-item-btn.primary:hover { background: #6B46E5; color: #fff; }
+    .docs-privacy-text { font-size: var(--text-xs); color: var(--fg-strong); line-height: var(--lh-base); }
+    .docs-privacy-text b { color: var(--primary); font-weight: 700; }
+    .docs-item-btn.primary { border-color: var(--primary); color: var(--primary); }
+    .docs-item-btn.primary:hover { background: var(--primary); color: var(--primary-fg); }
     .docs-item-btn:disabled { opacity: 0.6; cursor: default; }
-    .field-filled { border-color: #6B46E5 !important; background: #F5F0FF !important; transition: background .3s, border-color .3s; }
+    .field-filled { border-color: var(--primary) !important; background: var(--primary-soft) !important; transition: background .3s, border-color .3s; }
   </style>
   <!-- Spec Fix-AccountFont — style.css 의 @font-face 'Paperlogy' 9개 활성화 (SPA 폰트 일치).
        account.html 자체 클래스는 모두 account-*/company-*/docs-* prefix 라 충돌 0.

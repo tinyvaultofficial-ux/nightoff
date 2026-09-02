@@ -1580,6 +1580,39 @@ async function showDashboardIntroModal() {
 //    Spec D-Build-DashboardRefresh-2 (2026-09-01): renderHero5Slides 함수·상수·SVG
 //    helper 전량 삭제 (조각1 에서 호출 제거 후 참조 0 확인, 순수 죽은코드 정리).
 
+// Spec D-Build-DashboardStatusCards (2026-09-02) — 상태 요약 KPI 카드 3개.
+//   대시보드 최상단 · features-5 위. 회원 전용 (renderGuestDashboard 무접촉).
+//   데이터: 이미 로드된 stats / window.__nightoff_user.quota 사용 (추가 fetch 0).
+//   ── 남은 크레딧    : quota.proposal_remaining
+//   ── 진행 과업      : stats.active_conversations (ended=0)
+//   ── 이번 달 사용    : quota.proposal_total - quota.proposal_remaining
+//   quota 없으면 카드 전체 skip (안전, 미로그인 대비).
+function renderStatusCards(stats) {
+  const q = (window.__nightoff_user && window.__nightoff_user.quota) || null;
+  if (!q) return null;   // quota 없으면 skip (안전)
+
+  const fmt = (n) => (Number(n) || 0).toLocaleString("ko-KR");
+  const remaining = Number(q.proposal_remaining) || 0;
+  const total = Number(q.proposal_total) || 0;
+  const usedThisMonth = Math.max(0, total - remaining);
+  const active = Number((stats && stats.active_conversations)) || 0;
+
+  const items = [
+    { label: "남은 크레딧",   value: fmt(remaining), suffix: "" },
+    { label: "진행 과업",     value: fmt(active),    suffix: "" },
+    { label: "이번 달 사용",  value: fmt(usedThisMonth), suffix: "" },
+  ];
+
+  const grid = h("section", { class: "status-cards" });
+  items.forEach((it) => {
+    grid.appendChild(h("div", { class: "status-card" }, [
+      h("div", { class: "status-card-label" }, it.label),
+      h("div", { class: "status-card-value" }, it.value),
+    ]));
+  });
+  return grid;
+}
+
 // 🌙 NightOff 핵심 기능 5 카드 (대시보드 최상단) — 가운데 강조 (다크 그라데이션 + 엠버 보더 + 배지)
 const CORE_FEATURES_5 = [
   { emoji: "📄", title: "RFP\n자동 분석",         tone: "purple", featured: false },
@@ -2994,6 +3027,11 @@ async function renderDashboard() {
 
   const content = h("div", { class: "main-content" });
   main.appendChild(content);
+
+  // Spec D-Build-DashboardStatusCards (2026-09-02) — 상태 요약 KPI 카드 3개.
+  //   회원 전용 (quota 없으면 null 반환 → skip). renderGuestDashboard 무접촉.
+  const statusCards = renderStatusCards(stats);
+  if (statusCards) content.appendChild(statusCards);
 
   // Spec D-Build-DashboardRefresh-1 (2026-09-01) — 롤링 히어로 배너 제거.
   //   기존 renderHero5Slides (5장 자동 롤링 · 4장 "곧 출시" 미출시 티저) 는

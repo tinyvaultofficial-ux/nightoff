@@ -960,8 +960,7 @@ function renderPricingSection() {
         ...FEATURE_GROUPS.flatMap(g => [
           // 카테고리 헤더 행 — span 1줄 (grid-column: 1 / -1 전체 가로지름)
           h("div", {
-            class: "pt-cell pt-feature-category",
-            style: "grid-column: 1 / -1",
+            class: "pt-cell pt-feature-category pt-feature-category-span",
           }, g.category),
           // 그룹 안 기능 행들 (라벨 + 플랜별 ✅ — 전 플랜 풀기능, 차등 없음)
           ...g.items.flatMap(item => [
@@ -1040,8 +1039,8 @@ function renderPricingPage() {
   // 상단 nav — 로고 홈 이동 + 우측 뒤로가기/대시보드
   const nav = h("nav", { class: "landing-nav" }, [
     h("div", { class: "landing-nav-inner" }, [
-      h("img", { class: "landing-logo", src: "/static/logo.png", alt: "NightOff",
-        role: "button", tabindex: "0", style: "cursor:pointer;",
+      h("img", { class: "landing-logo landing-logo-btn", src: "/static/logo.png", alt: "NightOff",
+        role: "button", tabindex: "0",
         onclick: goHome,
         onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goHome(); } },
       }),

@@ -4155,19 +4155,25 @@ input.locked-by-env::placeholder {
   max-width: 960px;          /* Spec D-Fix-34: 1100 → 960 (좌우 말풍선 자리 확보) */
   position: relative;        /* Spec D-Fix-34: 말풍선 absolute 부모 */
 }
+/* Spec D-Build-LandingLinear/1 (2026-09-02) — 랜딩 색 정합 (임팩트 자산 원형 유지):
+   ── shadow rgba(107,70,229) 옛 원색 → rgba(124,58,237) 앱 --primary 값.
+   ── border 1px → 0.5px var(--border) (Linear 톤).
+   ── ★ Mac chrome preview (bar bg #F5F5F7 · 3 dots #FF5F57/#FEBC2E/#28C840)
+      · frame radius 16 · 크기·레이아웃 · heroLogoIn 애니메이션 · 64px 타이틀
+      · bubble 4개 · CTA 형태 완전 무접촉. */
 .landing-hero-preview-frame {
   background: #FFFFFF;
-  border: 1px solid var(--border, #E5E5E5);
+  border: 0.5px solid var(--border);
   border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 24px 60px -12px rgba(107, 70, 229, 0.20);
+  box-shadow: 0 24px 60px -12px rgba(124, 58, 237, 0.20);
 }
 .landing-hero-preview-bar {
   background: #F5F5F7;
   padding: 12px 16px;
   display: flex;
   gap: 8px;
-  border-bottom: 1px solid var(--border, #E5E5E5);
+  border-bottom: 0.5px solid var(--border);
 }
 .landing-hero-preview-dot {
   width: 12px;
@@ -4184,14 +4190,16 @@ input.locked-by-env::placeholder {
   height: auto;
 }
 
-/* Hero 말풍선 (Spec D-Fix-34 / Annotated Screenshot 패턴 / PC 우선) */
+/* Hero 말풍선 (Spec D-Fix-34 / Annotated Screenshot 패턴 / PC 우선)
+   Spec D-Build-LandingLinear/1 (2026-09-02) — shadow 옛 원색 → 앱값 정합
+   · 형태 (border 1.5px · radius 14 · max-width 180 · absolute 4자리 · arrow) 완전 유지. */
 .landing-hero-bubble {
   position: absolute;
   background: #FFFFFF;
   border: 1.5px solid var(--primary);
   border-radius: 14px;
   padding: 10px 14px;
-  box-shadow: 0 8px 20px -6px rgba(107, 70, 229, 0.25);
+  box-shadow: 0 8px 20px -6px rgba(124, 58, 237, 0.25);
   max-width: 180px;
   z-index: 5;
   text-align: left;

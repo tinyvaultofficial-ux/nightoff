@@ -6723,7 +6723,16 @@ body.landing-fullscreen .nav-backdrop {
 }
 .mp-retry-btn:hover { background: #333; }
 
-/* ─── Beta Notice Modal — 랜딩 첫 진입 시 1회 표시 ─── */
+/* ─── Beta Notice Modal — 랜딩 첫 진입 + 4곳+ 재활용 (signupRequired ·
+      subscribeComing · pageSelection · companyDna) ───
+   Spec D-Build-ModalsLinear/2 (2026-09-02) — Linear 정합:
+   ── 오버레이/애니메이션 완전 무접촉 (backdrop-blur · fadeIn · scaleUp).
+   ── ★ 인디고 #6366F1 (bn-good · bn-soon · btn-primary) → var(--primary)(#7C3AED)
+      앱 표준 통일 (이 모달만 다른 보라였음).
+   ── ★ 그라디언트 (#6366F1→#8B5CF6) → 단색 var(--primary) (Linear 방향).
+   ── #1A1A1A/#666/#333 → var(--fg-strong)/var(--fg-soft)/var(--fg).
+   ── radius 20/12/10/8 → --radius-lg(16)/--radius(12)/--radius-sm(8).
+   ── shadow 매우 튀는(0 24px 64px 0.32) → --shadow-lg (부양감 유지, 절제). */
 .beta-notice-overlay {
   position: fixed;
   inset: 0;
@@ -6753,12 +6762,11 @@ body.landing-fullscreen .nav-backdrop {
   position: relative;
   width: 100%;
   max-width: 520px;
-  background: #FFFFFF;
-  border-radius: 20px;
+  background: var(--card);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-lg);
   padding: 40px 36px 32px;
-  box-shadow:
-    0 24px 64px rgba(20, 16, 50, 0.32),
-    0 4px 12px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-lg);
   animation: bnScaleUp 0.36s cubic-bezier(0.2, 0.7, 0.2, 1);
   font-family: 'Paperlogy', 'SUIT Variable', SUIT, Pretendard, sans-serif;
   max-height: calc(100vh - 48px);
@@ -6780,41 +6788,41 @@ body.landing-fullscreen .nav-backdrop {
   font-size: 18px;
   color: var(--fg-muted);
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   transition: color 0.18s, background 0.18s;
   font-family: inherit;
 }
-.beta-notice-close:hover { color: #1A1A1A; background: #F5F5F5; }
+.beta-notice-close:hover { color: var(--fg-strong); background: var(--bg-2); }
 
 .beta-notice-title {
   font-size: 22px;
   font-weight: 800;
-  color: #1A1A1A;
+  color: var(--fg-strong);
   margin: 0 0 8px 0;
   letter-spacing: -0.3px;
+  line-height: var(--lh-tight);
 }
 .beta-notice-subtitle {
-  font-size: 14px;
-  color: #666;
+  font-size: var(--text-sm);
+  color: var(--fg-soft);
   margin: 0 0 28px 0;
-  line-height: 1.5;
+  line-height: var(--lh-base);
 }
 
 .beta-notice-section {
   margin-top: 22px;
   padding-left: 14px;
-  border-left: 3px solid #DDD;
+  border-left: 3px solid var(--border);
 }
-.beta-notice-section.bn-good { border-left-color: #6366F1; }
-.beta-notice-section.bn-warn { border-left-color: #999; }
+.beta-notice-section.bn-good { border-left-color: var(--primary); }
+.beta-notice-section.bn-warn { border-left-color: var(--fg-muted); }
 .beta-notice-section.bn-soon {
-  border-left-color: transparent;
-  border-image: linear-gradient(180deg, #6366F1, #8B5CF6) 1;
+  border-left-color: var(--primary);
 }
 .beta-notice-section-title {
-  font-size: 15px;
+  font-size: var(--text-sm);
   font-weight: 700;
-  color: #1A1A1A;
+  color: var(--fg-strong);
   margin: 0 0 10px 0;
   letter-spacing: -0.2px;
 }
@@ -6822,8 +6830,8 @@ body.landing-fullscreen .nav-backdrop {
 .beta-notice-list {
   margin: 0;
   padding-left: 20px;
-  color: #333;
-  font-size: 14px;
+  color: var(--fg);
+  font-size: var(--text-sm);
   line-height: 1.7;
 }
 .beta-notice-list li { margin-bottom: 4px; }
@@ -6831,9 +6839,9 @@ body.landing-fullscreen .nav-backdrop {
 
 .beta-notice-paragraph {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--text-sm);
   line-height: 1.7;
-  color: #333;
+  color: var(--fg);
 }
 /* 같은 섹션 안 paragraph 2개 이상일 때 사이 간격 */
 .beta-notice-paragraph + .beta-notice-paragraph { margin-top: 12px; }
@@ -6844,44 +6852,43 @@ body.landing-fullscreen .nav-backdrop {
   gap: 10px;
   margin-top: 32px;
   padding-top: 20px;
-  border-top: 1px solid #EEE;
+  border-top: 0.5px solid var(--border);
 }
 
 .beta-notice-btn-secondary {
   background: transparent;
-  color: #666;
+  color: var(--fg-soft);
   border: none;
   padding: 11px 18px;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 500;
   cursor: pointer;
-  border-radius: 10px;
+  border-radius: var(--radius);
   font-family: inherit;
   transition: color 0.18s, background 0.18s;
 }
-.beta-notice-btn-secondary:hover { color: #1A1A1A; background: #F5F5F5; }
+.beta-notice-btn-secondary:hover { color: var(--fg-strong); background: var(--bg-2); }
 
 .beta-notice-btn-primary {
-  background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
-  color: #FFFFFF;
+  background: var(--primary);
+  color: var(--primary-fg);
   border: none;
   padding: 11px 26px;
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 600;
   cursor: pointer;
-  border-radius: 12px;
+  border-radius: var(--radius);
   font-family: inherit;
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.34);
-  transition: transform 0.18s, box-shadow 0.18s;
+  transition: background 0.18s, transform 0.18s;
 }
 .beta-notice-btn-primary:hover {
+  background: var(--primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(99, 102, 241, 0.42);
 }
 .beta-notice-btn-primary:active { transform: translateY(0); }
 
 @media (max-width: 600px) {
-  .beta-notice-modal { padding: 30px 22px 24px; border-radius: 16px; }
+  .beta-notice-modal { padding: 30px 22px 24px; border-radius: var(--radius); }
   .beta-notice-title { font-size: 20px; }
   .beta-notice-actions { flex-direction: column-reverse; gap: 8px; }
   .beta-notice-btn-primary,
@@ -6990,6 +6997,16 @@ body.landing-fullscreen .nav-backdrop {
    가입자 첫 진입 시 1회성 NightOff 차별화 + 솔직 안내.
    chat-intro 패턴 정확 복제, dismissed 영구 저장.
    ============================================================ */
+/* Spec D-Build-ModalsLinear/2 (2026-09-02) — Dashboard Intro Linear 정합:
+   ── 오버레이/애니메이션 완전 무접촉 (rgba(31,17,71,0.55) blur · fadein/-out).
+   ── head 라벤더 그라디언트 (#FAFAFF→#F5F0FF) → var(--primary-soft) 단색 (Linear).
+   ── ★ item-title fallback #6E56CF (옛 보라) 제거 → var(--primary) 순수.
+   ── ★ CTA-btn 그라디언트 (#6E56CF→#9D8AE6 옛보라) → var(--primary) 단색.
+   ── ★ honest 서브 (황토 3세트 #FFFBF5/#FFE8C4/#B8862E)
+      → var(--warning-soft)/var(--warning) (withdraw 조각2 --warning 통일 정합).
+   ── #1F1147/#555/#333/#666 → var(--fg-strong)/var(--fg-soft)/var(--fg)/--fg-muted.
+   ── shadow 튀는(0 24px 60px 0.3) → --shadow-lg (부양감 유지, 절제).
+   ── border 1px → 0.5px · radius 하드코딩 → var(--radius*). */
 .dashboard-intro-backdrop {
   position: fixed;
   inset: 0;
@@ -7014,9 +7031,10 @@ body.landing-fullscreen .nav-backdrop {
   to { opacity: 0; }
 }
 .dashboard-intro-modal {
-  background: #fff;
-  border-radius: 16px;
-  box-shadow: 0 24px 60px -8px rgba(0, 0, 0, 0.3);
+  background: var(--card);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
   width: 100%;
   max-width: 720px;
   max-height: 90vh;
@@ -7027,23 +7045,23 @@ body.landing-fullscreen .nav-backdrop {
 /* 헤더 — 폰트 위계 최상위 */
 .dashboard-intro-head {
   padding: 36px 40px 24px;
-  border-bottom: 1px solid var(--border, #EEE);
-  background: linear-gradient(135deg, #FAFAFF 0%, #F5F0FF 100%);
+  border-bottom: 0.5px solid var(--border);
+  background: var(--primary-soft);
 }
 .dashboard-intro-title {
   font-size: 28px;
   font-weight: 800;
-  color: #1F1147;
+  color: var(--fg-strong);
   margin: 0 0 12px;
   letter-spacing: -0.5px;
-  line-height: 1.3;
+  line-height: var(--lh-tight);
 }
 .dashboard-intro-subtitle {
   font-size: 15px;
   font-weight: 400;
-  color: #555;
+  color: var(--fg-soft);
   margin: 0 0 4px;
-  line-height: 1.55;
+  line-height: var(--lh-base);
 }
 /* 본문 — 스크롤 */
 .dashboard-intro-body {
@@ -7060,7 +7078,7 @@ body.landing-fullscreen .nav-backdrop {
 .dashboard-intro-section-title {
   font-size: 19px;
   font-weight: 700;
-  color: #1F1147;
+  color: var(--fg-strong);
   margin: 0 0 20px;
   letter-spacing: -0.3px;
 }
@@ -7073,37 +7091,37 @@ body.landing-fullscreen .nav-backdrop {
   margin-bottom: 0;
 }
 .dashboard-intro-item-title {
-  font-size: 15px;
+  font-size: var(--text-sm);
   font-weight: 700;
-  color: var(--primary, #6E56CF);
+  color: var(--primary);
   margin: 0 0 6px;
   letter-spacing: -0.2px;
 }
 .dashboard-intro-item-desc {
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 400;
-  color: #555;
+  color: var(--fg-soft);
   margin: 0;
   line-height: 1.65;
 }
-/* 솔직한 섹션 */
+/* 솔직한 섹션 (--warning 통일 · withdraw 조각2 정합) */
 .dashboard-intro-section--honest {
-  background: #FFFBF5;
-  border: 1px solid #FFE8C4;
-  border-radius: 12px;
+  background: var(--warning-soft);
+  border: 0.5px solid var(--warning);
+  border-radius: var(--radius);
   padding: 24px 28px;
   margin-top: 8px;
 }
 .dashboard-intro-section--honest .dashboard-intro-section-title {
-  color: #B8862E;
-  font-size: 17px;
+  color: var(--warning);
+  font-size: var(--text-md);
 }
 .dashboard-intro-honest-lead {
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #333;
+  color: var(--fg);
   margin: 0 0 12px;
-  line-height: 1.6;
+  line-height: var(--lh-base);
 }
 .dashboard-intro-honest-list {
   list-style: none;
@@ -7111,47 +7129,47 @@ body.landing-fullscreen .nav-backdrop {
   margin: 0 0 16px;
 }
 .dashboard-intro-honest-list li {
-  font-size: 13.5px;
-  color: #555;
+  font-size: var(--text-sm);
+  color: var(--fg);
   padding: 6px 0 6px 18px;
   position: relative;
-  line-height: 1.6;
+  line-height: var(--lh-base);
 }
 .dashboard-intro-honest-list li::before {
   content: "•";
   position: absolute;
   left: 4px;
-  color: #B8862E;
+  color: var(--warning);
   font-weight: 700;
 }
 .dashboard-intro-honest-foot {
-  font-size: 13.5px;
-  color: #666;
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
   margin: 8px 0 0;
   line-height: 1.65;
 }
 /* CTA */
 .dashboard-intro-cta-bar {
   padding: 20px 40px 28px;
-  border-top: 1px solid var(--border, #EEE);
-  background: #FAFAFF;
+  border-top: 0.5px solid var(--border);
+  background: var(--bg-2);
 }
 .dashboard-intro-cta-btn {
   width: 100%;
   padding: 14px 28px;
-  background: linear-gradient(135deg, #6E56CF 0%, #9D8AE6 100%);
-  color: #fff;
-  font-size: 15px;
+  background: var(--primary);
+  color: var(--primary-fg);
+  font-size: var(--text-sm);
   font-weight: 700;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--radius);
   cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: background 0.15s ease, transform 0.15s ease;
   letter-spacing: -0.2px;
 }
 .dashboard-intro-cta-btn:hover {
+  background: var(--primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 8px 20px -4px rgba(110, 86, 207, 0.4);
 }
 /* 모바일 분기 */
 @media (max-width: 767px) {

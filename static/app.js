@@ -883,6 +883,26 @@ function fmtSize(bytes) {
   return `${bytes.toFixed(i ? 1 : 0)}${u[i]}`;
 }
 
+// Spec RFP-UI-Gate (2026-09-02) — 프론트 RFP 유효성 판정 헬퍼.
+// 서버 `_rfp_analysis_is_valid` (main.py L3321~) 와 100% 동일 기준 (안A · 엄격):
+//   · rfp 가 dict 이 아니거나 error 키 있으면 false
+//   · key_requirements or evaluation_criteria (빈 배열/null 아닌 것) 있으면 true
+// 재사용처:
+//   · renderTaskActionsSection : "대화 시작하기" 버튼 게이트
+//   · renderChat               : 진입 배너 (channel 유지 · 안내만)
+//   · sparkle 제안서 생성 버튼 : disabled 조건
+// 판정 일치 원칙 — 프론트에서 통과한 것은 서버도 통과, 프론트에서 막힌 것은
+// 서버도 400. 불일치로 인한 UX 혼란 방지.
+function isRfpValid(rfp) {
+  if (!rfp || typeof rfp !== "object") return false;
+  if (rfp.error) return false;
+  const keyReqs = rfp.key_requirements;
+  const evalCrit = rfp.evaluation_criteria;
+  const hasKr = Array.isArray(keyReqs) ? keyReqs.length > 0 : !!keyReqs;
+  const hasEc = Array.isArray(evalCrit) ? evalCrit.length > 0 : !!evalCrit;
+  return hasKr || hasEc;
+}
+
 // ============================================================
 // Spec D-Build-PricingPage-5a (2026-09-01) — 요금제 렌더 함수 (순수 추출)
 // ============================================================
@@ -4493,20 +4513,49 @@ async function renderTaskActionsSection(cid) {
     hasProposal = Array.isArray(convs) && convs.some((c) => (c.msg_count ?? 0) > 1);
   } catch {}
 
+  // Spec RFP-UI-Gate (2026-09-02) — RFP 유효성 사전 확인.
+  // 서버 (api_convs_create · main.py L3212) 가 이미 400 으로 방어하지만 UI 에서
+  // 미리 disabled + 안내 → 사용자가 헛클릭·에러 토스트 대신 어디로 가야 하는지
+  // (RFP 업로드 섹션) 바로 인지. isRfpValid 로 서버와 동일 판정.
+  let hasRfp = false;
+  try {
+    const rfpResp = await api.get(`/api/clients/${cid}/rfp`);
+    hasRfp = !!(rfpResp && rfpResp.has_rfp && isRfpValid(rfpResp.analysis));
+  } catch {}
+
   const startConv = async () => {
+    // 프론트 사전 게이트: 헛 API 호출·서버 400 회피
+    if (!hasRfp) {
+      toast("RFP 를 먼저 업로드해주세요. 위 RFP 섹션에서 파일 업로드 후 분석이 끝나면 대화를 시작할 수 있어요.", "", 4200);
+      // 상단 RFP 섹션으로 스크롤 (사용자가 "어디로 가야 하는지" 즉시 인지)
+      const rfpSection = document.querySelector(".rfp-form-scope") || document.querySelector("[data-section='rfp']");
+      if (rfpSection && typeof rfpSection.scrollIntoView === "function") {
+        rfpSection.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      return;
+    }
     try {
       const r = await api.post(`/api/clients/${cid}/conversations`);
       navigate(`/client/${cid}/chat/${r.id}`);
-    } catch (e) { toast(String(e.message || e), "error"); }
+    } catch (e) {
+      // 서버 응답이 RFP_NOT_FOUND / RFP_INSUFFICIENT 이면 안내 개선 (레이스 방어).
+      // api._call (L293~302) 이 detail.code 를 err.code 로 직접 노출.
+      if (e && (e.code === "RFP_NOT_FOUND" || e.code === "RFP_INSUFFICIENT")) {
+        toast(String(e.message || "RFP 를 먼저 업로드해주세요."), "error", 4500);
+        return;
+      }
+      toast(String(e.message || e), "error");
+    }
   };
 
   const card = h("section", { class: "task-actions-card" }, [
     h("div", { class: "task-actions-row" }, [
-      // 4️⃣ 대화 시작 — 보라 큰 강조 버튼
+      // 4️⃣ 대화 시작 — 보라 큰 강조 버튼 (RFP 없으면 disabled-soft)
       h("button", {
-        class: "btn btn-primary task-action-cta task-action-primary",
+        class: "btn btn-primary task-action-cta task-action-primary" + (hasRfp ? "" : " disabled-soft"),
+        title: hasRfp ? "" : "RFP 를 먼저 업로드해주세요 — 위 RFP 섹션에서 파일 업로드 후 활성화됩니다.",
         onclick: startConv,
-        html: `<span class="ta-emoji">✨</span><div class="ta-text"><div class="ta-title">대화 시작하기</div><div class="ta-sub">AI 와 함께 제안서 초안을 만들어요</div></div>`,
+        html: `<span class="ta-emoji">✨</span><div class="ta-text"><div class="ta-title">대화 시작하기</div><div class="ta-sub">${hasRfp ? "AI 와 함께 제안서 초안을 만들어요" : "RFP 업로드 후 활성화돼요"}</div></div>`,
       }),
       // Spec D-Fix-43: PT 연습 자리 제거 (다음 버전 기능 / 현재 비활성)
       // openPtPracticeModal 함수 보존 (dead code 정책 / 향후 복귀 가능)
@@ -5553,6 +5602,10 @@ async function renderChat(cid, convId) {
     const r = await api.get(`/api/clients/${cid}/references`); injected.refs = r.length > 0;
   } catch {}
 
+  // Spec RFP-UI-Gate (2026-09-02) — RFP 유효성 판정 (서버 _rfp_analysis_is_valid 정합).
+  // 채팅 자체는 허용 (user 결정) 하지만 생성 버튼 비활성화 + 상단 배너로 안내.
+  const hasRfp = isRfpValid(data.rfp_analysis);
+
   const pageLimit = data.rfp_analysis?.page_limit;
 
   // Header
@@ -5594,25 +5647,36 @@ async function renderChat(cid, convId) {
         }),
       ]),
       // ✨ 제안서 생성 (multi-pass) — Phase 4 (Step 3) 페이지 기반 크레딧 표시
+      // Spec RFP-UI-Gate (2026-09-02) — RFP 유효성도 disabled 조건에 추가 · 서버 400 회피
       (function () {
         const q = (window.__nightoff_user && window.__nightoff_user.quota) || null;
         const propRemain = q ? q.proposal_remaining : null;
         // CREDITS_PER_PAGE (L284 module-level 정의, Step 2-A: 1p = 100 크레딧) 활용
         const propPagesNow = q ? Math.floor((propRemain || 0) / CREDITS_PER_PAGE) : 0;
         const exhausted = q && propRemain < CREDITS_PER_PAGE;  // 1 페이지 분 미만이면 disabled
+        const disabled = exhausted || !hasRfp;
         const badgeHtml = q
           ? `<span id="proposal-quota-badge" class="btn-quota-badge${exhausted ? " quota-exhausted" : ""}">${propPagesNow}p</span>`
           : "";
         const labelHtml = `<span class="btn-icon-lead">✨</span><span>제안서 생성</span>${badgeHtml}`;
+        // title 우선순위: RFP 없음 > 크레딧 부족 > 정상 (사용자에게 지금 필요한 조치 하나만 노출)
+        const titleText = !hasRfp
+          ? "RFP 업로드 후 활성화됩니다 — 위 [발주처 상세]에서 RFP 를 먼저 업로드해주세요."
+          : (exhausted
+              ? "제안서 크레딧이 1페이지(100) 미만 — 다음 달 1일 리셋"
+              : (q ? `남은 크레딧: ${(propRemain).toLocaleString("ko-KR")} (≈${propPagesNow}페이지)` : "제안서 생성"));
         return h("button", {
           id: "sparkle-generate-btn",
-          class: "btn btn-primary sparkle-generate-btn" + (exhausted ? " btn-quota-disabled" : ""),
+          class: "btn btn-primary sparkle-generate-btn" + (disabled ? " btn-quota-disabled" : ""),
           html: labelHtml,
-          title: exhausted
-            ? "제안서 크레딧이 1페이지(100) 미만 — 다음 달 1일 리셋"
-            : (q ? `남은 크레딧: ${(propRemain).toLocaleString("ko-KR")} (≈${propPagesNow}페이지)` : "제안서 생성"),
-          disabled: exhausted ? "" : null,
+          title: titleText,
+          disabled: disabled ? "" : null,
           onclick: async () => {
+          // Spec RFP-UI-Gate: 서버 400 (RFP_NOT_FOUND/INSUFFICIENT) 회피용 사전 안내.
+          if (!hasRfp) {
+            toast("RFP 를 먼저 업로드해주세요. 위 [발주처 상세]에서 RFP 파일을 업로드하고 분석이 끝나면 제안서를 생성할 수 있어요.", "error", 5000);
+            return;
+          }
           // Phase 4 (Step 3) — 1 페이지 분(100 크레딧) 미만이면 거부. window.__nightoff_user.quota 직접 참조.
           const liveQ = (window.__nightoff_user && window.__nightoff_user.quota) || null;
           if (liveQ && liveQ.proposal_remaining < CREDITS_PER_PAGE) {
@@ -5822,6 +5886,26 @@ async function renderChat(cid, convId) {
     ]),
   ]);
   shell.appendChild(header);
+
+  // Spec RFP-UI-Gate (2026-09-02) — RFP 없거나 얇으면 상단 안내 배너 (채팅은 허용).
+  // "생성 하려면 RFP 필요" · [발주처 상세로 가기] 링크. 서버는 이미 400 방어.
+  if (!hasRfp) {
+    const rfpBanner = h("div", { class: "rfp-missing-banner" }, [
+      h("span", { class: "rfp-missing-icon" }, "⚠"),
+      h("div", { class: "rfp-missing-text" }, [
+        h("div", { class: "rfp-missing-title" }, "이 과업에 유효한 RFP 분석이 없어요"),
+        h("div", { class: "rfp-missing-sub" },
+          data.rfp_analysis
+            ? "RFP 분석이 부족해요 (핵심 요구사항/평가기준 비어있음). 재업로드하거나 파일 본문을 확인해주세요."
+            : "제안서를 만들려면 RFP 를 먼저 업로드해주세요. 대화는 지금도 가능해요."),
+      ]),
+      h("button", {
+        class: "rfp-missing-btn",
+        onclick: () => navigate(`/client/${cid}`),
+      }, "RFP 업로드하러 가기 →"),
+    ]);
+    shell.appendChild(rfpBanner);
+  }
 
   const body = h("div", { class: "chat-body" });
   const msgs = h("div", { class: "chat-messages", id: "chat-messages" });
@@ -6539,11 +6623,20 @@ async function runMultiPassProposal({ convId, pages, asstEl, bubble, progress, b
     const text = await resp.text();
     let body = null;
     try { body = JSON.parse(text); } catch {}
-    const errMsg = (body?.detail && typeof body.detail === "object" ? body.detail.error : null)
-                   || (typeof body?.detail === "string" ? body.detail : null)
-                   || body?.error
-                   || text
-                   || "생성 실패";
+    // Spec RFP-UI-Gate (2026-09-02) — RFP 관련 400 code 분기해 명확한 안내.
+    // 서버 fix/rfp-generation-guard 가 RFP_NOT_FOUND / RFP_INSUFFICIENT code 반환.
+    const code = (body?.detail && typeof body.detail === "object") ? body.detail.code : null;
+    const serverMsg = (body?.detail && typeof body.detail === "object" ? body.detail.error : null)
+                     || (typeof body?.detail === "string" ? body.detail : null)
+                     || body?.error
+                     || text
+                     || "생성 실패";
+    let errMsg = serverMsg;
+    if (code === "RFP_NOT_FOUND") {
+      errMsg = "RFP 를 먼저 업로드해주세요. 위 [발주처 상세] 에서 RFP 파일을 업로드하고 분석이 끝난 뒤 다시 시도해주세요.";
+    } else if (code === "RFP_INSUFFICIENT") {
+      errMsg = "RFP 분석이 부족해요 (핵심 요구사항/평가기준 비어있음). RFP 를 다시 업로드하거나 파일 본문을 확인해주세요.";
+    }
     throw new Error(typeof errMsg === "string" ? errMsg : "생성 실패");
   }
 

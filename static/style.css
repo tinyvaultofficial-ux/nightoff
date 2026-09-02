@@ -2540,6 +2540,36 @@ details.audit-block:not([open]) summary.audit-block-label::after { content: " �
 
 /* (설정 진입점은 사이드바 하단으로 이동됨 — 이전 .settings-fab floating 버튼 영역 제거) */
 
+/* ===== RFP Missing Banner (Spec RFP-UI-Gate 2026-09-02) =====
+   챗봇 상단에 RFP 없음/얇음 시 안내 · 채팅 자체는 허용 (user 결정) ·
+   [RFP 업로드하러 가기] 링크 · --warning 톤 (withdraw · dashboard-intro-honest 정합). */
+.rfp-missing-banner {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 18px;
+  margin: 12px 20px 0;
+  background: var(--warning-soft);
+  border: 0.5px solid var(--warning);
+  border-radius: var(--radius);
+  color: var(--fg);
+  font-size: var(--text-sm);
+  line-height: var(--lh-base);
+}
+.rfp-missing-icon {
+  font-size: 18px; color: var(--warning); flex-shrink: 0;
+}
+.rfp-missing-text { flex: 1; min-width: 0; }
+.rfp-missing-title { font-weight: 700; color: var(--fg-strong); margin-bottom: 2px; }
+.rfp-missing-sub { color: var(--fg); }
+.rfp-missing-btn {
+  flex-shrink: 0; padding: 8px 14px;
+  background: var(--warning); color: #fff;
+  border: 0; border-radius: var(--radius-sm);
+  font-size: var(--text-xs); font-weight: 600;
+  cursor: pointer; font-family: inherit;
+  transition: opacity .15s ease;
+}
+.rfp-missing-btn:hover { opacity: 0.9; }
+
 /* ===== Toast ===== */
 .toast-root { position: fixed; bottom: 20px; right: 20px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }
 .toast {

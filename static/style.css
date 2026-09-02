@@ -4692,9 +4692,18 @@ input.locked-by-env::placeholder {
 .landing-logo-btn { cursor: pointer; }
 
 /* ── 비교 섹션 (Spec D-Fix-27 Stage A / D-Fix-30 폰트 ↑) ──────────── */
+/* Spec D-Build-LandingLinear/2 (2026-09-02) — 랜딩 compare Linear 색 정합:
+   ── 마케팅 임팩트 자산 원형 유지 (다크 프레임 #1F1F1F · hover 1.6배 scale
+      · NightOff 3px border 강조 · 36px 타이틀 · 캡처 aspect 16/9).
+   ── 색·shadow·fallback·border 만 앱값 정합:
+      shadow rgba(107,70,229) → rgba(124,58,237) 앱 --primary 값
+      fallback #1A1A1A → --fg-strong · #666 → --fg-soft · #DDD → --border
+      lc-capture-label-strong fallback #6B46E5 → --primary
+      border 1px → 0.5px · ct-nightoff bg #FAFAFA → --bg-2
+      shadow rgba(0,0,0,0.06) → --shadow-sm. */
 .landing-compare {
   padding: 52px 24px;
-  background: var(--bg-2, #FAFAFA);
+  background: var(--bg-2);
 }
 .landing-compare-inner {
   max-width: 1200px;
@@ -4704,14 +4713,14 @@ input.locked-by-env::placeholder {
 .landing-compare-title {
   font-size: 36px;
   font-weight: 800;
-  color: var(--fg, #1A1A1A);
+  color: var(--fg-strong);
   margin: 0 0 12px 0;
   line-height: 1.3;
   letter-spacing: -0.02em;
 }
 .landing-compare-lead {
   font-size: 17px;
-  color: var(--fg-2, #666);
+  color: var(--fg-soft);
   margin: 0 0 40px 0;
   line-height: 1.6;
 }
@@ -4737,7 +4746,7 @@ input.locked-by-env::placeholder {
 }
 .lc-capture-nightoff {
   border: 3px solid var(--primary);
-  box-shadow: 0 12px 32px -8px rgba(107, 70, 229, 0.30);
+  box-shadow: 0 12px 32px -8px rgba(124, 58, 237, 0.30);
 }
 
 /* PC 호버 scale (Spec D-Fix-29 Stage B) — 터치 디바이스 sticky hover 방지
@@ -4749,7 +4758,7 @@ input.locked-by-env::placeholder {
     box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.25);
   }
   .lc-capture-nightoff:hover {
-    box-shadow: 0 20px 48px -12px rgba(107, 70, 229, 0.45);
+    box-shadow: 0 20px 48px -12px rgba(124, 58, 237, 0.45);
   }
   .landing-compare-gallery .lc-capture:nth-child(4):hover {
     transform-origin: right center;
@@ -4768,7 +4777,7 @@ input.locked-by-env::placeholder {
   z-index: 1;
 }
 .lc-capture-label-strong {
-  background: var(--primary, #6B46E5);
+  background: var(--primary);
   font-size: 15px;
 }
 .lc-capture-placeholder {
@@ -4790,24 +4799,24 @@ input.locked-by-env::placeholder {
   margin-top: 28px;
   display: grid;
   grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr;
-  background: #fff;
-  border: 1px solid var(--border, #DDD);
+  background: var(--card);
+  border: 0.5px solid var(--border);
   /* Spec D-Fix-NightoffBoxClose (2026-06-14): 라운드 20 → 12. 우하단 코너 클립으로
      NightOff 보라 보더 하단이 잘려 보이던 문제 완화. */
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 6px 20px -10px rgba(0,0,0,0.06);
+  box-shadow: var(--shadow-sm);
   text-align: left;
 }
 .ct-cell {
   padding: 10px 18px;
-  border-top: 1px solid var(--border, #DDD);
+  border-top: 0.5px solid var(--border);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   font-size: 15px;
-  color: var(--fg, #1A1A1A);
+  color: var(--fg-strong);
   gap: 4px;
   text-align: center;
 }
@@ -4818,14 +4827,15 @@ input.locked-by-env::placeholder {
   font-size: 16px;
 }
 .ct-row-label {
-  background: var(--bg-2, #FAFAFA);
+  background: var(--bg-2);
   align-items: flex-start;
   text-align: left;
   font-weight: 600;
 }
-/* NightOff 컬럼 — 보라 통일 (Spec D-Fix-31 / D-Fix-31c 하단 닫기) */
+/* NightOff 컬럼 — 보라 통일 (Spec D-Fix-31 / D-Fix-31c 하단 닫기)
+   ★ 임팩트 자산 유지 — border 2/3px · bg tint · font-weight 강조 형태 무접촉. */
 .ct-nightoff {
-  background: #FAFAFA;
+  background: var(--bg-2);
   border-left: 2px solid var(--primary);
   border-right: 2px solid var(--primary);
   font-weight: 700;
@@ -4841,7 +4851,7 @@ input.locked-by-env::placeholder {
 }
 .ct-nightoff-header {
   background: var(--primary);
-  color: #FFFFFF;
+  color: var(--primary-fg);
   border-top: 3px solid var(--primary);
 }
 .ct-mark {
@@ -4849,7 +4859,7 @@ input.locked-by-env::placeholder {
 }
 .ct-note {
   font-size: 12px;
-  color: var(--fg-2, #666);
+  color: var(--fg-soft);
   font-weight: 500;
 }
 

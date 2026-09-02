@@ -3894,16 +3894,19 @@ async function renderClientForm(mode, id = null) {
     try { data = await api.get(`/api/clients/${id}`); } catch (e) { toast("과업을 불러오지 못했어요", "error"); return; }
   }
 
+  // Spec D-Build-RfpUploadLinear (2026-09-02) — 인라인 style → 클래스로 정리.
+  //   .rfp-form-scope wrapper 로 이 화면 안에서만 .card / .input / .select / .textarea
+  //   등을 Linear 방향으로 오버라이드 (다른 화면 무영향).
   const form = h("form", {}, [
-    h("div", { class: "card", style: "padding: 28px; max-width: 720px;" }, [
+    h("div", { class: "card form-card" }, [
       h("div", { class: "row-gap-18" }, [
         h("div", { class: "field" }, [
-          h("label", {}, [document.createTextNode("과업명 "), h("span", { style: "color: var(--danger);" }, "*")]),
+          h("label", {}, [document.createTextNode("과업명 "), h("span", { class: "required-mark" }, "*")]),
           h("input", { class: "input", id: "fld-name", value: data.name,
             placeholder: `예: ${TASK_NAME_EXAMPLES[Math.floor(Math.random() * TASK_NAME_EXAMPLES.length)]}` }),
         ]),
         h("div", { class: "field" }, [
-          h("label", {}, [document.createTextNode("업종 "), h("span", { style: "color: var(--danger);" }, "*")]),
+          h("label", {}, [document.createTextNode("업종 "), h("span", { class: "required-mark" }, "*")]),
           (() => {
             const sel = h("select", { class: "select", id: "fld-industry" }, [
               h("option", { value: "" }, "선택하세요"),
@@ -3921,7 +3924,7 @@ async function renderClientForm(mode, id = null) {
           h("textarea", { class: "textarea", id: "fld-memo", placeholder: "추가 메모" }, data.memo),
         ]),
       ]),
-      h("div", { class: "flex-row", style: "justify-content: flex-end; gap: 8px; margin-top: 24px;" }, [
+      h("div", { class: "form-actions" }, [
         h("button", { type: "button", class: "btn btn-ghost", onclick: () => history.back() }, "취소"),
         h("button", {
           type: "button", class: "btn btn-primary",
@@ -3951,7 +3954,7 @@ async function renderClientForm(mode, id = null) {
     ]),
   ]);
 
-  const content = h("div", { class: "main-content" }, form);
+  const content = h("div", { class: "main-content rfp-form-scope" }, form);
   main.appendChild(content);
 }
 
@@ -4926,7 +4929,8 @@ const ROLE_LABELS = ["공고문", "과업지시서", "제안요청서", "기타"
 
 async function renderRfpSection(cid) {
   const rfp = await api.get(`/api/clients/${cid}/rfp`).catch(() => ({ has_rfp: false, files: [], analysis: {} }));
-  const card = h("div", { class: "card" });
+  // Spec D-Build-RfpUploadLinear (2026-09-02) — .rfp-card modifier 로 대시보드 톤 정합.
+  const card = h("div", { class: "card rfp-card" });
   card.appendChild(h("div", { class: "card-head" }, [
     h("div", { class: "card-title-row" }, [
       h("div", { class: "card-title-icon", html: iconHtml("fileSearch", 18) }),
@@ -4985,27 +4989,28 @@ async function renderRfpSection(cid) {
     ]));
 
     const roleSelects = [];
-    const filesList = h("div", { style: "display: flex; flex-direction: column; gap: 10px;" });
+    // Spec D-Build-RfpUploadLinear (2026-09-02) — role 모달 인라인 style → 클래스로.
+    const filesList = h("div", { class: "role-modal-list" });
     files.forEach((f) => {
       const autoRole = guessRole(f.name);
-      const select = h("select", { class: "select" },
+      const select = h("select", { class: "select role-modal-select" },
         ROLE_LABELS.map((r) => h("option", { value: r, ...(r === autoRole ? { selected: "" } : {}) }, r))
       );
       roleSelects.push(select);
-      filesList.appendChild(h("div", { class: "file-row", style: "align-items: center; gap: 10px;" }, [
-        h("div", { class: "left", style: "flex: 1; min-width: 0;" }, [
+      filesList.appendChild(h("div", { class: "file-row role-modal-row" }, [
+        h("div", { class: "left role-modal-info" }, [
           h("div", { class: "file-icon", html: iconHtml("file", 16) }),
-          h("div", { style: "flex: 1; min-width: 0;" }, [
+          h("div", { class: "role-modal-name-wrap" }, [
             h("p", { class: "file-name" }, f.name),
             h("p", { class: "file-sub" }, fmtSize(f.size)),
           ]),
         ]),
-        h("div", { style: "min-width: 140px;" }, select),
+        h("div", { class: "role-modal-select-wrap" }, select),
       ]));
     });
 
     modal.appendChild(h("div", { class: "modal-body" }, [
-      h("p", { class: "small muted", style: "margin: 0 0 10px;" }, "각 파일의 역할을 선택해 주세요. 역할에 따라 AI가 추출하는 정보가 달라져요."),
+      h("p", { class: "small muted role-modal-hint" }, "각 파일의 역할을 선택해 주세요. 역할에 따라 AI가 추출하는 정보가 달라져요."),
       filesList,
     ]));
 

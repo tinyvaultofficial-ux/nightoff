@@ -7175,3 +7175,108 @@ body.landing-fullscreen .nav-backdrop {
 
 .subdoc-card.clickable { cursor:pointer; transition:border-color .15s, box-shadow .15s; }
 .subdoc-card.clickable:hover { border-color:#6B46E5; box-shadow:0 2px 8px rgba(107,70,229,0.08); }
+
+/* ============================================================
+   Spec D-Build-RfpUploadLinear (2026-09-02) — RFP 화면 Linear 정합.
+   ── 대상 A: renderClientForm ("새 과업 추가" 4필드 폼)
+   ── 대상 B: renderRfpSection ("RFP 분석" 카드 + 드롭존 + role 모달)
+   ── 원칙: 대시보드 조각1~4 방향 이식 (radius 12 / 0.5px 라인 / --shadow-sm
+      상시 / 폰트·여백 변수화 / 절제된 focus).
+   ── ★ 다른 화면 무영향 위해 wrapper 스코프 (.rfp-form-scope / .rfp-card)
+      로 국지 오버라이드 — 전역 .card / .input / .select / .textarea 무접촉.
+   ============================================================ */
+
+/* A) form-card — .rfp-form-scope 안 .card 오버라이드 (radius 16 → 12, border 1 → 0.5,
+   상시 --shadow-sm, padding 인라인 28px → var(--space-6)). max-width 720 유지. */
+.rfp-form-scope .card.form-card {
+  border-radius: var(--radius);
+  border: 0.5px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-6);
+  max-width: 720px;
+  background: var(--card);
+}
+
+/* A) 필수 아스타 · 버튼 영역 — 인라인 style 대체 */
+.required-mark { color: var(--danger); }
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+}
+
+/* A) 필드 라벨 폰트 변수화 (14/500 하드코딩 → --text-sm/500w) */
+.rfp-form-scope .field { gap: var(--space-2); }
+.rfp-form-scope .field label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--fg-strong);
+  line-height: var(--lh-tight);
+}
+
+/* A) input/select/textarea — 이 화면 안에서만 라인 섬세화 + focus 절제.
+   ── 대시보드 위젯 0.5px 라인 통일 (전역 .input 은 무접촉). */
+.rfp-form-scope .input,
+.rfp-form-scope .select,
+.rfp-form-scope .textarea {
+  border: 0.5px solid var(--border);
+  font-size: var(--text-sm);
+  color: var(--fg);
+  background: var(--card);
+  line-height: var(--lh-base);
+}
+.rfp-form-scope .input:focus,
+.rfp-form-scope .select:focus,
+.rfp-form-scope .textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--primary) 12%, transparent);
+}
+
+/* B) rfp-card — .card 에 .rfp-card modifier. RFP 섹션 카드 대시보드 톤 정합. */
+.card.rfp-card {
+  border-radius: var(--radius);
+  border: 0.5px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+.card.rfp-card .card-title {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--fg-strong);
+  line-height: var(--lh-tight);
+}
+.card.rfp-card .card-subtitle {
+  font-size: var(--text-sm);
+  color: var(--fg-soft);
+  line-height: var(--lh-base);
+}
+/* B) 드롭존은 이미 --bg-2 배경 (대시보드 features 카드와 동일 톤 ✅).
+   Linear 정합: border-strong → border 로 톤 완화, hover shadow 절제. */
+.card.rfp-card .drop-area {
+  border: 2px dashed var(--border);
+  padding: var(--space-6) var(--space-5);
+}
+.card.rfp-card .drop-area:hover {
+  border-color: var(--primary);
+  background: var(--card);
+}
+.card.rfp-card .drop-title {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--fg-strong);
+  line-height: var(--lh-tight);
+}
+.card.rfp-card .drop-hint {
+  font-size: var(--text-xs);
+  color: var(--fg-soft);
+  line-height: var(--lh-base);
+}
+
+/* B) role 모달 — 인라인 style 다수 → 클래스로 정리 (기능 무접촉). */
+.role-modal-list { display: flex; flex-direction: column; gap: 10px; }
+.role-modal-row { align-items: center; gap: 10px; }
+.role-modal-info { flex: 1; min-width: 0; }
+.role-modal-name-wrap { flex: 1; min-width: 0; }
+.role-modal-select-wrap { min-width: 140px; }
+.role-modal-hint { margin: 0 0 10px; }

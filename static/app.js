@@ -929,12 +929,22 @@ function isRfpValid(rfp) {
 
 // ============================================================
 // Spec D-Build-PricingPage-5a (2026-09-01) — 요금제 렌더 함수 (순수 추출)
+// Spec Pricing-Sticky-CTA (2026-09-02) — showSticky 옵션 신설.
 // ============================================================
 // 기존 renderLanding 안에 인라인이던 landing-pricing 섹션을 별도 함수로 분리.
 // ★ 동작 무변화: 반환 HTMLElement 를 그대로 appendChild → 렌더 결과 100% 동일.
 // TIERS · FEATURE_GROUPS 상수 · "시작하기" 핸들러 (조각4a navigate) 모두 이 안에.
 // /pricing 라우트 · 진입점 링크는 5b · 5c (별도 조각).
-function renderPricingSection() {
+//
+// Spec Pricing-Sticky-CTA:
+//   ── opts.showSticky (기본 false) 시 티어 헤더 클릭 게이트 + 하단 sticky 결제바.
+//   ── /pricing (renderPricingPage) 만 true 로 호출 → 랜딩 무영향 (기본 false).
+//   ── 티어 헤더 클릭 → 컬럼 강조 (.pt-selected) + sticky 바 슬라이드업.
+//   ── 기존 pt-cta-btn "시작하기" 완전 유지 (즉시 결제 · 회귀 0 · 이중 안전망).
+//   ── selectedTier 는 함수 클로저 안 · 페이지 이동 시 자동 리셋.
+function renderPricingSection(opts) {
+  const showSticky = !!(opts && opts.showSticky);
+  let selectedTier = null;    // "starter" | "pro" | "business" (초기 null · 미선택)
   // ── 가격 (Spec D-Fix-21: 3 티어 비교 표)
   const TIERS = [
     { name: "스타터", en: "Starter", emoji: "🌱",
@@ -953,6 +963,65 @@ function renderPricingSection() {
     { category: "검증·산출",   items: ["자체 검증", "산출내역서"] },
   ];
 
+  // Spec Pricing-Sticky-CTA — 티어 선택 시 컬럼 강조 + sticky 바 갱신.
+  //   selectedTier 클로저 + data-tier 로 컬럼 셀 그룹 매칭.
+  //   showSticky=false 인 랜딩에서는 select 함수 자체가 no-op (게이트 · L below).
+  function selectTier(tierEn, rootEl) {
+    if (!showSticky) return;   // 랜딩 무영향 · 게이트
+    selectedTier = tierEn;
+    // 이전 선택 해제 + 새 선택 강조
+    rootEl.querySelectorAll("[data-tier]").forEach((el) => {
+      el.classList.toggle("pt-selected", el.getAttribute("data-tier") === tierEn);
+    });
+    // sticky 바 갱신
+    const bar = rootEl.querySelector(".pricing-sticky-cta");
+    if (!bar) return;
+    const t = TIERS.find(x => x.en.toLowerCase() === tierEn);
+    if (!t) return;
+    const metaEl = bar.querySelector(".pricing-sticky-cta-meta");
+    if (metaEl) {
+      metaEl.innerHTML =
+        `<span class="pricing-sticky-cta-tier">${escapeHtml(t.name)}</span>` +
+        `<span class="pricing-sticky-cta-dot">·</span>` +
+        `<span class="pricing-sticky-cta-credits">${escapeHtml(t.credits)} 크레딧</span>` +
+        `<span class="pricing-sticky-cta-dot">·</span>` +
+        `<span class="pricing-sticky-cta-price">${escapeHtml(t.promo)}</span>`;
+    }
+    const btn = bar.querySelector(".pricing-sticky-cta-btn");
+    if (btn) {
+      btn.onclick = () => navigate(`/checkout?tier=${tierEn}`);
+    }
+    // 슬라이드업 (첫 노출)
+    bar.classList.remove("hidden");
+    bar.classList.add("visible");
+  }
+
+  // 티어 헤더 attrs 조립 · showSticky 시만 클릭 게이트
+  const tierHeaderAttrs = (t) => {
+    const base = {
+      class: `pt-cell pt-header pt-plan ${t.best ? "pt-best" : ""}`,
+      "data-tier": t.en.toLowerCase(),
+    };
+    if (showSticky) {
+      base.class += " pt-plan-clickable";
+      base.role = "button";
+      base.tabindex = "0";
+      base.title = `${t.name} 선택 (하단 결제바 표시)`;
+      base.onclick = (ev) => {
+        const rootEl = ev.currentTarget.closest(".landing-pricing");
+        if (rootEl) selectTier(t.en.toLowerCase(), rootEl);
+      };
+      base.onkeydown = (ev) => {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          const rootEl = ev.currentTarget.closest(".landing-pricing");
+          if (rootEl) selectTier(t.en.toLowerCase(), rootEl);
+        }
+      };
+    }
+    return base;
+  };
+
   return h("section", { class: "landing-pricing" }, [
     h("div", { class: "landing-pricing-inner" }, [
       h("div", { class: "landing-section-eyebrow accent" }, "PRICING"),
@@ -964,11 +1033,9 @@ function renderPricingSection() {
       ]),
 
       h("div", { class: "landing-pricing-table" }, [
-        // 헤더 행
+        // 헤더 행 · Spec Pricing-Sticky-CTA: 티어 헤더에 data-tier + 조건부 클릭 게이트
         h("div", { class: "pt-cell pt-row-label pt-header" }, ""),
-        ...TIERS.map(t => h("div", {
-          class: `pt-cell pt-header pt-plan ${t.best ? "pt-best" : ""}`,
-        }, [
+        ...TIERS.map(t => h("div", tierHeaderAttrs(t), [
           t.best ? h("span", { class: "pt-best-badge" }, "BEST") : null,
           h("div", { class: "pt-plan-emoji" }, t.emoji),
           h("h3", { class: "pt-plan-name" }, [
@@ -977,9 +1044,12 @@ function renderPricingSection() {
           ]),
         ])),
 
-        // 가격 행 (취소선 정가 + 런칭가)
+        // 가격 행 (취소선 정가 + 런칭가) · data-tier 로 컬럼 강조 대응
         h("div", { class: "pt-cell pt-row-label" }, "패키지"),
-        ...TIERS.map(t => h("div", { class: `pt-cell ${t.best ? "pt-best" : ""}` }, [
+        ...TIERS.map(t => h("div", {
+          class: `pt-cell ${t.best ? "pt-best" : ""}`,
+          "data-tier": t.en.toLowerCase(),
+        }, [
           h("div", { class: "pt-price-row" }, [
             // Spec D-Fix-40: 정가 + 할인 라벨 wrapper (인라인 정렬)
             h("div", { class: "pt-price-regular-wrap" }, [
@@ -995,7 +1065,10 @@ function renderPricingSection() {
 
         // 사용량 행 — 제공 크레딧 + 플랜별 환산 보조 문구
         h("div", { class: "pt-cell pt-row-label" }, "제공 크레딧"),
-        ...TIERS.map(t => h("div", { class: `pt-cell ${t.best ? "pt-best" : ""}` }, [
+        ...TIERS.map(t => h("div", {
+          class: `pt-cell ${t.best ? "pt-best" : ""}`,
+          "data-tier": t.en.toLowerCase(),
+        }, [
           h("span", { class: "pt-usage-amount" }, t.credits + " 크레딧"),
           h("span", { class: "pt-usage-meta" }, t.conversion),
         ])),
@@ -1011,16 +1084,18 @@ function renderPricingSection() {
             h("div", { class: "pt-cell pt-row-label pt-feature-label" }, item),
             ...TIERS.map(t => h("div", {
               class: `pt-cell pt-feature ${t.best ? "pt-best" : ""}`,
+              "data-tier": t.en.toLowerCase(),
             }, "✅")),
           ]),
         ]),
 
-        // CTA 행
+        // CTA 행 (★ 기존 유지 · 회귀 0 · 스크롤러 이중 안전망)
         // Spec D-Fix-NightoffBoxClose (2026-06-14): CTA 행 BEST 셀에 pt-best-last-row 추가
         // → BEST(Pro, 가운데 컬럼)가 :last-child 로 못 잡혀 하단 보더 0 이던 결함 해소.
         h("div", { class: "pt-cell pt-row-label" }, ""),
         ...TIERS.map(t => h("div", {
           class: `pt-cell pt-cta-cell ${t.best ? "pt-best pt-best-last-row" : ""}`,
+          "data-tier": t.en.toLowerCase(),
         }, [
           h("button", {
             class: `btn ${t.best ? "btn-primary" : "btn-ghost"} pt-cta-btn`,
@@ -1042,6 +1117,20 @@ function renderPricingSection() {
       // 랜딩 + /pricing 두 곳 다 이 renderPricingSection 재사용 → 한 곳 add 로 양쪽 반영.
       h("p", { class: "landing-pricing-note" },
         "* 구매하신 크레딧은 구매일로부터 12개월간 유효합니다."),
+      // Spec Pricing-Sticky-CTA — 하단 sticky 결제바 (showSticky 시만 렌더).
+      // 초기 hidden · 티어 클릭 시 selectTier 가 visible 클래스 붙여 슬라이드업.
+      // ★ 랜딩 (showSticky=false) 은 이 노드 자체가 만들어지지 않음.
+      showSticky ? h("div", { class: "pricing-sticky-cta hidden" }, [
+        h("div", { class: "pricing-sticky-cta-inner" }, [
+          h("div", { class: "pricing-sticky-cta-meta" }, "티어를 선택해주세요"),
+          h("button", {
+            class: "pricing-sticky-cta-btn",
+            title: "선택한 티어로 결제 진행",
+          }, "결제하기 →"),
+        ]),
+      ]) : null,
+      // Sticky 바 하단 여유 · showSticky 시 · 랜딩 sticky-cta-spacer 패턴 정합
+      showSticky ? h("div", { class: "pricing-sticky-cta-spacer" }) : null,
     ]),
   ]);
 }
@@ -1098,9 +1187,12 @@ function renderPricingPage() {
   // 페이지 조립: nav + 요금제 섹션 (renderPricingSection 재사용)
   // ★ wrapper class = "landing-wrap" (기존 CSS 재사용 · min-height 100vh + flex column
   //   + 그라디언트 배경 — renderLanding 과 동일 레이아웃 규칙, 중앙정렬 자연 확보).
+  // Spec Pricing-Sticky-CTA (2026-09-02) — /pricing 에서만 sticky 결제바 활성.
+  //   showSticky: true → 티어 클릭 게이트 + 하단 sticky 바 렌더 · 랜딩 무영향
+  //   (renderLanding L1306 은 여전히 no arg 로 호출 · showSticky=false).
   const wrap = h("div", { class: "landing-wrap", id: "pricing-page-wrap" }, [
     nav,
-    renderPricingSection(),
+    renderPricingSection({ showSticky: true }),
   ]);
   root.appendChild(wrap);
 }

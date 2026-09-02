@@ -7331,3 +7331,148 @@ body.landing-fullscreen .nav-backdrop {
 .role-modal-name-wrap { flex: 1; min-width: 0; }
 .role-modal-select-wrap { min-width: 140px; }
 .role-modal-hint { margin: 0 0 10px; }
+
+/* ============================================================
+   Spec D-Build-ClientDetailLinear (2026-09-02) — client detail 4 v0 섹션 정합
+   ── 대상: 입찰참가자격 (renderQualificationsSection) · 발주처 들여다보기
+      (renderClientIntelSection) · 핵심 CTA (renderTaskActionsSection) ·
+      대화 히스토리 (renderConvHistorySection)
+   ── 이미 정합: RFP 섹션 (renderRfpSection · .card.rfp-card) — 조각1 완료.
+   ── 방식: .client-detail-stack wrapper 스코프 오버라이드로 국지 처리
+      → 다른 화면 (submission-docs · 대시보드 · 챗봇) 완전 무영향.
+      wrapper 는 [app.js:4458] 에 이미 존재 (Spec D-Fix-43).
+   ── 원칙: 카드 톤 (radius 12 · 0.5px · shadow-sm · --card) 통일, 섹션 내부
+      폰트/색 --text-*/--fg-* 변수화. 로직·조건부 렌더·기능 무접촉.
+   ============================================================ */
+
+/* --- 카드 톤 --- */
+.client-detail-stack .task-actions-card {
+  border-radius: var(--radius);
+  border: 0.5px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  background: var(--card);
+  padding: 24px 22px;
+}
+/* .card 오버라이드 (border-radius / border / box-shadow / background 통합) */
+div.client-detail-stack > div.card {
+  border-radius: var(--radius) !important;
+  border: 0.5px solid var(--border) !important;
+  box-shadow: var(--shadow-sm) !important;
+  background: var(--card) !important;
+}
+.client-detail-stack .task-action-cta {
+  border-radius: var(--radius) !important;
+  box-shadow: none !important;
+}
+.client-detail-stack .task-action-primary {
+  /* gradient → var(--primary) 단색 (Linear 절제) */
+  background: var(--primary) !important;
+}
+.client-detail-stack .task-action-primary:hover:not(:disabled) {
+  background: var(--primary-hover) !important;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow) !important;
+}
+.client-detail-stack .task-action-secondary {
+  background: var(--card) !important;
+  border: 0.5px solid var(--border) !important;
+  color: var(--fg-strong) !important;
+}
+.client-detail-stack .task-action-secondary:hover:not(:disabled) {
+  border-color: color-mix(in oklab, var(--primary) 25%, var(--border)) !important;
+  box-shadow: var(--shadow-sm) !important;
+  transform: none;
+}
+.client-detail-stack .task-action-cta .ta-title {
+  font-size: var(--text-md);
+  font-weight: 700;
+  line-height: var(--lh-tight);
+}
+.client-detail-stack .task-action-cta .ta-sub {
+  font-size: var(--text-xs);
+  line-height: var(--lh-base);
+  opacity: 0.85;
+}
+
+/* --- 2️⃣ 입찰참가자격 (qual-*) 폰트·색·라인 정합 --- */
+.client-detail-stack .qual-section { border-bottom: 0.5px solid var(--border); }
+.client-detail-stack .qual-section-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--fg-strong);
+  line-height: var(--lh-tight);
+}
+.client-detail-stack .qual-section-items li {
+  font-size: var(--text-sm);
+  color: var(--fg);
+  line-height: var(--lh-base);
+}
+.client-detail-stack .qual-section-empty {
+  font-size: var(--text-xs);
+  color: var(--fg-soft);
+}
+
+/* --- 3️⃣ 발주처 들여다보기 (intel-*) 톤 완화 · 변수화 --- */
+.client-detail-stack .intel-org-badge {
+  /* color-mix tint → var(--primary-soft) 단색 (Linear 절제) */
+  background: var(--primary-soft);
+  color: var(--primary);
+  border: 0.5px solid var(--primary-soft);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: var(--lh-tight);
+}
+.client-detail-stack .intel-disabled-title {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--fg-strong);
+  line-height: var(--lh-tight);
+}
+
+/* --- 📋 대화 히스토리 (conv-item) 폰트·색·hover 정합 --- */
+.client-detail-stack .conv-item { border-width: 0.5px; }
+.client-detail-stack .conv-item h4 {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--fg-strong);
+  line-height: var(--lh-tight);
+}
+.client-detail-stack .conv-item .conv-preview {
+  font-size: var(--text-sm);
+  color: var(--fg-soft);
+  line-height: var(--lh-base);
+}
+.client-detail-stack .conv-item .conv-meta {
+  font-size: var(--text-xs);
+  line-height: var(--lh-tight);
+  /* color 는 --muted 유지 (조각1 접근성 복구, 무접촉) */
+}
+.client-detail-stack .conv-item:hover {
+  box-shadow: var(--shadow);
+}
+
+/* --- 인라인 style → 클래스 (기능 무접촉, 값 동일) --- */
+.client-detail-content { max-width: 1100px; }
+.main-header-actions { gap: 8px; }
+.client-detail-error-card {
+  padding: 60px 28px; text-align: center;
+  max-width: 640px; margin: 0 auto;
+}
+.client-detail-error-title {
+  margin: 0 0 8px;
+  font-size: var(--text-md); font-weight: 700;
+  color: var(--fg-strong); line-height: var(--lh-tight);
+}
+.client-detail-error-msg { margin: 0 0 16px; }
+.client-detail-error-actions {
+  display: flex; gap: 10px; justify-content: center;
+}
+.conv-empty-state { padding: 24px 12px; }
+.conv-empty-msg { margin: 8px 0 0; }
+.conv-item-title-row {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+}
+.conv-item-title { margin: 0; flex: 1; min-width: 0; }
+.intel-title-wrap { flex: 1; min-width: 0; }
+.intel-disabled-body { flex: 1; min-width: 0; }
+.intel-disabled-sub { margin: 4px 0 0; }

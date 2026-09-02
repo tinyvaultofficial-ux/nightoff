@@ -444,20 +444,24 @@ input, select, textarea { font-family: inherit; color: inherit; }
  * Spec 5 (5/16) 폐기 — 우측 사이드바 통째 제거.
  */
 
+/* Spec D-Build-DashboardLinear-1 (2026-09-02) — main-header 완화 (Linear 방향).
+   ── h1 26/800 → var(--text-xl)(=24) / 700 (튀는 헤딩 지양).
+   ── bg warm white 잔여 → v0 통합 색 정합 위해 var(--bg) 로 통일. */
 .main-header {
   position: sticky; top: 0; z-index: 30;
   display: flex; align-items: center; justify-content: space-between;
   padding: var(--space-5) var(--space-6);
   border-bottom: 1px solid var(--border);
-  background: rgba(250, 248, 245, 0.85);   /* warm white 반투명 */
+  background: var(--bg);
   backdrop-filter: blur(10px);
   min-height: 72px;
 }
 .main-header h1 {
-  font-size: 26px; font-weight: 800; margin: 0;
+  font-size: var(--text-xl); font-weight: 700; margin: 0;
+  line-height: var(--lh-tight);
   letter-spacing: -0.025em; color: var(--fg-strong);
 }
-.main-header p { margin: 4px 0 0; color: var(--fg-soft); font-size: 15px; }
+.main-header p { margin: 4px 0 0; color: var(--fg-soft); font-size: var(--text-sm); line-height: var(--lh-base); }
 .main-content { padding: 32px; max-width: 1240px; width: 100%; }
 
 /* ===== Buttons ===== */
@@ -2993,11 +2997,14 @@ body, .msg-bubble, .card, .strengths-intro,
    3행 동시 노출 — 행마다 아이콘+제목+매체/날짜. 6초마다 다음 3건 묶음으로 fade 전환.
    배경 = 연한 회색 (#F5F5F5) — 다른 카드 (흰 배경) 와 시각 차별화.
    흑백 6색 정합 — 회색 = 정체성 영역 OK. */
+/* Spec D-Build-DashboardLinear-1 (2026-09-02) — 회색 배경 → 흰 + 0.5px 라인.
+   ── bg #F5F5F5 → var(--card), border 0.5px, radius 18 → var(--radius). */
 .news-widget {
-  margin-bottom: 24px;
-  padding: 10px 14px;
-  background: #F5F5F5;
-  border-radius: 18px;
+  margin-bottom: var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  background: var(--card);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius);
   display: flex; align-items: center; gap: 10px;
   overflow: hidden;
 }
@@ -3026,7 +3033,7 @@ body, .msg-bubble, .card, .strengths-intro,
 .news-widget-link {
   flex: 1; min-width: 0;
   display: flex; align-items: center; gap: 8px;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--fg);
   text-decoration: none;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -3082,29 +3089,31 @@ body, .msg-bubble, .card, .strengths-intro,
 }
 
 /* ===== 📡 마감 임박 공고 위젯 (대시보드 좌측 메인 영역) =====
-   시각 강조 영역 — 다른 카드 영역과 차별화:
-   · 배경: 연한 보라 톤 (#FAF7FF) — 흑백 6색 정체성 안 보라 액센트 영역
-   · 그림자: 보라 톤 (rgba(107,70,229,0.10)) — 자연스럽게 떠 있는 영역
-   · 카드는 흰색 유지 (위젯 배경과 대비) */
+   Spec D-Build-DashboardLinear-1 (2026-09-02): 위젯 톤 통일 (Linear 방향).
+   ── 배경 라벤더 (#FAF7FF, 사실 .card 오버라이드로 4개월간 실효 #fff 였음) → var(--card) 명시.
+   ── 그림자 보라 tint → var(--shadow-sm) 절제.
+   ── border 1px → 0.5px, min-height 280px 하드코딩 → auto (내용 기반).
+   ── 태극기 배경 opacity 0.10 → 0.05 (더 흐릿, 배경 이미지 지양).
+   ── selector 강화 (.card.closing-widget) — .card 의 var(--radius-lg=16) 오버라이드를
+      이겨서 sample-widget 과 var(--radius=12) 로 통일. */
+.card.closing-widget,
 .closing-widget {
-  padding: 24px;
-  background: #FAF7FF;
+  padding: var(--space-5);
+  background: var(--card);
   border-radius: var(--radius);
-  box-shadow: 0 4px 16px rgba(107, 70, 229, 0.10);
-  border: 1px solid var(--border);
-  display: flex; flex-direction: column; gap: 16px;
-  min-height: 280px;
-  /* 박스 전체 태극기 배경 영역 (::before) — 모서리 14px 정합 */
+  box-shadow: var(--shadow-sm);
+  border: 0.5px solid var(--border);
+  display: flex; flex-direction: column; gap: var(--space-4);
   position: relative;
   overflow: hidden;
 }
-/* 박스 전체 태극기 배경 — opacity 0.10 (균형), pointer-events 통과, z-index 0 */
+/* 박스 전체 태극기 배경 — Linear 방향으로 5% 완화. */
 .closing-widget::before {
   content: "";
   position: absolute;
   inset: 0;
   background: url('/static/taegukgi.svg') center/cover no-repeat;
-  opacity: 0.10;
+  opacity: 0.05;
   pointer-events: none;
   z-index: 0;
 }
@@ -3128,11 +3137,11 @@ body, .msg-bubble, .card, .strengths-intro,
 }
 .closing-widget-title {
   margin: 0;
-  font-size: 17px;
+  font-size: var(--text-md);
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--fg-strong, var(--fg));
-  line-height: 1.4;
+  line-height: var(--lh-tight);
 }
 .closing-widget-body {
   flex: 1;
@@ -3334,14 +3343,16 @@ body, .msg-bubble, .card, .strengths-intro,
    Spec C-3 (5/18) 신규 — 견본 위젯 (.sample-*)
    대시보드 우측 35% 영역. PDF 자산 대기 placeholder 데이터.
    ============================================ */
+/* Spec D-Build-DashboardLinear-1 (2026-09-02): 톤 통일 · 흰 + 0.5px 라인.
+   ── bg #F7F4FF 라벤더 → var(--card).
+   ── border #E8E0F5 → var(--border).
+   ── radius --radius-lg (16) → var(--radius) (12) 통일.
+   ── padding 22 24 비대칭 → var(--space-5) 균등. */
 .sample-widget {
-  /* Spec D-Fix-SampleCard-1: 옆 공고 카드(흰 배경)와 차별화 — 은은한 라벤더 배경.
-     과하지 않게 #F7F4FF (브랜드 보라 계열 가장 옅은 톤). */
-  background: #F7F4FF;
-  border: 0.5px solid #E8E0F5;
-  border-radius: var(--radius-lg);
-  /* Spec D-Fix-SampleReplace-1: padding 원복(22px 24px) — 옆 closing-widget 카드와 끝선 정합 유지 */
-  padding: 22px 24px;
+  background: var(--card);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-5);
   display: flex;
   flex-direction: column;
   flex: 1;   /* 끝선 정렬 — 좌측 closing-widget 과 동일 height stretch */
@@ -3355,11 +3366,12 @@ body, .msg-bubble, .card, .strengths-intro,
 .sample-widget-icon { font-size: 18px; }
 .sample-widget-title-wrap { flex: 1; }
 .sample-widget-title {
-  font-size: 15px;
+  font-size: var(--text-md);
   font-weight: 600;
   margin: 0;
   letter-spacing: -0.2px;
   color: var(--fg-strong);
+  line-height: var(--lh-tight);
 }
 .sample-widget-badge {
   background: var(--primary-soft);
@@ -4983,27 +4995,33 @@ input.locked-by-env::placeholder {
 }
 
 /* ===== 대시보드 중단 CTA (새 과업 등록 큰 버튼) ===== */
+/* Spec D-Build-DashboardLinear-1 (2026-09-02) — CTA 절제 (Linear 방향).
+   ── gradient bg (--primary-soft → transparent) → var(--primary-soft) 단색 옅게.
+   ── mega-cta 튀는 그라데이션 shadow → var(--shadow) 절제.
+   ── font/color/radius 하드코딩 → 변수 참조. */
 .dashboard-cta-section {
   text-align: center;
-  padding: 32px 0 36px;
-  margin-bottom: 28px;
-  background: linear-gradient(180deg, var(--primary-soft) 0%, transparent 100%);
-  border-radius: var(--radius-lg);
+  padding: var(--space-6) 0;
+  margin-bottom: var(--space-5);
+  background: var(--primary-soft);
+  border-radius: var(--radius);
 }
 .dashboard-mega-cta {
   display: inline-flex; align-items: center; justify-content: center;
   gap: 10px;
   padding: 18px 40px;
-  font-size: 17px; font-weight: 700;
-  border-radius: var(--radius-lg);
-  box-shadow: 0 10px 24px -8px color-mix(in oklab, var(--primary) 50%, transparent);
+  font-size: var(--text-md); font-weight: 700;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
   letter-spacing: -0.01em;
+  line-height: var(--lh-tight);
 }
 .dashboard-mega-cta svg { width: 22px; height: 22px; }
 .dashboard-cta-sub {
   margin: 14px 0 0;
-  font-size: 13px;
-  color: var(--fg-2);
+  font-size: var(--text-sm);
+  color: var(--fg-soft);
+  line-height: var(--lh-base);
 }
 .dashboard-footer {
   margin-top: 40px; padding: 20px 0 32px;
@@ -5769,9 +5787,16 @@ input.locked-by-env::placeholder {
    ── Spec 6: 5 카드 신규 + 가운데 강조 (다크 그라데이션 + 2px 엠버 보더 + 배지 + scale 1.06)
    ── Spec 8: 카드 콘텐츠 종→횡 + 폰트 ↑ + 헤더 워딩 "주요 기능" + 디자인 정합
    ============================================================ */
+/* Spec D-Build-DashboardLinear-1 (2026-09-02) — 5 카드 Linear 방향 정돈.
+   ── 카드 padding 14/12 → var(--space-4)(16) 균등, gap 14 → var(--space-4)(16).
+   ── border 1px → 0.5px (Linear 섬세), radius 14 → var(--radius)(12) 통일.
+   ── min-height 76px 하드코딩 → auto (내용 기반).
+   ── hover 보라 강한 shadow → var(--shadow-sm) + border-color 만 (절제).
+   ── featured 카드: gradient 배경 제거 → 무배경(흰) + 굵은 테두리 2px var(--primary).
+   ── 폰트·색 하드코딩 → var(--text-*)/var(--fg-strong) 변수화. */
 .features-5 {
-  margin-bottom: 40px;   /* Spec C-2 (5/18): 28 → 40, 5 카드 ↔ 뉴스 위젯 여백 ↑ */
-  display: flex; flex-direction: column; gap: 14px;
+  margin-bottom: var(--space-6);   /* 40 → 32 (Linear 절제, --space-6=32) */
+  display: flex; flex-direction: column; gap: var(--space-4);
 }
 .features-5-header {
   text-align: center;
@@ -5779,44 +5804,42 @@ input.locked-by-env::placeholder {
 }
 .features-5-title {
   margin: 0 0 4px;
-  font-size: 20px; font-weight: 600;
+  font-size: var(--text-lg); font-weight: 600;
   letter-spacing: -0.025em;
-  color: var(--fg);
-  line-height: 1.25;
+  color: var(--fg-strong);
+  line-height: var(--lh-tight);
 }
 .features-5-subtitle {
   margin: 0;
-  font-size: 13.5px;
-  color: var(--fg-2);
+  font-size: var(--text-sm);
+  color: var(--fg-soft);
   letter-spacing: -0.005em;
+  line-height: var(--lh-base);
 }
 .features-5-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 14px;   /* Spec C-2 (5/18): 10 → 14, 카드 간 여백 ↑ */
-  /* Spec C-2 (5/18): baseline scale 폐기로 padding 영역 유지 (배지 우상단 클리핑 방지) */
-  padding: 10px 0;
+  gap: var(--space-4);
+  padding: 10px 0;   /* 배지 우상단 클리핑 방지용 여유 유지 */
   align-items: stretch;
 }
 .feature-5-card {
   position: relative;
-  padding: 14px 12px;
-  min-height: 76px;
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 14px;
+  padding: var(--space-4);
+  background: var(--card);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius);
   display: flex; flex-direction: row; align-items: center; gap: 10px;
   text-align: left;
-  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+  transition: border-color .15s ease, box-shadow .15s ease;
 }
 .feature-5-card:hover {
-  transform: translateY(-2px);
   border-color: color-mix(in oklab, var(--primary) 25%, var(--border));
-  box-shadow: 0 8px 16px -8px rgba(124,58,237,0.18);
+  box-shadow: var(--shadow-sm);
 }
 .feature-5-card-icon {
   width: 38px; height: 38px;
-  border-radius: 12px;
+  border-radius: var(--radius);
   display: grid; place-items: center;
   font-size: 20px;
   flex-shrink: 0;   /* 횡방향 정합 — 카드 폭 좁아져도 아이콘 박스 영역 안 줄어듦 */
@@ -5824,39 +5847,34 @@ input.locked-by-env::placeholder {
 }
 .feature-5-card-title {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: var(--fg);
+  color: var(--fg-strong);
   letter-spacing: -0.2px;
-  line-height: 1.35;
+  line-height: var(--lh-tight);
   white-space: pre-line;   /* 데이터 영역 '\n' 줄바꿈 영역 */
 }
 
-/* Spec C-5 (5/18): 가운데 강조 다크 → Light Lavender. 보더 Primary 보라 1.5px.
-   배지 엠버 → Primary 보라. 브랜드 본질 (가벼움/응원) 정합. */
+/* Spec D-Build-DashboardLinear-1: featured — 무배경(흰) + 굵은 테두리 2px var(--primary).
+   기존 gradient 배경 (#F5F0FF → #EBE3FF) + 1.5px 보더 제거. Linear 위계 명확화. */
 .feature-5-card.featured {
-  background: linear-gradient(180deg, #F5F0FF 0%, #EBE3FF 100%);
-  border: 1.5px solid #6B46E5;
-  color: #1F1147;
+  background: var(--card);
+  border: 2px solid var(--primary);
+  color: var(--fg-strong);
   position: relative;
 }
-.feature-5-card.featured:hover {
-  transform: translateY(-2px);
-}
 .feature-5-card.featured .feature-5-card-title {
-  /* Spec C-5 (5/18): 흰 → 다크 보라 */
-  color: #1F1147;
+  color: var(--fg-strong);
 }
 .feature-5-card-badge {
   position: absolute;
   top: -9px; right: 10px;
   padding: 3px 8px;
-  /* Spec C-5 (5/18): 엠버 #EF9F27 → Primary 보라 */
-  background: #6B46E5;
+  background: var(--primary);
   color: #fff;
   font-size: 10px; font-weight: 500;
   letter-spacing: 0.02em;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   white-space: nowrap;
 }
 

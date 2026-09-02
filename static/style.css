@@ -4279,10 +4279,13 @@ input.locked-by-env::placeholder {
   .landing-hero-cta-group .landing-cta-btn { width: 100%; }
 }
 
-/* ── 비회원 둘러보기 상단 배너 (Spec D-Fix-22 Stage B) */
+/* ── 비회원 둘러보기 상단 배너 (Spec D-Fix-22 Stage B)
+   Spec D-Build-LandingLinear/4 (2026-09-02) — ★★ orange 최종 제거:
+   ── 그라디언트 (primary → color-mix(primary 70%, orange #FF8E5C))
+      → primary → primary-hover 단색 정합 (앱 전역 orange 소멸). */
 .guest-banner {
   position: sticky; top: 0; z-index: 100;
-  background: linear-gradient(90deg, var(--primary), color-mix(in oklab, var(--primary) 70%, #FF8E5C));
+  background: linear-gradient(90deg, var(--primary), var(--primary-hover));
   color: #fff;
   box-shadow: 0 2px 8px -2px rgba(0,0,0,0.10);
 }
@@ -4503,7 +4506,8 @@ input.locked-by-env::placeholder {
   color: var(--fg-soft);
 }
 
-/* Bottom CTA */
+/* Bottom CTA
+   Spec D-Build-LandingLinear/4 (2026-09-02) — 색만 정합 · 32px 타이틀 유지. */
 .landing-bottom-cta {
   padding: 64px 24px 48px;
   text-align: center;
@@ -4513,10 +4517,10 @@ input.locked-by-env::placeholder {
   font-size: 32px; font-weight: 700;
   letter-spacing: -0.02em;
   margin: 0 0 12px;
-  color: var(--fg);
+  color: var(--fg-strong);
 }
 .landing-bottom-sub {
-  font-size: 16px; color: var(--fg-2);
+  font-size: 16px; color: var(--fg-soft);
   margin: 0 0 32px;
 }
 
@@ -4904,9 +4908,11 @@ input.locked-by-env::placeholder {
   text-align: center;
   pointer-events: none;
 }
+/* Spec D-Build-LandingLinear/4 (2026-09-02) — ★★ 임팩트 무접촉 (FAB pill · 그라디언트
+   · translateY · 크기 완전 유지). shadow 옛 원색 (107,70,229) → 앱값 (124,58,237). */
 .landing-sticky-cta-btn {
   background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
-  color: #FFFFFF;
+  color: var(--primary-fg);
   padding: 16px 36px;
   border-radius: 9999px;
   font-size: 16px;
@@ -4914,13 +4920,13 @@ input.locked-by-env::placeholder {
   border: 0;
   cursor: pointer;
   pointer-events: auto;
-  box-shadow: 0 8px 24px -4px rgba(107, 70, 229, 0.45);
+  box-shadow: 0 8px 24px -4px rgba(124, 58, 237, 0.45);
   transition: background .15s, transform .15s, box-shadow .15s;
 }
 .landing-sticky-cta-btn:hover {
   background: linear-gradient(135deg, var(--primary-hover) 0%, var(--primary) 100%);
   transform: translateY(-2px);
-  box-shadow: 0 12px 28px -4px rgba(107, 70, 229, 0.55);
+  box-shadow: 0 12px 28px -4px rgba(124, 58, 237, 0.55);
 }
 .landing-sticky-cta-btn:active {
   transform: translateY(0);
@@ -4929,27 +4935,29 @@ input.locked-by-env::placeholder {
   height: 40px;
 }
 
-/* Footer (Spec D-Fix-20: 사업자 정보 추가) */
+/* Footer (Spec D-Fix-20: 사업자 정보 추가)
+   Spec D-Build-LandingLinear/4 (2026-09-02) — border 0.5px · font --text-xs 정합 ·
+   ★ 사업자정보 텍스트 완전 무접촉. */
 .landing-footer {
   padding: 36px 24px 48px;
   text-align: center;
   font-size: 12.5px;
-  color: var(--fg-2);
-  border-top: 1px solid var(--border);
+  color: var(--fg-muted);
+  border-top: 0.5px solid var(--border);
 }
 .landing-footer-row { margin: 6px 0; }
 .landing-footer-row a {
-  color: var(--fg-2);
+  color: var(--fg-muted);
   text-decoration: none;
 }
 .landing-footer-row a:hover { color: var(--primary); }
 .landing-footer-info {
-  font-size: 12px;
+  font-size: var(--text-xs);
   opacity: 0.85;
 }
 .landing-footer-tag {
   margin-top: 12px;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 .lf-sep {
   margin: 0 6px;

@@ -385,6 +385,32 @@ input, select, textarea { font-family: inherit; color: inherit; }
 .sidebar-footer-btn-icon { display: inline-flex; align-items: center; }
 .sidebar-footer-btn-logout:hover { color: var(--danger, #C0392B); }
 
+/* Spec Credit-CTA-Emphasis (2026-09-02) — 사이드바 💳 크레딧 충전 부족시 강조.
+   ── healthy: 조용 (다른 footer 버튼과 동일 · CSS 무접촉).
+   ── low    : 옅은 primary-soft tint · 굵기 살짝 (은은).
+   ── empty  : warning-soft tint + 좌측 3px --warning bar · 색 강조 (좀 더 명확).
+   ★ 상태카드와 완전 동일 status (getCreditStatus) 참조 · 강조 일치. */
+.sidebar-footer-btn.credit-cta-low {
+  background: color-mix(in oklab, var(--primary) 6%, transparent);
+  color: var(--fg-strong);
+  font-weight: 600;
+}
+.sidebar-footer-btn.credit-cta-low:hover {
+  background: color-mix(in oklab, var(--primary) 12%, transparent);
+  color: var(--fg-strong);
+}
+.sidebar-footer-btn.credit-cta-empty {
+  background: color-mix(in oklab, var(--warning) 8%, transparent);
+  color: var(--warning);
+  font-weight: 600;
+  border-left: 3px solid var(--warning);
+  padding-left: 9px;   /* border 3px 만큼 조정 (총 폭 유지) */
+}
+.sidebar-footer-btn.credit-cta-empty:hover {
+  background: color-mix(in oklab, var(--warning) 14%, transparent);
+  color: var(--warning);
+}
+
 /* Phase 3 — ✨ 제안서 버튼 영역 quota 라벨 (헤더, 사용자 시각 영역) */
 .btn-quota-badge {
   display: inline-block;
@@ -5973,6 +5999,61 @@ input.locked-by-env::placeholder {
   line-height: var(--lh-tight);
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;   /* 숫자 폭 정렬 (KPI 카드 정합) */
+}
+
+/* Spec Credit-CTA-Emphasis (2026-09-02) — 크레딧 카드 클릭 + 부족시 강조.
+   ── healthy: 클릭 가능 · hover 시 미묘 (조용).
+   ── low    : 숫자 --warning · 하단 안내 문구 + 링크 (은은).
+   ── empty  : 숫자 --danger · tint bg · 링크 강조 (좀 더 명확 · 여전히 flat).
+   ★ 다른 상태카드 (진행 과업 · 이번 달 사용) 무영향 (전용 클래스). */
+.status-card-clickable {
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+.status-card-clickable:hover {
+  background: var(--bg-2);
+  border-color: var(--fg-muted);
+}
+.status-card-clickable:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+/* low : 숫자 --warning · 배경/보더 무접촉 (조용) */
+.status-card-clickable.credit-status-low .status-card-value {
+  color: var(--warning);
+}
+/* empty : 숫자 --danger · bg 옅은 danger tint · 보더 강조 */
+.status-card-clickable.credit-status-empty {
+  background: color-mix(in oklab, var(--danger) 4%, var(--card));
+  border-color: color-mix(in oklab, var(--danger) 22%, var(--border));
+}
+.status-card-clickable.credit-status-empty .status-card-value {
+  color: var(--danger);
+}
+/* 안내 문구 · 담백 (압박 X) */
+.status-card-charge-hint {
+  font-size: var(--text-xs);
+  color: var(--fg-soft);
+  line-height: var(--lh-base);
+  margin-top: 2px;
+}
+.status-card-clickable.credit-status-empty .status-card-charge-hint {
+  color: var(--danger);
+}
+/* 링크 · 오른쪽 하단 · text-xs · 조용한 primary */
+.status-card-charge-link {
+  align-self: flex-end;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--primary);
+  margin-top: 2px;
+}
+.status-card-clickable.credit-status-empty .status-card-charge-link {
+  color: var(--danger);
+}
+/* hover 시 링크 밑줄 (클릭 유도 hint) */
+.status-card-clickable:hover .status-card-charge-link {
+  text-decoration: underline;
 }
 /* 반응형 — ≤767px: 3열 → 1열 세로 stack */
 @media (max-width: 767px) {

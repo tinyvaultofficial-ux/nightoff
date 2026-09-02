@@ -4330,7 +4330,8 @@ input.locked-by-env::placeholder {
 /* ============================================================
    섹션 헤더 — 메인 헤더가 주인공 (eyebrow / lead 는 보조)
    ============================================================ */
-/* eyebrow — 메인 헤더의 보조라서 톤 다운 */
+/* eyebrow — 메인 헤더의 보조라서 톤 다운
+   Spec D-Build-LandingLinear/3 (2026-09-02) — orange accent 제거 · primary 단색 통일. */
 .landing-section-eyebrow {
   display: inline-block;
   padding: 4px 12px;
@@ -4344,9 +4345,11 @@ input.locked-by-env::placeholder {
   text-align: center;
   opacity: 0.85;
 }
+/* ★ accent variant — 이전 orange (#FF8E5C) 참조 제거 · primary 살짝 강한 톤으로
+   base 와 미묘 차이 유지 (CORE FEATURES 라벨 구분감). */
 .landing-section-eyebrow.accent {
-  background: color-mix(in oklab, var(--accent, #FF8E5C) 10%, transparent);
-  color: color-mix(in oklab, var(--accent, #FF8E5C) 80%, var(--fg-2));
+  background: color-mix(in oklab, var(--primary) 12%, transparent);
+  color: color-mix(in oklab, var(--primary) 85%, var(--fg-2));
 }
 /* eyebrow 는 inline-block 이라 부모가 text-align:center 여야 가운데 정렬됨 */
 .landing-trust-inner,
@@ -4360,11 +4363,11 @@ input.locked-by-env::placeholder {
   margin: 0 0 14px;
   text-align: center;
   line-height: 1.15;
-  color: var(--fg, #1A1A1A);
+  color: var(--fg-strong);
 }
 .landing-section-lead {
   font-size: 16px;
-  color: var(--fg-2);
+  color: var(--fg-soft);
   text-align: center;
   margin: 0 0 40px;
   letter-spacing: -0.005em;
@@ -4373,13 +4376,16 @@ input.locked-by-env::placeholder {
 
 /* ============================================================
    Trust 섹션 — 따뜻한 베이지 카드 + 강조 보더
-   ============================================================ */
+   Spec D-Build-LandingLinear/3 (2026-09-02) — orange 제거 · primary 단색 정합:
+   ── 배경 그라디언트 (primary 4% → accent 5%) → primary 4% 단색 tint (Linear).
+   ── border color-mix accent (없음 · 이미 primary) 유지 · 1px → 0.5px.
+   ── 카드 그라디언트 유지 (미묘 · 이미 primary tint) · shadow rgba(124,58,237) 앱값.
+   ── ★★ 임팩트 자산 무접촉: 이모지 saturate(1.2) · hover translateY(-3px)
+      · 카드 크기 24/28 padding · radius 18 · 4카드 grid. */
 .landing-trust {
-  background: linear-gradient(180deg,
-    color-mix(in oklab, var(--primary) 4%, #fff) 0%,
-    color-mix(in oklab, var(--accent, #FF8E5C) 5%, #fff) 100%);
-  border-top: 1px solid color-mix(in oklab, var(--primary) 12%, transparent);
-  border-bottom: 1px solid color-mix(in oklab, var(--primary) 12%, transparent);
+  background: color-mix(in oklab, var(--primary) 4%, #fff);
+  border-top: 0.5px solid color-mix(in oklab, var(--primary) 12%, transparent);
+  border-bottom: 0.5px solid color-mix(in oklab, var(--primary) 12%, transparent);
   padding: 64px 24px;
 }
 .landing-trust-inner { max-width: 1100px; margin: 0 auto; }
@@ -4396,9 +4402,9 @@ input.locked-by-env::placeholder {
   padding: 24px 28px;
   background: linear-gradient(180deg, #fff 0%,
     color-mix(in oklab, var(--primary) 3%, #fff) 100%);
-  border: 1px solid color-mix(in oklab, var(--primary) 14%, transparent);
+  border: 0.5px solid color-mix(in oklab, var(--primary) 14%, transparent);
   border-radius: 18px;
-  font-size: 15px; font-weight: 500; color: var(--fg);
+  font-size: 15px; font-weight: 500; color: var(--fg-strong);
   letter-spacing: -0.005em;
   box-shadow: 0 6px 20px -10px rgba(124,58,237,0.10);
   transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
@@ -4420,21 +4426,28 @@ input.locked-by-env::placeholder {
 .landing-trust-label {
   font-size: 16px;
   font-weight: 700;
-  color: var(--fg);
+  color: var(--fg-strong);
   line-height: 1.4;
 }
 .landing-trust-sub {
   font-size: 13.5px;
-  color: var(--fg-2);
+  color: var(--fg-soft);
   line-height: 1.5;
 }
 
 /* ============================================================
    Features 섹션 — 번호 라벨 + 강조 카드
-   ============================================================ */
+   Spec D-Build-LandingLinear/3 (2026-09-02) — orange 제거 · primary 단색 정합:
+   ── ★ ::before top 4px 그라디언트 (primary → accent orange #FF8E5C)
+      → var(--primary) 단색 (Linear · orange 완전 제거).
+   ── bg 카드 그라디언트 (이미 primary tint · 유지)
+   ── fallback color var(--fg) → var(--fg-strong), var(--fg-2) → var(--fg-soft)
+   ── border 1px → 0.5px · bg #fff → var(--card)
+   ── ★★ 임팩트 자산 무접촉: title 32px/700 · num 36px/800 · hover translateY(-5px)
+      · 카드 크기 32/30 padding · radius 20 · shadow rgba(124,58,237,0.10). */
 .landing-features {
   padding: 76px 24px;
-  background: #fff;
+  background: var(--card);
 }
 .landing-features-inner { max-width: 1100px; margin: 0 auto; }
 .landing-features-grid {
@@ -4448,7 +4461,7 @@ input.locked-by-env::placeholder {
   padding: 32px 30px 32px;   /* Spec D-Fix-39: top 40 → 32 (이모지 폐기 / 자료 자리 적정) */
   background: linear-gradient(180deg, #fff 0%,
     color-mix(in oklab, var(--primary) 3%, #fff) 100%);
-  border: 1px solid color-mix(in oklab, var(--primary) 14%, transparent);
+  border: 0.5px solid color-mix(in oklab, var(--primary) 14%, transparent);
   border-radius: 20px;
   box-shadow: 0 6px 20px -10px rgba(124,58,237,0.10);
   transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease;
@@ -4459,7 +4472,7 @@ input.locked-by-env::placeholder {
   position: absolute;
   top: 0; left: 0; right: 0;
   height: 4px;
-  background: linear-gradient(90deg, var(--primary), var(--accent, #FF8E5C));
+  background: var(--primary);
   opacity: 0.85;
 }
 .landing-feature-card:hover {
@@ -4481,13 +4494,13 @@ input.locked-by-env::placeholder {
   font-weight: 700;
   margin: 0 0 12px;   /* 10 → 12 */
   letter-spacing: -0.012em;
-  color: var(--fg);
+  color: var(--fg-strong);
 }
 .landing-feature-desc {
   margin: 0;
   font-size: 16px;   /* Spec D-Fix-39: 14.5 → 16 (가독성 ↑) */
   line-height: 1.65;
-  color: var(--fg-2);
+  color: var(--fg-soft);
 }
 
 /* Bottom CTA */

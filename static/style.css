@@ -4488,17 +4488,21 @@ input.locked-by-env::placeholder {
   text-align: center;
 }
 /* ── 비교 표 (Spec D-Fix-21) */
+/* Spec D-Build-PricingLinear (2026-09-02) — 요금제 섹션 Linear 정합.
+   ── 랜딩 + /pricing 양쪽 동시 반영 (renderPricingSection 단일 진실원).
+   ── 폰트 하드코딩 → var(--text-*), --fg-2 → --fg-soft, 그림자 절제.
+   ── ★ 유지: BEST 강조 (뱃지·좌우2px·상단3px·tint bg), radius 12, 카테고리 좌 4px 바,
+      .pt-price-amount 26px/800 (KPI), .pt-feature 18px (이모지), promo/discount tint. */
 .landing-pricing-table {
   margin-top: 32px;
   display: grid;
   grid-template-columns: 1.2fr 1fr 1fr 1fr;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--border);
-  /* Spec D-Fix-NightoffBoxClose (2026-06-14): 라운드 20 → 12. 비교표와 정합 + BEST 컬럼
-     하단 보라 보더(.pt-best-last-row)가 코너 클립으로 잘려 보이는 위험 완화. */
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 6px 20px -10px rgba(124,58,237,0.08);
+  /* Spec D-Build-PricingLinear (2026-09-02): 보라 tint shadow → 절제. */
+  box-shadow: var(--shadow-sm);
 }
 .pt-cell {
   padding: 14px 20px;
@@ -4506,16 +4510,18 @@ input.locked-by-env::placeholder {
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   text-align: center;
-  font-size: 14px; color: var(--fg);
+  font-size: var(--text-sm); color: var(--fg);
+  line-height: var(--lh-base);
   gap: 4px;
 }
 .pt-cell.pt-header { border-top: 0; padding: 24px 20px 16px; position: relative; }
 .pt-row-label {
   font-weight: 600;
-  color: var(--fg-2);
-  background: var(--bg-2, #FAFAFA);
+  color: var(--fg-soft);
+  background: var(--bg-2);
   align-items: flex-start; text-align: left;
-  font-size: 13.5px;
+  font-size: var(--text-sm);
+  line-height: var(--lh-tight);
 }
 
 /* BEST 컬럼 강조 */
@@ -4542,10 +4548,11 @@ input.locked-by-env::placeholder {
   display: flex; flex-direction: column; gap: 2px;
   margin: 0;
 }
-.pt-plan-name-ko { font-size: 17px; font-weight: 700; color: var(--fg); }
+.pt-plan-name-ko { font-size: var(--text-md); font-weight: 700; color: var(--fg-strong); line-height: var(--lh-tight); }
 .pt-plan-name-en {
-  font-size: 12px; font-weight: 500; color: var(--fg-2);
+  font-size: var(--text-xs); font-weight: 500; color: var(--fg-soft);
   letter-spacing: 0.02em;
+  line-height: var(--lh-tight);
 }
 
 /* 가격 (취소선 + 런칭가) */
@@ -4554,7 +4561,7 @@ input.locked-by-env::placeholder {
   align-items: center;
 }
 .pt-price-regular {
-  font-size: 13px; color: var(--fg-muted, #A89E91);
+  font-size: var(--text-sm); color: var(--fg-muted);
   text-decoration: line-through;
   text-decoration-color: var(--border-strong);
 }
@@ -4562,20 +4569,23 @@ input.locked-by-env::placeholder {
 .pt-price-amount {
   font-size: 26px; font-weight: 800;
   color: var(--primary); letter-spacing: -0.02em;
+  line-height: var(--lh-tight);
 }
-.pt-price-per { font-size: 13px; color: var(--fg-2); font-weight: 500; }
+.pt-price-per { font-size: var(--text-sm); color: var(--fg-soft); font-weight: 500; }
 
 /* 사용량 / 단가 */
 .pt-usage-amount, .pt-unit-amount {
-  font-size: 15px; font-weight: 700; color: var(--fg);
+  font-size: var(--text-sm); font-weight: 700; color: var(--fg-strong);
+  line-height: var(--lh-tight);
 }
 .pt-usage-meta, .pt-unit-meta {
-  font-size: 11.5px; color: var(--fg-muted, #A89E91);
+  font-size: var(--text-xs); color: var(--fg-muted);
+  line-height: var(--lh-tight);
 }
 
 /* 기능 행 */
-.pt-feature-label { font-size: 13px; padding-left: 36px; }   /* 좌측 들여쓰기 = .pt-cell padding 20px + 16px (카테고리 하위 표현) */
-.pt-feature { font-size: 18px; }
+.pt-feature-label { font-size: var(--text-sm); padding-left: 36px; }   /* 좌측 들여쓰기 = .pt-cell padding 20px + 16px (카테고리 하위 표현) */
+.pt-feature { font-size: 18px; }   /* 이모지 크기 유지 */
 
 /* 기능 카테고리 헤더 행 — span 1줄 (grid-column: 1 / -1, JS 인라인 style) */
 /* 위계 강화: 큰 폰트 + 진한 보라 + 좌측 강조 바 + 그룹 시작 여백 */
@@ -4606,14 +4616,16 @@ input.locked-by-env::placeholder {
   text-align: center;
 }
 .landing-pricing-promo-title {
-  font-size: 15px;
+  font-size: var(--text-sm);
   font-weight: 700;
   color: var(--primary);
+  line-height: var(--lh-tight);
   margin-bottom: 4px;
 }
 .landing-pricing-promo-sub {
-  font-size: 13.5px;
-  color: var(--fg-2);
+  font-size: var(--text-sm);
+  color: var(--fg-soft);
+  line-height: var(--lh-base);
 }
 
 /* Spec D-Fix-40: 정가 + 할인 라벨 인라인 정렬 */
@@ -4641,10 +4653,13 @@ input.locked-by-env::placeholder {
   margin: 16px auto 0;
   padding: 0 24px;
   text-align: center;
-  font-size: 12px;
-  color: var(--fg-muted, #A89E91);
-  line-height: 1.5;
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+  line-height: var(--lh-base);
 }
+/* Spec D-Build-PricingLinear (2026-09-02) — 인라인 style 대체 클래스 (기능 무접촉) */
+.pt-feature-category-span { grid-column: 1 / -1; }
+.landing-logo-btn { cursor: pointer; }
 
 /* ── 비교 섹션 (Spec D-Fix-27 Stage A / D-Fix-30 폰트 ↑) ──────────── */
 .landing-compare {

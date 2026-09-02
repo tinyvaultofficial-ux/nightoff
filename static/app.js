@@ -3028,18 +3028,21 @@ async function renderDashboard() {
   const content = h("div", { class: "main-content" });
   main.appendChild(content);
 
-  // Spec D-Build-DashboardStatusCards (2026-09-02) — 상태 요약 KPI 카드 3개.
-  //   회원 전용 (quota 없으면 null 반환 → skip). renderGuestDashboard 무접촉.
-  const statusCards = renderStatusCards(stats);
-  if (statusCards) content.appendChild(statusCards);
-
   // Spec D-Build-DashboardRefresh-1 (2026-09-01) — 롤링 히어로 배너 제거.
   //   기존 renderHero5Slides (5장 자동 롤링 · 4장 "곧 출시" 미출시 티저) 는
   //   자리만 차지 + 실 사용자 가치 낮음 → 최상단에서 제거.
   //   → renderCoreFeatures5 (핵심 기능 5카드) 가 자연스럽게 최상단으로 승격.
   //   ★ 함수·상수·CSS·이미지는 별도 정리 조각에서 (호출 안 하면 무해).
+  // Spec D-Build-DashboardReorder (2026-09-02) — features-5 를 status-cards 앞으로.
+  //   신규 서비스 소개가 사용 현황(수치)보다 우선. 회원/비회원 공통 위계.
   // ── 최상단: NightOff 핵심 기능 5 카드
   content.appendChild(renderCoreFeatures5());
+
+  // Spec D-Build-DashboardStatusCards (2026-09-02) — 상태 요약 KPI 카드 3개.
+  //   회원 전용 (quota 없으면 null 반환 → skip). renderGuestDashboard 무접촉.
+  //   조각3 (2026-09-02) 이후 features-5 다음으로 이동.
+  const statusCards = renderStatusCards(stats);
+  if (statusCards) content.appendChild(statusCards);
 
   // ── Stats 4개 영역 → 사이드바로 이동됨. 자리 = 업계 뉴스 가로 롤링 위젯.
   content.appendChild(renderNewsWidget());

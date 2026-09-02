@@ -5833,24 +5833,36 @@ input.locked-by-env::placeholder {
    ── min-height 76px 하드코딩 → auto (내용 기반).
    ── hover 보라 강한 shadow → var(--shadow-sm) + border-color 만 (절제).
    ── featured 카드: gradient 배경 제거 → 무배경(흰) + 굵은 테두리 2px var(--primary).
-   ── 폰트·색 하드코딩 → var(--text-*)/var(--fg-strong) 변수화. */
+   ── 폰트·색 하드코딩 → var(--text-*)/var(--fg-strong) 변수화.
+   Spec D-Build-DashboardReorder (2026-09-02) — 강조 A/B/D:
+   ── A) 카드 배경 var(--card)(#fff) → var(--bg-2)(#FAFAFA) 옅은 회색 (featured 만 --card 유지 → 대비로 튐).
+   ── B) 섹션 제목 20/600/center → var(--text-xl)(24)/700/left + 앞 액센트바 (4×16 --primary).
+   ── D) 카드 상시 var(--shadow-sm) 미묘한 elevation. hover 시 shadow 유지 + border tint. */
 .features-5 {
   margin-bottom: var(--space-6);   /* 40 → 32 (Linear 절제, --space-6=32) */
   display: flex; flex-direction: column; gap: var(--space-4);
 }
 .features-5-header {
-  text-align: center;
+  text-align: left;
   margin-bottom: 4px;
 }
 .features-5-title {
   margin: 0 0 4px;
-  font-size: var(--text-lg); font-weight: 600;
+  font-size: var(--text-xl); font-weight: 700;
   letter-spacing: -0.025em;
   color: var(--fg-strong);
   line-height: var(--lh-tight);
+  display: flex; align-items: center; gap: 10px;
+}
+.features-5-title::before {
+  content: ""; display: inline-block;
+  width: 4px; height: 16px; border-radius: 2px;
+  background: var(--primary);
+  flex-shrink: 0;
 }
 .features-5-subtitle {
   margin: 0;
+  padding-left: 14px;   /* 액센트바 폭(4) + gap(10) 정합 — subtitle 도 제목 텍스트 시작선에 정렬 */
   font-size: var(--text-sm);
   color: var(--fg-soft);
   letter-spacing: -0.005em;
@@ -5866,16 +5878,17 @@ input.locked-by-env::placeholder {
 .feature-5-card {
   position: relative;
   padding: var(--space-4);
-  background: var(--card);
+  background: var(--bg-2);
   border: 0.5px solid var(--border);
   border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
   display: flex; flex-direction: row; align-items: center; gap: 10px;
   text-align: left;
   transition: border-color .15s ease, box-shadow .15s ease;
 }
 .feature-5-card:hover {
   border-color: color-mix(in oklab, var(--primary) 25%, var(--border));
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow);
 }
 .feature-5-card-icon {
   width: 38px; height: 38px;
@@ -5896,7 +5909,9 @@ input.locked-by-env::placeholder {
 }
 
 /* Spec D-Build-DashboardLinear-1: featured — 무배경(흰) + 굵은 테두리 2px var(--primary).
-   기존 gradient 배경 (#F5F0FF → #EBE3FF) + 1.5px 보더 제거. Linear 위계 명확화. */
+   기존 gradient 배경 (#F5F0FF → #EBE3FF) + 1.5px 보더 제거. Linear 위계 명확화.
+   Spec D-Build-DashboardReorder (2026-09-02): 다른 카드 --bg-2 (회색) 로 바뀐 뒤에도
+   featured 는 --card (흰) 유지 → 옅은 회색 위에서 흰 + 굵은 테두리로 자연스럽게 튐. */
 .feature-5-card.featured {
   background: var(--card);
   border: 2px solid var(--primary);

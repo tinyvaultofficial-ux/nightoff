@@ -3213,6 +3213,25 @@ def api_convs_list(cid: str, user: dict = Depends(get_current_user)):
 def api_convs_create(cid: str, user: dict = Depends(get_current_user)):
     with get_db() as db:
         _verify_client_owned_by_user(db, cid, user["id"])
+    # Spec RFP-Gen-Guard (2026-09-02) — 대화 생성 시 RFP 존재·유효성 사전 가드.
+    # 기존: RFP 미업로드 상태에서도 대화 생성 → 챗봇 진입 → 제안서 생성 버튼 활성
+    #       → 서버 generate 가드 (얇은 shell dict 통과) 우회 시 크레딧 소진 발생.
+    # 처방: 대화 생성 자체를 RFP 유효 시에만 허용 (채팅은 별개 · user 결정 유지).
+    rfp = _get_rfp_aggregated(cid)
+    if not _rfp_analysis_is_valid(rfp):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": (
+                    "RFP 를 먼저 업로드해주세요. RFP 분석이 끝난 뒤 대화를 시작할 수 있어요."
+                    if rfp is None else
+                    "RFP 분석이 부족해요 (핵심 요구사항/평가기준 비어있음). "
+                    "RFP 를 다시 업로드하거나 파일 본문을 확인해주세요."
+                ),
+                "code": "RFP_NOT_FOUND" if rfp is None else "RFP_INSUFFICIENT",
+            },
+        )
+    with get_db() as db:
         conv_id = uuid.uuid4().hex[:12]
         db.execute("INSERT INTO conversations(id,client_id) VALUES(?,?)", (conv_id, cid))
     return {"id": conv_id}
@@ -3318,6 +3337,35 @@ def _get_rfp_aggregated(client_id: str) -> Optional[dict]:
             except Exception:
                 pass
     return None
+
+
+def _rfp_analysis_is_valid(rfp: Optional[dict]) -> bool:
+    """RFP 분석 결과가 제안서 생성에 충분한지 판정.
+
+    Spec RFP-Gen-Guard (2026-09-02) — 서버 RFP 가드 강화 (안A · 엄격).
+    ── 기존 D-Fix-GenGuard (main.py:4106) "빈 dict 통과" loophole 정합.
+       저장 흐름 (_run_rfp_aggregate has_real_data · L4581~4585) 는 이미 빈 dict
+       저장을 방지하지만, 얇은 shell dict (title/budget 만 있음) 는 저장되어
+       기존 가드를 우회 → 제안서 생성 진행 → 크레딧 소진 → 저품질 산출.
+    ── 안A 엄격 기준: 제안서 골격을 결정하는 핵심 2필드 중 최소 1개 필요:
+        · key_requirements : RFP 명시 요구사항 (제안서의 살)
+        · evaluation_criteria : 평가항목/배점 (우선순위 결정)
+       둘 다 비어있으면 일반론밖에 못 나오므로 차단.
+    ── 하위 호환: 기존 `error` 키 dict 차단 유지 · None 안전.
+
+    반환:
+      True  → 제안서 생성 진행 가능 (핵심 필드 최소 1개 채워짐)
+      False → 400 응답 (프론트가 RFP 재업로드 유도)
+
+    재사용처:
+      · api_convs_create : 대화 생성 시 사전 가드
+      · api_proposals_generate_multipass : 제안서 생성 가드 강화 (기존 L4106 교체)
+    """
+    if not isinstance(rfp, dict) or rfp.get("error"):
+        return False
+    key_reqs = rfp.get("key_requirements") or []
+    eval_crit = rfp.get("evaluation_criteria") or []
+    return bool(key_reqs) or bool(eval_crit)
 
 
 def _get_raw_rfp_text(client_id: str, max_chars: int = 150000) -> str:
@@ -4103,13 +4151,23 @@ async def api_proposals_generate_multipass(
     # RFP 분석 결과만 추출 — multi-pass orchestrator 가 자체 OUTLINE/SLIDE 프롬프트 사용
     # multi-pass orchestrator 가 자체 OUTLINE/SLIDE 프롬프트 사용 — 별도 system_full 빌드 불필요
     rfp_analysis = _get_rfp_aggregated(client_id)
-    # Spec D-Fix-GenGuard — RFP 존재 가드 (None 또는 error 만 막음 / 빈 dict 는 통과 = 회귀 방지)
-    if rfp_analysis is None or (isinstance(rfp_analysis, dict) and rfp_analysis.get("error")):
+    # Spec RFP-Gen-Guard (2026-09-02) — 기존 D-Fix-GenGuard 강화.
+    # 기존: `None or error` 만 막고 "빈 dict 통과 = 회귀 방지" 명시. 그러나
+    # 저장 흐름 (_run_rfp_aggregate) 이 빈 dict 저장을 이미 방지하므로 회귀 위험 X.
+    # 실제로는 얇은 shell dict (title/budget 만 있음) 가 통과되어 저품질 생성 →
+    # 크레딧 소진 문제 발생. _rfp_analysis_is_valid (안A · 엄격) 로 강화.
+    # ★ 위치 동일 (orchestrate 진입 전) → 크레딧 차감 (L4270 finally) 보다 앞 유지.
+    if not _rfp_analysis_is_valid(rfp_analysis):
         raise HTTPException(
             status_code=400,
             detail={
-                "error": "RFP 분석 결과가 없어요. RFP 를 먼저 업로드·분석한 뒤 제안서 생성을 시도해 주세요.",
-                "code": "RFP_NOT_FOUND",
+                "error": (
+                    "RFP 분석 결과가 없어요. RFP 를 먼저 업로드·분석한 뒤 제안서 생성을 시도해 주세요."
+                    if rfp_analysis is None else
+                    "RFP 분석이 부족해요 (핵심 요구사항/평가기준 비어있음). "
+                    "RFP 를 다시 업로드하거나 파일 본문을 확인해주세요."
+                ),
+                "code": "RFP_NOT_FOUND" if rfp_analysis is None else "RFP_INSUFFICIENT",
             },
         )
 

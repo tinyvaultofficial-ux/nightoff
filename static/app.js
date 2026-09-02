@@ -4414,13 +4414,11 @@ async function renderClientDetail(cid) {
       navigate("/");
       return;
     }
-    // 인플레이스 에러 카드 + 재시도 버튼
-    main.appendChild(h("div", {
-      style: "padding: 60px 28px; text-align: center; max-width: 640px; margin: 0 auto;",
-    }, [
-      h("h2", { style: "margin: 0 0 8px; font-size: 18px; font-weight: 700;" }, "과업 정보를 불러오지 못했어요"),
-      h("p", { class: "muted small", style: "margin: 0 0 16px;" }, e?.message || String(e)),
-      h("div", { style: "display: flex; gap: 10px; justify-content: center;" }, [
+    // Spec D-Build-ClientDetailLinear (2026-09-02): 인라인 style → 클래스로 정리.
+    main.appendChild(h("div", { class: "client-detail-error-card" }, [
+      h("h2", { class: "client-detail-error-title" }, "과업 정보를 불러오지 못했어요"),
+      h("p", { class: "muted small client-detail-error-msg" }, e?.message || String(e)),
+      h("div", { class: "client-detail-error-actions" }, [
         h("button", { class: "btn btn-primary", onclick: () => renderClientDetail(cid) }, "다시 시도"),
         h("button", { class: "btn btn-outline", onclick: () => navigate("/") }, "홈으로"),
       ]),
@@ -4433,7 +4431,7 @@ async function renderClientDetail(cid) {
       h("h1", {}, client.name),
       h("p", {}, client.industry || "업종 미지정"),
     ]),
-    h("div", { class: "flex-row", style: "gap: 8px;" }, [
+    h("div", { class: "flex-row main-header-actions" }, [
       h("button", { class: "btn btn-outline", onclick: () => navigate(`/client/${cid}/edit`), html: `${iconHtml("edit", 16)}<span>수정</span>` }),
       h("button", {
         class: "btn btn-danger", html: `${iconHtml("trash", 16)}<span>삭제</span>`,
@@ -4447,7 +4445,7 @@ async function renderClientDetail(cid) {
     ]),
   ]));
 
-  const content = h("div", { class: "main-content", style: "max-width: 1100px;" });
+  const content = h("div", { class: "main-content client-detail-content" });
   main.appendChild(content);
 
   content.appendChild(h("a", { class: "back-link", href: "/", "data-link": "" }, [
@@ -4715,9 +4713,9 @@ async function renderConvHistorySection(cid) {
   // 중복 큰 버튼 제거 — 상단 task-actions-card 의 ✨ 대화 시작하기로 일원화
 
   if (!convs.length) {
-    body.appendChild(h("div", { class: "empty-state", style: "padding: 24px 12px;" }, [
+    body.appendChild(h("div", { class: "empty-state conv-empty-state" }, [
       h("div", { class: "empty-illust empty-illust-sm", html: SVG_ILLUST.clock }),
-      h("p", { class: "muted small", style: "margin: 8px 0 0;" },
+      h("p", { class: "muted small conv-empty-msg" },
         "아직 대화가 없어요 · 위 ✨ 대화 시작하기로 첫 페이지를 열어볼까요?"),
     ]));
     return card;
@@ -4761,8 +4759,8 @@ async function renderConvHistorySection(cid) {
 
     const item = h("div", { class: "conv-item" }, [
       h("div", { class: "conv-main", onclick: () => navigate(`/client/${cid}/chat/${cv.id}`) }, [
-        h("div", { class: "flex-row", style: "gap: 8px; align-items: center; flex-wrap: wrap;" }, [
-          h("h4", { style: "margin: 0; flex: 1; min-width: 0;" }, cv.title),
+        h("div", { class: "flex-row conv-item-title-row" }, [
+          h("h4", { class: "conv-item-title" }, cv.title),
           hasPptx ? h("span", { class: "badge badge-success", title: "저장된 제안서가 있어요" }, "💾 보관됨") : null,
         ]),
         cv.preview ? h("p", { class: "conv-preview" }, cv.preview) : null,
@@ -4793,7 +4791,7 @@ async function renderClientIntelSection(cid, clientObj = null) {
   card.appendChild(h("div", { class: "card-head" }, [
     h("div", { class: "card-title-row" }, [
       h("div", { class: "card-title-icon", html: iconHtml("eye", 18) }),
-      h("div", { style: "flex:1; min-width:0;" }, [
+      h("div", { class: "intel-title-wrap" }, [
         h("h3", { class: "card-title" }, "발주처 들여다보기 👀"),
         h("p", { class: "card-subtitle" },
           organization
@@ -4830,12 +4828,12 @@ async function renderClientIntelSection(cid, clientObj = null) {
   if (!organization) {
     body.appendChild(h("div", { class: "intel-disabled-row" }, [
       h("span", { class: "intel-disabled-emoji" }, "🔒"),
-      h("div", { style: "flex: 1; min-width: 0;" }, [
+      h("div", { class: "intel-disabled-body" }, [
         h("p", { class: "intel-disabled-title" },
           hasRfp
             ? "RFP 에서 발주처를 추출하지 못했어요"
             : "RFP 를 먼저 업로드해 주세요"),
-        h("p", { class: "muted small", style: "margin: 4px 0 0;" },
+        h("p", { class: "muted small intel-disabled-sub" },
           hasRfp
             ? "RFP 에 발주처(공고기관) 정보가 명확히 적혀있는지 확인해 주세요. RFP 분석을 다시 돌리면 추출이 시도돼요."
             : "발주처 들여다보기는 RFP 에 적힌 발주처(공고기관)만 사용해요. 과업명은 검색에 영향을 주지 않아요."),

@@ -901,9 +901,11 @@ input, select, textarea { font-family: inherit; color: inherit; }
   height: 100vh;
   background: var(--bg);
 }
+/* Spec D-Build-ChatLinear (2026-09-02) — Linear 방향 통일 (챗봇 전용 클래스라 다른 화면 무영향).
+   ── bg #fff → var(--card), 폰트 --text-* 변수, page-limit-badge warm → 절제, radius 통일. */
 .chat-header {
   position: sticky; top: 0; z-index: 10;
-  background: #fff; border-bottom: 1px solid var(--border);
+  background: var(--card); border-bottom: 1px solid var(--border);
   padding: 12px 20px;        /* 14/40 → 12/20 좁은 영역 대응 */
   display: flex; align-items: center; justify-content: space-between;
   gap: 8px;
@@ -917,28 +919,42 @@ input, select, textarea { font-family: inherit; color: inherit; }
   flex-wrap: wrap;
   min-width: 0;
 }
-.chat-header .client-name { font-size: 12px; color: var(--fg-soft); }
+.chat-header .client-name {
+  font-size: var(--text-xs);
+  color: var(--fg-soft);
+  line-height: var(--lh-tight);
+}
 .chat-header .chat-title {
-  font-size: 16px;           /* 17 → 16 살짝 작게 */
+  font-size: var(--text-md);
   font-weight: 700;
   letter-spacing: -0.015em;
+  line-height: var(--lh-tight);
   margin: 0;
-  white-space: nowrap;       /* 제목이 한 글자씩 줄바뀌던 것 방지 */
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 240px;
+  color: var(--fg-strong);
 }
 .chat-header .context-badges {
   display: flex; gap: 6px; align-items: center;
-  font-size: 12px; color: var(--fg-soft);
+  font-size: var(--text-xs); color: var(--fg-soft);
   flex-wrap: wrap;
 }
 .chat-header .page-limit-badge {
-  background: var(--warning-soft); color: var(--warning);
+  background: var(--bg-2); color: var(--fg-soft);
   padding: 4px 10px; border-radius: var(--radius-pill);
-  font-weight: 700; font-size: 11.5px;
+  font-weight: 600; font-size: var(--text-xs);
+  line-height: var(--lh-tight);
   white-space: nowrap;
 }
+/* Spec D-Build-ChatLinear — chat-header 인라인 style 대체 클래스 */
+.chat-header-divider {
+  height: 24px; width: 1px;
+  background: var(--border);
+}
+.chat-header-right { display: flex; align-items: center; gap: 12px; }
+.btn-icon-lead { margin-right: 4px; }
 
 .chat-body {
   flex: 1; overflow-y: auto;
@@ -963,23 +979,25 @@ input, select, textarea { font-family: inherit; color: inherit; }
 .msg-row.assistant .msg-avatar { background: var(--bg-2); color: var(--fg-2); }
 .msg-body { max-width: 86%; min-width: 0; }
 .msg-row.user .msg-body { text-align: right; }
+/* Spec D-Build-ChatLinear (2026-09-02) — 메시지 버블 폰트/색/보더 대시보드 톤 정합.
+   ── radius 18 은 버블 정체성 (chat 관행) → 유지. border 1px → 0.5px, bg #fff → --card. */
 .msg-bubble {
   border-radius: 18px; padding: 12px 18px;
-  font-size: 15px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+  font-size: var(--text-md); line-height: var(--lh-base); white-space: pre-wrap; word-break: break-word;
 }
 .msg-bubble .md-h1, .msg-bubble .md-h2, .msg-bubble .md-h3 {
-  margin: 10px 0 6px; font-weight: 700; line-height: 1.35;
+  margin: 10px 0 6px; font-weight: 700; line-height: var(--lh-tight);
 }
-.msg-bubble .md-h1 { font-size: 18px; }
-.msg-bubble .md-h2 { font-size: 16.5px; }
-.msg-bubble .md-h3 { font-size: 15px; color: var(--fg-2); }
+.msg-bubble .md-h1 { font-size: var(--text-md); }
+.msg-bubble .md-h2 { font-size: var(--text-base); }
+.msg-bubble .md-h3 { font-size: var(--text-sm); color: var(--fg-soft); }
 .msg-bubble .md-ul, .msg-bubble .md-ol { margin: 6px 0; padding-left: 22px; }
-.msg-bubble .md-ul li, .msg-bubble .md-ol li { margin: 3px 0; line-height: 1.6; }
+.msg-bubble .md-ul li, .msg-bubble .md-ol li { margin: 3px 0; line-height: var(--lh-base); }
 .msg-bubble .md-code {
   background: color-mix(in oklab, var(--primary) 10%, var(--bg-2));
   color: var(--fg); padding: 2px 6px; border-radius: 4px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 13.5px;
+  font-size: var(--text-sm);
 }
 .msg-bubble p { margin: 6px 0; }
 .msg-bubble p:first-child { margin-top: 0; }
@@ -988,35 +1006,48 @@ input, select, textarea { font-family: inherit; color: inherit; }
 .msg-bubble em { font-style: italic; }
 
 .msg-row.user .msg-bubble { background: var(--primary); color: var(--primary-fg); border-bottom-right-radius: 4px; }
-.msg-row.assistant .msg-bubble { background: #fff; color: var(--fg); border: 1px solid var(--border); border-bottom-left-radius: 4px; box-shadow: var(--shadow-sm); }
+.msg-row.assistant .msg-bubble { background: var(--card); color: var(--fg); border: 0.5px solid var(--border); border-bottom-left-radius: 4px; box-shadow: var(--shadow-sm); }
+
+/* Spec D-Build-ChatLinear — 에러 표시 인라인 style 대체 (기능 무접촉, 스타일 통일). */
+.msg-error-line {
+  color: var(--danger);
+  margin-bottom: 8px;
+  font-size: var(--text-sm);
+  line-height: var(--lh-base);
+}
 .msg-time { font-size: 11px; color: var(--muted); margin-top: 4px; }
 
-/* ===== Chat input ===== */
+/* ===== Chat input =====
+   Spec D-Build-ChatLinear (2026-09-02) — Linear 방향 통일:
+   bg #fff → var(--card), textarea border 1px --border-strong → 0.5px --border,
+   radius 14 → var(--radius)(12), focus 3px 18% → 2px 12% (절제),
+   폰트 하드코딩 → var(--text-md)/var(--lh-base). */
 .chat-input-wrap {
   border-top: 1px solid var(--border);
-  background: #fff;
+  background: var(--card);
   padding: 20px 0 24px;
 }
 .chat-input-container {
   max-width: 780px;
   width: 100%;
   margin: 0 auto;
-  padding: 0 24px;          /* 40 → 24 채팅 영역과 통일 */
+  padding: 0 24px;
   display: flex; gap: 10px; align-items: flex-end;
   box-sizing: border-box;
 }
 .chat-input-container textarea {
   flex: 1; min-height: 52px; max-height: 160px; resize: none;
-  padding: 14px 18px; border-radius: 14px; border: 1px solid var(--border-strong);
-  font-size: 15px; line-height: 1.6;
+  padding: 14px 18px; border-radius: var(--radius); border: 0.5px solid var(--border);
+  font-size: var(--text-md); line-height: var(--lh-base);
+  background: var(--card); color: var(--fg);
 }
 .chat-input-container textarea:focus {
   outline: none; border-color: var(--primary);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--primary) 12%, transparent);
 }
-.chat-hint { text-align: center; font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+.chat-hint { text-align: center; font-size: var(--text-sm); color: var(--muted); margin: 8px 0 0; line-height: var(--lh-base); }
 .send-btn {
-  width: 52px; height: 52px; border-radius: 14px; background: var(--primary); color: var(--primary-fg);
+  width: 52px; height: 52px; border-radius: var(--radius); background: var(--primary); color: var(--primary-fg);
   display: grid; place-items: center; transition: background .15s;
 }
 .send-btn:hover { background: var(--primary-hover); }
@@ -5372,7 +5403,13 @@ input.locked-by-env::placeholder {
 
 /* ───────────────────────────────────────────────────────────
    Spec D-Fix-RightPanel — 생성 완료 후 기능 패널 (proposal-side-panel 안 .action-panel)
-   슬라이드쇼 dead code 의 .side-panel-* / .png-* CSS 와 별개 영역.
+   Spec D-Build-ChatLinear (2026-09-02) — Linear 방향 통일:
+   ── 하드코딩 색 (#1A1A1A/#1F1147/#F5F0FF/#6B46E5/#6E56CF/#9D8AE6/#F3EFFE) → 변수화
+   ── 폰트 하드코딩 → var(--text-*) · line-height → var(--lh-*)
+   ── ap-card: border 1 → 0.5px + 상시 --shadow-sm (대시보드 카드 정합)
+   ── ap-download-btn: 보라 그라데이션 → var(--primary) 단색 · shadow → var(--shadow)
+   ── featured: --primary-soft bg + 1.5px 유지 (제출서류 강조)
+   ── 노출조건·기능 무접촉 (JS 미접촉).
    ─────────────────────────────────────────────────────────── */
 .action-panel {
   display: flex; flex-direction: column;
@@ -5382,39 +5419,44 @@ input.locked-by-env::placeholder {
 .action-panel .ap-header { margin-bottom: 4px; }
 .action-panel .ap-badge {
   display: inline-block;
-  font-size: 15px; font-weight: 700;
-  color: #1A1A1A;
+  font-size: var(--text-sm); font-weight: 700;
+  color: var(--fg-strong);
+  line-height: var(--lh-tight);
   margin-bottom: 4px;
 }
 .action-panel .ap-subtitle {
-  font-size: 12px; color: var(--muted);
+  font-size: var(--text-xs); color: var(--fg-soft);
+  line-height: var(--lh-base);
   margin: 0;
 }
 .action-panel .ap-download-btn {
   display: flex; align-items: center; justify-content: center; gap: 10px;
   padding: 14px 18px;
-  background: linear-gradient(135deg, #6E56CF 0%, #9D8AE6 100%);
-  color: #fff;
-  border: none; border-radius: 12px;
-  font-size: 15px; font-weight: 700;
+  background: var(--primary);
+  color: var(--primary-fg);
+  border: none; border-radius: var(--radius);
+  font-size: var(--text-sm); font-weight: 700;
+  line-height: var(--lh-tight);
   font-family: inherit;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(110, 86, 207, .25);
-  transition: transform .15s ease, box-shadow .15s ease;
+  box-shadow: var(--shadow);
+  transition: background .15s ease, box-shadow .15s ease;
 }
 .action-panel .ap-download-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(110, 86, 207, .35);
+  background: var(--primary-hover);
+  box-shadow: var(--shadow-md);
 }
 .action-panel .ap-dl-icon { font-size: 18px; }
 .action-panel .ap-dl-hint {
-  font-size: 12px; color: var(--muted);
+  font-size: var(--text-xs); color: var(--fg-soft);
+  line-height: var(--lh-base);
   text-align: center; margin: -4px 0 4px 0;
 }
 .action-panel .ap-divider {
   display: flex; align-items: center; gap: 10px;
   margin: 8px 0 4px;
-  font-size: 12px; color: var(--muted);
+  font-size: var(--text-xs); color: var(--fg-soft);
+  line-height: var(--lh-tight);
 }
 .action-panel .ap-divider::before,
 .action-panel .ap-divider::after {
@@ -5426,40 +5468,49 @@ input.locked-by-env::placeholder {
 .action-panel .ap-card {
   display: flex; flex-direction: column; gap: 6px;
   padding: 14px 16px;
-  background: #fff;
-  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--card);
+  border: 0.5px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
   cursor: pointer; text-align: left;
   font-family: inherit;
-  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+  transition: border-color .15s ease, box-shadow .15s ease;
 }
 .action-panel .ap-card:hover {
-  transform: translateY(-1px);
-  border-color: #9D8AE6;
-  box-shadow: 0 4px 14px rgba(110, 86, 207, .12);
+  border-color: color-mix(in oklab, var(--primary) 25%, var(--border));
+  box-shadow: var(--shadow);
 }
 /* Spec D-Build-SubmissionDocs-Relocate (조각 D) — 부각된 제출서류 가이드 CTA */
-.action-panel .ap-card.featured { border:1px solid #6B46E5; background:#F5F0FF; }
-.action-panel .ap-card.featured:hover { border-color:#6B46E5; box-shadow:0 4px 14px rgba(107,70,229,.18); }
-.action-panel .ap-card.featured .ap-card-title { color:#1F1147; }
+.action-panel .ap-card.featured {
+  border: 1.5px solid var(--primary);
+  background: var(--primary-soft);
+}
+.action-panel .ap-card.featured:hover {
+  border-color: var(--primary);
+  box-shadow: var(--shadow);
+}
+.action-panel .ap-card.featured .ap-card-title { color: var(--fg-strong); }
 .action-panel .ap-card-head {
   display: flex; align-items: center; gap: 8px;
 }
 .action-panel .ap-card-emoji { font-size: 18px; }
 .action-panel .ap-card-title {
-  font-size: 14px; font-weight: 700; color: #1A1A1A;
+  font-size: var(--text-sm); font-weight: 700; color: var(--fg-strong);
+  line-height: var(--lh-tight);
   flex: 1;
 }
 .action-panel .ap-card-tag {
-  font-size: 11px; font-weight: 600;
-  padding: 2px 8px; border-radius: 999px;
-  background: #F3EFFE; color: #6E56CF;
+  font-size: var(--text-xs); font-weight: 600;
+  padding: 2px 8px; border-radius: var(--radius-pill);
+  background: var(--primary-soft); color: var(--primary);
+  line-height: var(--lh-tight);
 }
 .action-panel .ap-card-desc {
-  font-size: 12px; color: var(--muted);
-  margin: 0; line-height: 1.5;
+  font-size: var(--text-xs); color: var(--fg-soft);
+  margin: 0; line-height: var(--lh-base);
 }
 .action-panel .ap-footer {
-  font-size: 11px; color: var(--muted);
+  font-size: var(--text-xs); color: var(--fg-soft);
+  line-height: var(--lh-base);
   text-align: center; margin-top: 6px;
 }
 @keyframes sidePanelIn {

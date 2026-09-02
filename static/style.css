@@ -3317,7 +3317,12 @@ body, .msg-bubble, .card, .strengths-intro,
 }
 .closing-widget-all-link:hover { color: var(--primary); background: var(--primary-soft, rgba(107, 70, 229, 0.10)); }
 
-/* "전체 보기" 모달 */
+/* "전체 보기" 모달
+   Spec D-Build-ModalsLinear/3 (2026-09-02) — Linear 정합:
+   ── backdrop rgba(0,0,0,0.5) · 애니메이션 완전 무접촉.
+   ── radius 14 → var(--radius-lg)(16) · shadow 0 20px 50px -10px 0.25 (튀는)
+      → var(--shadow-lg) (부양감 유지, 절제).
+   ── border 1px → 0.5px · font/close/meta 하드코딩 → 앱 표준 변수. */
 .closing-modal-backdrop {
   position: fixed; inset: 0;
   background: rgba(0, 0, 0, 0.5);
@@ -3338,9 +3343,10 @@ body, .msg-bubble, .card, .strengths-intro,
   to   { opacity: 0; }
 }
 .closing-modal {
-  background: #fff;
-  border-radius: 14px;
-  box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.25);
+  background: var(--card);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
   width: 100%; max-width: 720px;
   max-height: 85vh;
   display: flex; flex-direction: column;
@@ -3349,28 +3355,28 @@ body, .msg-bubble, .card, .strengths-intro,
 .closing-modal-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 18px 22px 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 0.5px solid var(--border);
 }
 .closing-modal-title {
   margin: 0;
-  font-size: 16px; font-weight: 600;
-  color: var(--fg-strong, var(--fg));
+  font-size: var(--text-md); font-weight: 600;
+  color: var(--fg-strong);
 }
 .closing-modal-close {
   width: 32px; height: 32px;
   border-radius: 50%; border: 0;
   background: transparent;
   font-size: 22px; line-height: 1;
-  color: var(--fg-2);
+  color: var(--fg-soft);
   cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
   transition: background .15s ease, color .15s ease;
 }
-.closing-modal-close:hover { background: var(--bg-2); color: var(--fg); }
+.closing-modal-close:hover { background: var(--bg-2); color: var(--fg-strong); }
 .closing-modal-meta {
   padding: 10px 22px;
-  font-size: 12px; color: var(--fg-2);
-  border-bottom: 1px solid var(--border);
+  font-size: var(--text-xs); color: var(--fg-muted);
+  border-bottom: 0.5px solid var(--border);
 }
 .closing-modal-list {
   padding: 16px 22px;
@@ -3556,6 +3562,11 @@ body, .msg-bubble, .card, .strengths-intro,
    Spec C-3 (5/18) 신규 — 미리보기 모달 (.sample-modal-*)
    패턴 B (.closing-modal-*) 정합 + PDF iframe + sticky CTA bar.
    ============================================ */
+/* Spec D-Build-ModalsLinear/3 (2026-09-02) — sample-modal Linear 정합:
+   ── backdrop rgba(0,0,0,0.6) · 애니메이션 무접촉.
+   ── radius 14 → var(--radius-lg) · shadow 튀는 → var(--shadow-lg) 절제.
+   ── border 1px → 0.5px · CTA-btn radius 8 → var(--radius) · #fff → --primary-fg
+      · hover opacity → --primary-hover 배경 (인디고·튀는 shadow 없이 정합). */
 .sample-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -3572,9 +3583,10 @@ body, .msg-bubble, .card, .strengths-intro,
   to { opacity: 1; }
 }
 .sample-modal {
-  background: #fff;
-  border-radius: 14px;
-  box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.25);
+  background: var(--card);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
   width: 100%;
   max-width: 1100px;  /* Spec D-Fix-6 (5/18): A4 본문 영역 확보 (900 → 1100) */
   max-height: 90vh;
@@ -3587,20 +3599,20 @@ body, .msg-bubble, .card, .strengths-intro,
   align-items: center;
   justify-content: space-between;
   padding: 18px 22px 14px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 0.5px solid var(--border);
   flex-shrink: 0;
 }
 .sample-modal-head-info { flex: 1; min-width: 0; }
 .sample-modal-title {
-  font-size: 16px;
+  font-size: var(--text-md);
   font-weight: 600;
   margin: 0 0 4px;
   letter-spacing: -0.2px;
   color: var(--fg-strong);
 }
 .sample-modal-subtitle {
-  font-size: 12px;
-  color: var(--fg-2);
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
   margin: 0;
 }
 .sample-modal-close {
@@ -3611,10 +3623,10 @@ body, .msg-bubble, .card, .strengths-intro,
   background: transparent;
   font-size: 22px;
   cursor: pointer;
-  color: var(--fg-2);
+  color: var(--fg-soft);
   flex-shrink: 0;
 }
-.sample-modal-close:hover { background: var(--bg-2); }
+.sample-modal-close:hover { background: var(--bg-2); color: var(--fg-strong); }
 .sample-modal-body {
   flex: 1;
   aspect-ratio: 297 / 210;  /* Spec D-Fix-6 (5/18): A4 가로형 본문 영역 (NightOff PPTX 정합) */
@@ -3633,31 +3645,32 @@ body, .msg-bubble, .card, .strengths-intro,
 .sample-modal-cta-bar {
   flex-shrink: 0;
   padding: 16px 22px;
-  border-top: 1px solid var(--border);
+  border-top: 0.5px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  background: #fff;
+  background: var(--card);
 }
 .sample-modal-cta-text {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--fg-strong);
   margin: 0;
   font-weight: 500;
 }
 .sample-modal-cta-btn {
   background: var(--primary);
-  color: #fff;
+  color: var(--primary-fg);
   border: 0;
   padding: 10px 18px;
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
   font-weight: 600;
   cursor: pointer;
   letter-spacing: -0.2px;
+  transition: background 0.15s ease;
 }
-.sample-modal-cta-btn:hover { opacity: 0.9; }
+.sample-modal-cta-btn:hover { background: var(--primary-hover); }
 /* 모바일 ≤767px 풀스크린 모달 */
 @media (max-width: 767px) {
   .sample-modal-backdrop { padding: 0; }
@@ -6540,6 +6553,14 @@ body.landing-fullscreen .nav-backdrop {
 /* ============================================================
    🖼 PPTX PNG 미리보기 모달 (Phase 3-C)
    ============================================================ */
+/* Spec D-Build-ModalsLinear/3 (2026-09-02) — pptx-preview 캐러셀 Linear 정합:
+   ── backdrop rgba(20,18,14,0.86) + blur 유지 (PPTX 자산 몰입 톤).
+   ── 카드 bg #fff → var(--card) · radius 16 → var(--radius-lg) 유지.
+   ── ★ stage 그라디언트 (180deg #FAFAF8 → #F0EDE5 라이트크림) → var(--bg-2)
+      단색 (Linear 방향).
+   ── ★ img shadow 0 18px 48px -16px 0.28 (튀는) → var(--shadow-md) 절제.
+   ── nav 48x48 원형 형태 유지 (캐러셀 기능) · border 1px → 0.5px.
+   ── border/폰트 → 앱 표준 변수 · h3 17 (자체 override) 유지. */
 .pptx-preview-backdrop {
   background: rgba(20, 18, 14, 0.86);
   backdrop-filter: blur(8px);
@@ -6548,13 +6569,13 @@ body.landing-fullscreen .nav-backdrop {
   width: 92vw; height: 88vh;
   max-width: 1400px; max-height: 900px;
   display: flex; flex-direction: column;
-  background: #fff;
-  border-radius: 16px;
+  background: var(--card);
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 .pptx-preview-modal .modal-header {
   padding: 14px 20px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 0.5px solid var(--border);
   display: flex; justify-content: space-between; align-items: center;
 }
 .pptx-preview-modal h3 {
@@ -6562,7 +6583,7 @@ body.landing-fullscreen .nav-backdrop {
   margin: 0; letter-spacing: -0.015em;
 }
 .pptx-preview-counter {
-  font-size: 13px; font-weight: 600;
+  font-size: var(--text-sm); font-weight: 600;
   color: var(--fg-soft);
   font-variant-numeric: tabular-nums;
   padding: 4px 12px;
@@ -6572,16 +6593,16 @@ body.landing-fullscreen .nav-backdrop {
 .pptx-preview-stage {
   flex: 1; min-height: 0;
   position: relative;
-  background: linear-gradient(180deg, #FAFAF8 0%, #F0EDE5 100%);
+  background: var(--bg-2);
   display: grid; place-items: center;
   padding: 24px;
 }
 .pptx-preview-img {
   max-width: 100%; max-height: 100%;
   object-fit: contain;
-  border-radius: 8px;
-  box-shadow: 0 18px 48px -16px rgba(0,0,0,0.28);
-  background: #fff;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  background: var(--card);
 }
 .pptx-preview-nav {
   position: absolute; top: 50%;
@@ -6589,7 +6610,7 @@ body.landing-fullscreen .nav-backdrop {
   width: 48px; height: 48px;
   border-radius: 50%;
   background: rgba(255,255,255,0.92);
-  border: 1px solid var(--border);
+  border: 0.5px solid var(--border);
   color: var(--fg-strong);
   display: grid; place-items: center;
   cursor: pointer;
@@ -6599,7 +6620,7 @@ body.landing-fullscreen .nav-backdrop {
 }
 .pptx-preview-nav:hover:not(:disabled) {
   background: var(--primary);
-  color: #fff;
+  color: var(--primary-fg);
   transform: translateY(-50%) scale(1.05);
 }
 .pptx-preview-nav:disabled { opacity: 0.3; cursor: not-allowed; }
@@ -6610,8 +6631,8 @@ body.landing-fullscreen .nav-backdrop {
   flex-shrink: 0;
   display: flex; gap: 8px;
   padding: 12px 16px;
-  background: #fff;
-  border-top: 1px solid var(--border);
+  background: var(--card);
+  border-top: 0.5px solid var(--border);
   overflow-x: auto;
   scroll-behavior: smooth;
 }

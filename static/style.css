@@ -5875,6 +5875,8 @@ input.locked-by-env::placeholder {
   padding: 10px 0;   /* 배지 우상단 클리핑 방지용 여유 유지 */
   align-items: stretch;
 }
+/* Spec D-Build-DashboardCopy (2026-09-02) — 설명 필드 추가로 flex-direction row → column.
+   아이콘 위 · 텍스트(제목+설명) 아래 세로 stack. 아이콘은 좌정렬 유지. */
 .feature-5-card {
   position: relative;
   padding: var(--space-4);
@@ -5882,7 +5884,7 @@ input.locked-by-env::placeholder {
   border: 0.5px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
-  display: flex; flex-direction: row; align-items: center; gap: 10px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 12px;
   text-align: left;
   transition: border-color .15s ease, box-shadow .15s ease;
 }
@@ -5898,6 +5900,11 @@ input.locked-by-env::placeholder {
   flex-shrink: 0;   /* 횡방향 정합 — 카드 폭 좁아져도 아이콘 박스 영역 안 줄어듦 */
   /* 톤별 background + color 는 [data-tone] 영역 분기 */
 }
+/* Spec D-Build-DashboardCopy (2026-09-02) — 텍스트 블록 (제목+설명 세로 stack) */
+.feature-5-card-text {
+  display: flex; flex-direction: column; gap: 4px;
+  width: 100%;
+}
 .feature-5-card-title {
   margin: 0;
   font-size: var(--text-sm);
@@ -5905,7 +5912,14 @@ input.locked-by-env::placeholder {
   color: var(--fg-strong);
   letter-spacing: -0.2px;
   line-height: var(--lh-tight);
-  white-space: pre-line;   /* 데이터 영역 '\n' 줄바꿈 영역 */
+}
+.feature-5-card-desc {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--fg-soft);
+  line-height: var(--lh-base);
+  letter-spacing: -0.005em;
+  word-break: keep-all;   /* 한국어 단어 단위 줄바꿈 */
 }
 
 /* Spec D-Build-DashboardLinear-1: featured — 무배경(흰) + 굵은 테두리 2px var(--primary).

@@ -1597,10 +1597,11 @@ function renderStatusCards(stats) {
   const usedThisMonth = Math.max(0, total - remaining);
   const active = Number((stats && stats.active_conversations)) || 0;
 
+  // Spec D-Build-DashboardCopy (2026-09-02) — 라벨 명시화: "이번 달 사용" → "이번 달 사용 크레딧"
   const items = [
-    { label: "남은 크레딧",   value: fmt(remaining), suffix: "" },
-    { label: "진행 과업",     value: fmt(active),    suffix: "" },
-    { label: "이번 달 사용",  value: fmt(usedThisMonth), suffix: "" },
+    { label: "남은 크레딧",         value: fmt(remaining),     suffix: "" },
+    { label: "진행 과업",           value: fmt(active),        suffix: "" },
+    { label: "이번 달 사용 크레딧", value: fmt(usedThisMonth), suffix: "" },
   ];
 
   const grid = h("section", { class: "status-cards" });
@@ -1613,22 +1614,26 @@ function renderStatusCards(stats) {
   return grid;
 }
 
-// 🌙 NightOff 핵심 기능 5 카드 (대시보드 최상단) — 가운데 강조 (다크 그라데이션 + 엠버 보더 + 배지)
+// 🌙 NightOff 핵심 기능 5 카드 (대시보드 최상단)
+// Spec D-Build-DashboardCopy (2026-09-02) — A안(담백·기능중심) 워딩 리마스터:
+//   · 제목 단문화 (기존 \n 두 줄 → 한 줄)
+//   · description 필드 신설 (제목 아래 보조 설명 한 줄)
+//   · 5번 카드 "자체 제안서 리뷰" → "자체 검증" (앱 정합, main.py 정식 명칭)
 const CORE_FEATURES_5 = [
-  { emoji: "📄", title: "RFP\n자동 분석",         tone: "purple", featured: false },
-  { emoji: "👀", title: "발주처\n들여다보기",      tone: "blue",   featured: false },
-  { emoji: "✨", title: "제안서 초안\n자동 생성",  tone: "amber",  featured: true  },
-  { emoji: "💰", title: "산출내역서\n자동 생성",   tone: "green",  featured: false },
-  { emoji: "🔍", title: "자체 제안서\n리뷰",       tone: "pink",   featured: false },
+  { emoji: "📄", title: "RFP 자동 분석",       desc: "공고문을 올리면 핵심 항목을 자동 추출",   tone: "purple", featured: false },
+  { emoji: "👀", title: "발주처 들여다보기",    desc: "발주 기관의 이력과 성향까지 리서치",       tone: "blue",   featured: false },
+  { emoji: "✨", title: "제안서 초안 생성",     desc: "전략이 관통하는 초안까지",                tone: "amber",  featured: true  },
+  { emoji: "💰", title: "산출내역서 자동 작성", desc: "B2G 표준 양식으로 예산까지",              tone: "green",  featured: false },
+  { emoji: "🔍", title: "자체 검증",           desc: "규정 적합성과 예상 점수를 미리 점검",     tone: "pink",   featured: false },
 ];
 
 function renderCoreFeatures5() {
   const section = h("section", { class: "features-5" });
 
-  // 헤더 — "NightOff 주요 기능 5가지" (Spec 8 (5/16): featured 배지 "⭐ 핵심 기능"과 명확 차별화)
+  // 헤더 — Spec D-Build-DashboardCopy (2026-09-02): 부제 톤 조정.
   section.appendChild(h("div", { class: "features-5-header" }, [
     h("h2", { class: "features-5-title" }, "NightOff 주요 기능 5가지"),
-    h("p", { class: "features-5-subtitle" }, "RFP 한 장이면, 시작부터 마무리까지 NightOff 가 도와요"),
+    h("p", { class: "features-5-subtitle" }, "RFP 한 장으로, 제안서 완성까지"),
   ]));
 
   // 5-열 grid
@@ -1641,7 +1646,11 @@ function renderCoreFeatures5() {
       // Spec C-2 (5/18): featured 카드 우상단 "핵심" 작은 배지 (5중 → 2중 강조 영역)
       f.featured ? h("span", { class: "feature-5-card-badge" }, "핵심") : null,
       h("div", { class: "feature-5-card-icon" }, f.emoji),
-      h("h4", { class: "feature-5-card-title" }, f.title),
+      // Spec D-Build-DashboardCopy (2026-09-02) — 제목+설명 세로 텍스트 블록
+      h("div", { class: "feature-5-card-text" }, [
+        h("h4", { class: "feature-5-card-title" }, f.title),
+        h("p", { class: "feature-5-card-desc" }, f.desc),
+      ]),
     ]);
     grid.appendChild(card);
   });

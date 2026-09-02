@@ -5563,13 +5563,13 @@ async function renderChat(cid, convId) {
         class: "icon-btn", html: iconHtml("arrowL", 20),
         onclick: () => navigate(`/client/${cid}`),
       }),
-      h("div", { style: "height: 24px; width: 1px; background: var(--border);" }),
+      h("div", { class: "chat-header-divider" }),
       h("div", {}, [
         h("p", { class: "client-name" }, data.client.name),
         h("h1", { class: "chat-title" }, data.conversation.title),
       ]),
     ]),
-    h("div", { class: "flex-row", style: "gap: 12px;" }, [
+    h("div", { class: "flex-row chat-header-right" }, [
       pageLimit ? h("span", { class: "page-limit-badge" }, `최대 ${pageLimit}페이지`) : null,
       h("div", { class: "context-badges" }, [
         injected.rfp ? h("span", { class: "badge badge-primary" }, "RFP") : null,
@@ -5604,7 +5604,7 @@ async function renderChat(cid, convId) {
         const badgeHtml = q
           ? `<span id="proposal-quota-badge" class="btn-quota-badge${exhausted ? " quota-exhausted" : ""}">${propPagesNow}p</span>`
           : "";
-        const labelHtml = `<span style="margin-right:4px;">✨</span><span>제안서 생성</span>${badgeHtml}`;
+        const labelHtml = `<span class="btn-icon-lead">✨</span><span>제안서 생성</span>${badgeHtml}`;
         return h("button", {
           id: "sparkle-generate-btn",
           class: "btn btn-primary sparkle-generate-btn" + (exhausted ? " btn-quota-disabled" : ""),
@@ -5658,7 +5658,7 @@ async function renderChat(cid, convId) {
                 console.error("multi-pass 실패:", e);
                 // 실패 시 inline 재시도 버튼 — history 보존 (사용자 결정 Q4 옵션 a)
                 bubble.innerHTML =
-                  `<div style="color:var(--danger); margin-bottom:8px;">❌ ${escapeHtml(e.message || String(e))}</div>` +
+                  `<div class="msg-error-line">❌ ${escapeHtml(e.message || String(e))}</div>` +
                   `<button class="mp-retry-btn" type="button">🔄 다시 시도</button>`;
                 const retryBtn = bubble.querySelector(".mp-retry-btn");
                 if (retryBtn) retryBtn.addEventListener("click", (ev) => {
@@ -5695,7 +5695,7 @@ async function renderChat(cid, convId) {
           class: "btn pptx-dl-btn active",
           title: "저장된 제안서 다운로드",
           style: "text-decoration:none;" + (hasPptx ? "" : " display:none;"),
-          html: `<span style="margin-right:4px;">⬇</span><span>제안서 다운로드</span>`,
+          html: `<span class="btn-icon-lead">⬇</span><span>제안서 다운로드</span>`,
           onclick: () => {
             // data.conversation.pptx_path 는 글로벌 함수가 mutate (closure 활용)
             downloadPptxAuthenticated(data.conversation && data.conversation.pptx_path, "proposal.pptx");
@@ -5713,7 +5713,7 @@ async function renderChat(cid, convId) {
         let lastHoverToastAt = 0;
         const btn = h("button", {
           class: "btn budget-btn" + (hasPptx ? " active" : " disabled"),
-          html: `<span style="margin-right:4px;">💰</span><span>산출내역서</span>`,
+          html: `<span class="btn-icon-lead">💰</span><span>산출내역서</span>`,
           title: hasPptx ? "산출내역서 생성" : "제안서 생성 후 사용 가능해요",
           onclick: () => {
             if (btn.classList.contains("disabled")) {

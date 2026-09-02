@@ -790,19 +790,28 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
         })(),
       ] : []),
       // Spec D-Build-PricingPage-5c (2026-09-01) — 사이드바 "크레딧 충전" 진입점.
-      // 위치: 제안서 크레딧 잔여 표시 (sidebar-quota-wrap) 바로 다음 = FAQ 위.
-      //   → 잔여 크레딧 확인 → 바로 충전 클릭 흐름 자연스러움.
-      // 동작: navigate("/pricing") (조각5b 신설 라우트) → renderPricingPage 렌더.
-      // ★ 로그인 사용자만 사이드바 노출 (isGuestMode() 분기 위, 이 else 블록 안).
-      //   비회원은 위쪽 게스트 CTA (로그인/회원가입) 로 진입 후 결제.
-      h("button", {
-        class: "sidebar-footer-btn",
-        title: "크레딧 충전 (요금제 페이지)",
-        onclick: () => navigate("/pricing"),
-      }, [
-        h("span", { class: "sidebar-footer-btn-icon" }, "💳"),
-        h("span", {}, "크레딧 충전"),
-      ]),
+      // Spec Credit-CTA-Emphasis (2026-09-02) — 부족(low/empty) 시만 강조 · 정상은 조용히.
+      //   getCreditStatus 재사용 (상태카드와 완전 일치 · 불일치 방지).
+      //   healthy → 다른 footer 버튼과 동일 (안 튐).
+      //   low     → 옅은 primary-soft tint (은은).
+      //   empty   → warning-soft tint + 색 강조 (좀 더 명확 · Linear 절제 유지).
+      (function () {
+        const _q = (window.__nightoff_user && window.__nightoff_user.quota) || null;
+        const _sbStatus = _q ? getCreditStatus(_q.proposal_remaining) : "healthy";
+        const emphasisClass = (_sbStatus === "healthy") ? "" : (" credit-cta-" + _sbStatus);
+        return h("button", {
+          class: "sidebar-footer-btn" + emphasisClass,
+          title: (_sbStatus === "empty")
+            ? "크레딧이 곧 소진돼요 · 지금 충전하세요"
+            : (_sbStatus === "low")
+              ? "크레딧이 얼마 남지 않았어요 · 충전하기"
+              : "크레딧 충전 (요금제 페이지)",
+          onclick: () => navigate("/pricing"),
+        }, [
+          h("span", { class: "sidebar-footer-btn-icon" }, "💳"),
+          h("span", {}, "크레딧 충전"),
+        ]);
+      })(),
       // Spec D-Build-FaqSidebarLink (2026-06-13) — 자주 묻는 질문 (FAQ) 영구 진입점.
       // 모든 페이지 공통 노출 · admin/일반 양쪽 동일 (role 분기 위 배치) · 같은 탭 이동(/faq).
       // ICO.help (Feather help-circle) + iconHtml 헬퍼 — 설정/마이페이지/로그아웃 SVG 패턴 정합.
@@ -881,6 +890,21 @@ function fmtSize(bytes) {
   const u = ["B","KB","MB","GB"]; let i = 0;
   while (bytes >= 1024 && i < 3) { bytes /= 1024; i++; }
   return `${bytes.toFixed(i ? 1 : 0)}${u[i]}`;
+}
+
+// Spec Credit-CTA-Emphasis (2026-09-02) — 크레딧 잔여 상태 판정 (3단계).
+// 재사용처: renderStatusCards ("남은 크레딧" 카드 강조) · sidebar-footer-btn
+// (💳 크레딧 충전 버튼 조건부 강조) · 향후 다른 CTA 진입점.
+// 기준:
+//   · empty  : remaining < 100 (< 1페이지 · sparkle 버튼 disabled 조건과 동일)
+//   · low    : 100 ≤ remaining < 300 (< 3페이지 · 몇 페이지 못 만듦)
+//   · healthy: remaining ≥ 300 (여유 · 조용히 · 강조 X)
+// ★ 상태카드/사이드바 두 지점이 같은 status 값 참조 → 강조 상태 일치 (불일치 방지).
+function getCreditStatus(remaining) {
+  const n = Number(remaining) || 0;
+  if (n < CREDITS_PER_PAGE) return "empty";        // 100 미만 = 1페이지 못 만듦
+  if (n < CREDITS_PER_PAGE * 3) return "low";      // 300 미만 = 3페이지 이내
+  return "healthy";
 }
 
 // Spec RFP-UI-Gate (2026-09-02) — 프론트 RFP 유효성 판정 헬퍼.
@@ -1616,19 +1640,51 @@ function renderStatusCards(stats) {
   const usedThisMonth = Math.max(0, total - remaining);
   const active = Number((stats && stats.active_conversations)) || 0;
 
+  // Spec Credit-CTA-Emphasis (2026-09-02) — 크레딧 상태 판정 (getCreditStatus L887).
+  // healthy=여유 · low=몇 페이지만 · empty=1페이지 못 만듦.
+  const creditStatus = getCreditStatus(remaining);
+
   // Spec D-Build-DashboardCopy (2026-09-02) — 라벨 명시화: "이번 달 사용" → "이번 달 사용 크레딧"
   const items = [
-    { label: "남은 크레딧",         value: fmt(remaining),     suffix: "" },
-    { label: "진행 과업",           value: fmt(active),        suffix: "" },
-    { label: "이번 달 사용 크레딧", value: fmt(usedThisMonth), suffix: "" },
+    { label: "남은 크레딧",         value: fmt(remaining),     suffix: "", key: "credit" },
+    { label: "진행 과업",           value: fmt(active),        suffix: "", key: "active" },
+    { label: "이번 달 사용 크레딧", value: fmt(usedThisMonth), suffix: "", key: "used" },
   ];
 
   const grid = h("section", { class: "status-cards" });
   items.forEach((it) => {
-    grid.appendChild(h("div", { class: "status-card" }, [
-      h("div", { class: "status-card-label" }, it.label),
-      h("div", { class: "status-card-value" }, it.value),
-    ]));
+    // Spec Credit-CTA-Emphasis — "남은 크레딧" 카드는 클릭 가능 (/pricing) · 부족 시 강조.
+    if (it.key === "credit") {
+      // healthy = 조용한 클릭 · low/empty = danger·warning tint + 안내 문구
+      const statusClass = " credit-status-" + creditStatus;   // healthy / low / empty
+      const children = [
+        h("div", { class: "status-card-label" }, it.label),
+        h("div", { class: "status-card-value" }, it.value),
+      ];
+      // 부족 시 안내 문구 + 명시 링크 (담백 · 압박 X)
+      if (creditStatus !== "healthy") {
+        const hintText = (creditStatus === "empty")
+          ? "크레딧이 곧 소진돼요, 충전이 필요해요"
+          : "크레딧이 얼마 남지 않았어요";
+        children.push(h("div", { class: "status-card-charge-hint" }, hintText));
+        children.push(h("span", { class: "status-card-charge-link" }, "충전하기 →"));
+      }
+      grid.appendChild(h("div", {
+        class: "status-card status-card-clickable" + statusClass,
+        role: "button",
+        tabindex: "0",
+        title: "요금제 · 크레딧 충전",
+        onclick: () => navigate("/pricing"),
+        onkeydown: (ev) => {
+          if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); navigate("/pricing"); }
+        },
+      }, children));
+    } else {
+      grid.appendChild(h("div", { class: "status-card" }, [
+        h("div", { class: "status-card-label" }, it.label),
+        h("div", { class: "status-card-value" }, it.value),
+      ]));
+    }
   });
   return grid;
 }

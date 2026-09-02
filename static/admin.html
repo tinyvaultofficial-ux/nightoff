@@ -5,19 +5,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NightOff Admin Dashboard</title>
   <style>
+    /* Spec D-Build-AdminLinear (2026-09-02) — 어드민 Linear 정합 (Option 1).
+       ── ★ 자체 :root 유지 (앱 style.css 미링크 · 완전 독립 · 앱 무영향).
+       ── 값만 앱 정합값과 동일 교체 (--primary #6b46e5 옛보라 → #7C3AED 앱)
+          · admin.js 인라인 (color:var(--fg-2) 등) 참조 그대로 작동.
+       ── 신규 soft/hover/strong-muted 토큰 add-only (status-badge/error-banner
+          정합용) · 기존 이름 (--fg-2/--bg-card/--warn/--ok) 유지.
+       ── report-progress 파랑 (#d1e7ff/#0050b3) user 결정 유지 (앱 --info 없음). */
     :root {
-      --primary: #6b46e5;
-      --primary-fg: #fff;
-      --bg: #f8f8fa;
-      --bg-card: #fff;
-      --fg: #1a1a1a;
-      --fg-2: #666;
-      --border: #e5e5e9;
-      --danger: #c43;
-      --warn: #d96;
-      --ok: #2a8;
-      --shadow-sm: 0 1px 3px rgba(0,0,0,.06);
-      --shadow-md: 0 4px 12px rgba(0,0,0,.08);
+      /* 앱값 정합 (교체) */
+      --primary: #7C3AED;
+      --primary-hover: #6D28D9;
+      --primary-fg: #FFFFFF;
+      --bg: #FDFDFD;
+      --bg-card: #FFFFFF;
+      --fg: #1F1A14;
+      --fg-2: #6E6458;
+      --border: #E5E5E5;
+      --danger: #DC2626;
+      --warn: #D97706;
+      --ok: #16A34A;
+      --shadow-sm: 0 1px 2px 0 rgba(0,0,0,.04);
+      --shadow-md: 0 6px 14px -4px rgba(0,0,0,.07), 0 2px 4px -2px rgba(0,0,0,.04);
+      /* 신규 add-only (soft/muted variant · badge/banner 정합) */
+      --primary-soft: #F3EFFF;
+      --bg-2: #FAFAFA;
+      --fg-muted: #7A7268;
+      --danger-soft: #FBE0DC;
+      --warn-soft: #FFE8D6;
+      --ok-soft: #D6F0E6;
     }
     * { box-sizing: border-box; }
     body {
@@ -28,7 +44,7 @@
     }
     .admin-shell { display: flex; flex-direction: column; min-height: 100vh; }
     .admin-header {
-      background: var(--bg-card); border-bottom: 1px solid var(--border);
+      background: var(--bg-card); border-bottom: 0.5px solid var(--border);
       padding: 14px 24px; display: flex; align-items: center; gap: 16px;
       box-shadow: var(--shadow-sm);
     }
@@ -39,13 +55,13 @@
     }
     .admin-header .user-info { margin-left: auto; font-size: 13px; color: var(--fg-2); }
     .admin-header .user-info button {
-      margin-left: 8px; background: transparent; border: 1px solid var(--border);
+      margin-left: 8px; background: transparent; border: 0.5px solid var(--border);
       padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 12px;
     }
 
     .admin-tabs {
       display: flex; gap: 0; padding: 0 24px;
-      background: var(--bg-card); border-bottom: 1px solid var(--border);
+      background: var(--bg-card); border-bottom: 0.5px solid var(--border);
     }
     .admin-tab {
       padding: 12px 18px; cursor: pointer; border: none; background: transparent;
@@ -69,7 +85,7 @@
     /* 테이블 가로 스크롤 wrapper — 좁은 화면 영역 컬럼 깨짐 방지 */
     .table-scroll {
       overflow-x: auto;
-      border: 1px solid var(--border);
+      border: 0.5px solid var(--border);
       border-radius: 8px;
       box-shadow: var(--shadow-sm);
       background: var(--bg-card);
@@ -81,11 +97,11 @@
       min-width: 1000px;  /* 좁은 화면 영역 가로 스크롤 영역 */
     }
     .data-table th, .data-table td {
-      padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border);
+      padding: 10px 12px; text-align: left; border-bottom: 0.5px solid var(--border);
       white-space: nowrap;  /* 셀 영역 줄바꿈 방지 — err-msg-cell 제외 */
     }
-    .data-table th { background: #f4f4f7; font-weight: 600; color: var(--fg-2); }
-    .data-table tbody tr:hover { background: #fafafe; }
+    .data-table th { background: var(--bg-2); font-weight: 600; color: var(--fg-2); }
+    .data-table tbody tr:hover { background: var(--bg-2); }
     .data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
     .data-table tbody tr:last-child td { border-bottom: none; }
 
@@ -93,13 +109,13 @@
       display: inline-block; padding: 2px 8px; border-radius: 4px;
       font-size: 11px; font-weight: 600;
     }
-    .status-badge.active { background: #dfd; color: var(--ok); }
-    .status-badge.suspended { background: #fdd; color: var(--danger); }
-    .status-badge.admin { background: #def; color: var(--primary); }
+    .status-badge.active { background: var(--ok-soft); color: var(--ok); }
+    .status-badge.suspended { background: var(--danger-soft); color: var(--danger); }
+    .status-badge.admin { background: var(--primary-soft); color: var(--primary); }
     /* 오류 보고 상태 배지 */
-    .status-badge.report-new { background: #fee2c5; color: #b65a00; }       /* 접수 — 주황 */
-    .status-badge.report-progress { background: #d1e7ff; color: #0050b3; }  /* 처리중 — 파랑 */
-    .status-badge.report-done { background: #dfd; color: var(--ok); }        /* 완료 — 녹색 */
+    .status-badge.report-new { background: var(--warn-soft); color: var(--warn); }      /* 접수 — 주황 (--warn 통일) */
+    .status-badge.report-progress { background: #d1e7ff; color: #0050b3; }              /* 처리중 — 파랑 (앱 --info 없음 · user 결정 유지) */
+    .status-badge.report-done { background: var(--ok-soft); color: var(--ok); }         /* 완료 — 녹색 */
     .err-msg-cell { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap !important; }
     .err-msg-cell:hover { white-space: normal !important; word-break: break-word; }
 
@@ -114,7 +130,7 @@
       .stats-grid.compensation { grid-template-columns: 1fr; }
     }
     .stat-card {
-      background: var(--bg-card); border: 1px solid var(--border);
+      background: var(--bg-card); border: 0.5px solid var(--border);
       border-radius: 10px; padding: 18px 20px; box-shadow: var(--shadow-sm);
     }
     .stat-card .stat-label {
@@ -134,7 +150,7 @@
 
     /* 도넛 차트 컨테이너 */
     .chart-card {
-      background: var(--bg-card); border: 1px solid var(--border);
+      background: var(--bg-card); border: 0.5px solid var(--border);
       border-radius: 10px; padding: 22px; box-shadow: var(--shadow-sm);
       margin-bottom: 24px;
     }
@@ -143,14 +159,14 @@
 
     /* 설정 폼 */
     .settings-form {
-      background: var(--bg-card); border: 1px solid var(--border);
+      background: var(--bg-card); border: 0.5px solid var(--border);
       border-radius: 10px; padding: 24px; box-shadow: var(--shadow-sm);
       max-width: 720px;
     }
     .settings-row {
       display: grid; grid-template-columns: 220px 1fr 90px;
       gap: 14px; align-items: center; padding: 14px 0;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 0.5px solid var(--border);
     }
     .settings-row:last-of-type { border-bottom: none; }
     .settings-row .settings-label {
@@ -161,7 +177,7 @@
       margin-top: 2px; font-family: 'Consolas', monospace;
     }
     .settings-row input {
-      width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+      width: 100%; padding: 8px 10px; border: 0.5px solid var(--border);
       border-radius: 6px; font-size: 14px; font-variant-numeric: tabular-nums;
     }
     .settings-row .settings-suffix { color: var(--fg-2); font-size: 13px; }
@@ -177,13 +193,13 @@
     }
 
     .btn {
-      padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px;
+      padding: 6px 12px; border: 0.5px solid var(--border); border-radius: 6px;
       background: var(--bg-card); cursor: pointer; font-size: 12px;
       transition: all 0.15s;
     }
-    .btn:hover { background: #f4f4f7; }
+    .btn:hover { background: var(--bg-2); }
     .btn.btn-primary { background: var(--primary); color: var(--primary-fg); border-color: var(--primary); }
-    .btn.btn-primary:hover { opacity: 0.9; }
+    .btn.btn-primary:hover { background: var(--primary-hover); }
     .btn.btn-danger { color: var(--danger); border-color: var(--danger); }
     .btn.btn-danger:hover { background: var(--danger); color: #fff; }
 
@@ -194,14 +210,15 @@
       z-index: 1000;
     }
     .modal {
-      background: var(--bg-card); border-radius: 10px; padding: 22px 26px;
+      background: var(--bg-card); border: 0.5px solid var(--border);
+      border-radius: 10px; padding: 22px 26px;
       min-width: 400px; max-width: 600px; box-shadow: var(--shadow-md);
     }
     .modal h3 { margin: 0 0 14px; font-size: 17px; }
     .modal .form-row { margin-bottom: 12px; }
     .modal label { display: block; font-size: 12px; color: var(--fg-2); margin-bottom: 4px; }
     .modal input, .modal select, .modal textarea {
-      width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+      width: 100%; padding: 8px 10px; border: 0.5px solid var(--border);
       border-radius: 6px; font-size: 14px;
     }
     .modal textarea { min-height: 80px; resize: vertical; }
@@ -212,7 +229,7 @@
       display: flex; gap: 8px; justify-content: center; margin-top: 20px;
       align-items: center;
     }
-    .pagination button { padding: 6px 12px; border: 1px solid var(--border); background: var(--bg-card); cursor: pointer; border-radius: 6px; }
+    .pagination button { padding: 6px 12px; border: 0.5px solid var(--border); background: var(--bg-card); cursor: pointer; border-radius: 6px; }
     .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
     .pagination .page-info { font-size: 13px; color: var(--fg-2); }
 
@@ -221,14 +238,14 @@
       text-align: center; padding: 40px; color: var(--fg-2); font-size: 14px;
     }
     .error-banner {
-      background: #fee; color: var(--danger); padding: 12px 16px; border-radius: 8px;
-      margin-bottom: 16px; border: 1px solid #fcc;
+      background: var(--danger-soft); color: var(--danger); padding: 12px 16px; border-radius: 8px;
+      margin-bottom: 16px; border: 0.5px solid var(--danger);
     }
 
     /* 토스트 */
     .toast {
       position: fixed; bottom: 24px; right: 24px;
-      background: #1a1a1a; color: #fff; padding: 12px 18px;
+      background: var(--fg); color: #fff; padding: 12px 18px;
       border-radius: 8px; box-shadow: var(--shadow-md);
       z-index: 1100; opacity: 0; transition: opacity 0.2s;
       font-size: 13px;
@@ -243,7 +260,7 @@
       min-width: 160px;
     }
     .quota-bar {
-      flex: 1; height: 8px; background: #eee; border-radius: 4px;
+      flex: 1; height: 8px; background: var(--bg-2); border-radius: 4px;
       overflow: hidden; position: relative;
     }
     .quota-bar-fill {

@@ -89,16 +89,16 @@ MONTHLY_QUOTA_RESET_ENABLED = False
 # ---------------------------------------------------------------------------
 # Spec D-Fix-CreditExt — 분석·채팅 출혈 차단용 차감 헬퍼 (2개 분리: 사전 검증 / 사후 차감)
 #  · 채팅 등 SSE 흐름에서 "응답 성공 후 차감" 보장하려면 검증·차감 분리가 안전.
-#  · 기존 차감 자리(생성 L3624 / pptx L6890 / 재생성 L6758) 는 인라인 SQL 유지 (이번 통일 X).
+#  · 인라인 SQL 차감은 별도 (api_proposals_generate_multipass / api_proposals_regenerate_page)
+#    — 이번 통일 대상 아님. ★ 라인번호 대신 함수명으로 적는다 (번호는 곧 썩는다).
 #  · 차감량: 채팅 20 / RFP 분석 300 (검증·산출·재생성·생성 = 미적용 / 별도 정책).
 # ---------------------------------------------------------------------------
-def _check_credits(db, user_id: str, amount: int, action_label: str) -> int:
+def _check_quota(db, user_id: str, amount: int, action_label: str) -> int:
     """잔액 검증만. 부족 시 HTTPException(402, QUOTA_EXCEEDED) raise. 반환: 현재 잔액.
 
-    ⚠⚠ 이름은 'credits' 지만 실제로 읽는 컬럼은 users.monthly_proposal_quota 입니다.
-       users.credits 는 LEGACY 미사용 컬럼 — 절대 여기에 쓰지 마십시오.
-       (2026-09-07: 결제 지급이 users.credits 로 가서 유료 고객이 402 를 맞던
-        사고의 직접 원인이 이 이름이었습니다. 개명은 별도 조각.)
+    대상 컬럼 = users.monthly_proposal_quota.
+    ★ users.credits 는 LEGACY 미사용 컬럼 — 여기에 쓰지 마십시오.
+      (2026-09-07 결제 지급이 그쪽으로 가 유료 고객이 402 를 맞았음. 컬럼 DROP 은 별도.)
     """
     row = db.execute(
         "SELECT monthly_proposal_quota FROM users WHERE id=?", (user_id,)
@@ -117,11 +117,11 @@ def _check_credits(db, user_id: str, amount: int, action_label: str) -> int:
     return q
 
 
-def _deduct_credits(db, user_id: str, amount: int) -> None:
-    """차감만 (검증은 호출 전 _check_credits 로 분리). MAX(0, ...) 안전망 유지.
+def _deduct_quota(db, user_id: str, amount: int) -> None:
+    """차감만 (검증은 호출 전 _check_quota 로 분리). MAX(0, ...) 안전망 유지.
 
-    ⚠⚠ 이름은 'credits' 지만 실제로 쓰는 컬럼은 users.monthly_proposal_quota 입니다.
-       users.credits 는 LEGACY 미사용 컬럼 — 절대 여기에 쓰지 마십시오.
+    대상 컬럼 = users.monthly_proposal_quota.
+    ★ users.credits 는 LEGACY 미사용 컬럼 — 여기에 쓰지 마십시오.
     """
     db.execute(
         "UPDATE users SET monthly_proposal_quota = "
@@ -3998,7 +3998,7 @@ def api_chat(conv_id: str, body: ChatIn, user: dict = Depends(get_current_user))
 
         # D-Fix-CreditExt: 채팅 사전 검증 (잔액 부족 시 402 / 응답 시작 전 차단).
         # 차감은 응답 성공 완료 후 (stream() 안 try 끝 / yield 'done' 직후).
-        _check_credits(db, user["id"], 20, "채팅")
+        _check_quota(db, user["id"], 20, "채팅")
 
         # 사용자 메시지 저장
         user_msg_id = uuid.uuid4().hex[:12]
@@ -4083,7 +4083,7 @@ def api_chat(conv_id: str, body: ChatIn, user: dict = Depends(get_current_user))
             # D-Fix-CreditExt: 채팅 응답 성공 후 차감 20 (실패·예외 경로에선 차감 X)
             try:
                 with get_db() as _db_cd:
-                    _deduct_credits(_db_cd, user["id"], 20)
+                    _deduct_quota(_db_cd, user["id"], 20)
             except Exception as _e_cd:
                 log.warning("채팅 크레딧 차감 실패 (무시): %s", _e_cd)
         except anthropic.APIError as e:
@@ -4822,7 +4822,7 @@ async def api_rfp_upload_single(
     with get_db() as db:
         _verify_client_owned_by_user(db, cid, user["id"])
         # D-Fix-CreditExt: RFP 분석 사전 검증 (잔액 부족 시 402)
-        _check_credits(db, user["id"], 300, "RFP 분석")
+        _check_quota(db, user["id"], 300, "RFP 분석")
     info = await _save_rfp_file(cid, file, role)
     # ─── Spec RFP-Empty-Extraction-Guard — 병렬 분석·크레딧 차감 전 관문 ───
     # extract_text 가 실패 시 안내 문자열 반환 → 유효 본문 판정 후 진행 결정.
@@ -4840,7 +4840,7 @@ async def api_rfp_upload_single(
     if not (isinstance(analysis, dict) and analysis.get("error")):
         try:
             with get_db() as _db_cd:
-                _deduct_credits(_db_cd, user["id"], 300)
+                _deduct_quota(_db_cd, user["id"], 300)
         except Exception as _e_cd:
             log.warning("RFP 분석(single) 크레딧 차감 실패 (무시): %s", _e_cd)
     # 갈래 2: 발주처 들여다보기 자동 수집 (실패해도 분석은 유지)
@@ -4871,7 +4871,7 @@ async def api_rfp_upload_multi(
     with get_db() as db:
         _verify_client_owned_by_user(db, cid, user["id"])
         # D-Fix-CreditExt: RFP 분석 사전 검증 (multi 도 통합 분석 1회 = 300 / 파일 N 개여도 동일)
-        _check_credits(db, user["id"], 300, "RFP 분석")
+        _check_quota(db, user["id"], 300, "RFP 분석")
 
     try:
         role_list = json.loads(roles) if roles else []
@@ -4901,7 +4901,7 @@ async def api_rfp_upload_multi(
     if not (isinstance(analysis, dict) and analysis.get("error")):
         try:
             with get_db() as _db_cd:
-                _deduct_credits(_db_cd, user["id"], 300)
+                _deduct_quota(_db_cd, user["id"], 300)
         except Exception as _e_cd:
             log.warning("RFP 분석(multi) 크레딧 차감 실패 (무시): %s", _e_cd)
     # 갈래 2: 발주처 들여다보기 — 자동 수집 (실패해도 RFP 분석은 유지)

@@ -953,16 +953,19 @@ function renderPricingSection(opts) {
     //   regular = 월 정가 · promo = 런칭 특가(3개월 한정) · discount = 할인 배지.
     //   ★ credits 는 표시 문구이며 결제 로직(main.py TOSS_TIERS)과 별개 — 무접촉.
     //     (월 구독 크레딧 재산정은 결제 배관 작업 때 함께 처리)
-    //   ⚠ 실제 할인율: 스타터 13.04% · 프로 13.64% · 비즈니스 13.07% (최대 13.64%).
-    //     표시 문구는 대표 결정에 따라 "약 15% 할인" 으로 통일한다.
+    //   실제 할인율: 스타터 16.67% · 프로 15.18% · 비즈니스 15.00%
+    //     → 최소 15.00% 이므로 "약 15% 할인" 이 전 티어에서 참이고,
+    //       상단 띠 "최대 15% 절약" 은 실제 최대(16.67%)보다 보수적이다.
+    //     ★ 정가를 바꿀 때는 이 실측값과 배지·띠 문구를 함께 갱신할 것
+    //       (표시 할인율이 실제보다 커지면 표시광고 문제가 된다 — 앞 커밋에서 겪음).
     { name: "스타터", en: "Starter", emoji: "🌱",
-      promo: "월 20만원", regular: "월 23만원", discount: "약 15% 할인",
+      promo: "월 20만원", regular: "월 24만원", discount: "약 15% 할인",
       credits: "14,000", conversion: "월 2건", best: false },
     { name: "프로", en: "Pro", emoji: "🚀",
-      promo: "월 47.5만원", regular: "월 55만원", discount: "약 15% 할인",
+      promo: "월 47.5만원", regular: "월 56만원", discount: "약 15% 할인",
       credits: "30,000", conversion: "월 5건", best: true },
     { name: "비즈니스", en: "Business", emoji: "💎",
-      promo: "월 76.5만원", regular: "월 88만원", discount: "약 15% 할인",
+      promo: "월 76.5만원", regular: "월 90만원", discount: "약 15% 할인",
       credits: "62,000", conversion: "월 9건", best: false },
   ];
   const FEATURE_GROUPS = [

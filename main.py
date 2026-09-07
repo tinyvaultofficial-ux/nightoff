@@ -76,6 +76,16 @@ MODEL_FAST = "claude-haiku-4-5-20251001"
 # 다른 파일 (static/app.js:284 CREDITS_PER_PAGE 동일 값) 도 함께 갱신 필요.
 CREDITS_PER_PAGE = 100  # Step 2-A: 단위 단순화 (1p = 100 크레딧)
 
+# ★ Spec Payment-Quota-Wiring (2026-09-07) — 월간 quota 리셋 전면 중단.
+#   배경: 사업 모델이 "월 정액 N건" → "선불 크레딧 12개월 유효" 로 전환됨
+#         (이용약관 제7조 3항 · 랜딩 "구매일로부터 12개월간 유효").
+#         · 가입 체험 크레딧 = 1회성 (매달 갱신 X)
+#         · 결제 크레딧      = 소진까지 유지 (매달 초기화 X)
+#         → 월 리셋 개념 자체가 현 모델에 없음.
+#   ★ 기능 삭제가 아니라 플래그 — 향후 월 정액 상품 도입 시 True 로 되살림.
+#     True 로 되돌리면 _quota_reset_eligible_user_ids 의 유료 제외 조건이 함께 작동.
+MONTHLY_QUOTA_RESET_ENABLED = False
+
 # ---------------------------------------------------------------------------
 # Spec D-Fix-CreditExt — 분석·채팅 출혈 차단용 차감 헬퍼 (2개 분리: 사전 검증 / 사후 차감)
 #  · 채팅 등 SSE 흐름에서 "응답 성공 후 차감" 보장하려면 검증·차감 분리가 안전.
@@ -83,7 +93,13 @@ CREDITS_PER_PAGE = 100  # Step 2-A: 단위 단순화 (1p = 100 크레딧)
 #  · 차감량: 채팅 20 / RFP 분석 300 (검증·산출·재생성·생성 = 미적용 / 별도 정책).
 # ---------------------------------------------------------------------------
 def _check_credits(db, user_id: str, amount: int, action_label: str) -> int:
-    """잔액 검증만. 부족 시 HTTPException(402, QUOTA_EXCEEDED) raise. 반환: 현재 잔액."""
+    """잔액 검증만. 부족 시 HTTPException(402, QUOTA_EXCEEDED) raise. 반환: 현재 잔액.
+
+    ⚠⚠ 이름은 'credits' 지만 실제로 읽는 컬럼은 users.monthly_proposal_quota 입니다.
+       users.credits 는 LEGACY 미사용 컬럼 — 절대 여기에 쓰지 마십시오.
+       (2026-09-07: 결제 지급이 users.credits 로 가서 유료 고객이 402 를 맞던
+        사고의 직접 원인이 이 이름이었습니다. 개명은 별도 조각.)
+    """
     row = db.execute(
         "SELECT monthly_proposal_quota FROM users WHERE id=?", (user_id,)
     ).fetchone()
@@ -102,7 +118,11 @@ def _check_credits(db, user_id: str, amount: int, action_label: str) -> int:
 
 
 def _deduct_credits(db, user_id: str, amount: int) -> None:
-    """차감만 (검증은 호출 전 _check_credits 로 분리). MAX(0, ...) 안전망 유지."""
+    """차감만 (검증은 호출 전 _check_credits 로 분리). MAX(0, ...) 안전망 유지.
+
+    ⚠⚠ 이름은 'credits' 지만 실제로 쓰는 컬럼은 users.monthly_proposal_quota 입니다.
+       users.credits 는 LEGACY 미사용 컬럼 — 절대 여기에 쓰지 마십시오.
+    """
     db.execute(
         "UPDATE users SET monthly_proposal_quota = "
         "  MAX(0, monthly_proposal_quota - ?) WHERE id=?",
@@ -746,6 +766,9 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     # · credits_used_this_month = 이달 사용액 (분석 영역 누적)
     # · last_reset_date = 월 리셋 기준 날짜 (YYYY-MM-DD) — Phase 3 quota 리셋 영역 공유
     # · is_suspended = 정지 여부 (0/1) — admin 영역 정지 시 1
+    # ⚠ LEGACY (2026-09-07 Spec Payment-Quota-Wiring) — 미사용 컬럼.
+    #    실제 크레딧 통화는 monthly_proposal_quota. 여기에 쓰지 마십시오.
+    #    (DROP 하지 않음 — 스키마 마이그레이션 위험 회피. 값은 0 으로 정리됨.)
     ("users",         "credits",                "INTEGER DEFAULT 0"),
     ("users",         "credits_used_this_month","INTEGER DEFAULT 0"),
     ("users",         "last_reset_date",        "TEXT DEFAULT ''"),
@@ -9069,10 +9092,17 @@ def api_admin_error_report_patch(
             # 보상 크레딧 영역 ↑ 영역 → 사용자 credits 영역 차이 영역 INCREMENT
             delta = new_comp - int(before_dict["compensation_credits"])
             if delta != 0:
+                # Spec Payment-Quota-Wiring — 보상도 실제 소비 통화로.
+                # delta 는 음수 가능 (보상 하향 조정) → MAX(0,...) 하한 클램프.
+                # _adapt_sql 이 PG 에서 GREATEST 로 변환 — 검증됨.
                 db.execute(
-                    "UPDATE users SET credits = credits + ? WHERE id=?",
-                    (delta, before_dict["user_id"]),
+                    "UPDATE users SET monthly_proposal_quota = MAX(0, monthly_proposal_quota + ?), "
+                    "                 monthly_proposal_quota_bonus = MAX(0, monthly_proposal_quota_bonus + ?) "
+                    "WHERE id=?",
+                    (delta, delta, before_dict["user_id"]),
                 )
+                # ★ 키 이름 'user_credits_delta' 유지 — static/admin.js:674 가 참조.
+                #   (의미는 이제 quota delta. 키 개명은 프론트와 함께 별도 조각.)
                 changes["user_credits_delta"] = delta
         if body.notes is not None:
             updates.append("notes=?")
@@ -9100,7 +9130,10 @@ def api_admin_stats_credits(admin: dict = Depends(require_admin)):
     with get_db() as db:
         # 전체 사용자 영역 credits / used 영역 합계
         totals = db.execute(
-            "SELECT COALESCE(SUM(credits),0) AS total_credits, "
+            # Spec Payment-Quota-Wiring — 통화 컬럼 이전에 맞춰 소스 교체.
+            # (users.credits 는 LEGACY 라 항상 0 → 합계가 의미 없어짐)
+            # 응답 키 total_credits 는 유지 — static/admin.js 무변경.
+            "SELECT COALESCE(SUM(monthly_proposal_quota),0) AS total_credits, "
             "       COALESCE(SUM(credits_used_this_month),0) AS total_used_this_month, "
             "       COUNT(*) AS user_count, "
             "       COALESCE(SUM(CASE WHEN is_suspended=1 THEN 1 ELSE 0 END),0) AS suspended_count "
@@ -9345,19 +9378,36 @@ def _plus_one_month_str(date_str: str) -> str:
 def _quota_reset_eligible_user_ids(db, today_str: str) -> list[str]:
     """리셋 자격 사용자 id 목록 — 가입일 기준 anniversary 방식.
 
-    조건 (둘 다 충족):
-      1) today >= created_at_date + 1개월   (가입 후 한 달 이상 경과)
-      2) last_reset_date 비어 있거나 today >= last_reset_date + 1개월
+    조건 (모두 충족):
+      0) ★ MONTHLY_QUOTA_RESET_ENABLED 가 False 면 항상 빈 목록.
+         현 사업 모델(선불 크레딧 12개월 유효)에 월 리셋 개념이 없음.
+      1) ★ 유료 결제 이력이 없을 것 — 구매 크레딧이 리셋에 소각되는 것 방지.
+         (플래그 False 인 지금은 도달 X. 향후 True 로 되살릴 때 작동하는 안전장치.)
+      2) today >= created_at_date + 1개월   (가입 후 한 달 이상 경과)
+      3) last_reset_date 비어 있거나 today >= last_reset_date + 1개월
          (한 번도 리셋 안 됐거나 직전 리셋 후 한 달 이상 경과)
 
     DB-portable: SELECT 만 SQL, 자격 판정은 모두 Python.
     """
+    # 0) 기능 게이트 — 월 리셋 자체가 꺼져 있으면 대상 없음
+    if not MONTHLY_QUOTA_RESET_ENABLED:
+        return []
+
     rows = db.execute(
         "SELECT id, created_at, last_reset_date FROM users"
     ).fetchall()
+
+    # 1) 유료 결제 이력자 — 구매분 보존 위해 리셋 제외
+    paid_rows = db.execute(
+        "SELECT DISTINCT user_id FROM payments WHERE status='paid'"
+    ).fetchall()
+    paid_ids = {r["user_id"] for r in paid_rows}
+
     eligible: list[str] = []
     for r in rows:
         uid = r["id"]
+        if uid in paid_ids:
+            continue  # 유료 고객 — 구매분 보존
         created_at = (r["created_at"] or "")[:10]   # 'YYYY-MM-DD HH:MM:SS' → 날짜만
         last_reset = (r["last_reset_date"] or "")
         if not created_at:
@@ -10028,10 +10078,18 @@ def api_payment_confirm(
             (payment_key, grant_amount, order_id),
         )
         if cur.rowcount == 1:
-            # (h) ★ users.credits 증가 (같은 트랜잭션 안, 원자적)
+            # (h) ★ Spec Payment-Quota-Wiring (2026-09-07) — 지급 대상 컬럼 정정.
+            #     기존: users.credits → 소비 경로가 이 컬럼을 안 읽어 결제해도 402.
+            #     변경: monthly_proposal_quota (실제 소비 통화) + _bonus 동시 누적.
+            #     ★ bonus 도 올리는 이유 — /api/auth/me 가
+            #       prop_total = base_prop + prop_bonus 로 분모를 계산.
+            #       quota 만 올리면 "30,000 / 500" 처럼 분모가 어긋남.
+            #     어드민 _add 경로 (monthly_proposal_quota_add) 와 동일 semantics.
             db.execute(
-                "UPDATE users SET credits = credits + ? WHERE id=?",
-                (grant_amount, row["user_id"]),
+                "UPDATE users SET monthly_proposal_quota = monthly_proposal_quota + ?, "
+                "                 monthly_proposal_quota_bonus = monthly_proposal_quota_bonus + ? "
+                "WHERE id=?",
+                (grant_amount, grant_amount, row["user_id"]),
             )
             granted_now = grant_amount
             log.info("[payment] confirmed + granted · order=%s tier=%s amount=%d credits=+%d user=%s",

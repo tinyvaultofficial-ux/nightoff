@@ -801,15 +801,17 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
         const emphasisClass = (_sbStatus === "healthy") ? "" : (" credit-cta-" + _sbStatus);
         return h("button", {
           class: "sidebar-footer-btn" + emphasisClass,
+          // Spec Subscription-Terms-Copy — "충전"(선불) → "요금제 · 구독"(월 구독).
+          //   ★ 라벨만 교체. getCreditStatus 판정·navigate 동작 무접촉.
           title: (_sbStatus === "empty")
-            ? "크레딧이 곧 소진돼요 · 지금 충전하세요"
+            ? "크레딧이 곧 소진돼요 · 요금제를 확인하세요"
             : (_sbStatus === "low")
-              ? "크레딧이 얼마 남지 않았어요 · 충전하기"
-              : "크레딧 충전 (요금제 페이지)",
+              ? "크레딧이 얼마 남지 않았어요 · 요금제 보기"
+              : "요금제 · 구독 (요금제 페이지)",
           onclick: () => navigate("/pricing"),
         }, [
           h("span", { class: "sidebar-footer-btn-icon" }, "💳"),
-          h("span", {}, "크레딧 충전"),
+          h("span", {}, "요금제 · 구독"),
         ]);
       })(),
       // Spec D-Build-FaqSidebarLink (2026-06-13) — 자주 묻는 질문 (FAQ) 영구 진입점.
@@ -947,15 +949,19 @@ function renderPricingSection(opts) {
   let selectedTier = null;    // "starter" | "pro" | "business" (초기 null · 미선택)
   // ── 가격 (Spec D-Fix-21: 3 티어 비교 표)
   const TIERS = [
+    // Spec Subscription-Terms-Copy (2026-09-07) — 월 구독 전환.
+    //   promo = 월 구독료. regular/discount 는 월 요금제 정가·할인율이 아직
+    //   확정되지 않아 빈 문자열로 둔다 (빈 값이면 정가·할인 배지 자체를 렌더 안 함).
+    //   ★ credits 는 표시 문구이며 결제 로직(main.py TOSS_TIERS)과 별개 — 무접촉.
     { name: "스타터", en: "Starter", emoji: "🌱",
-      promo: "31만원", regular: "36만원", discount: "-15%",
-      credits: "14,000", conversion: "50매 제안서 약 2건 분량", best: false },
+      promo: "월 20만원", regular: "", discount: "",
+      credits: "14,000", conversion: "월 2건", best: false },
     { name: "프로", en: "Pro", emoji: "🚀",
-      promo: "64만원", regular: "85만원", discount: "-25%",
-      credits: "30,000", conversion: "50매 제안서 약 6건 분량", best: true },
+      promo: "월 47.5만원", regular: "", discount: "",
+      credits: "30,000", conversion: "월 5건", best: true },
     { name: "비즈니스", en: "Business", emoji: "💎",
-      promo: "132만원", regular: "165만원", discount: "-20%",
-      credits: "62,000", conversion: "50매 제안서 약 12건 분량", best: false },
+      promo: "월 76.5만원", regular: "", discount: "",
+      credits: "62,000", conversion: "월 9건", best: false },
   ];
   const FEATURE_GROUPS = [
     { category: "AI 분석",     items: ["RFP 분석", "발주처 분석", "전략 대화 AI"] },
@@ -1052,10 +1058,12 @@ function renderPricingSection(opts) {
         }, [
           h("div", { class: "pt-price-row" }, [
             // Spec D-Fix-40: 정가 + 할인 라벨 wrapper (인라인 정렬)
-            h("div", { class: "pt-price-regular-wrap" }, [
+            // Spec Subscription-Terms-Copy — regular/discount 가 비면 wrapper 자체를
+            //   렌더하지 않는다 (빈 취소선·빈 배지가 남는 것 방지).
+            t.regular ? h("div", { class: "pt-price-regular-wrap" }, [
               h("s", { class: "pt-price-regular" }, t.regular),
               h("span", { class: "pt-price-discount" }, t.discount),
-            ]),
+            ]) : null,
             h("span", { class: "pt-price-promo" }, [
               h("strong", { class: "pt-price-amount" }, t.promo),
               h("span", { class: "pt-price-per" }, ""),
@@ -1113,10 +1121,11 @@ function renderPricingSection(opts) {
         "* 프로모션 종료 후 정가 전환 / 정기 할인 이벤트 진행 예정"),
       // Spec D-Build-PricingValidity (2026-09-01) — 토스 심사 요구:
       // "구매자가 서비스 제공기간을 상품 페이지에서 인지 가능해야".
-      // 크레딧 유효기간 = 구매일로부터 12개월 (내부 정책 확정).
-      // 랜딩 + /pricing 두 곳 다 이 renderPricingSection 재사용 → 한 곳 add 로 양쪽 반영.
+      // Spec Subscription-Terms-Copy (2026-09-07) — 선불 12개월 → 월 구독(월 소멸).
+      //   이용약관 제7조 4항과 같은 내용이어야 한다 (문구 불일치 = 고지 리스크).
+      // 랜딩 + /pricing 두 곳 다 이 renderPricingSection 재사용 → 한 곳 수정으로 양쪽 반영.
       h("p", { class: "landing-pricing-note" },
-        "* 구매하신 크레딧은 구매일로부터 12개월간 유효합니다."),
+        "* 매월 제공되는 크레딧은 해당 결제 주기(1개월) 내 이용 가능하며, 다음 달로 이월되지 않습니다."),
       // Spec Pricing-Sticky-CTA — 하단 sticky 결제바 (showSticky 시만 렌더).
       // 초기 hidden · 티어 클릭 시 selectTier 가 visible 클래스 붙여 슬라이드업.
       // ★ 랜딩 (showSticky=false) 은 이 노드 자체가 만들어지지 않음.
@@ -1754,18 +1763,21 @@ function renderStatusCards(stats) {
         h("div", { class: "status-card-value" }, it.value),
       ];
       // 부족 시 안내 문구 + 명시 링크 (담백 · 압박 X)
+      // Spec Subscription-Terms-Copy — "충전"(선불) → "요금제"(월 구독).
+      //   ★ 라벨만 교체. creditStatus 판정·클릭 동작(/pricing) 무접촉.
+      //   "곧 소진돼요" 는 월 크레딧 소진에도 그대로 맞아 유지한다.
       if (creditStatus !== "healthy") {
         const hintText = (creditStatus === "empty")
-          ? "크레딧이 곧 소진돼요, 충전이 필요해요"
+          ? "크레딧이 곧 소진돼요"
           : "크레딧이 얼마 남지 않았어요";
         children.push(h("div", { class: "status-card-charge-hint" }, hintText));
-        children.push(h("span", { class: "status-card-charge-link" }, "충전하기 →"));
+        children.push(h("span", { class: "status-card-charge-link" }, "요금제 보기 →"));
       }
       grid.appendChild(h("div", {
         class: "status-card status-card-clickable" + statusClass,
         role: "button",
         tabindex: "0",
-        title: "요금제 · 크레딧 충전",
+        title: "요금제 · 구독",
         onclick: () => navigate("/pricing"),
         onkeydown: (ev) => {
           if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); navigate("/pricing"); }

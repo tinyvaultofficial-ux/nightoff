@@ -2957,8 +2957,51 @@ def _extract_html_safely(s: str) -> str:
     return ""
 
 
-def _call_anthropic_sync(client, system: str, user: str, max_tokens: int = 8000, model: str = "") -> str:
-    """동기 Anthropic 호출 (asyncio.to_thread 로 감싸 사용)."""
+# ─── Spec Prompt-Caching-Generation (2026-09-07) ───────────────────────────
+# 생성 파이프라인 입력 토큰의 83% 가 시스템 프롬프트 재전송이었다.
+#   실측 (Anthropic count_tokens): 50장 생성 입력 1,978,300 tok 중
+#   시스템 재전송분 1,646,100 tok. 같은 39,587자를 50번 다시 보냈다.
+#   → 시스템 블록에 cache_control 을 달아 65~73% 절감.
+#
+# ★ 결과 무변화 근거 — cache_control 은 블록 메타데이터일 뿐 모델이 보는 텍스트를
+#   바꾸지 않는다. 실측으로 확인: 동일 요청 2회에서 비캐시 잔여 input_tokens 가
+#   13 으로 같고, 캐시분만 write→read 로 회계 위치가 바뀌었다.
+#   (정확히는 "출력이 문자 단위로 같다" 가 아니라 "출력 분포가 불변" 이다 — LLM 은
+#    캐싱과 무관하게 샘플링으로 매번 다른 문자열을 낸다.)
+#
+# ⚠ 캐시 히트 조건 = 캐싱 블록이 바이트 단위로 동일할 것.
+#   · SLIDE_SYSTEM_PROMPT   : 모듈 상수 (f-string 0건) — 항상 동일
+#   · outline_system_prompt : placeholder replace 2회지만 입력이 프로세스 상수 — 동일
+#   ★ 이 둘을 동적으로 바꾸면 캐시가 조용히 미스된다 (비용만 영향, 결과는 정상).
+#   ★ 운영에서 skeletons/_index.json 이 R2 동기화로 바뀌면 그 시점 1회 미스 — 자동 회복.
+#
+# 최소 토큰 1,024 요구치: SLIDE 32,922 / OUTLINE 31,232 — 여유.
+PROMPT_CACHE_ENABLED = True
+
+
+def _sys_cached(text: str):
+    """시스템 프롬프트를 캐싱 블록으로 감싼다.
+
+    OFF 면 문자열을 그대로 돌려주므로 종전과 바이트 단위로 동일한 요청이 나간다
+    (되돌리기 = 이 플래그 하나. 재배포 불필요).
+    """
+    if not PROMPT_CACHE_ENABLED:
+        return text
+    return [{"type": "text", "text": text,
+             "cache_control": {"type": "ephemeral"}}]
+
+
+def _call_anthropic_sync(client, system: "str | list", user: str,
+                         max_tokens: int = 8000, model: str = "") -> str:
+    """동기 Anthropic 호출 (asyncio.to_thread 로 감싸 사용).
+
+    system:
+      · str  — 종전 그대로 (STRATEGY / _path1_enrich).
+      · list — Anthropic 시스템 블록 배열. 블록에 cache_control 을 달면 프롬프트 캐싱.
+               생성은 _sys_cached() 가 담당 (Spec Prompt-Caching-Generation).
+    ★ SDK 가 두 형식을 모두 그대로 받으므로 본문 분기가 없다 — 전달만 한다.
+      (채팅 main.py:4097 이 이미 같은 방식으로 system 을 블록 배열로 넘긴다)
+    """
     import os
     model = model or os.environ.get("MODEL", "") or "claude-opus-4-8"
     resp = client.messages.create(
@@ -2967,6 +3010,17 @@ def _call_anthropic_sync(client, system: str, user: str, max_tokens: int = 8000,
         system=system,
         messages=[{"role": "user", "content": user}],
     )
+    # ★ Spec Prompt-Caching-Generation — 캐시가 실제로 걸렸는지 남긴다.
+    #   이 로그가 없으면 "캐싱을 켰다" 와 "캐싱이 동작한다" 를 구분할 수 없다.
+    #   ⚠ if 조건 덕분에 str 경로(STRATEGY / _path1_enrich)는 로그가 늘지 않는다 (회귀 0).
+    _u = getattr(resp, "usage", None)
+    if _u is not None:
+        _cw = getattr(_u, "cache_creation_input_tokens", 0) or 0
+        _cr = getattr(_u, "cache_read_input_tokens", 0) or 0
+        if _cw or _cr:
+            log.info("prompt-cache: write=%d read=%d in=%d out=%d",
+                     _cw, _cr,
+                     getattr(_u, "input_tokens", 0), getattr(_u, "output_tokens", 0))
     parts = []
     for b in resp.content or []:
         btype = getattr(b, "type", None) if not isinstance(b, dict) else b.get("type")
@@ -3451,8 +3505,10 @@ async def generate_outline(
     #   49f3ccc: 50 슬라이드 = 16000 도달 → 32000 영역 ↑
     #   현재:    80 슬라이드 = 14-32k 추정 → 32000 한계 근접 → 64000 영역 ↑
     # timeout 1200s (main.py:522) 와 함께 적용 — 응답 영역 / 시간 영역 동시 확보.
+    # ★ Spec Prompt-Caching-Generation — 제안서당 1회지만 재시도·연속 생성 시 이득.
+    #   추가 비용 0 (write 1회는 read 로 즉시 상쇄되거나, 미사용 시 그냥 만료).
     raw = await asyncio.to_thread(
-        _call_anthropic_sync, client, outline_system_prompt, user, 64000, model,
+        _call_anthropic_sync, client, _sys_cached(outline_system_prompt), user, 64000, model,
     )
     parsed = _parse_json_safely(raw)
     if not parsed or not isinstance(parsed.get("outline"), list):
@@ -5498,6 +5554,10 @@ async def generate_one_slide(
     # 'html' 모드 = admin + 토글 'Y' 조건 충족 시에만 진입.
     is_html_mode = (output_mode == "html")
     system_prompt = SLIDE_SYSTEM_PROMPT_HTML if is_html_mode else SLIDE_SYSTEM_PROMPT
+    # ★ Spec Prompt-Caching-Generation — 이번 이득의 전부가 여기다 (장당 32,922 tok × N장).
+    #   두 상수 모두 모듈 상수라 어느 모드든 캐시 히트. 아래 재시도 루프(최대 4회)의
+    #   재호출도 같은 블록이라 read 로 처리된다.
+    system_param = _sys_cached(system_prompt)
     # 재시도 로직 — 최대 4회 시도 (rate limit / 일시 LLM 오류 회피 강화).
     # exponential backoff (1초 → 2초 → 4초) + jitter (0~0.5초) → 동시 호출 분산.
     # 비용 영향: 실패 슬라이드만 재호출 (~1-2장 평균) → 전체 비용 ~1.1x 미미.
@@ -5507,7 +5567,7 @@ async def generate_one_slide(
     for attempt in range(MAX_ATTEMPTS):
         try:
             raw = await asyncio.to_thread(
-                _call_anthropic_sync, client, system_prompt, user, 16000, model,
+                _call_anthropic_sync, client, system_param, user, 16000, model,
             )
             last_raw = raw
             if is_html_mode:

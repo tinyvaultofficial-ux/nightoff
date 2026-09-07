@@ -86,12 +86,24 @@ CREDITS_PER_PAGE = 100  # Step 2-A: 단위 단순화 (1p = 100 크레딧)
 #     True 로 되돌리면 _quota_reset_eligible_user_ids 의 유료 제외 조건이 함께 작동.
 MONTHLY_QUOTA_RESET_ENABLED = False
 
+# ★ Spec Atomic-Quota-Deduct (2026-09-07) — 생성·재생성 "선차감 + 환불" 게이트.
+#   True  : 실제 페이지 수가 확정되는 시점(생성=outline_done / 재생성=착수 전)에
+#           원자적으로 먼저 차감하고, 실패·중단·일부실패 시 환불한다. (fail-closed)
+#   False : 선차감을 하지 않는다 → 차감 시점·조건이 종전과 100% 동일. (fail-open)
+#   ★ 왜 플래그인가 — 이 전환은 "차감 후 프로세스 강제종료 시 환불 불가"라는
+#     단 하나의 퇴보를 동반한다. 문제가 보이면 재배포 없이 즉시 되돌리기 위함.
+#   ⚠ 원자적 차감 자체(_deduct_quota 의 WHERE quota >= ?)는 이 플래그와 무관하게
+#     항상 적용된다 — 부분 징수가 사라질 뿐 어떤 경우에도 종전보다 나빠지지 않는다.
+OUTLINE_PRECHARGE_ENABLED = True
+
 # ---------------------------------------------------------------------------
 # Spec D-Fix-CreditExt — 분석·채팅 출혈 차단용 차감 헬퍼 (2개 분리: 사전 검증 / 사후 차감)
 #  · 채팅 등 SSE 흐름에서 "응답 성공 후 차감" 보장하려면 검증·차감 분리가 안전.
-#  · 인라인 SQL 차감은 별도 (api_proposals_generate_multipass / api_proposals_regenerate_page)
-#    — 이번 통일 대상 아님. ★ 라인번호 대신 함수명으로 적는다 (번호는 곧 썩는다).
-#  · 차감량: 채팅 20 / RFP 분석 300 (검증·산출·재생성·생성 = 미적용 / 별도 정책).
+#  · Spec Atomic-Quota-Deduct (2026-09-07) — 소비 5곳 전부가 이 헬퍼를 쓴다.
+#    (채팅 / RFP single / RFP multi / api_proposals_generate_multipass /
+#     api_proposals_regenerate_page). 인라인 SQL 사본은 남기지 않는다 —
+#    같은 UPDATE 를 3벌로 유지한 것이 결제 배선 사고의 배경이었다.
+#  · 차감량: 채팅 20 / RFP 분석 300 / 생성·재생성 = 페이지수 × CREDITS_PER_PAGE.
 # ---------------------------------------------------------------------------
 def _check_quota(db, user_id: str, amount: int, action_label: str) -> int:
     """잔액 검증만. 부족 시 HTTPException(402, QUOTA_EXCEEDED) raise. 반환: 현재 잔액.
@@ -117,15 +129,54 @@ def _check_quota(db, user_id: str, amount: int, action_label: str) -> int:
     return q
 
 
-def _deduct_quota(db, user_id: str, amount: int) -> None:
-    """차감만 (검증은 호출 전 _check_quota 로 분리). MAX(0, ...) 안전망 유지.
+def _deduct_quota(db, user_id: str, amount: int) -> bool:
+    """★ 원자적 차감. 잔액이 모자라면 한 푼도 깎지 않고 False 를 반환한다.
+
+    Spec Atomic-Quota-Deduct (2026-09-07):
+      검사와 차감을 UPDATE ... WHERE quota >= ? 한 문장에 넣어 같은 원자 단위로
+      만든다. 두 요청이 동시에 들어와도 한쪽만 rowcount==1 이 된다.
+      (전례: 결제 멱등 UPDATE ... WHERE granted_credits=0 + rowcount==1)
+
+    ★ MAX(0, ...) 클램프 제거 — WHERE 조건이 언더플로를 원천 차단하므로 죽은 코드.
+      클램프는 초과 사용을 조용히 0 으로 흡수해 감사 자체를 불가능하게 만들었다.
+      ⚠ 클램프를 먼저 빼고 WHERE 를 나중에 넣으면 음수 잔액이 화면에 노출된다
+        (컬럼에 CHECK 제약 없음). 두 변경은 반드시 같은 커밋이어야 한다.
+
+    ⚠ 부분 징수를 하지 않는다 — 잔액 25 에 20 차감 두 번이면 5 가 남는다
+      (종전 클램프는 5 를 마저 가져갔다). "1페이지 미만은 과금 안 함" 이 맞다.
+
+    반환: True=차감됨 / False=잔액부족(무변경). ★ raise 가 아닌 이유 —
+      SSE 스트림 중(생성)에는 HTTP 상태를 바꿀 수 없고, 채팅·RFP 는 이미 응답을
+      내보낸 뒤라 raise 하면 "답변은 줬는데 500" 이 된다. 판단은 호출부 몫.
 
     대상 컬럼 = users.monthly_proposal_quota.
     ★ users.credits 는 LEGACY 미사용 컬럼 — 여기에 쓰지 마십시오.
     """
+    cur = db.execute(
+        "UPDATE users SET monthly_proposal_quota = monthly_proposal_quota - ? "
+        " WHERE id=? AND monthly_proposal_quota >= ?",
+        (amount, user_id, amount),
+    )
+    if cur.rowcount == 0:
+        # 호출부가 반환값을 무시해도 흔적은 남게 한다.
+        log.error("quota 차감 거부 (잔액부족/경합): user=%s amount=%d", user_id, amount)
+        return False
+    return True
+
+
+def _refund_quota(db, user_id: str, amount: int) -> None:
+    """★ 환불 (원자적 +). 되돌리는 연산이므로 조건 없이 항상 성공해야 한다.
+
+    Spec Atomic-Quota-Deduct — 선차감(fail-closed) 전환의 짝. 환불이 없으면
+    "생성 실패했는데 과금" 이 되어 종전(fail-open)보다 나빠진다.
+
+    ★ monthly_proposal_quota 만 건드린다. _bonus 는 '총 지급량' 누적기이자
+      /api/auth/me 의 분모(prop_total = base + bonus) 라, 소비·환불로 움직이면
+      "480 / 480" 처럼 분모가 잔액을 따라다니게 된다.
+      (결제 지급만 quota + bonus 동시 — Payment-Quota-Wiring 참조)
+    """
     db.execute(
-        "UPDATE users SET monthly_proposal_quota = "
-        "  MAX(0, monthly_proposal_quota - ?) WHERE id=?",
+        "UPDATE users SET monthly_proposal_quota = monthly_proposal_quota + ? WHERE id=?",
         (amount, user_id),
     )
 
@@ -4081,6 +4132,10 @@ def api_chat(conv_id: str, body: ChatIn, user: dict = Depends(get_current_user))
                     yield f"data: {json.dumps({'type':'delta','text':chunk})}\n\n"
             yield f"data: {json.dumps({'type':'done'})}\n\n"
             # D-Fix-CreditExt: 채팅 응답 성공 후 차감 20 (실패·예외 경로에선 차감 X)
+            # ★ Atomic-Quota-Deduct — 원자적이므로 경합 시 False 가 올 수 있다.
+            #   이 시점엔 답변을 이미 스트리밍한 뒤라 되돌릴 수 없으므로 진행한다.
+            #   (막으려면 선차감이 필요 — 채팅은 이번 범위 밖. 최대 누수 20)
+            #   헬퍼가 내부에서 log.error 를 남기므로 감사는 가능하다.
             try:
                 with get_db() as _db_cd:
                     _deduct_quota(_db_cd, user["id"], 20)
@@ -4307,6 +4362,15 @@ async def api_proposals_generate_multipass(
         assistant_id = uuid.uuid4().hex[:12]
         yield f"data: {json.dumps({'type':'start','message_id':assistant_id})}\n\n"
         final_payload = None
+        # ★ Spec Atomic-Quota-Deduct — 선차감/정산 상태.
+        #   charged   : 이번 요청이 실제로 차감한 액수 = 환불 상한이자 '진 빚'.
+        #   ok_slides : done 이벤트가 실어 보내는 성공 슬라이드 수
+        #               (proposal_multi_pass 가 이미 계산해 두는데 종전엔 버렸다).
+        #   ★ 멱등성은 이 두 로컬 변수로 충분하다 — 차감은 요청당 1회
+        #     (charged==0 가드), 환불은 finally 1회(제너레이터 언어 보장).
+        #     "🔄 다시 시도" 는 새 요청 = 새 charged 이므로 재환불 경로가 없다.
+        ok_slides = None
+        charged = 0
         try:
             async for ev in mp.orchestrate(
                 client=client,
@@ -4323,15 +4387,57 @@ async def api_proposals_generate_multipass(
                 output_mode=output_mode,         # Spec D-Build-HTMLOutput — admin 전용 토글 분기
                 theme=_get_policy("theme", "light"),  # Spec D-Build-TextRunsInject 1-d-② — 다크 형광 inject 분기
             ):
-                if ev.get("type") == "done":
+                _et = ev.get("type")
+
+                # ★★ Spec Atomic-Quota-Deduct — OUTLINE 선차감.
+                #   total_slides 가 확정되는 가장 이른 시점이자, 비싼 SLIDE 병렬
+                #   단계 직전이다. 여기서 원자적으로 차감해 두 가지를 동시에 막는다:
+                #     (1) 3.3배 미달 — 사전검증은 미선택 시 30p(3,000) 로 하는데
+                #         실제 상한은 MAX_SLIDES_HARD=100(10,000) 이었다.
+                #     (2) 동시 탭 — 검증만 통과한 두 요청 중 한쪽만 rowcount==1.
+                if OUTLINE_PRECHARGE_ENABLED and _et == "outline_done" and charged == 0:
+                    _need = int(ev.get("total_slides") or 0) * CREDITS_PER_PAGE
+                    if _need > 0:
+                        _ok = False
+                        try:
+                            with get_db() as _db_pc:
+                                _ok = _deduct_quota(_db_pc, user["id"], _need)
+                        except Exception as _e_pc:
+                            # ★ DB 오류는 fail-closed 로 처리한다 — 통과시키면
+                            #   최대 10,000 크레딧을 그냥 내주게 된다. 사전검증을
+                            #   이미 통과한 사용자이므로 재시도로 회복 가능하다.
+                            log.error("★선차감 DB 오류 user=%s conv=%s need=%d err=%s",
+                                      user["id"], conv_id, _need, _e_pc)
+                            _ok = False
+                        if not _ok:
+                            yield f"data: {json.dumps({'type':'error','code':'QUOTA_EXCEEDED','error':f'이 제안서는 {_need:,} 크레딧이 필요한데 잔액이 부족해요. 충전 후 다시 시도해 주세요.'}, ensure_ascii=False)}\n\n"
+                            return   # → finally (charged=0 이라 환불 대상 없음)
+                        charged = _need
+                        log.info("선차감: user=%s conv=%s pages=%d charged=%d",
+                                 user["id"], conv_id, _need // CREDITS_PER_PAGE, charged)
+
+                if _et == "done":
                     final_payload = ev.get("payload")
+                    # ★ 종전엔 payload 만 챙기고 ok_slides 를 버렸다 → 실패 슬라이드까지
+                    #   과금됐다. 환불 정산의 기준값이므로 여기서 줍는다.
+                    _os = ev.get("ok_slides")
+                    if isinstance(_os, int):
+                        ok_slides = _os
                 yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
         except Exception as e:
             log.exception("multi-pass 예외")
             yield f"data: {json.dumps({'type':'error','error':str(e)[:200]})}\n\n"
             return
         finally:
+            # ⚠ 제너레이터 finally 규칙 (Spec Atomic-Quota-Deduct):
+            #   · 여기서 yield 하면 안 된다 — 연결 끊김(GeneratorExit) 이후의 yield 는
+            #     RuntimeError 다. 정산은 DB 쓰기만 한다.
+            #   · except 를 BaseException 으로 넓히면 GeneratorExit 을 삼켜 이 블록이
+            #     안 돌 수 있다. 위 except 는 Exception 으로 유지할 것.
+            #   · finally 는 소진·close() 시 최대 1회 — 이중 환불이 구조적으로 불가.
+
             # 완성된 도형 JSON 을 assistant 메시지로 저장 (api_proposals_pptx 가 읽음)
+            n_pages = 0
             if final_payload:
                 try:
                     with get_db() as db:
@@ -4342,20 +4448,55 @@ async def api_proposals_generate_multipass(
                         )
                 except Exception as e:
                     log.warning("multi-pass: assistant 메시지 저장 실패: %s", e)
-                # Phase 4 (Step 3) — 페이지 기반 크레딧 차감 + conversations.last_proposal_pages 기록.
-                # 1 페이지 = 100 크레딧. final_payload["slides"] 길이 × 100 차감.
-                # underflow 시 GREATEST/MAX(0, ...) 가 0 으로 클램프 (안전망 — fail-open).
-                # 실패 / 취소 시 차감 X (final_payload 미존재 → 본 블록 미진입).
                 n_pages = len(final_payload.get("slides") or [])
-                credits_to_deduct = n_pages * CREDITS_PER_PAGE
+
+            if OUTLINE_PRECHARGE_ENABLED:
+                # 페이지 기록 (차감은 outline_done 에서 이미 끝났다)
                 if n_pages > 0:
                     try:
                         with get_db() as db:
                             db.execute(
-                                "UPDATE users SET monthly_proposal_quota = "
-                                "  MAX(0, monthly_proposal_quota - ?) WHERE id=?",
-                                (credits_to_deduct, user["id"]),
+                                "UPDATE conversations SET last_proposal_pages=? WHERE id=?",
+                                (n_pages, conv_id),
                             )
+                    except Exception as e:
+                        log.warning("페이지 기록 실패 (무시): %s", e)
+
+                # ★★★ 정산 — 선차감(fail-closed) 의 짝. 환불이 없으면
+                #     "생성 실패했는데 과금" 이 되어 종전(fail-open) 보다 나빠진다.
+                if charged > 0:
+                    _ok_n = 0
+                    if final_payload is not None:
+                        # ok_slides 우선. 없으면 슬라이드 수로 폴백 (환불 0 = 종전과 동일).
+                        _ok_n = ok_slides if isinstance(ok_slides, int) else n_pages
+                        _refund = charged - _ok_n * CREDITS_PER_PAGE
+                    else:
+                        # 전체실패 · 예외 · 중단(연결끊김) — 성과 0 이므로 전액 환불.
+                        _refund = charged
+                    if _refund > 0:
+                        try:
+                            with get_db() as db:
+                                _refund_quota(db, user["id"], _refund)
+                            log.info("quota 환불: user=%s conv=%s charged=%d refund=%d ok=%s",
+                                     user["id"], conv_id, charged, _refund,
+                                     _ok_n if final_payload is not None else "중단")
+                        except Exception as e:
+                            # ★ A안(로그+수동정산) — 복구에 필요한 값을 전부 남긴다.
+                            #   자동 복구는 크레딧 원장(ledger) 도입 시 별도 조각.
+                            log.error("★환불실패 수동정산필요 user=%s conv=%s charged=%d refund=%d err=%s",
+                                      user["id"], conv_id, charged, _refund, e)
+                    elif _refund < 0:
+                        # ok_slides <= total_slides 이므로 도달 불가. 도달하면 설계 위반.
+                        log.error("★정산이상(도달불가) user=%s conv=%s charged=%d 실제=%d",
+                                  user["id"], conv_id, charged, _ok_n * CREDITS_PER_PAGE)
+            else:
+                # ── 플래그 OFF — 종전 경로 (fail-open). 차감 시점·조건·트랜잭션
+                #    그룹핑까지 그대로 유지한다. 유일한 차이는 _deduct_quota 가
+                #    원자적이라 부분 징수를 하지 않는다는 점 (설계상 항상 적용).
+                if n_pages > 0:
+                    try:
+                        with get_db() as db:
+                            _deduct_quota(db, user["id"], n_pages * CREDITS_PER_PAGE)
                             db.execute(
                                 "UPDATE conversations SET last_proposal_pages=? WHERE id=?",
                                 (n_pages, conv_id),
@@ -4837,6 +4978,8 @@ async def api_rfp_upload_single(
     # ★ Spec Fix-CreditDeductGuard — 분석 실패(error 키) 시 차감 안 함.
     #   기존 코멘트 "실패 시 차감 X" 와 실 동작 모순 (가드 0건 → 무조건 차감) 정합.
     #   isinstance 가드 — analysis 가 list/None/비dict 극단 케이스도 안전 skip.
+    # ★ Atomic-Quota-Deduct — 분석 결과를 이미 반환하는 시점이라 False 여도 진행.
+    #   (채팅과 동일 판단. 헬퍼가 log.error 로 감사 흔적을 남김. 최대 누수 300)
     if not (isinstance(analysis, dict) and analysis.get("error")):
         try:
             with get_db() as _db_cd:
@@ -4898,6 +5041,7 @@ async def api_rfp_upload_multi(
     # ★ Spec Fix-CreditDeductGuard — 분석 실패(error 키) 시 차감 안 함.
     #   기존 코멘트 "실패 시 차감 X" 와 실 동작 모순 (가드 0건 → 무조건 차감) 정합.
     #   isinstance 가드 — analysis 가 list/None/비dict 극단 케이스도 안전 skip.
+    # ★ Atomic-Quota-Deduct — single 과 동일 판단 (반환 직전이라 되돌릴 수 없음).
     if not (isinstance(analysis, dict) and analysis.get("error")):
         try:
             with get_db() as _db_cd:
@@ -8148,63 +8292,110 @@ async def api_proposals_regenerate_page(
     log.info("partial-regen 시작: conv=%s page=%d user=%s", conv_id, page, user["id"])
     t0 = _time_local.time()
 
-    try:
-        sr = await mp.generate_one_slide(
-            client=client,
-            item=item,
-            outline_summary=outline_summary,
-            rag_per_slide_block=rag_block,
-            canvas=canvas,
-            total_slides=total_slides,
-            model=model,
-            domain=domain,
-            quantitative_locks=quantitative_locks,
-            theme=_get_policy("theme", "light"),  # Spec D-Build-TextRunsInject 1-d-② — partial-regen 도 정합
-        )
-    except Exception as e:
-        log.exception("partial-regen 예외 conv=%s page=%d", conv_id, page)
-        raise HTTPException(500, f"페이지 재생성 실패: {str(e)[:120]}")
-
-    if sr.error or not sr.shapes:
-        log.error("partial-regen 실패 conv=%s page=%d err=%s", conv_id, page, sr.error)
-        raise HTTPException(500, f"페이지 재생성 실패: {sr.error or 'shapes 비어있음'}")
-
-    # 8. payload 업데이트 (slides[page-1] 교체)
-    # Spec D-Build-PresetBelt — sr.meta(preset/left/right 등)를 펼쳐 박되 section/shapes 우선.
-    # meta 가 비면(=기존 6종 viz_pattern, LLM 이 preset 키 안 채운 경우) preset 없는 dict
-    # 그대로 박힘 → generate_from_shape_json else 분기 직행 → 기존 동작 무변경.
-    _slide = dict(sr.meta) if isinstance(getattr(sr, "meta", None), dict) else {}
-    _slide["section"] = sr.section
-    _slide["shapes"] = sr.shapes
-    payload["slides"][page - 1] = _slide
-
-    # 9. 새 assistant 메시지 INSERT — history 보존 (옛 메시지는 audit 용 잔존)
-    assistant_id = uuid.uuid4().hex[:12]
-    try:
-        with get_db() as db:
-            db.execute(
-                "INSERT INTO messages(id,conversation_id,role,content) VALUES(?,?,?,?)",
-                (assistant_id, conv_id, "assistant",
-                 json.dumps(payload, ensure_ascii=False)),
+    # ★★ Spec Atomic-Quota-Deduct — 착수 직전 원자적 선차감.
+    #   위 2단계 검증(prop_q)은 UX fast-fail 로 그대로 두고, 실제 차감을 여기서
+    #   원자적으로 한다. 사이에 든 것은 in-memory 검증뿐이라 TOCTOU 창 ≈ 0 이고,
+    #   400/404 로 끝나는 값싼 실패들은 차감 전에 걸러져 환불 대상이 아니다.
+    #   ★ 설계 스케치는 "2단계 검증을 차감으로 대체" 였으나, 여기로 내리면
+    #     환불이 필요한 구간이 LLM+PPTX 로 좁아진다 (동일 효과·더 작은 위험면).
+    charged_regen = 0
+    if OUTLINE_PRECHARGE_ENABLED:
+        _ok_rg = False
+        try:
+            with get_db() as _db_rg:
+                _ok_rg = _deduct_quota(_db_rg, user["id"], CREDITS_PER_PAGE)
+        except Exception as _e_rg:
+            log.error("★재생성 선차감 DB 오류 user=%s conv=%s err=%s",
+                      user["id"], conv_id, _e_rg)
+            _ok_rg = False
+        if not _ok_rg:
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "error": "크레딧이 부족해요 (1페이지 재생성 = 100 크레딧). 결제 후 다시 시도해 주세요.",
+                    "code": "QUOTA_EXCEEDED",
+                    "quota_remaining": prop_q,
+                    "required": CREDITS_PER_PAGE,
+                },
             )
-    except Exception as e:
-        log.warning("partial-regen: assistant 메시지 저장 실패 (무시): %s", e)
+        charged_regen = CREDITS_PER_PAGE
 
-    # 10. PPTX 재생성 (옵션 A — 전체 PPTX 재생성, ~5-10초)
-    safe_client = _safe_filename(client_name)
-    disk_fname = f"{safe_client}_{conv_id[:8]}.pptx"
-    out_path = EXPORTS_PPTX_DIR / disk_fname
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-
+    # ★ 차감분 보호 구간 — 아래 어디서 실패하든 전액 환불하고 예외를 다시 던진다.
+    #   BaseException 으로 잡는 이유: HTTPException 뿐 아니라 연결 끊김에 따른
+    #   asyncio.CancelledError 까지 환불 대상이다 (재생성 중 탭을 닫는 경우).
+    #   ⚠ 일반 함수라 제너레이터 제약(GeneratorExit)이 없어 안전하다.
     try:
-        # Spec D-Build-ThemeConnect 1-b — partial-regen 경로도 theme 전달(정합).
-        _theme = _get_policy("theme", "light")
-        pptx_generator.generate_from_shape_json(payload, out_path, theme=_theme)
-    except Exception as e:
-        log.exception("partial-regen: PPTX 생성 실패 conv=%s page=%d", conv_id, page)
-        raise HTTPException(500, f"PPTX 생성 실패: {str(e)[:120]}")
+        try:
+            sr = await mp.generate_one_slide(
+                client=client,
+                item=item,
+                outline_summary=outline_summary,
+                rag_per_slide_block=rag_block,
+                canvas=canvas,
+                total_slides=total_slides,
+                model=model,
+                domain=domain,
+                quantitative_locks=quantitative_locks,
+                theme=_get_policy("theme", "light"),  # Spec D-Build-TextRunsInject 1-d-② — partial-regen 도 정합
+            )
+        except Exception as e:
+            log.exception("partial-regen 예외 conv=%s page=%d", conv_id, page)
+            raise HTTPException(500, f"페이지 재생성 실패: {str(e)[:120]}")
 
-    # 11. conversations.pptx_path 업데이트 + quota 차감 (400)
+        if sr.error or not sr.shapes:
+            log.error("partial-regen 실패 conv=%s page=%d err=%s", conv_id, page, sr.error)
+            raise HTTPException(500, f"페이지 재생성 실패: {sr.error or 'shapes 비어있음'}")
+
+        # 8. payload 업데이트 (slides[page-1] 교체)
+        # Spec D-Build-PresetBelt — sr.meta(preset/left/right 등)를 펼쳐 박되 section/shapes 우선.
+        # meta 가 비면(=기존 6종 viz_pattern, LLM 이 preset 키 안 채운 경우) preset 없는 dict
+        # 그대로 박힘 → generate_from_shape_json else 분기 직행 → 기존 동작 무변경.
+        _slide = dict(sr.meta) if isinstance(getattr(sr, "meta", None), dict) else {}
+        _slide["section"] = sr.section
+        _slide["shapes"] = sr.shapes
+        payload["slides"][page - 1] = _slide
+
+        # 9. 새 assistant 메시지 INSERT — history 보존 (옛 메시지는 audit 용 잔존)
+        assistant_id = uuid.uuid4().hex[:12]
+        try:
+            with get_db() as db:
+                db.execute(
+                    "INSERT INTO messages(id,conversation_id,role,content) VALUES(?,?,?,?)",
+                    (assistant_id, conv_id, "assistant",
+                     json.dumps(payload, ensure_ascii=False)),
+                )
+        except Exception as e:
+            log.warning("partial-regen: assistant 메시지 저장 실패 (무시): %s", e)
+
+        # 10. PPTX 재생성 (옵션 A — 전체 PPTX 재생성, ~5-10초)
+        safe_client = _safe_filename(client_name)
+        disk_fname = f"{safe_client}_{conv_id[:8]}.pptx"
+        out_path = EXPORTS_PPTX_DIR / disk_fname
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            # Spec D-Build-ThemeConnect 1-b — partial-regen 경로도 theme 전달(정합).
+            _theme = _get_policy("theme", "light")
+            pptx_generator.generate_from_shape_json(payload, out_path, theme=_theme)
+        except Exception as e:
+            log.exception("partial-regen: PPTX 생성 실패 conv=%s page=%d", conv_id, page)
+            raise HTTPException(500, f"PPTX 생성 실패: {str(e)[:120]}")
+    except BaseException:
+        # ★★ Spec Atomic-Quota-Deduct — 실패·중단 시 전액 환불하고 원래 예외를 그대로 던진다.
+        #   환불이 빠지면 '재생성 실패했는데 과금' 이 되어 종전(fail-open) 보다 나빠진다.
+        if charged_regen > 0:
+            try:
+                with get_db() as _db_rf:
+                    _refund_quota(_db_rf, user["id"], charged_regen)
+                log.info("quota 환불(재생성): user=%s conv=%s page=%d refund=%d",
+                         user["id"], conv_id, page, charged_regen)
+            except Exception as _e_rf:
+                # A안(로그+수동정산) — 복구에 필요한 값을 전부 남긴다.
+                log.error("★환불실패 수동정산필요(재생성) user=%s conv=%s page=%d refund=%d err=%s",
+                          user["id"], conv_id, page, charged_regen, _e_rf)
+        raise
+
+    # 11. conversations.pptx_path 업데이트 (+ 플래그 OFF 시 종전 차감)
     quota_remaining = prop_q
     try:
         with get_db() as db:
@@ -8213,11 +8404,10 @@ async def api_proposals_regenerate_page(
                 "WHERE id=?",
                 (f"/api/proposals/{conv_id}/download", conv_id),
             )
-            db.execute(
-                "UPDATE users SET monthly_proposal_quota = "
-                "  MAX(0, monthly_proposal_quota - ?) WHERE id=?",
-                (CREDITS_PER_PAGE, user["id"]),
-            )
+            # ★ Spec Atomic-Quota-Deduct — 플래그 ON 이면 착수 직전에 이미 차감했다.
+            #   OFF 면 종전대로 여기서 차감 (시점·조건 동일, 클램프만 원자조건으로 대체).
+            if not OUTLINE_PRECHARGE_ENABLED:
+                _deduct_quota(db, user["id"], CREDITS_PER_PAGE)
             row = db.execute(
                 "SELECT monthly_proposal_quota FROM users WHERE id=?", (user["id"],)
             ).fetchone()

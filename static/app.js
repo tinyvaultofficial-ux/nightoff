@@ -950,17 +950,19 @@ function renderPricingSection(opts) {
   // ── 가격 (Spec D-Fix-21: 3 티어 비교 표)
   const TIERS = [
     // Spec Subscription-Terms-Copy (2026-09-07) — 월 구독 전환.
-    //   promo = 월 구독료. regular/discount 는 월 요금제 정가·할인율이 아직
-    //   확정되지 않아 빈 문자열로 둔다 (빈 값이면 정가·할인 배지 자체를 렌더 안 함).
+    //   regular = 월 정가 · promo = 런칭 특가(3개월 한정) · discount = 할인 배지.
     //   ★ credits 는 표시 문구이며 결제 로직(main.py TOSS_TIERS)과 별개 — 무접촉.
+    //     (월 구독 크레딧 재산정은 결제 배관 작업 때 함께 처리)
+    //   ⚠ 실제 할인율: 스타터 13.04% · 프로 13.64% · 비즈니스 13.07% (최대 13.64%).
+    //     표시 문구는 대표 결정에 따라 "약 15% 할인" 으로 통일한다.
     { name: "스타터", en: "Starter", emoji: "🌱",
-      promo: "월 20만원", regular: "", discount: "",
+      promo: "월 20만원", regular: "월 23만원", discount: "약 15% 할인",
       credits: "14,000", conversion: "월 2건", best: false },
     { name: "프로", en: "Pro", emoji: "🚀",
-      promo: "월 47.5만원", regular: "", discount: "",
+      promo: "월 47.5만원", regular: "월 55만원", discount: "약 15% 할인",
       credits: "30,000", conversion: "월 5건", best: true },
     { name: "비즈니스", en: "Business", emoji: "💎",
-      promo: "월 76.5만원", regular: "", discount: "",
+      promo: "월 76.5만원", regular: "월 88만원", discount: "약 15% 할인",
       credits: "62,000", conversion: "월 9건", best: false },
   ];
   const FEATURE_GROUPS = [
@@ -1035,7 +1037,8 @@ function renderPricingSection(opts) {
       // Spec D-Fix-40: lead 자리 → 상단 띠 대체 (프로모션 자료 강조)
       h("div", { class: "landing-pricing-promo" }, [
         h("div", { class: "landing-pricing-promo-title" }, "🎉 공식 런칭 기념 / 3개월 한정 특가"),
-        h("div", { class: "landing-pricing-promo-sub" }, "지금 가입하면 정가 대비 최대 25% 절약"),
+        // Spec Subscription-Terms-Copy — 월 구독 정가 확정에 맞춰 25% → 15%.
+        h("div", { class: "landing-pricing-promo-sub" }, "지금 가입하면 정가 대비 최대 15% 절약"),
       ]),
 
       h("div", { class: "landing-pricing-table" }, [
@@ -1051,7 +1054,8 @@ function renderPricingSection(opts) {
         ])),
 
         // 가격 행 (취소선 정가 + 런칭가) · data-tier 로 컬럼 강조 대응
-        h("div", { class: "pt-cell pt-row-label" }, "패키지"),
+        // Spec Subscription-Terms-Copy — 선불 패키지 → 월 구독이므로 라벨 정정.
+        h("div", { class: "pt-cell pt-row-label" }, "월 요금"),
         ...TIERS.map(t => h("div", {
           class: `pt-cell ${t.best ? "pt-best" : ""}`,
           "data-tier": t.en.toLowerCase(),
@@ -1119,6 +1123,10 @@ function renderPricingSection(opts) {
       // Spec D-Fix-40: 하단 부가 자료 (보험사 약관 톤 / 작게)
       h("p", { class: "landing-pricing-note" },
         "* 프로모션 종료 후 정가 전환 / 정기 할인 이벤트 진행 예정"),
+      // Spec Subscription-Terms-Copy — 런칭 특가 락인 안내 (대표 결정).
+      //   특가 기간에 시작한 구독은 유지되는 동안 특가 단가가 계속 적용된다.
+      h("p", { class: "landing-pricing-note" },
+        "* 런칭 특가 기간(3개월) 내 구독을 시작하시면, 구독이 유지되는 동안 특가가 계속 적용됩니다."),
       // Spec D-Build-PricingValidity (2026-09-01) — 토스 심사 요구:
       // "구매자가 서비스 제공기간을 상품 페이지에서 인지 가능해야".
       // Spec Subscription-Terms-Copy (2026-09-07) — 선불 12개월 → 월 구독(월 소멸).

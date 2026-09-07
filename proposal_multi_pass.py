@@ -5770,8 +5770,23 @@ async def generate_slides_parallel(
     # 안 3중 게이트에서 skip → 프롬프트 변화 0.
     _research = getattr(outline, "research", None)
 
+    # ★ Spec Slide-Cancel-On-Disconnect (2026-09-07) — 끊김 시 남은 SLIDE 중단.
+    #   실측: 클라이언트가 끊어도 8/8 장이 완주했고, 끊긴 지 6초 뒤 p6·p7·p8 이
+    #   "새로" 시작했다. create_task 로 띄운 태스크는 이벤트 루프가 소유하므로
+    #   이 제너레이터가 닫혀도 살아남고, 세마포어가 풀릴 때마다 대기 중이던
+    #   다음 슬라이드가 새 API 호출을 띄우기 때문이다.
+    #   → 고객 크레딧은 환불(_settle)로 이미 돌려주지만 API 토큰은 계속 나갔다.
+    stopped = False
+
     async def _bound(item: OutlineItem) -> SlideResult:
         async with sem:
+            # ★ 세마포어 획득 직후 확인 — task.cancel() 은 다음 이벤트 루프 반복에
+            #   전달된다. 그 사이 완료 태스크가 세마포어를 풀면, 취소 신호를 아직
+            #   못 받은 대기 태스크가 먼저 진입해 새 호출을 띄운다.
+            #   실측: 플래그 없이 cancel 만 하면 20장 중 3장이 이 창으로 샜다
+            #   (A 취소없음 20건 · B cancel만 9건 · C 플래그추가 6건).
+            if stopped:
+                raise asyncio.CancelledError
             rag_block = ""
             try:
                 rag_block = rag_for_slide(item) or ""
@@ -5789,8 +5804,24 @@ async def generate_slides_parallel(
             )
 
     tasks = [asyncio.create_task(_bound(it)) for it in outline.outline]
-    for coro in asyncio.as_completed(tasks):
-        yield await coro
+    try:
+        for coro in asyncio.as_completed(tasks):
+            yield await coro
+    finally:
+        # 정상 완주 시: 모든 태스크가 done → cancel 대상 0 → 완전한 no-op.
+        # 끊김 시(GeneratorExit): 아직 시작 안 한 슬라이드가 새 API 호출을 띄우는 것을 막는다.
+        # ⚠ 이미 스레드에서 도는 것(최대 concurrency 개)은 못 막는다 —
+        #   asyncio.to_thread 는 취소되지 않는다 (실측: cancel 후에도 스레드는 완주).
+        #   그건 async 클라이언트 전환(D안) 영역이며 이번 범위 밖.
+        stopped = True                       # ★ cancel 보다 먼저 (샘 방지)
+        _n_cancel = 0
+        for t in tasks:
+            if not t.done():
+                t.cancel()
+                _n_cancel += 1
+        if _n_cancel:
+            log.info("slide 취소: 미시작·진행중 %d/%d 태스크 cancel (끊김 추정)",
+                     _n_cancel, len(tasks))
 
 
 # ─── Spec D-Fix-EmptyPageSafeguard — 빈 페이지 판정 helper ──────────────────
@@ -5893,17 +5924,29 @@ async def orchestrate(
                 intel_block, conversation_block, extra_block, model,
             )
         )
-        while True:
-            try:
-                strategy = await asyncio.wait_for(asyncio.shield(strategy_task), timeout=25.0)
-                break
-            except asyncio.TimeoutError:
-                yield {"type": "heartbeat", "phase": "strategy"}
-            except Exception as e:
-                # 전략 실패해도 파이프라인은 진행 (빈 dict 로 fallback).
-                log.warning("Strategy-Step1 orchestrate 예외 → 빈 dict fallback: %s", e)
-                strategy = {}
-                break
+        # ★ Spec Slide-Cancel-On-Disconnect — 하트비트 yield 지점이 끊김 창이다.
+        #   여기서 GeneratorExit 이 들어오면 shield 덕에 strategy_task 는 살아남아
+        #   토큰을 계속 태운다 → finally 에서 명시적으로 취소한다.
+        try:
+            while True:
+                try:
+                    # ★ shield 무접촉 — 이건 끊김 방어가 아니라 wait_for 의 25초
+                    #   타임아웃 방어다. 빼면 STRATEGY 가 25초에 죽는다.
+                    strategy = await asyncio.wait_for(asyncio.shield(strategy_task), timeout=25.0)
+                    break
+                except asyncio.TimeoutError:
+                    yield {"type": "heartbeat", "phase": "strategy"}
+                except Exception as e:
+                    # 전략 실패해도 파이프라인은 진행 (빈 dict 로 fallback).
+                    log.warning("Strategy-Step1 orchestrate 예외 → 빈 dict fallback: %s", e)
+                    strategy = {}
+                    break
+        finally:
+            # shield 는 awaiter 의 취소 전파만 막는다 — 태스크 직접 취소는 막지 않는다.
+            # 정상 경로는 break 시점에 이미 done → no-op.
+            if not strategy_task.done():
+                strategy_task.cancel()
+                log.info("strategy 취소 (끊김 추정)")
         yield {"type": "strategy_done", "strategy": strategy}
 
     yield {"type": "phase", "phase": "outline", "message": "목차 / 슬라이드 구성 작성 중..."}
@@ -5938,15 +5981,25 @@ async def orchestrate(
         )
     )
     outline = None
-    while True:
-        try:
-            outline = await asyncio.wait_for(asyncio.shield(outline_task), timeout=25.0)
-            break
-        except asyncio.TimeoutError:
-            yield {"type": "heartbeat", "phase": "outline"}
-        except Exception as e:
-            yield {"type": "error", "error": f"outline 실패: {e}"}
-            return
+    # ★ Spec Slide-Cancel-On-Disconnect — STRATEGY 와 동일 이유.
+    #   OUTLINE 은 max_tokens 64000 짜리 최대 단건이라 소각 시 손실이 가장 크다.
+    #   실측: 절단 8초 뒤에도 OUTLINE 이 끝까지 완주했다.
+    try:
+        while True:
+            try:
+                # ★ shield 무접촉 (wait_for 25초 타임아웃 방어 — 빼면 OUTLINE 이
+                #   60~180초를 못 버티고 25초에 죽는다).
+                outline = await asyncio.wait_for(asyncio.shield(outline_task), timeout=25.0)
+                break
+            except asyncio.TimeoutError:
+                yield {"type": "heartbeat", "phase": "outline"}
+            except Exception as e:
+                yield {"type": "error", "error": f"outline 실패: {e}"}
+                return                       # ★ return 도 finally 를 통과한다
+    finally:
+        if not outline_task.done():
+            outline_task.cancel()
+            log.info("outline 취소 (끊김 추정)")
 
     # Spec Strategy-Step1 — 확정 전략을 OutlineResult 에 실어 SLIDE 병렬로 전달.
     # 단계1 은 저장까지. generate_outline / _build_slide_user_prompt 는 아직 이 필드

@@ -789,7 +789,7 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
           }, children);
         })(),
       ] : []),
-      // Spec D-Build-PricingPage-5c (2026-09-01) — 사이드바 "크레딧 충전" 진입점.
+      // Spec D-Build-PricingPage-5c (2026-09-01) — 사이드바 요금제 진입점.
       // Spec Credit-CTA-Emphasis (2026-09-02) — 부족(low/empty) 시만 강조 · 정상은 조용히.
       //   getCreditStatus 재사용 (상태카드와 완전 일치 · 불일치 방지).
       //   healthy → 다른 footer 버튼과 동일 (안 튐).
@@ -801,17 +801,17 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
         const emphasisClass = (_sbStatus === "healthy") ? "" : (" credit-cta-" + _sbStatus);
         return h("button", {
           class: "sidebar-footer-btn" + emphasisClass,
-          // Spec Subscription-Terms-Copy — "충전"(선불) → "요금제 · 구독"(월 구독).
+          // Spec Monthly-Pass-Copy — "충전"(선불) → "요금제 · 이용권"(월 이용권).
           //   ★ 라벨만 교체. getCreditStatus 판정·navigate 동작 무접촉.
           title: (_sbStatus === "empty")
             ? "크레딧이 곧 소진돼요 · 요금제를 확인하세요"
             : (_sbStatus === "low")
               ? "크레딧이 얼마 남지 않았어요 · 요금제 보기"
-              : "요금제 · 구독 (요금제 페이지)",
+              : "요금제 · 이용권 (요금제 페이지)",
           onclick: () => navigate("/pricing"),
         }, [
           h("span", { class: "sidebar-footer-btn-icon" }, "💳"),
-          h("span", {}, "요금제 · 구독"),
+          h("span", {}, "요금제 · 이용권"),
         ]);
       })(),
       // Spec D-Build-FaqSidebarLink (2026-06-13) — 자주 묻는 질문 (FAQ) 영구 진입점.
@@ -896,7 +896,7 @@ function fmtSize(bytes) {
 
 // Spec Credit-CTA-Emphasis (2026-09-02) — 크레딧 잔여 상태 판정 (3단계).
 // 재사용처: renderStatusCards ("남은 크레딧" 카드 강조) · sidebar-footer-btn
-// (💳 크레딧 충전 버튼 조건부 강조) · 향후 다른 CTA 진입점.
+// (💳 요금제 버튼 조건부 강조) · 향후 다른 CTA 진입점.
 // 기준:
 //   · empty  : remaining < 100 (< 1페이지 · sparkle 버튼 disabled 조건과 동일)
 //   · low    : 100 ≤ remaining < 300 (< 3페이지 · 몇 페이지 못 만듦)
@@ -949,10 +949,10 @@ function renderPricingSection(opts) {
   let selectedTier = null;    // "starter" | "pro" | "business" (초기 null · 미선택)
   // ── 가격 (Spec D-Fix-21: 3 티어 비교 표)
   const TIERS = [
-    // Spec Subscription-Terms-Copy (2026-09-07) — 월 구독 전환.
+    // Spec Monthly-Pass-Copy (2026-09-11) — 월 이용권(단건·자동갱신 없음).
     //   regular = 월 정가 · promo = 런칭 특가(3개월 한정) · discount = 할인 배지.
-    //   ★ credits 는 표시 문구이며 결제 로직(main.py TOSS_TIERS)과 별개 — 무접촉.
-    //     (월 구독 크레딧 재산정은 결제 배관 작업 때 함께 처리)
+    //   ★ credits 는 더 이상 화면에 렌더하지 않는다 (크레딧 표시 제거 — 위 사용량 행 참조).
+    //     값 자체는 남겨두되 결제 로직(main.py TOSS_TIERS)과는 별개이며 무접촉.
     //   실제 할인율: 스타터 16.67% · 프로 15.18% · 비즈니스 15.00%
     //     → 최소 15.00% 이므로 "약 15% 할인" 이 전 티어에서 참이고,
     //       상단 띠 "최대 15% 절약" 은 실제 최대(16.67%)보다 보수적이다.
@@ -994,7 +994,8 @@ function renderPricingSection(opts) {
       metaEl.innerHTML =
         `<span class="pricing-sticky-cta-tier">${escapeHtml(t.name)}</span>` +
         `<span class="pricing-sticky-cta-dot">·</span>` +
-        `<span class="pricing-sticky-cta-credits">${escapeHtml(t.credits)} 크레딧</span>` +
+        // Spec Monthly-Pass-Copy — 크레딧 수치 대신 이용 가능 건수 (비교표와 동일 기준).
+        `<span class="pricing-sticky-cta-credits">${escapeHtml(t.conversion)}</span>` +
         `<span class="pricing-sticky-cta-dot">·</span>` +
         `<span class="pricing-sticky-cta-price">${escapeHtml(t.promo)}</span>`;
     }
@@ -1040,7 +1041,7 @@ function renderPricingSection(opts) {
       // Spec D-Fix-40: lead 자리 → 상단 띠 대체 (프로모션 자료 강조)
       h("div", { class: "landing-pricing-promo" }, [
         h("div", { class: "landing-pricing-promo-title" }, "🎉 공식 런칭 기념 / 3개월 한정 특가"),
-        // Spec Subscription-Terms-Copy — 월 구독 정가 확정에 맞춰 25% → 15%.
+        // Spec Monthly-Pass-Copy — 월 이용권 정가 확정에 맞춰 25% → 15%.
         h("div", { class: "landing-pricing-promo-sub" }, "지금 가입하면 정가 대비 최대 15% 절약"),
       ]),
 
@@ -1057,7 +1058,7 @@ function renderPricingSection(opts) {
         ])),
 
         // 가격 행 (취소선 정가 + 런칭가) · data-tier 로 컬럼 강조 대응
-        // Spec Subscription-Terms-Copy — 선불 패키지 → 월 구독이므로 라벨 정정.
+        // Spec Monthly-Pass-Copy — 선불 패키지 → 월 이용권이므로 라벨 정정.
         h("div", { class: "pt-cell pt-row-label" }, "월 요금"),
         ...TIERS.map(t => h("div", {
           class: `pt-cell ${t.best ? "pt-best" : ""}`,
@@ -1078,14 +1079,20 @@ function renderPricingSection(opts) {
           ]),
         ])),
 
-        // 사용량 행 — 제공 크레딧 + 플랜별 환산 보조 문구
-        h("div", { class: "pt-cell pt-row-label" }, "제공 크레딧"),
+        // 사용량 행 — 이용 가능 건수 (★ 크레딧 수치는 화면에서 노출하지 않는다)
+        // Spec Monthly-Pass-Copy (2026-09-11) — 크레딧 표시 제거.
+        //   고객이 "62,000 ÷ 100 = 620페이지" 를 계산하게 되면 우리가 파는 단위
+        //   ("월 9건")와 숫자가 어긋나고, 잔액 걱정이 구매 저항으로 바뀐다.
+        //   크레딧은 내부 원가·차감 단위로만 쓰고 화면에서는 건수로만 말한다.
+        //   ★ t.credits 값 자체는 남겨둔다 — 결제 로직(main.py TOSS_TIERS)과 별개이며
+        //     향후 내부 표시가 필요할 때 쓰기 위함. 지금은 렌더하지 않을 뿐이다.
+        h("div", { class: "pt-cell pt-row-label" }, "이용 가능"),
         ...TIERS.map(t => h("div", {
           class: `pt-cell ${t.best ? "pt-best" : ""}`,
           "data-tier": t.en.toLowerCase(),
         }, [
-          h("span", { class: "pt-usage-amount" }, t.credits + " 크레딧"),
-          h("span", { class: "pt-usage-meta" }, t.conversion),
+          h("span", { class: "pt-usage-amount" }, t.conversion),
+          h("span", { class: "pt-usage-meta" }, "50페이지 기준"),
         ])),
 
         // 기능 행 — FEATURE_GROUPS 카테고리별 그룹화 (각 그룹: 카테고리 헤더 1행 + 그룹 안 기능 N행)
@@ -1125,18 +1132,14 @@ function renderPricingSection(opts) {
       ]),
       // Spec D-Fix-40: 하단 부가 자료 (보험사 약관 톤 / 작게)
       h("p", { class: "landing-pricing-note" },
-        "* 프로모션 종료 후 정가 전환 / 정기 할인 이벤트 진행 예정"),
-      // Spec Subscription-Terms-Copy — 런칭 특가 락인 안내 (대표 결정).
-      //   특가 기간에 시작한 구독은 유지되는 동안 특가 단가가 계속 적용된다.
-      h("p", { class: "landing-pricing-note" },
-        "* 런칭 특가 기간(3개월) 내 구독을 시작하시면, 구독이 유지되는 동안 특가가 계속 적용됩니다."),
+        "* 프로모션 종료 후 정가로 전환됩니다."),
       // Spec D-Build-PricingValidity (2026-09-01) — 토스 심사 요구:
       // "구매자가 서비스 제공기간을 상품 페이지에서 인지 가능해야".
-      // Spec Subscription-Terms-Copy (2026-09-07) — 선불 12개월 → 월 구독(월 소멸).
+      // Spec Monthly-Pass-Copy (2026-09-11) — 월 구독(자동) → 월 이용권(단건).
       //   이용약관 제7조 4항과 같은 내용이어야 한다 (문구 불일치 = 고지 리스크).
       // 랜딩 + /pricing 두 곳 다 이 renderPricingSection 재사용 → 한 곳 수정으로 양쪽 반영.
       h("p", { class: "landing-pricing-note" },
-        "* 매월 제공되는 크레딧은 해당 결제 주기(1개월) 내 이용 가능하며, 다음 달로 이월되지 않습니다."),
+        "* 각 이용권의 크레딧은 구매일로부터 1개월간 이용 가능하며, 이후 소멸됩니다."),
       // Spec Pricing-Sticky-CTA — 하단 sticky 결제바 (showSticky 시만 렌더).
       // 초기 hidden · 티어 클릭 시 selectTier 가 visible 클래스 붙여 슬라이드업.
       // ★ 랜딩 (showSticky=false) 은 이 노드 자체가 만들어지지 않음.
@@ -1774,9 +1777,9 @@ function renderStatusCards(stats) {
         h("div", { class: "status-card-value" }, it.value),
       ];
       // 부족 시 안내 문구 + 명시 링크 (담백 · 압박 X)
-      // Spec Subscription-Terms-Copy — "충전"(선불) → "요금제"(월 구독).
+      // Spec Monthly-Pass-Copy — "충전"(선불) → "요금제"(월 이용권).
       //   ★ 라벨만 교체. creditStatus 판정·클릭 동작(/pricing) 무접촉.
-      //   "곧 소진돼요" 는 월 크레딧 소진에도 그대로 맞아 유지한다.
+      //   "곧 소진돼요" 는 이용권 크레딧 소진에도 그대로 맞아 유지한다.
       if (creditStatus !== "healthy") {
         const hintText = (creditStatus === "empty")
           ? "크레딧이 곧 소진돼요"
@@ -1788,7 +1791,7 @@ function renderStatusCards(stats) {
         class: "status-card status-card-clickable" + statusClass,
         role: "button",
         tabindex: "0",
-        title: "요금제 · 구독",
+        title: "요금제 · 이용권",
         onclick: () => navigate("/pricing"),
         onkeydown: (ev) => {
           if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); navigate("/pricing"); }

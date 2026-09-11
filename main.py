@@ -86,8 +86,9 @@ CREDITS_PER_PAGE = 100  # Step 2-A: 단위 단순화 (1p = 100 크레딧)
 #     True 로 되돌리면 _quota_reset_eligible_user_ids 의 유료 제외 조건이 함께 작동.
 MONTHLY_QUOTA_RESET_ENABLED = False
 
-# ★ Spec Atomic-Quota-Deduct (2026-09-07) — 생성·재생성 "선차감 + 환불" 게이트.
-#   True  : 실제 페이지 수가 확정되는 시점(생성=outline_done / 재생성=착수 전)에
+# ★ Spec Atomic-Quota-Deduct (2026-09-07) — 생성 "선차감 + 환불" 게이트.
+#   (2026-09-11 페이지 재생성 제거로 적용 대상은 생성 경로 하나)
+#   True  : 실제 페이지 수가 확정되는 시점(outline_done)에
 #           원자적으로 먼저 차감하고, 실패·중단·일부실패 시 환불한다. (fail-closed)
 #   False : 선차감을 하지 않는다 → 차감 시점·조건이 종전과 100% 동일. (fail-open)
 #   ★ 왜 플래그인가 — 이 전환은 "차감 후 프로세스 강제종료 시 환불 불가"라는
@@ -99,11 +100,12 @@ OUTLINE_PRECHARGE_ENABLED = True
 # ---------------------------------------------------------------------------
 # Spec D-Fix-CreditExt — 분석·채팅 출혈 차단용 차감 헬퍼 (2개 분리: 사전 검증 / 사후 차감)
 #  · 채팅 등 SSE 흐름에서 "응답 성공 후 차감" 보장하려면 검증·차감 분리가 안전.
-#  · Spec Atomic-Quota-Deduct (2026-09-07) — 소비 5곳 전부가 이 헬퍼를 쓴다.
-#    (채팅 / RFP single / RFP multi / api_proposals_generate_multipass /
-#     api_proposals_regenerate_page). 인라인 SQL 사본은 남기지 않는다 —
+#  · Spec Atomic-Quota-Deduct (2026-09-07) — 소비 4곳 전부가 이 헬퍼를 쓴다.
+#    (채팅 / RFP single / RFP multi / api_proposals_generate_multipass).
+#    인라인 SQL 사본은 남기지 않는다 —
 #    같은 UPDATE 를 3벌로 유지한 것이 결제 배선 사고의 배경이었다.
-#  · 차감량: 채팅 20 / RFP 분석 300 / 생성·재생성 = 페이지수 × CREDITS_PER_PAGE.
+#    (2026-09-11 페이지 재생성 기능 제거로 5곳 → 4곳)
+#  · 차감량: 채팅 20 / RFP 분석 300 / 생성 = 페이지수 × CREDITS_PER_PAGE.
 # ---------------------------------------------------------------------------
 def _check_quota(db, user_id: str, amount: int, action_label: str) -> int:
     """잔액 검증만. 부족 시 HTTPException(402, QUOTA_EXCEEDED) raise. 반환: 현재 잔액.
@@ -1734,7 +1736,6 @@ CHAT_SYSTEM_PROMPT = """NightOff 의 기획 파트너다.
 의도가 명확하면 (다양한 표현 모두 포함) 즉시 해당 버튼/메뉴 안내.
 
 - **제안서 생성** (전체 PPTX 작성 — "만들어줘 / 써줘 / 써보자 / 쓰자 / 만들자 / 생성해줘 / 작성해줘 / 초안 뽑아줘 / 바로 만들어 / 지금 만들어" 등 다양한 표현 모두 포함) → "✨ 제안서 생성 버튼을 눌러주세요."
-- **부분 페이지 재생성** ("X쪽 다시 만들어줘 / 써줘 / 뽑아줘 / 수정해줘 / 재생성", "특정 슬라이드만 수정" 등) → "채팅 헤더의 📄 페이지 재생성 버튼을 눌러주세요."
 - **RFP 분석** ("RFP 분석해줘", "RFP 어때", "RFP 좀 봐줘", "RFP 살펴봐" 등) → "RFP 업로드 화면에서 자동 분석됩니다. 결과를 같이 다뤄봅시다."
 - **자체 검증 / 점수 시뮬레이션** ("점수 어때", "내 점수", "평가해줘", "검증해줘", "시뮬레이션" 등) → "🔍 자체 검증 버튼을 눌러주세요. Compliance + Red Team 통합 분석이 떠요."
 - **발주처 들여다보기** ("발주처 정보", "발주처 어떤 곳", "발주처 분석", "이 기관 어때" 등) → "발주처 들여다보기 메뉴가 별도로 있어요. 결과 보고 같이 정리하시죠."
@@ -3350,7 +3351,7 @@ def api_conv_get(conv_id: str, user: dict = Depends(get_current_user)):
     conv_dict = dict(conv)
     conv_dict["pptx_path"] = _pptx_url_for_conv(conv_id, conv_dict.get("pptx_path"))
 
-    # Sub-step D-2 — 부분 재생성 모달 outline list 용 outline 배열 응답에 포함.
+    # outline 배열 응답에 포함 (액션패널 페이지 수 표시 등에서 사용).
     # messages JSON 의 final_payload.outline 활용 (Sub-step A 헬퍼 재사용).
     # 옛 conv (outline 없음) / 풀 생성 안 됨 → None (클라이언트가 list hidden).
     proposal_outline = None
@@ -3905,9 +3906,11 @@ def _format_chat_block_proposal(payload: Optional[dict]) -> str:
 
     lines.append(
         "→ 사용자가 특정 페이지를 물으면 위 요약을 근거로 답하되, 실제 본문 문장을 "
-        "지어내지 말 것. 요약에 없는 세부는 \"채팅 헤더의 📄 페이지 재생성 버튼으로 "
-        "해당 장을 다시 뽑을 수 있어요\"로 안내. 페이지 수정·재생성은 채팅에서 직접 "
-        "실행하지 말 것(기존 [별도 기능과의 분리] 유지)."
+        "지어내지 말 것. 부분 수정 요청에는 \"제안서는 처음부터 끝까지 맥락이 "
+        "일관되게 설계되어 특정 장만 따로 고치지 않아요. 세부 보완이 필요하시면 "
+        "내려받으신 PPTX 에서 직접 편집하시거나, ✨ 제안서 생성으로 전체를 다시 "
+        "만드실 수 있어요(크레딧이 다시 차감됩니다)\" 로 안내. "
+        "페이지 수정은 채팅에서 직접 실행하지 말 것(기존 [별도 기능과의 분리] 유지)."
     )
     return "\n".join(lines)
 
@@ -7711,16 +7714,13 @@ def _build_pptx_from_pages(pages: list[dict], title: str, output_path: Path,
     return len(prs.slides)
 
 
-# ─── 부분 재생성 헬퍼 (Sub-step A) ───────────────────────────────────────────
-# 부분 재생성 기능 (페이지 N만 다시 만들기) 의 컨텍스트 재구성 헬퍼 3개.
-# 본 sub-step 은 헬퍼만 추가 (호출처 없음). Sub-step C 의 신규 endpoint 에서 활용 예정.
-# proposal_multi_pass.orchestrate 가 messages 에 저장한 final_payload 를 재활용 —
-# outline 데이터가 함께 저장되므로 부분 재생성 시 별도 컬럼/테이블 불필요.
+# ─── 제안서 payload 재사용 헬퍼 ────────────────────────────────────────────
+# proposal_multi_pass.orchestrate 가 messages 에 저장한 final_payload 를 재활용.
 
 def _load_proposal_payload_for_conv(db, conv_id: str) -> Optional[dict]:
     """conv_id 의 최근 assistant JSON 메시지를 final_payload dict 로 파싱.
 
-    부분 재생성 / 산출내역서 / PPTX 다운로드 등에서 재사용.
+    산출내역서 / PPTX 다운로드 / 자체 검증 등에서 재사용.
     실패 시 None 반환 (caller 가 404 등으로 처리).
 
     SELECT 조건 강화 (2026-05-13 hotfix):
@@ -7748,127 +7748,6 @@ def _load_proposal_payload_for_conv(db, conv_id: str) -> Optional[dict]:
         return payload
     except Exception:
         return None
-
-
-def _reconstruct_outline_item_from_payload(payload: dict, page: int):
-    """final_payload 에서 특정 페이지의 OutlineItem 재구성.
-
-    부분 재생성 시 proposal_multi_pass.generate_one_slide() 의 item 인자로 사용.
-    payload.outline 배열에서 page 일치하는 항목 검색 → OutlineItem dataclass 인스턴스 빌드.
-    OutlineItem 필드: page, section, governing_main, governing_sub, key_msgs, viz_hint, viz_pattern, role.
-    실패 (해당 page 없음 / dataclass 구성 실패) 시 None 반환.
-    """
-    from proposal_multi_pass import OutlineItem
-
-    outline = payload.get("outline") or []
-    for item_dict in outline:
-        if not isinstance(item_dict, dict):
-            continue
-        if item_dict.get("page") == page:
-            try:
-                return OutlineItem(
-                    page=item_dict["page"],
-                    section=item_dict.get("section", ""),
-                    governing_main=item_dict.get("governing_main", ""),
-                    governing_sub=item_dict.get("governing_sub", []) or [],
-                    key_msgs=item_dict.get("key_msgs", []) or [],
-                    viz_hint=item_dict.get("viz_hint", ""),
-                    # Spec D-Fix-LayoutVariety-1 — partial-regen 시 사전 배정 패턴 보존
-                    viz_pattern=item_dict.get("viz_pattern", ""),
-                    # Spec D-Fix-BodyRole-1 — partial-regen 시 본론/보조 식별 딱지 보존
-                    role=item_dict.get("role", ""),
-                )
-            except Exception:
-                return None
-    return None
-
-
-def _build_outline_summary_from_payload(payload: dict) -> str:
-    """final_payload 의 outline 을 outline_summary 텍스트로 빌드.
-
-    proposal_multi_pass.generate_slides_parallel (line 1505-1508) 의 빌드 패턴과
-    정확히 일치 — generate_one_slide 의 outline_summary 인자로 동일 형식 전달.
-    형식: "  p{page}. {section}: {governing_main}" 줄바꿈 join.
-    """
-    outline = payload.get("outline") or []
-    lines = []
-    for item in outline:
-        if not isinstance(item, dict):
-            continue
-        page = item.get("page", 0)
-        section = item.get("section", "")
-        gm = item.get("governing_main", "")
-        lines.append(f"  p{page}. {section}: {gm}")
-    return "\n".join(lines)
-
-
-# ─── 부분 재생성 헬퍼 (Sub-step B) ───────────────────────────────────────────
-# RFP / RAG / intel block 재구성 — 풀 생성 (api_proposals_generate_multipass) 의
-# 호출부 (line 3357, 3374-3396, 3399, 3402-3414) 패턴과 정확히 동일.
-# generate_one_slide 외부 호출 시 동일 컨텍스트 보장 → 풀 생성과 일관된 결과.
-# conversation_block 은 기존 _get_conversation_block(conv_id) 직접 호출 (별도 wrapper 불필요).
-
-def _build_rfp_block_for_regen(client_id: str) -> tuple[str, dict]:
-    """conv 의 client_id 에서 RFP 분석 결과 → RFP block 텍스트 빌드.
-
-    풀 생성 흐름 (api_proposals_generate_multipass line 3357, 3399) 동일 패턴.
-    Returns: (rfp_block, rfp_analysis_dict) — rfp_analysis 는
-    _build_rag_block_for_slide_regen 에서도 도메인 라벨 추출용으로 재사용.
-    """
-    rfp_analysis = _get_rfp_aggregated(client_id) or {}
-    rfp_block = "[RFP 분석]\n" + json.dumps(rfp_analysis, ensure_ascii=False, indent=2)
-    return rfp_block, rfp_analysis
-
-
-def _build_rag_block_for_slide_regen(rfp_analysis: dict, item) -> str:
-    """OutlineItem + RFP 분석 기반 슬라이드별 RAG block 빌드.
-
-    풀 생성 흐름의 `_rag_for_slide` closure (line 3374-3396) 와 동일 패턴.
-    rag_retriever 미가용 / 검색 결과 0 시 빈 문자열 반환 (graceful degrade).
-    """
-    if rag_retriever is None or not rag_retriever.is_available():
-        return ""
-    try:
-        domain_label = (rfp_analysis or {}).get("project_domain_label", "")
-        q = rag_retriever.build_query_from_slide(
-            section=item.section,
-            key_msgs=item.key_msgs,
-            domain_label=domain_label,
-            governing=item.governing_main,
-        )
-        if not q:
-            return ""
-        hints = rag_retriever.retrieve_style_hints(
-            q, top_k=8, excerpt_chars=900, excerpt_count=4,
-        )
-        if not hints:
-            return ""
-        return rag_retriever.format_hints_for_prompt(hints)
-    except Exception as e:
-        log.warning("partial-regen: 슬라이드 RAG 실패 (p%d): %s", item.page, e)
-        return ""
-
-
-def _build_intel_block_for_regen(client_id: str) -> str:
-    """발주처 들여다보기 데이터 (client_intel 테이블) → intel block 텍스트.
-
-    풀 생성 흐름 (api_proposals_generate_multipass line 3402-3414) 동일 패턴.
-    데이터 없음 / 에러 시 빈 문자열 (graceful degrade).
-    """
-    intel_block = ""
-    try:
-        with get_db() as db:
-            intel_row = db.execute(
-                "SELECT intel_json FROM client_intel WHERE client_id=?",
-                (client_id,),
-            ).fetchone()
-        if intel_row:
-            intel_obj = json.loads(intel_row["intel_json"] or "{}")
-            if intel_obj and not intel_obj.get("error"):
-                intel_block = "[발주처 들여다보기]\n" + json.dumps(intel_obj, ensure_ascii=False, indent=2)
-    except Exception:
-        intel_block = ""
-    return intel_block
 
 
 @app.post("/api/proposals/pptx")
@@ -8163,272 +8042,6 @@ def api_proposals_pptx(body: PptxExportIn, user: dict = Depends(get_current_user
         "filename": download_name,
         "page_count": slide_count,
         "mode": "master" if used_master else "fallback",
-    }
-
-
-# ---------------------------------------------------------------------------
-# 📝 부분 페이지 재생성 — 50p 중 N페이지만 LLM 재생성 후 새 PPTX 제공 (Sub-step C)
-# ---------------------------------------------------------------------------
-# 사용자가 마음에 안 드는 페이지 발견 시 전체 재생성 ($5, 7분) 대신 1페이지 재생성
-# ($0.10, 20-40초). 풀 생성 시 messages 에 저장된 final_payload (outline 포함) 를
-# 활용해 generate_one_slide 외부 호출 → slides[N-1] 교체 → 전체 PPTX 재생성.
-#
-# 핵심 자산 보호:
-#   - proposal_multi_pass: generate_one_slide 호출만 (시그니처 무변경)
-#   - pptx_generator: generate_from_shape_json 호출만 (변경 0)
-#   - AI 프롬프트 영역 0 (SLIDE pass user prompt 빌더가 받는 컨텍스트만 inject)
-#
-# 진단 결과: _build_slide_user_prompt 는 rfp_block / intel_block / conversation_block
-# 받지 않음 (outline 자체가 RFP/intel 반영 상태로 messages 에 저장됨).
-# 따라서 RFP/intel block 헬퍼 (Sub-step B) 는 본 endpoint 에서 미호출 — 향후
-# SLIDE pass 확장 시 활용 가능. RAG 헬퍼만 호출 (slide RAG 는 SLIDE pass 가 사용).
-
-class RegenPageIn(BaseModel):
-    page: int
-
-
-@app.post("/api/conversations/{conv_id}/proposals/regenerate-page")
-async def api_proposals_regenerate_page(
-    conv_id: str, body: RegenPageIn, user: dict = Depends(get_current_user)
-):
-    """부분 페이지 재생성 — 기존 PPTX 의 N페이지만 LLM 재생성 후 새 PPTX 제공.
-
-    크레딧: 페이지당 400 (풀 생성 단가 동일).
-    응답: {"page", "section", "url", "filename", "credits_remaining", "elapsed_sec"}
-    """
-    import proposal_multi_pass as mp
-    import pptx_generator
-    import time as _time_local
-
-    page = int(body.page)
-    if page < 1:
-        raise HTTPException(400, "페이지는 1 이상이어야 해요.")
-
-    # 1. Auth + Ownership + 기본 정보 조회
-    with get_db() as db:
-        _verify_conv_owned_by_user(db, conv_id, user["id"])
-        conv = db.execute("SELECT * FROM conversations WHERE id=?", (conv_id,)).fetchone()
-        client_id = conv["client_id"]
-
-        # 2. quota 검증 (100 크레딧)
-        quota_row = db.execute(
-            "SELECT monthly_proposal_quota FROM users WHERE id=?", (user["id"],)
-        ).fetchone()
-        prop_q = int(quota_row["monthly_proposal_quota"] or 0) if quota_row else 0
-        if prop_q < CREDITS_PER_PAGE:
-            raise HTTPException(
-                status_code=402,
-                detail={
-                    "error": "크레딧이 부족해요 (1페이지 재생성 = 100 크레딧). 결제 후 다시 시도해 주세요.",
-                    "code": "QUOTA_EXCEEDED",
-                    "quota_remaining": prop_q,
-                    "required": CREDITS_PER_PAGE,
-                },
-            )
-
-        # 3. messages JSON 로드 (Sub-step A-1)
-        payload = _load_proposal_payload_for_conv(db, conv_id)
-        if not payload:
-            raise HTTPException(
-                status_code=404,
-                detail={
-                    "error": "제안서 데이터가 없어요. 먼저 ✨ 제안서 생성 버튼을 눌러주세요.",
-                    "code": "PROPOSAL_NOT_FOUND",
-                },
-            )
-
-        # 발주처명 (PPTX 파일명용)
-        cli_row = db.execute(
-            "SELECT name FROM clients WHERE id=?",
-            (client_id,),
-        ).fetchone()
-        client_name = (cli_row["name"] if cli_row else "") or "제안서"
-
-    # 4. page 유효성 검증
-    slides = payload.get("slides") or []
-    if page > len(slides):
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error": f"페이지 범위 초과: 현재 제안서는 {len(slides)}페이지예요.",
-                "code": "PAGE_OUT_OF_RANGE",
-                "max_page": len(slides),
-            },
-        )
-
-    # 5. OutlineItem 재구성 (Sub-step A-2)
-    item = _reconstruct_outline_item_from_payload(payload, page)
-    if item is None:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error": "이 제안서는 부분 재생성을 지원하지 않는 옛 버전이에요. ✨ 제안서 생성 버튼으로 전체 재생성해주세요.",
-                "code": "OUTLINE_MISSING",
-            },
-        )
-
-    # 6. SLIDE pass 컨텍스트 빌드
-    outline_summary = _build_outline_summary_from_payload(payload)  # Sub-step A-3
-    # RFP analysis 추출 — slide RAG block 빌드에 domain_label 필요
-    _, rfp_analysis = _build_rfp_block_for_regen(client_id)  # Sub-step B-1 (rfp_analysis 만 사용)
-    rag_block = _build_rag_block_for_slide_regen(rfp_analysis, item)  # Sub-step B-2
-
-    canvas = (
-        float(payload.get("slide_width", 11.69)),
-        float(payload.get("slide_height", 8.27)),
-    )
-    total_slides = len(slides)
-    domain = payload.get("domain", "other")
-    quantitative_locks = payload.get("quantitative_locks") or {}
-
-    # 7. LLM 호출 (generate_one_slide — 핵심 자산, 시그니처 무변경)
-    try:
-        client = require_client()
-    except HTTPException:
-        raise
-
-    model = get_setting("model", MODEL_DEFAULT)
-
-    log.info("partial-regen 시작: conv=%s page=%d user=%s", conv_id, page, user["id"])
-    t0 = _time_local.time()
-
-    # ★★ Spec Atomic-Quota-Deduct — 착수 직전 원자적 선차감.
-    #   위 2단계 검증(prop_q)은 UX fast-fail 로 그대로 두고, 실제 차감을 여기서
-    #   원자적으로 한다. 사이에 든 것은 in-memory 검증뿐이라 TOCTOU 창 ≈ 0 이고,
-    #   400/404 로 끝나는 값싼 실패들은 차감 전에 걸러져 환불 대상이 아니다.
-    #   ★ 설계 스케치는 "2단계 검증을 차감으로 대체" 였으나, 여기로 내리면
-    #     환불이 필요한 구간이 LLM+PPTX 로 좁아진다 (동일 효과·더 작은 위험면).
-    charged_regen = 0
-    if OUTLINE_PRECHARGE_ENABLED:
-        _ok_rg = False
-        try:
-            with get_db() as _db_rg:
-                _ok_rg = _deduct_quota(_db_rg, user["id"], CREDITS_PER_PAGE)
-        except Exception as _e_rg:
-            log.error("★재생성 선차감 DB 오류 user=%s conv=%s err=%s",
-                      user["id"], conv_id, _e_rg)
-            _ok_rg = False
-        if not _ok_rg:
-            raise HTTPException(
-                status_code=402,
-                detail={
-                    "error": "크레딧이 부족해요 (1페이지 재생성 = 100 크레딧). 결제 후 다시 시도해 주세요.",
-                    "code": "QUOTA_EXCEEDED",
-                    "quota_remaining": prop_q,
-                    "required": CREDITS_PER_PAGE,
-                },
-            )
-        charged_regen = CREDITS_PER_PAGE
-
-    # ★ 차감분 보호 구간 — 아래 어디서 실패하든 전액 환불하고 예외를 다시 던진다.
-    #   BaseException 으로 잡는 이유: HTTPException 뿐 아니라 연결 끊김에 따른
-    #   asyncio.CancelledError 까지 환불 대상이다 (재생성 중 탭을 닫는 경우).
-    #   ⚠ 일반 함수라 제너레이터 제약(GeneratorExit)이 없어 안전하다.
-    try:
-        try:
-            sr = await mp.generate_one_slide(
-                client=client,
-                item=item,
-                outline_summary=outline_summary,
-                rag_per_slide_block=rag_block,
-                canvas=canvas,
-                total_slides=total_slides,
-                model=model,
-                domain=domain,
-                quantitative_locks=quantitative_locks,
-                theme=_get_policy("theme", "light"),  # Spec D-Build-TextRunsInject 1-d-② — partial-regen 도 정합
-            )
-        except Exception as e:
-            log.exception("partial-regen 예외 conv=%s page=%d", conv_id, page)
-            raise HTTPException(500, f"페이지 재생성 실패: {str(e)[:120]}")
-
-        if sr.error or not sr.shapes:
-            log.error("partial-regen 실패 conv=%s page=%d err=%s", conv_id, page, sr.error)
-            raise HTTPException(500, f"페이지 재생성 실패: {sr.error or 'shapes 비어있음'}")
-
-        # 8. payload 업데이트 (slides[page-1] 교체)
-        # Spec D-Build-PresetBelt — sr.meta(preset/left/right 등)를 펼쳐 박되 section/shapes 우선.
-        # meta 가 비면(=기존 6종 viz_pattern, LLM 이 preset 키 안 채운 경우) preset 없는 dict
-        # 그대로 박힘 → generate_from_shape_json else 분기 직행 → 기존 동작 무변경.
-        _slide = dict(sr.meta) if isinstance(getattr(sr, "meta", None), dict) else {}
-        _slide["section"] = sr.section
-        _slide["shapes"] = sr.shapes
-        payload["slides"][page - 1] = _slide
-
-        # 9. 새 assistant 메시지 INSERT — history 보존 (옛 메시지는 audit 용 잔존)
-        assistant_id = uuid.uuid4().hex[:12]
-        try:
-            with get_db() as db:
-                db.execute(
-                    "INSERT INTO messages(id,conversation_id,role,content) VALUES(?,?,?,?)",
-                    (assistant_id, conv_id, "assistant",
-                     json.dumps(payload, ensure_ascii=False)),
-                )
-        except Exception as e:
-            log.warning("partial-regen: assistant 메시지 저장 실패 (무시): %s", e)
-
-        # 10. PPTX 재생성 (옵션 A — 전체 PPTX 재생성, ~5-10초)
-        safe_client = _safe_filename(client_name)
-        disk_fname = f"{safe_client}_{conv_id[:8]}.pptx"
-        out_path = EXPORTS_PPTX_DIR / disk_fname
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-
-        try:
-            # Spec D-Build-ThemeConnect 1-b — partial-regen 경로도 theme 전달(정합).
-            _theme = _get_policy("theme", "light")
-            pptx_generator.generate_from_shape_json(payload, out_path, theme=_theme)
-        except Exception as e:
-            log.exception("partial-regen: PPTX 생성 실패 conv=%s page=%d", conv_id, page)
-            raise HTTPException(500, f"PPTX 생성 실패: {str(e)[:120]}")
-    except BaseException:
-        # ★★ Spec Atomic-Quota-Deduct — 실패·중단 시 전액 환불하고 원래 예외를 그대로 던진다.
-        #   환불이 빠지면 '재생성 실패했는데 과금' 이 되어 종전(fail-open) 보다 나빠진다.
-        if charged_regen > 0:
-            try:
-                with get_db() as _db_rf:
-                    _refund_quota(_db_rf, user["id"], charged_regen)
-                log.info("quota 환불(재생성): user=%s conv=%s page=%d refund=%d",
-                         user["id"], conv_id, page, charged_regen)
-            except Exception as _e_rf:
-                # A안(로그+수동정산) — 복구에 필요한 값을 전부 남긴다.
-                log.error("★환불실패 수동정산필요(재생성) user=%s conv=%s page=%d refund=%d err=%s",
-                          user["id"], conv_id, page, charged_regen, _e_rf)
-        raise
-
-    # 11. conversations.pptx_path 업데이트 (+ 플래그 OFF 시 종전 차감)
-    quota_remaining = prop_q
-    try:
-        with get_db() as db:
-            db.execute(
-                "UPDATE conversations SET pptx_path=?, pptx_updated_at=datetime('now','localtime') "
-                "WHERE id=?",
-                (f"/api/proposals/{conv_id}/download", conv_id),
-            )
-            # ★ Spec Atomic-Quota-Deduct — 플래그 ON 이면 착수 직전에 이미 차감했다.
-            #   OFF 면 종전대로 여기서 차감 (시점·조건 동일, 클램프만 원자조건으로 대체).
-            if not OUTLINE_PRECHARGE_ENABLED:
-                _deduct_quota(db, user["id"], CREDITS_PER_PAGE)
-            row = db.execute(
-                "SELECT monthly_proposal_quota FROM users WHERE id=?", (user["id"],)
-            ).fetchone()
-            quota_remaining = int(row["monthly_proposal_quota"] or 0) if row else 0
-    except Exception as e:
-        log.warning("partial-regen: DB 업데이트 실패 (무시): %s", e)
-
-    elapsed = _time_local.time() - t0
-    download_name = f"{safe_client}_제안서.pptx"
-    log.info(
-        "partial-regen 완료: conv=%s page=%d elapsed=%.1fs section=%s",
-        conv_id, page, elapsed, sr.section,
-    )
-
-    return {
-        "page": page,
-        "section": sr.section,
-        "url": f"/api/proposals/{conv_id}/download",
-        "filename": download_name,
-        "credits_remaining": quota_remaining,
-        "elapsed_sec": round(elapsed, 1),
     }
 
 

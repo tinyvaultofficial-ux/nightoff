@@ -5622,6 +5622,18 @@ async function renderChat(cid, convId) {
           }
           // Step 2 — 페이지 선택 모달 표시 → 사용자 선택 후 콜백에서 실제 생성 진행
           // pageLimit (line 4196) 전달 — 모달이 권장 배지 동적 매핑 + 초과 경고
+          // ★ Spec Regenerate-Confirm-Banner — 기존 제안서 유무·페이지 수를 모달에 전달.
+          //   판정은 pptx_path || last_proposal_pages > 0 (OR).
+          //   pptx_path 단독으로는 부족 — 생성 완료와 PPTX 변환 사이에 공백이 있고,
+          //   변환이 실패하면 "제안서는 있는데 pptx_path 는 없는" 상태가 된다.
+          //   두 값 모두 __nightoff_enableProposalButtons 가 완료 시 mutate 하므로
+          //   같은 세션에서 연달아 누르는 경우도 잡힌다.
+          //   ★ 페이지 수를 모르면(pptx_path 만 있는 경우) pages:0 으로 넘긴다 —
+          //     모달이 숫자를 빼고 "이미 제안서가 있어요" 로 안내한다.
+          const _convNow = (data && data.conversation) || {};
+          const _lastPages = parseInt(_convNow.last_proposal_pages || 0, 10) || 0;
+          const _hasProposal = _lastPages > 0 || !!_convNow.pptx_path;
+          const _existing = _hasProposal ? { pages: _lastPages } : null;
           showProposalPageSelectionModal((selectedPages) => {
             // 채팅 input 영역에 진행률 표시 — 가짜 user 메시지로 시각화
             const msgs = document.getElementById("chat-messages") || document.querySelector(".chat-messages");
@@ -5678,7 +5690,7 @@ async function renderChat(cid, convId) {
                 window.__nightoff_generating = false;
               }
             })();
-          }, pageLimit);
+          }, pageLimit, _existing);
         },
       });
       })(),
@@ -6387,7 +6399,18 @@ function buildPageOptions(pageLimit) {
   return unique;
 }
 
-function showProposalPageSelectionModal(onConfirm, pageLimit = null) {
+// Spec Regenerate-Confirm-Banner (2026-09-11) — 재과금 오클릭 방지.
+//   페이지 재생성 기능 제거 후 "다시 만들기" 는 전체 재생성뿐이고, 전액 재과금된다
+//   (50p 기준 5,000 크레딧). 그런데 ✨ 버튼의 disabled 는 크레딧·RFP 만 보므로
+//   이미 제안서가 있는 대화에서도 그대로 눌려 두 배가 나갈 수 있었다.
+//   ★ disabled 로 막지 않는다 — 재생성은 정당한 행위다. 막을 게 아니라 알려야 한다.
+//   ★ 새 모달을 만들지 않는다 — 이 모달이 이미 클릭과 생성 사이에서 한 번 멈춰 세우고
+//     옵션마다 크레딧을 보여준다. 경고 배너 한 줄이면 충분하다.
+//   existing: null 이면 첫 생성 → 배너 없이 종전과 완전히 동일한 경로.
+//             { pages: N } 이면 기존 제안서 있음. pages 가 0 이면 "몇 페이지인지 모름"
+//             (pptx_path 만 있는 경우) 이라 숫자를 빼고 안내한다 — 틀린 숫자를
+//             보여주느니 숫자를 생략하는 편이 정직하고 경고 효과는 같다.
+function showProposalPageSelectionModal(onConfirm, pageLimit = null, existing = null) {
   if (document.querySelector(".pages-modal-overlay")) return;
 
   // 옵션 (페이지, 크레딧, 설명) — pageLimit 있으면 동적, 없으면 기존 고정.
@@ -6434,6 +6457,20 @@ function showProposalPageSelectionModal(onConfirm, pageLimit = null) {
   card.appendChild(h("h2", { class: "beta-notice-title" }, "📋 제안서 페이지를 선택하세요"));
   card.appendChild(h("p", { class: "beta-notice-subtitle" },
     "선택한 페이지 수만큼 제안서가 생성됩니다."));
+
+  // ★ Spec Regenerate-Confirm-Banner — 기존 제안서가 있을 때만 경고.
+  //   첫 생성(existing === null)에는 이 블록이 아예 만들어지지 않는다.
+  //   차감액은 아래 옵션별로 이미 표시되므로 여기서 금액을 중복 표기하지 않는다.
+  if (existing) {
+    const _n = parseInt((existing && existing.pages) || 0, 10) || 0;
+    const _what = _n > 0 ? `이미 제안서(${_n}페이지)가 있어요.` : "이미 제안서가 있어요.";
+    card.appendChild(h("p", {
+      style:
+        "margin:14px 0 0; padding:12px 14px; border-radius:8px;" +
+        "background:var(--warning-soft, #FFE8D6); border:0.5px solid var(--warning, #D97706);" +
+        "color:var(--warning, #D97706); font-size:13px; line-height:1.6; word-break:keep-all;",
+    }, `⚠ ${_what} 새로 만들면 이전 것을 대체하고 크레딧이 다시 차감됩니다.`));
+  }
 
   // 옵션 리스트 — 인라인 스타일로 깔끔하게
   const listWrap = h("div", { style: "display:flex; flex-direction:column; gap:10px; margin:18px 0 8px;" });

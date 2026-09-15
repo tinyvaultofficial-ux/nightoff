@@ -8952,11 +8952,21 @@ def api_admin_users_patch(
         if body.monthly_proposal_quota_add is not None:
             prop_q_after = prop_q_after + int(body.monthly_proposal_quota_add)
         if prop_q_after != prop_q_before:
-            updates.append("monthly_proposal_quota=?")
-            params.append(prop_q_after)
+            # Spec Pilot-Onboarding B-4 (2026-09-15) — add 단독은 상대 연산.
+            #   종전: 위에서 읽은 잔액 + N 을 절대값으로 UPDATE → 읽기~쓰기 사이에 끼어든
+            #         사용자 차감이 덮여 크레딧이 되살아날 수 있었다.
+            #   set 이 끼면 원래 "덮어쓰기" 의미이므로 절대값 유지 (설정 먼저 → 추가 나중 규칙).
+            _add_only = (body.monthly_proposal_quota is None
+                         and body.monthly_proposal_quota_add is not None)
+            if _add_only:
+                updates.append("monthly_proposal_quota = monthly_proposal_quota + ?")
+                params.append(int(body.monthly_proposal_quota_add))
+            else:
+                updates.append("monthly_proposal_quota=?")
+                params.append(prop_q_after)
             changes["monthly_proposal_quota"] = {
                 "before": prop_q_before,
-                "after": prop_q_after,
+                "after": prop_q_after,   # UPDATE 후 실제값으로 재기록 (아래)
                 "set": int(body.monthly_proposal_quota) if body.monthly_proposal_quota is not None else None,
                 "add": int(body.monthly_proposal_quota_add) if body.monthly_proposal_quota_add is not None else None,
             }
@@ -8964,8 +8974,12 @@ def api_admin_users_patch(
             if body.monthly_proposal_quota_add is not None:
                 bonus_before = int(before_dict.get("monthly_proposal_quota_bonus") or 0)
                 bonus_after = bonus_before + int(body.monthly_proposal_quota_add)
-                updates.append("monthly_proposal_quota_bonus=?")
-                params.append(bonus_after)
+                if _add_only:
+                    updates.append("monthly_proposal_quota_bonus = monthly_proposal_quota_bonus + ?")
+                    params.append(int(body.monthly_proposal_quota_add))
+                else:
+                    updates.append("monthly_proposal_quota_bonus=?")
+                    params.append(bonus_after)
                 changes["monthly_proposal_quota_bonus"] = {
                     "before": bonus_before, "after": bonus_after,
                 }
@@ -9009,6 +9023,19 @@ def api_admin_users_patch(
                 _taken = _allocate_pass_consumption(db, user_id, _admin_dec, _now_kst_str())
                 log.info("[pass-expiry] 관리자 하향 배분 user=%s dec=%d from_passes=%d",
                          user_id, _admin_dec, _taken)
+        # Spec Pilot-Onboarding (2026-09-15) — 감사 로그 after 는 UPDATE 후 실제값.
+        #   add 상대 연산이면 동시 차감이 반영된 결과가 계산값과 다를 수 있으므로 재조회한다.
+        if "monthly_proposal_quota" in changes or "monthly_proposal_quota_bonus" in changes:
+            _after_row = db.execute(
+                "SELECT monthly_proposal_quota AS q, monthly_proposal_quota_bonus AS b "
+                "FROM users WHERE id=?",
+                (user_id,),
+            ).fetchone()
+            if _after_row:
+                if "monthly_proposal_quota" in changes:
+                    changes["monthly_proposal_quota"]["after"] = int(_after_row["q"] or 0)
+                if "monthly_proposal_quota_bonus" in changes:
+                    changes["monthly_proposal_quota_bonus"]["after"] = int(_after_row["b"] or 0)
 
     # 감시 로그 — action 영역 분기 (우선순위: suspend > quota_add > quota_set > credits > 일반)
     action = "user_modify"
@@ -9956,10 +9983,18 @@ if TOSS_CLIENT_KEY:
 else:
     log.warning("TOSS_CLIENT_KEY 미설정 — 결제위젯 비활성 (graceful skip)")
 if TOSS_SECRET_KEY:
-    _sk_tail = TOSS_SECRET_KEY[-4:] if len(TOSS_SECRET_KEY) >= 4 else "****"
-    log.info("TOSS_SECRET_KEY source = ENV · ···%s", _sk_tail)
+    # Spec Pilot-Onboarding (2026-09-15) — 시크릿 키는 끝자리 등 일부 문자도 로그에 남기지 않는다.
+    log.info("TOSS_SECRET_KEY source = ENV · set")
 else:
     log.warning("TOSS_SECRET_KEY 미설정 — 결제승인 비활성 (graceful skip)")
+
+# ★ Spec Pilot-Onboarding A2 (2026-09-15) — 테스트 키로 승인된 결제는 크레딧 지급 skip.
+#   토스 Payment 응답에는 test/live 구분 필드가 없다 → 서버 시크릿 키 접두사로 판정.
+#   (토스 문서: "테스트 키는 test로 시작해요") · live 키로 교체하면 자동 False → 차단 자동 해제.
+#   심사 캡처용 결제창·토스 승인·금액 검증은 그대로 두고 "지급만" 막는다.
+#   ★ 키 값은 로그에 남기지 않는다 (True/False 만).
+TOSS_TEST_MODE = TOSS_SECRET_KEY.startswith("test")
+log.info("TOSS_TEST_MODE=%s (테스트 키 결제는 크레딧 지급 skip)", TOSS_TEST_MODE)
 
 TOSS_CONFIRM_URL = "https://api.tosspayments.com/v1/payments/confirm"
 TOSS_CONFIRM_TIMEOUT_SEC = 15
@@ -10132,6 +10167,15 @@ def api_payment_confirm(
             "granted_credits": int(row["granted_credits"] or 0),
             "already": True,
         }
+    # Spec Pilot-Onboarding A2 — 테스트 승인 주문 재요청: 이미 처리됨으로 반환, 지급 0.
+    #   live 키로 교체한 뒤 재요청해도 여기서 끝난다 → 테스트 결제가 나중에 지급되는 일 없음.
+    if row["status"] == "test_paid":
+        log.info("[payment] confirm skip · 테스트 승인 주문 재요청 order=%s", order_id)
+        return {
+            "ok": True, "status": "paid", "orderId": order_id,
+            "amount": int(row["amount"]), "tier": row["tier"],
+            "granted_credits": 0, "test_mode": True, "already": True,
+        }
     if row["status"] == "failed":
         raise HTTPException(400, "이전에 실패한 주문이에요. 다시 결제해 주세요.")
 
@@ -10166,6 +10210,30 @@ def api_payment_confirm(
         with get_db() as db:
             db.execute("UPDATE payments SET status='failed' WHERE order_id=?", (order_id,))
         raise HTTPException(402, "결제 금액 검증에 실패했어요.")
+
+    # ★ Spec Pilot-Onboarding A2 — 테스트 키 승인은 크레딧 지급 없이 'test_paid' 로 기록.
+    #   (d) 금액 위변조·(e) 토스 승인·(f) 응답 금액 재확인은 위에서 이미 통과 → 심사 흐름 동일.
+    #   (g) 조건부 UPDATE·(h) 지급·이용권 기록 문장에는 도달하지 않는다 (무접촉).
+    #   status='test_paid' → status='paid' 를 세는 곳(월 리셋 제외·월 소멸·매출)에 섞이지 않는다.
+    #   동시 요청 방지 = 자체 조건 WHERE status='pending' (두 번째는 rowcount 0, 응답 동일).
+    #   응답 status 는 "paid" — 프론트 완료 화면이 status==='paid' 로만 분기하기 때문 (test_mode 로 구분).
+    if TOSS_TEST_MODE:
+        with get_db() as db:
+            db.execute(
+                "UPDATE payments SET status='test_paid', payment_key=?, "
+                "paid_at=datetime('now','localtime') "
+                "WHERE order_id=? AND status='pending'",
+                (payment_key, order_id),
+            )
+        log.warning("[payment] 테스트 키 승인 — 크레딧 지급 skip · order=%s tier=%s user=%s",
+                    order_id, row["tier"], row["user_id"])
+        return {
+            "ok": True, "status": "paid",
+            "orderId": order_id, "amount": server_amount,
+            "tier": row["tier"],
+            "granted_credits": 0,
+            "test_mode": True,
+        }
 
     # (g) ★ 원자적 status=paid + granted_credits 갱신 (중복지급 방지 · 조각4b 핵심)
     #     조건부 UPDATE — granted_credits=0 일 때만 성공. concurrent 두 요청 중 하나만 통과.

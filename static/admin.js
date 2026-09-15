@@ -309,8 +309,15 @@ function openUserModal(userId) {
         <h3>사용자 수정 — ${escapeHtml(u.email || u.id)}</h3>
         <div class="form-row">
           <label>제안서 크레딧 (현재 ${fmtNumber(propQ)} = 약 ${propPages}페이지)</label>
-          <input type="number" id="m-prop-quota" value="${propQ}" min="0" step="100" />
-          <div style="font-size:11px; color:var(--fg-2); margin-top:2px;">1페이지 = 100 크레딧 · 월 정책 기본값 25,000</div>
+          <input type="number" id="m-prop-quota" value="${propQ}" min="0" step="100" data-initial="${propQ}" />
+          <div style="font-size:11px; color:var(--fg-2); margin-top:2px;">1페이지 = 100 크레딧 · 신규 가입 기본 500 · ⚠ 직접 설정은 현재 잔액을 덮어써요</div>
+        </div>
+        <!-- Spec Pilot-Onboarding B (2026-09-15) — 크레딧 추가 (+N).
+             monthly_proposal_quota_add API → 잔액·bonus(화면 분모) 동시 증가, 서버에서 최신 잔액에 더함. -->
+        <div class="form-row">
+          <label>크레딧 추가 (+N)</label>
+          <input type="number" id="m-prop-add" value="0" min="0" step="1000" />
+          <div style="font-size:11px; color:var(--fg-2); margin-top:2px;">현재 잔액에 더해져요 · 화면 분모도 함께 올라가요 (파일럿 지급은 여기로)</div>
         </div>
         <!-- Step 3-4 (옵션 A) — "유료 크레딧" + "이달 사용액" 필드 제거.
              DB 컬럼 (users.credits / credits_used_this_month) + AdminUserPatch 모델 + endpoint 보존.
@@ -318,11 +325,11 @@ function openUserModal(userId) {
              향후 PG 연동 시 git history 에서 UI 복구 가능. -->
         <div class="form-row">
           <label>마지막 리셋 날짜 (YYYY-MM-DD)</label>
-          <input type="date" id="m-reset" value="${escapeHtml((u.last_reset_date || "").slice(0, 10))}" />
+          <input type="date" id="m-reset" value="${escapeHtml((u.last_reset_date || "").slice(0, 10))}" data-initial="${escapeHtml((u.last_reset_date || "").slice(0, 10))}" />
         </div>
         <div class="form-row">
           <label>정지 여부</label>
-          <select id="m-suspend">
+          <select id="m-suspend" data-initial="${u.is_suspended ? 1 : 0}">
             <option value="0" ${!u.is_suspended ? "selected" : ""}>활성</option>
             <option value="1" ${u.is_suspended ? "selected" : ""}>정지</option>
           </select>
@@ -452,13 +459,39 @@ async function saveUserModal(userId) {
     return;
   }
 
-  const body = {
-    is_suspended: suspend,
-  };
-  if (reset) body.last_reset_date = reset;
-  // 제안서 크레딧 — 직접 set 모드. AdminUserPatch.monthly_proposal_quota 가 set, _add 는 누적.
-  if (propQuota !== null && !Number.isNaN(propQuota) && propQuota >= 0) {
+  // Spec Pilot-Onboarding B (2026-09-15) — "바뀐 필드만" 전송.
+  //   ① 종전: 크레딧 칸(모달 연 시점 값)을 항상 set 전송 → 모달을 연 사이 사용자 차감분이 되살아남.
+  //   ② 종전: is_suspended 를 항상 전송 → 크레딧만 바꿔도 감사 로그가 user_unsuspend 로 기록.
+  //   크레딧 칸 + 추가 칸 동시 입력은 허용 (서버 규칙: 설정 먼저 → 추가 나중).
+  const addInput = document.getElementById("m-prop-add");
+  const addRaw = addInput ? String(addInput.value || "").trim() : "";
+  const addN = addRaw === "" ? 0 : Number(addRaw);
+  if (!Number.isInteger(addN) || addN < 0) {
+    toast("추가 크레딧은 0 이상의 정수로 입력해 주세요", "error");
+    return;
+  }
+  const suspendInput = document.getElementById("m-suspend");
+  const resetInput = document.getElementById("m-reset");
+
+  const body = {};
+  if (suspendInput && suspend !== Number(suspendInput.dataset.initial)) {
+    body.is_suspended = suspend;
+  }
+  if (reset && resetInput && reset !== (resetInput.dataset.initial || "")) {
+    body.last_reset_date = reset;
+  }
+  // 제안서 크레딧 직접 설정 — 칸을 실제로 고쳤을 때만 set (AdminUserPatch.monthly_proposal_quota).
+  if (propQuota !== null && !Number.isNaN(propQuota) && propQuota >= 0
+      && propQuotaInput && propQuota !== Number(propQuotaInput.dataset.initial)) {
     body.monthly_proposal_quota = propQuota;
+  }
+  // 크레딧 추가 — monthly_proposal_quota_add (서버 상대 연산 · bonus 동시 증가).
+  if (addN > 0) {
+    body.monthly_proposal_quota_add = addN;
+  }
+  if (Object.keys(body).length === 0) {
+    toast("변경 사항이 없어요", "error");
+    return;
   }
 
   if (btn) { btn.disabled = true; btn.textContent = "저장 중..."; }

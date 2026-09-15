@@ -4413,7 +4413,7 @@ async def api_proposals_generate_multipass(
                                       user["id"], conv_id, _need, _e_pc)
                             _ok = False
                         if not _ok:
-                            yield f"data: {json.dumps({'type':'error','code':'QUOTA_EXCEEDED','error':f'이 제안서는 {_need:,} 크레딧이 필요한데 잔액이 부족해요. 충전 후 다시 시도해 주세요.'}, ensure_ascii=False)}\n\n"
+                            yield f"data: {json.dumps({'type':'error','code':'QUOTA_EXCEEDED','error':f'이 제안서는 {_need:,} 크레딧이 필요한데 잔액이 부족해요. 요금제에서 이용권을 구매한 뒤 다시 시도해 주세요.'}, ensure_ascii=False)}\n\n"
                             return   # → finally (charged=0 이라 환불 대상 없음)
                         charged = _need
                         log.info("선차감: user=%s conv=%s pages=%d charged=%d",
@@ -9633,16 +9633,20 @@ def _shutdown_scheduler() -> None:
 # ★ 이 조각은 status 만 갱신 · users.credits 지급 X (2단계 예정).
 # ★ 프론트 (/checkout · /success · /fail) 는 다음 조각 (3).
 #
-# 서버 티어 단일 진실원 — 프론트 (static/app.js:1099~1108) 런칭 특가와 일치 필수.
-#   스타터  · 프로모션 31만원 · 정가 36만원 · 14,000 크레딧
-#   프로    · 프로모션 64만원 · 정가 85만원 · 30,000 크레딧
-#   비즈니스· 프로모션 132만원· 정가 165만원· 62,000 크레딧
-# ★ 정가 아니라 현재 노출 중인 런칭 특가(promo) 적용 (app.js:1122 "🎉 공식 런칭 기념").
-# ★ credits 값 (14000/30000/62000) 은 다음 조각(users.credits 지급) 에서 사용.
+# 서버 티어 단일 진실원 — 프론트 (static/app.js renderPricingSection TIERS) 와 일치 필수.
+# Spec Pricing-Final-Tiers (2026-09-15) — 월 이용권(단건) 최종 요금제.
+#   스타터  · 특가 20만원 · 정가 23만원 · 14,000 크레딧 · 월 2건
+#   프로    · 특가 45만원 · 정가 53만원 · 35,000 크레딧 · 월 5건
+#   비즈니스· 특가 75만원 · 정가 90만원 · 62,000 크레딧 · 월 9건
+# ★ 정가 아니라 현재 노출 중인 런칭 특가(promo) 적용 ("🎉 공식 런칭 기념").
+# ★ 프론트는 이 값을 fetch 하지 않는다 — 금액·크레딧을 바꿀 때는 app.js TIERS 도 함께.
+#   (8/27 값이 그대로 남아 요금제 20만 ≠ 결제창 31만 이 된 전례)
+# ★ amount 는 주문 생성 시 payments.amount 에 저장되고, confirm 위변조 검증은 그 저장값과
+#   대조한다 (이 dict 재조회 X). credits 는 confirm 시점에 이 dict 에서 읽어 지급한다.
 TOSS_TIERS = {
-    "starter":  {"amount":  310000, "credits": 14000, "label": "스타터"},
-    "pro":      {"amount":  640000, "credits": 30000, "label": "프로"},
-    "business": {"amount": 1320000, "credits": 62000, "label": "비즈니스"},
+    "starter":  {"amount": 200000, "credits": 14000, "label": "스타터"},
+    "pro":      {"amount": 450000, "credits": 35000, "label": "프로"},
+    "business": {"amount": 750000, "credits": 62000, "label": "비즈니스"},
 }
 
 # 토스 키 (env-first · ANTHROPIC_API_KEY / RESEND_API_KEY 패턴 그대로).

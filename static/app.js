@@ -169,7 +169,7 @@ async function _parseErrorResponse(r) {
   if (msg && typeof msg === "object") {
     const code = msg.code || "";
     if (code === "QUOTA_EXCEEDED") {
-      msg = (msg.error || "이달 할당량 소진") + " — 다음 달 1일 리셋";
+      msg = (msg.error || "크레딧이 부족해요") + " — 요금제에서 이용권을 확인하세요";
     } else {
       msg = msg.error || msg.message || JSON.stringify(msg);
     }
@@ -371,7 +371,7 @@ function refreshQuotaUI(kind, pages) {
     propBtn.classList.toggle("btn-quota-disabled", exhausted);
     if (exhausted) {
       propBtn.setAttribute("disabled", "");
-      propBtn.setAttribute("title", "제안서 크레딧이 1페이지(100) 미만이에요 — 다음 달 1일 리셋");
+      propBtn.setAttribute("title", "제안서 크레딧이 1페이지(100) 미만이에요 — 요금제에서 이용권을 확인하세요");
     } else {
       propBtn.removeAttribute("disabled");
       propBtn.setAttribute(
@@ -777,7 +777,7 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
             }, [
               h("span", { class: "quota-label" }, "📋 제안서"),
               h("span", { id: "sidebar-proposal-quota", class: "quota-value",
-                title: `${(q.proposal_remaining).toLocaleString("ko-KR")} ÷ 400 = ${propPagesNow}페이지` },
+                title: `${(q.proposal_remaining).toLocaleString("ko-KR")} ÷ 100 = ${propPagesNow}페이지` },
                 `${(q.proposal_remaining).toLocaleString("ko-KR")} / ${(q.proposal_total).toLocaleString("ko-KR")} (≈${propPagesNow}p)`),
             ]),
           ];
@@ -785,7 +785,7 @@ async function renderSidebar(active = "clients", currentClientId = null, preload
           return h("div", {
             id: "sidebar-quota-wrap",
             class: "sidebar-footer-quota",
-            title: "이달 사용 현황 (다음 달 1일 리셋)",
+            title: "크레딧 사용 현황 (이용권은 구매일로부터 1개월)",
           }, children);
         })(),
       ] : []),
@@ -953,20 +953,23 @@ function renderPricingSection(opts) {
     //   regular = 월 정가 · promo = 런칭 특가(3개월 한정) · discount = 할인 배지.
     //   ★ credits 는 더 이상 화면에 렌더하지 않는다 (크레딧 표시 제거 — 위 사용량 행 참조).
     //     값 자체는 남겨두되 결제 로직(main.py TOSS_TIERS)과는 별개이며 무접촉.
-    //   실제 할인율: 스타터 16.67% · 프로 15.18% · 비즈니스 15.00%
-    //     → 최소 15.00% 이므로 "약 15% 할인" 이 전 티어에서 참이고,
-    //       상단 띠 "최대 15% 절약" 은 실제 최대(16.67%)보다 보수적이다.
+    //   Spec Pricing-Final-Tiers (2026-09-15) — 최종 요금제. 실제 할인율:
+    //     스타터 13.04% (3만/23만) · 프로 15.09% (8만/53만) · 비즈니스 16.67% (15만/90만)
+    //     → 배지는 "약 13/15/16%" · 상단 띠는 "최대 16%".
+    //     ★ 비즈니스는 반올림(17%)이 아니라 내림(16%) — 표시 할인율이 실제보다 커지지 않게.
     //     ★ 정가를 바꿀 때는 이 실측값과 배지·띠 문구를 함께 갱신할 것
     //       (표시 할인율이 실제보다 커지면 표시광고 문제가 된다 — 앞 커밋에서 겪음).
+    //   ★ promo 금액 · credits 는 main.py TOSS_TIERS (결제 금액·지급 크레딧) 와 수동 일치 필수.
+    //   pages = credits ÷ CREDITS_PER_PAGE (명시값 — 병기 셀 "약 N페이지" 용).
     { name: "스타터", en: "Starter", emoji: "🌱",
-      promo: "월 20만원", regular: "월 24만원", discount: "약 15% 할인",
-      credits: "14,000", conversion: "월 2건", best: false },
+      promo: "월 20만원", regular: "월 23만원", discount: "약 13% 할인",
+      credits: "14,000", pages: "140", conversion: "월 2건", best: false },
     { name: "프로", en: "Pro", emoji: "🚀",
-      promo: "월 47.5만원", regular: "월 56만원", discount: "약 15% 할인",
-      credits: "30,000", conversion: "월 5건", best: true },
+      promo: "월 45만원", regular: "월 53만원", discount: "약 15% 할인",
+      credits: "35,000", pages: "350", conversion: "월 5건", best: true },
     { name: "비즈니스", en: "Business", emoji: "💎",
-      promo: "월 76.5만원", regular: "월 90만원", discount: "약 15% 할인",
-      credits: "62,000", conversion: "월 9건", best: false },
+      promo: "월 75만원", regular: "월 90만원", discount: "약 16% 할인",
+      credits: "62,000", pages: "620", conversion: "월 9건", best: false },
   ];
   const FEATURE_GROUPS = [
     { category: "AI 분석",     items: ["RFP 분석", "발주처 분석", "전략 대화 AI"] },
@@ -1041,8 +1044,8 @@ function renderPricingSection(opts) {
       // Spec D-Fix-40: lead 자리 → 상단 띠 대체 (프로모션 자료 강조)
       h("div", { class: "landing-pricing-promo" }, [
         h("div", { class: "landing-pricing-promo-title" }, "🎉 공식 런칭 기념 / 3개월 한정 특가"),
-        // Spec Monthly-Pass-Copy — 월 이용권 정가 확정에 맞춰 25% → 15%.
-        h("div", { class: "landing-pricing-promo-sub" }, "지금 가입하면 정가 대비 최대 15% 절약"),
+        // Spec Pricing-Final-Tiers — 실제 최대 16.67% (비즈니스) → 내림 표기 16%.
+        h("div", { class: "landing-pricing-promo-sub" }, "지금 가입하면 정가 대비 최대 16% 절약"),
       ]),
 
       h("div", { class: "landing-pricing-table" }, [
@@ -1079,13 +1082,14 @@ function renderPricingSection(opts) {
           ]),
         ])),
 
-        // 사용량 행 — 이용 가능 건수 (★ 크레딧 수치는 화면에서 노출하지 않는다)
-        // Spec Monthly-Pass-Copy (2026-09-11) — 크레딧 표시 제거.
-        //   고객이 "62,000 ÷ 100 = 620페이지" 를 계산하게 되면 우리가 파는 단위
-        //   ("월 9건")와 숫자가 어긋나고, 잔액 걱정이 구매 저항으로 바뀐다.
-        //   크레딧은 내부 원가·차감 단위로만 쓰고 화면에서는 건수로만 말한다.
-        //   ★ t.credits 값 자체는 남겨둔다 — 결제 로직(main.py TOSS_TIERS)과 별개이며
-        //     향후 내부 표시가 필요할 때 쓰기 위함. 지금은 렌더하지 않을 뿐이다.
+        // 사용량 행 — 이용 가능 건수 + 여유 크레딧 병기
+        // Spec Monthly-Pass-Copy (2026-09-11) — 크레딧 표시 제거 (건수로만 표기).
+        // Spec Pricing-Final-Tiers (2026-09-15) — ★ 방침 전환: 건수 + 여유 크레딧 병기.
+        //   건수("월 2건 · 50페이지 기준")만으로는 RFP 분석·챗봇 등 부가기능까지 돌릴
+        //   여유가 보이지 않는다. 크레딧과 페이지 환산을 한 줄 덧붙여
+        //   "2건(100p) + 여유(40p)" 로 읽히게 한다 (건수가 주 단위, 크레딧은 보조).
+        //   페이지 환산은 제안서 생성만 가정한 최대치라 "약" 을 붙인다.
+        //   ★ t.credits 는 main.py TOSS_TIERS[tier].credits (실제 지급량) 와 같은 값이어야 한다.
         h("div", { class: "pt-cell pt-row-label" }, "이용 가능"),
         ...TIERS.map(t => h("div", {
           class: `pt-cell ${t.best ? "pt-best" : ""}`,
@@ -1093,6 +1097,8 @@ function renderPricingSection(opts) {
         }, [
           h("span", { class: "pt-usage-amount" }, t.conversion),
           h("span", { class: "pt-usage-meta" }, "50페이지 기준"),
+          // Spec Pricing-Final-Tiers — 여유 크레딧 병기 (pt-usage-meta 재사용 · CSS 0).
+          h("span", { class: "pt-usage-meta" }, `${t.credits}크레딧 (약 ${t.pages}페이지)`),
         ])),
 
         // 기능 행 — FEATURE_GROUPS 카테고리별 그룹화 (각 그룹: 카테고리 헤더 1행 + 그룹 안 기능 N행)
@@ -1760,10 +1766,14 @@ function renderStatusCards(stats) {
   const creditStatus = getCreditStatus(remaining);
 
   // Spec D-Build-DashboardCopy (2026-09-02) — 라벨 명시화: "이번 달 사용" → "이번 달 사용 크레딧"
+  // Spec Pricing-Final-Tiers (2026-09-15) — "이번 달 사용 크레딧" → "사용한 크레딧".
+  //   값 = proposal_total(가입 기본 + 구매 누적) − remaining 이라 월 단위가 아니라 누적이다.
+  //   월 리셋이 없는(MONTHLY_QUOTA_RESET_ENABLED=False) 월 이용권 모델에서 "이번 달" 은 사실과 다름.
+  //   ★ 라벨만 교체 — 계산식·변수명(usedThisMonth) 무접촉.
   const items = [
     { label: "남은 크레딧",         value: fmt(remaining),     suffix: "", key: "credit" },
     { label: "진행 과업",           value: fmt(active),        suffix: "", key: "active" },
-    { label: "이번 달 사용 크레딧", value: fmt(usedThisMonth), suffix: "", key: "used" },
+    { label: "사용한 크레딧",       value: fmt(usedThisMonth), suffix: "", key: "used" },
   ];
 
   const grid = h("section", { class: "status-cards" });
@@ -2200,15 +2210,20 @@ async function renderPaymentSuccessPage() {
       //     · granted_credits==0 (레이스 가드 or 서버 오류) → 승인만 표기, 크레딧 안내 없이
       const gc = Number(res.granted_credits || 0);
       const gcStr = gc.toLocaleString("ko-KR");
+      // Spec Pricing-Final-Tiers (2026-09-15) — "N 크레딧 지급" → 월 이용권 표현.
+      //   res.tier 는 confirm 응답 두 분기(신규·already) 모두 포함 (main.py api_payment_confirm).
+      //   알 수 없는 tier 면 티어명 없이 "이용권" 으로만 표기.
+      const _tierName = ({ starter: "스타터", pro: "프로", business: "비즈니스" })[res.tier] || "";
+      const _pass = _tierName ? `${_tierName} 이용권` : "이용권";
       let creditLine;
       if (gc > 0 && res.already) {
-        creditLine = `<br><strong style="color:#6B46E5">${gcStr} 크레딧이 이미 지급되었어요.</strong>`
+        creditLine = `<br><strong style="color:#6B46E5">이미 적용된 ${_pass}이에요. (${gcStr} 크레딧)</strong>`
           + '<br><small style="color:var(--fg-soft)">지금 바로 사용하실 수 있어요.</small>';
       } else if (gc > 0) {
-        creditLine = `<br><strong style="color:#6B46E5">${gcStr} 크레딧이 지급되었어요 🎉</strong>`
-          + '<br><small style="color:var(--fg-soft)">지금 바로 사용하실 수 있어요.</small>';
+        creditLine = `<br><strong style="color:#6B46E5">${_pass}이 적용되었어요 🎉 (${gcStr} 크레딧)</strong>`
+          + '<br><small style="color:var(--fg-soft)">오늘부터 1개월간 이용하실 수 있어요.</small>';
       } else {
-        creditLine = '<br><small style="color:var(--fg-soft)">※ 크레딧 지급 처리 중 문제가 있었어요. 관리자에게 문의해 주세요.</small>';
+        creditLine = '<br><small style="color:var(--fg-soft)">※ 이용권 적용 처리 중 문제가 있었어요. 관리자에게 문의해 주세요.</small>';
       }
       document.getElementById("success-detail").innerHTML =
         `주문 <code>${orderId}</code> · <strong>${amount.toLocaleString("ko-KR")}원</strong> 승인 완료.`
@@ -5600,7 +5615,7 @@ async function renderChat(cid, convId) {
         const titleText = !hasRfp
           ? "RFP 업로드 후 활성화됩니다 — 위 [발주처 상세]에서 RFP 를 먼저 업로드해주세요."
           : (exhausted
-              ? "제안서 크레딧이 1페이지(100) 미만 — 다음 달 1일 리셋"
+              ? "제안서 크레딧이 1페이지(100) 미만 — 요금제에서 이용권을 확인하세요"
               : (q ? `남은 크레딧: ${(propRemain).toLocaleString("ko-KR")} (≈${propPagesNow}페이지)` : "제안서 생성"));
         return h("button", {
           id: "sparkle-generate-btn",
@@ -5617,7 +5632,7 @@ async function renderChat(cid, convId) {
           // Phase 4 (Step 3) — 1 페이지 분(100 크레딧) 미만이면 거부. window.__nightoff_user.quota 직접 참조.
           const liveQ = (window.__nightoff_user && window.__nightoff_user.quota) || null;
           if (liveQ && liveQ.proposal_remaining < CREDITS_PER_PAGE) {
-            toast("제안서 크레딧이 부족해요 (1페이지 = 100 크레딧) — 다음 달 1일 리셋", "error", 5000);
+            toast("제안서 크레딧이 부족해요 (1페이지 = 100 크레딧) — 요금제에서 이용권을 확인하세요", "error", 5000);
             return;
           }
           // Step 2 — 페이지 선택 모달 표시 → 사용자 선택 후 콜백에서 실제 생성 진행

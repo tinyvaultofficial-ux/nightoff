@@ -6264,18 +6264,27 @@ def api_me_dashboard_intro_status(user: dict = Depends(get_current_user)):
 
 
 @app.post("/api/me/dismiss-dashboard-intro")
-def api_me_dismiss_dashboard_intro(user: dict = Depends(get_current_user)):
-    """대시보드 첫 진입 안내 모달 '하루 동안 안 보기' 저장 (계정 단위 24h TTL).
+def api_me_dismiss_dashboard_intro(
+    body: dict = Body(default={}),
+    user: dict = Depends(get_current_user),
+):
+    """대시보드 첫 진입 환영 모달 dismiss 저장 (계정 단위).
 
     Spec D-Fix-15: dashboard_intro_dismissed_until = now() + 24h (UTC ISO).
     - 24h 안 모달 미노출 / 24h 후 자동 재노출
-    - 매일 새 안내 자동 도달 (D-Fix-14 / 향후 모달 본문 변경 영역 자동 반영)
+
+    Spec Dashboard-Intro-Refresh (2026-09-15) — {"forever": true} 면 영구 ('다시 보지 않기').
+    - _until = 9999-12-31T23:59:59+00:00 → 상태 조회(_until > now)가 항상 dismissed=True.
+    - 옵션 없음({}) 은 종전 24h 그대로 (하위 호환).
 
     Graceful fallback: 마이그레이션 영역 사고 시 ok=true 반환 (DB 저장 X 다만 UX 흐름 유지).
     """
     try:
-        expire_at = datetime.now(timezone.utc) + timedelta(hours=24)
-        expire_at_iso = expire_at.isoformat()
+        if isinstance(body, dict) and body.get("forever") is True:
+            expire_at_iso = "9999-12-31T23:59:59+00:00"
+        else:
+            expire_at = datetime.now(timezone.utc) + timedelta(hours=24)
+            expire_at_iso = expire_at.isoformat()
         with get_db() as db:
             db.execute(
                 "UPDATE users SET dashboard_intro_dismissed_until=? WHERE id=?",

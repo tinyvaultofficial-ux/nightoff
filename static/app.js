@@ -2216,7 +2216,12 @@ async function renderPaymentSuccessPage() {
       const _tierName = ({ starter: "스타터", pro: "프로", business: "비즈니스" })[res.tier] || "";
       const _pass = _tierName ? `${_tierName} 이용권` : "이용권";
       let creditLine;
-      if (gc > 0 && res.already) {
+      // Spec Pilot-Onboarding A2 (2026-09-15) — 테스트 키 승인은 이용권 미적용 (서버 test_mode).
+      //   "처리 중 문제" 문구로 떨어지지 않게 지급 분기보다 먼저 판정한다.
+      if (res.test_mode) {
+        creditLine = '<br><strong style="color:#6B46E5">테스트 결제로 승인되었어요.</strong>'
+          + '<br><small style="color:var(--fg-soft)">심사·검증용 결제라 이용권은 적용되지 않아요.</small>';
+      } else if (gc > 0 && res.already) {
         creditLine = `<br><strong style="color:#6B46E5">이미 적용된 ${_pass}이에요. (${gcStr} 크레딧)</strong>`
           + '<br><small style="color:var(--fg-soft)">지금 바로 사용하실 수 있어요.</small>';
       } else if (gc > 0) {

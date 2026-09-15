@@ -1625,117 +1625,126 @@ function showChatIntroNotice(taElement) {
   document.addEventListener("keydown", onEsc);
 }
 
-// ── 대시보드 첫 진입 안내 모달 (Spec D-Fix-7, 5/18) ────────────────────────
-// 1회성 / 계정 단위 영구 dismissed (DB: users.dashboard_intro_dismissed).
-// chat-intro 패턴 정확 복제. NightOff 차별화 6가지 + 솔직한 70% 완성도 안내.
+// ── 대시보드 첫 진입 환영 모달 ─────────────────────────────────────────────
+// Spec D-Fix-7 (5/18) 신설 → D-Fix-15 (5/19) 24h TTL
+// → Spec Dashboard-Intro-Refresh (2026-09-15) 문구·디자인·UX 전면 재정비.
+//   · 노출 조건: 서버 dismissed=false  AND  이번 세션에서 닫지 않음(sessionStorage).
+//   · [다시 보지 않기] = 영구 — POST dismiss {forever:true} → _until 9999-12-31.
+//   · ✕ · ESC · 바깥 클릭 · [시작하기] = 이번 세션 동안만 (서버 저장 X).
+//     ★ 대시보드는 SPA 이동마다 재렌더되며 이 함수를 다시 부르므로 세션 기억이 필요하다.
+//   · 디자인: 채팅 안내(.beta-notice-*) 패턴 정합. 보라는 번호 배지·역할 선·주 버튼 3곳만.
+const DASHBOARD_INTRO_SESSION_KEY = "nightoff.dashboard_intro_closed";
+
+const DASHBOARD_INTRO_ITEMS = [
+  ["입찰 제안서 전문가가 설계했어요",
+   "오랜 기간 B2G 제안서를 직접 써온 기획자가 만들었어요. 평가위원이 어디를 보는지, 발주처가 무엇을 원하는지 알고 만들어요."],
+  ["AI 특유의 말투가 없어요",
+   "범용 AI의 어색한 번역체나 군더더기를 걷어내고, 실제 제안서에서 쓰이는 한국어 문체로 만들어요."],
+  ["일반론이 아닌 우리나라 입찰 시각",
+   "RFP를 받으면 평가표 배점부터 분석해서, 어디에 힘을 줘야 하는지 우리나라 평가위원의 관점으로 기획해요."],
+  ["채팅에서 나눈 전략이 그대로 담겨요",
+   "\"이 부분을 더 강조해줘\" 같은 논의가 제안서에 반영돼요. 단순 자동 생성이 아니라, 같이 만드는 도구예요."],
+  ["산출내역서 자동 작성",
+   "인력·장비·예산을 제안서 기반으로 즉시 산출해요. 따로 다시 만들 필요 없어요."],
+  ["자체 검증으로 평가위원 시각 체크",
+   "낙찰 제외 조항 누락, 배점 균형까지 검토해요."],
+];
+
 async function showDashboardIntroModal() {
-  // 1. 상태 체크 (계정 단위 dismissed 영구 저장)
+  // 1. 이번 세션에서 이미 닫았으면 미노출 (SPA 재렌더 반복 노출 방지)
+  try {
+    if (sessionStorage.getItem(DASHBOARD_INTRO_SESSION_KEY) === "1") return;
+  } catch (e) { /* sessionStorage 불가 환경 — 서버 판정만 사용 */ }
+  // 2. 서버 판정 (영구·24h dismissed)
   try {
     const res = await api.get("/api/me/dashboard-intro-status");
     if (res && res.dismissed) return;
   } catch (e) {
     return;  // 에러 시 모달 미노출 (안전)
   }
-  // 2. 중복 방지
+  // 3. 중복 방지
   if (document.querySelector(".dashboard-intro-backdrop")) return;
 
-  // 3. CTA — dismiss + 닫기
-  const onDismiss = async () => {
-    try {
-      await api.post("/api/me/dismiss-dashboard-intro", {});
-    } catch (e) {
-      // 에러 시도 모달은 닫기 (UX 흐름 유지)
+  // 4. 닫기 — forever=true 면 서버 영구 저장, 아니면 세션 동안만
+  let closed = false;
+  const close = (forever = false) => {
+    if (closed) return;
+    closed = true;
+    try { sessionStorage.setItem(DASHBOARD_INTRO_SESSION_KEY, "1"); } catch (e) {}
+    if (forever) {
+      // 응답 안 기다리고 즉시 닫기. 실패해도 이번 세션은 안 뜨고, 다음 로그인 때 다시 노출.
+      api.post("/api/me/dismiss-dashboard-intro", { forever: true }).catch(() => {});
     }
+    document.removeEventListener("keydown", onEsc);
     backdrop.classList.add("dashboard-intro-fadeout");
-    setTimeout(() => backdrop.remove(), 300);
+    setTimeout(() => backdrop.remove(), 240);
   };
+  const onEsc = (e) => { if (e.key === "Escape") close(false); };
 
-  // 4. 모달 DOM
-  const backdrop = h("div", { class: "dashboard-intro-backdrop" }, [
-    h("div", { class: "dashboard-intro-modal" }, [
-      // 헤더
-      h("div", { class: "dashboard-intro-head" }, [
-        h("h1", { class: "dashboard-intro-title" }, "👋 NightOff에 오신 걸 환영해요"),
-        h("p", { class: "dashboard-intro-subtitle" },
-          "NightOff는 우리나라 B2G와 B2B 입찰 제안서를 전문으로 만드는 AI예요."),
-        h("p", { class: "dashboard-intro-subtitle" },
-          "범용 AI들과는 다른 방식으로 일해요."),
+  // 5. 모달 DOM
+  const backdrop = h("div", {
+    class: "dashboard-intro-backdrop",
+    onclick: (ev) => { if (ev.target === backdrop) close(false); },
+  }, [
+    h("div", {
+      class: "dashboard-intro-modal",
+      role: "dialog",
+      "aria-modal": "true",
+      "aria-labelledby": "dashboard-intro-title",
+    }, [
+      h("button", {
+        class: "dashboard-intro-close",
+        "aria-label": "닫기",
+        onclick: () => close(false),
+      }, "✕"),
+      h("h1", { class: "dashboard-intro-title", id: "dashboard-intro-title" },
+        "👋 NightOff에 오신 걸 환영해요"),
+      h("p", { class: "dashboard-intro-subtitle" },
+        "NightOff는 우리나라 공공 입찰 제안서를 전문으로 만드는 AI예요. 범용 AI와는 다른 방식으로 일해요."),
+
+      // 차별화 6가지 — 2열 그리드 + 번호 배지
+      h("section", { class: "dashboard-intro-section" }, [
+        h("h2", { class: "dashboard-intro-section-label" }, "✨ NightOff가 다른 이유"),
+        h("div", { class: "dashboard-intro-grid" },
+          DASHBOARD_INTRO_ITEMS.map(([title, desc], i) =>
+            h("div", { class: "dashboard-intro-item" }, [
+              h("span", { class: "dashboard-intro-num", "aria-hidden": "true" }, String(i + 1)),
+              h("div", { class: "dashboard-intro-item-text" }, [
+                h("h3", { class: "dashboard-intro-item-title" }, title),
+                h("p", { class: "dashboard-intro-item-desc" }, desc),
+              ]),
+            ]))),
       ]),
-      // 본문 (스크롤)
-      h("div", { class: "dashboard-intro-body" }, [
-        // 차별화 6가지
-        h("section", { class: "dashboard-intro-section" }, [
-          h("h2", { class: "dashboard-intro-section-title" }, "✨ NightOff가 다른 이유"),
-          h("div", { class: "dashboard-intro-item" }, [
-            h("h3", { class: "dashboard-intro-item-title" }, "1. 현장 기획자가 직접 만들었어요"),
-            h("p", { class: "dashboard-intro-item-desc" },
-              "수많은 제안서를 직접 써본 기획자가 설계한 서비스예요. " +
-              "평가위원이 어디를 보는지, 발주처가 무엇을 원하는지, " +
-              "실제 현장의 감각으로 만들어요."),
-          ]),
-          h("div", { class: "dashboard-intro-item" }, [
-            h("h3", { class: "dashboard-intro-item-title" }, "2. AI 특유의 말투가 없어요"),
-            h("p", { class: "dashboard-intro-item-desc" },
-              "범용 AI가 쓰는 어색한 번역체나 군더더기 표현을 걷어내고, " +
-              "실제 제안서에서 쓰이는 한국어 문체로 만들어요."),
-          ]),
-          h("div", { class: "dashboard-intro-item" }, [
-            h("h3", { class: "dashboard-intro-item-title" }, "3. 일반론이 아닌 우리나라 입찰 시각"),
-            h("p", { class: "dashboard-intro-item-desc" },
-              "범용 AI는 글로벌 비즈니스 관점에서 제안서를 써요. " +
-              "NightOff는 우리나라 평가위원이 보는 관점에서 기획해요. " +
-              "RFP를 받으면 평가표 배점부터 분석해서, 어디에 힘을 줘야 하는지 판단해요."),
-          ]),
-          h("div", { class: "dashboard-intro-item" }, [
-            h("h3", { class: "dashboard-intro-item-title" }, "4. 채팅에서 나눈 전략이 제안서에 그대로 담겨요"),
-            h("p", { class: "dashboard-intro-item-desc" },
-              "\"프로그램 기획 12페이지로 확장해줘\" 같은 합의가 자동 반영돼요. " +
-              "단순 자동 생성이 아니라, 같이 만드는 도구예요."),
-          ]),
-          h("div", { class: "dashboard-intro-item" }, [
-            h("h3", { class: "dashboard-intro-item-title" }, "5. 산출내역서 자동 작성"),
-            h("p", { class: "dashboard-intro-item-desc" },
-              "인력·장비·예산을 제안서 기반으로 즉시 산출해요. 별도로 다시 만들 필요 없어요."),
-          ]),
-          h("div", { class: "dashboard-intro-item" }, [
-            h("h3", { class: "dashboard-intro-item-title" }, "6. 자체 검증으로 평가위원 시각 체크"),
-            h("p", { class: "dashboard-intro-item-desc" },
-              "낙찰 제외 조항 누락, 배점 균형까지 검토해요."),
-          ]),
-        ]),
-        // 솔직한 부분
-        h("section", { class: "dashboard-intro-section dashboard-intro-section--honest" }, [
-          h("h2", { class: "dashboard-intro-section-title" },
-            "🌙 아직 부족한 점 (NightOff가 나아갈 길이에요)"),
-          h("p", { class: "dashboard-intro-honest-lead" },
-            "NightOff는 70% 완성도의 초안을 만드는 도구예요."),
-          h("ul", { class: "dashboard-intro-honest-list" }, [
-            h("li", {}, "디자인은 흑백 기반이고, 도형과 텍스트로 구성되어 있어요."),
-            h("li", {}, "일부 페이지는 정렬이 아직 매끄럽지 않아 툭 튀어나가거나 겹쳐보일 수 있어요."),
-            h("li", {}, "오류 시 재시도해 주세요."),
-          ]),
-          h("p", { class: "dashboard-intro-honest-foot" },
-            "기획적으로는 자신있지만, 남은 30%는 PPT 디자이너나 " +
-            "감각 있는 기획자가 마무리하는 방식으로 설계되어 있어요."),
-          h("p", { class: "dashboard-intro-honest-foot" },
-            "기획에 쓰던 밤샘 시간을 줄이고, " +
-            "디자인 다듬는 시간만 남기는 게 NightOff의 목표예요."),
-          h("p", { class: "dashboard-intro-honest-foot" },
-            "딥리서치 + 다중 검증 시스템 작동으로 RFP 분석부터 자체 검증까지 " +
-            "각 작업당 수 분이 소요됩니다. 정확성과 전문성을 위한 시간이에요."),
-        ]),
+
+      // 역할 — 배경 없음 + 왼쪽 보라 선 (채팅 안내 .bn-good 정합)
+      h("section", { class: "dashboard-intro-role" }, [
+        h("h2", { class: "dashboard-intro-section-label" }, "🎯 NightOff의 역할"),
+        h("p", { class: "dashboard-intro-role-text" },
+          "NightOff는 기획이 탄탄하게 잡힌 제안서 초안을 만들어요. " +
+          "RFP 분석부터 전략 수립, 본문 작성, 산출내역서, 자체 검증까지 — " +
+          "기획자가 밤새 매달리던 과정을 대신합니다. " +
+          "편집 가능한 PPTX로 나오니, 최종 디자인은 자유롭게 다듬을 수 있어요. " +
+          "기획에 쏟던 시간을 아끼고, 마무리 감각만 더하세요."),
       ]),
-      // CTA
-      h("div", { class: "dashboard-intro-cta-bar" }, [
+      h("p", { class: "dashboard-intro-note" },
+        "RFP 분석부터 자체 검증까지, 정확성을 위해 각 작업에 수 분이 걸려요."),
+
+      // 액션
+      h("div", { class: "dashboard-intro-actions" }, [
         h("button", {
-          class: "dashboard-intro-cta-btn",
-          onclick: onDismiss,
-        }, "하루 동안 안 보기"),
+          class: "dashboard-intro-btn-secondary",
+          onclick: () => close(true),
+        }, "다시 보지 않기"),
+        h("button", {
+          class: "dashboard-intro-btn-primary",
+          onclick: () => close(false),
+        }, "시작하기"),
       ]),
     ]),
   ]);
 
   document.body.appendChild(backdrop);
+  document.addEventListener("keydown", onEsc);
 }
 
 // ---------- Dashboard ----------
@@ -3077,7 +3086,8 @@ async function renderDashboard() {
   // 핵심 기능 5 카드는 최상단으로 옮겨졌고 (renderCoreFeatures5, Spec 6)
   // 푸터는 글로벌 푸터(#global-footer)로 일원화 — 대시보드 자체 푸터 제거
 
-  // Spec D-Fix-7 (5/18) — 대시보드 첫 진입 안내 모달 (1회성, dismissed 영구 저장)
+  // Spec D-Fix-7 (5/18) — 대시보드 첫 진입 환영 모달
+  // Spec Dashboard-Intro-Refresh (2026-09-15) — [다시 보지 않기]=영구 / ✕·ESC·바깥·[시작하기]=세션 동안만.
   // Spec D-Fix-22 Stage B: 비회원이면 호출 X (안전망 — 함수 자체도 401 catch 로 자연 차단).
   setTimeout(() => {
     if (isGuestMode()) return;

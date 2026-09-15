@@ -4,6 +4,7 @@ FastAPI + SQLite + Anthropic Claude (streaming)
 """
 from __future__ import annotations
 
+import calendar
 import json
 import logging
 import os
@@ -114,6 +115,8 @@ def _check_quota(db, user_id: str, amount: int, action_label: str) -> int:
     ★ users.credits 는 LEGACY 미사용 컬럼 — 여기에 쓰지 마십시오.
       (2026-09-07 결제 지급이 그쪽으로 가 유료 고객이 402 를 맞았음. 컬럼 DROP 은 별도.)
     """
+    # Spec Monthly-Pass-Expiry — 만료 이용권을 먼저 소멸 (PASS_EXPIRY_ENABLED=False 면 no-op).
+    _expire_passes(db, user_id)
     row = db.execute(
         "SELECT monthly_proposal_quota FROM users WHERE id=?", (user_id,)
     ).fetchone()
@@ -131,7 +134,7 @@ def _check_quota(db, user_id: str, amount: int, action_label: str) -> int:
     return q
 
 
-def _deduct_quota(db, user_id: str, amount: int) -> bool:
+def _deduct_quota(db, user_id: str, amount: int, *, now: Optional[str] = None) -> bool:
     """★ 원자적 차감. 잔액이 모자라면 한 푼도 깎지 않고 False 를 반환한다.
 
     Spec Atomic-Quota-Deduct (2026-09-07):
@@ -154,6 +157,10 @@ def _deduct_quota(db, user_id: str, amount: int) -> bool:
     대상 컬럼 = users.monthly_proposal_quota.
     ★ users.credits 는 LEGACY 미사용 컬럼 — 여기에 쓰지 마십시오.
     """
+    # Spec Monthly-Pass-Expiry — ① 만료 이용권 먼저 소멸 (같은 트랜잭션 · OFF 면 no-op).
+    _expire_passes(db, user_id, now)
+    # ② 원자적 차감 — 문장 무접촉. PG 에서는 이 UPDATE 가 사용자 행을 잠가
+    #    ③ 의 이용권 조회·수정이 같은 사용자의 다른 요청과 섞이지 않는다.
     cur = db.execute(
         "UPDATE users SET monthly_proposal_quota = monthly_proposal_quota - ? "
         " WHERE id=? AND monthly_proposal_quota >= ?",
@@ -163,10 +170,13 @@ def _deduct_quota(db, user_id: str, amount: int) -> bool:
         # 호출부가 반환값을 무시해도 흔적은 남게 한다.
         log.error("quota 차감 거부 (잔액부족/경합): user=%s amount=%d", user_id, amount)
         return False
+    # ③ 이용권 배분 — 만료 빠른 이용권부터, 남으면 무료분 (OFF 면 skip).
+    if PASS_EXPIRY_ENABLED:
+        _allocate_pass_consumption(db, user_id, amount, now or _now_kst_str())
     return True
 
 
-def _refund_quota(db, user_id: str, amount: int) -> None:
+def _refund_quota(db, user_id: str, amount: int, *, now: Optional[str] = None) -> None:
     """★ 환불 (원자적 +). 되돌리는 연산이므로 조건 없이 항상 성공해야 한다.
 
     Spec Atomic-Quota-Deduct — 선차감(fail-closed) 전환의 짝. 환불이 없으면
@@ -181,6 +191,210 @@ def _refund_quota(db, user_id: str, amount: int) -> None:
         "UPDATE users SET monthly_proposal_quota = monthly_proposal_quota + ? WHERE id=?",
         (amount, user_id),
     )
+    # Spec Monthly-Pass-Expiry — 환불 배분 (OFF 면 skip).
+    #   만료가 늦고 덜 찬 이용권부터 granted 까지 채우고, 남으면 무료분(영구)으로 둔다.
+    #   이미 만료된 이용권으로는 되돌리지 않는다.
+    #   ★ 총량은 위 문장이 보장. 배분이 실제 차감 출처와 어긋나도 오차는
+    #     "만료가 늦춰지거나 영구가 되는" 방향뿐 — 크레딧이 사라지는 오차는 불가능.
+    if not PASS_EXPIRY_ENABLED:
+        return
+    left = amount
+    for r in _active_pass_rows(db, user_id, now or _now_kst_str(), order="DESC", include_empty=True):
+        if left <= 0:
+            break
+        room = int(r["granted_credits"] or 0) - int(r["remaining_credits"] or 0)
+        if room <= 0:
+            continue
+        give = min(room, left)
+        cur = db.execute(
+            "UPDATE payments SET remaining_credits = remaining_credits + ? "
+            " WHERE id=? AND remaining_credits + ? <= granted_credits",
+            (give, r["id"], give),
+        )
+        if cur.rowcount == 1:
+            left -= give
+
+
+# ---------------------------------------------------------------------------
+# Spec Monthly-Pass-Expiry (2026-09-15) — 월 이용권 1개월 소멸
+#  약관 제7조 3·4항: 이용권 크레딧은 구매일로부터 1개월, 이월 없이 소멸.
+#  · payments 한 줄 = 이용권 한 묶음
+#      expires_at        'YYYY-MM-DD 23:59:59' KST ('' = 이용권 아님 → 소멸 대상 아님)
+#      remaining_credits 이 이용권에서 아직 안 쓴 크레딧
+#      expired_at        소멸 처리 시각 KST ('' = 미소멸)
+#      expired_credits   실제 소멸량 (감사용)
+#  · 무료분(가입 기본·관리자 추가·보상·파일럿) = 잔액 − 유효 이용권 잔여 합.
+#    무료분에는 이용권 행이 없으므로 소멸 코드가 읽을 대상 자체가 없다.
+#  · 차감: 만료 빠른 이용권 → 무료분 / 환불: 만료 늦고 덜 찬 이용권 → 무료분
+#  · 관리자 차감(직접 설정 하향·보상 음수): 차감과 같은 순서로 그 자리에서 배분.
+#  · 소멸: lazy(_check_quota·_deduct_quota·/api/auth/me·생성 사전검증) + 00:05 KST 보조 job.
+#  · 크레딧(잔액)을 지우는 방향의 자동 보정은 하지 않는다.
+#  · 시각 비교는 전부 파이썬 KST 문자열 파라미터 — 서버 시간대(UTC)와 무관.
+#
+# ★ PASS_EXPIRY_ENABLED=False → 아래 헬퍼·배분·기록이 전부 즉시 skip.
+#   잔액·bonus·API 응답·실행 SQL 이 종전과 동일 (payments 에 기본값 컬럼 4개만 존재).
+# ★ 운영 원칙 (2026-09-15 확정):
+#   · 실결제 개통 "전에" True 로 켠다. 켠 뒤에는 비상시에만 끈다.
+#   · OFF 동안의 차감·환불은 이용권에 배분되지 않는다 → 다시 켜면 이용권 잔여가
+#     실제보다 크게 남아 무료분만큼 과다 소멸할 수 있다.
+#     → 재-ON 전에 반드시 PASS_EXPIRY_DRY_RUN=True 로 사용자별 소멸 예정량을 확인한다.
+# ---------------------------------------------------------------------------
+PASS_EXPIRY_ENABLED = False
+PASS_EXPIRY_DRY_RUN = False   # True 면 소멸·보정 예정량만 log, DB 무변경
+
+
+def _pass_expires_at(paid_at_kst: str) -> str:
+    """민법 기간 계산(초일 불산입) — 구매일 +1개월 해당일 23:59:59 KST.
+
+    9/15 → 10/15 23:59:59 · 1/31 → 2/28(윤년 2/29) 23:59:59 · 12/31 → 이듬해 1/31 23:59:59
+    (최종 월에 해당일이 없으면 그 달 말일 — calendar.monthrange)
+    """
+    d = datetime.strptime(paid_at_kst[:10], "%Y-%m-%d")
+    y, m = (d.year + 1, 1) if d.month == 12 else (d.year, d.month + 1)
+    last = calendar.monthrange(y, m)[1]
+    return f"{y:04d}-{m:02d}-{min(d.day, last):02d} 23:59:59"
+
+
+def _active_pass_rows(db, user_id: str, now: str, *, order: str = "ASC",
+                      include_empty: bool = False) -> list:
+    """아직 만료되지 않은 유료 이용권. order=ASC 만료 빠른 순 / DESC 늦은 순."""
+    if order not in ("ASC", "DESC"):
+        raise ValueError(f"order must be ASC/DESC: {order}")
+    sql = ("SELECT id, granted_credits, remaining_credits, expires_at FROM payments "
+           " WHERE user_id=? AND status='paid' AND expired_at='' AND expires_at<>'' "
+           "   AND expires_at > ?")
+    if not include_empty:
+        sql += " AND remaining_credits > 0"
+    sql += f" ORDER BY expires_at {order}, paid_at {order}"
+    return db.execute(sql, (user_id, now)).fetchall()
+
+
+def _allocate_pass_consumption(db, user_id: str, amount: int, now: str) -> int:
+    """이미 잔액에서 빠진 amount 를 이용권에 배분 (만료 빠른 순). 반환: 이용권에서 뺀 양.
+    나머지는 무료분에서 빠진 것 — 기록할 것 없음 (무료분 = 잔액 − 이용권 잔여 합)."""
+    left = int(amount)
+    for r in _active_pass_rows(db, user_id, now, order="ASC"):
+        if left <= 0:
+            break
+        take = min(int(r["remaining_credits"] or 0), left)
+        if take <= 0:
+            continue
+        cur = db.execute(
+            "UPDATE payments SET remaining_credits = remaining_credits - ? "
+            " WHERE id=? AND remaining_credits >= ?",
+            (take, r["id"], take),
+        )
+        if cur.rowcount == 1:
+            left -= take
+    return int(amount) - left
+
+
+def _reconcile_passes(db, user_id: str, *, dry_run: bool = False) -> int:
+    """안전망 — 불변식 '미소멸 이용권 잔여 합 ≤ 잔액' 이 깨졌으면 이용권 잔여만 줄인다.
+
+    정상 경로(차감·환불·관리자 차감 배분)에서는 깨지지 않는다. 깨졌다면 배분 밖에서
+    잔액이 줄어든 것(직접 DB 수정 등)이므로 log.error 로 남긴다.
+    ★ 잔액은 건드리지 않는다 — 줄어든 이용권 잔여는 무료분(영구)으로 간주되어
+      소멸량이 줄어드는 방향이다. 크레딧을 지우는 보정이 아니다.
+    """
+    rows = db.execute(
+        "SELECT id, remaining_credits FROM payments "
+        " WHERE user_id=? AND status='paid' AND expired_at='' AND expires_at<>'' "
+        "   AND remaining_credits > 0 ORDER BY expires_at ASC, paid_at ASC",
+        (user_id,),
+    ).fetchall()
+    total = sum(int(r["remaining_credits"] or 0) for r in rows)
+    qrow = db.execute("SELECT monthly_proposal_quota AS q FROM users WHERE id=?", (user_id,)).fetchone()
+    q = int(qrow["q"] or 0) if qrow else 0
+    excess = total - q
+    if excess <= 0:
+        return 0
+    log.error("★[pass-expiry] 불변식 위반 user=%s 이용권잔여합=%d > 잔액=%d → 이용권 잔여만 %d 줄임%s",
+              user_id, total, q, excess, " (dry-run)" if dry_run else "")
+    if dry_run:
+        return excess
+    left = excess
+    for r in rows:
+        if left <= 0:
+            break
+        cut = min(int(r["remaining_credits"] or 0), left)
+        cur = db.execute(
+            "UPDATE payments SET remaining_credits = remaining_credits - ? "
+            " WHERE id=? AND remaining_credits >= ?",
+            (cut, r["id"], cut),
+        )
+        if cur.rowcount == 1:
+            left -= cut
+    return excess
+
+
+def _expire_passes(db, user_id: str, now: Optional[str] = None) -> int:
+    """만료된 이용권의 잔여 크레딧만 소멸. 반환: 이번 호출에서 소멸한 총량.
+
+    ★ 멱등 — 조건부 UPDATE(expired_at='' AND remaining_credits=?) + rowcount==1 일 때만
+      잔액 차감. lazy 호출·스케줄러가 겹쳐도 한 번만 반영된다.
+    ★ 무료분 접근 불가 — 소멸량의 출처는 payments.remaining_credits 뿐.
+    ★ 잔액 음수 방지 — min(이용권 잔여, 잔액) + WHERE quota >= ?.
+    ★ bonus(분모)도 같은 양 차감 (0 하한) — '사용한 크레딧' 에 소멸분이 섞이지 않게.
+    """
+    if not PASS_EXPIRY_ENABLED:
+        return 0
+    now = now or _now_kst_str()
+    dry = PASS_EXPIRY_DRY_RUN
+
+    # (0) 빠른 경로 — 만료 대상이 없으면 쓰기 0 (GET /api/auth/me 가 매번 쓰지 않게)
+    due = db.execute(
+        "SELECT COUNT(*) AS n FROM payments WHERE user_id=? AND status='paid' "
+        " AND expired_at='' AND expires_at<>'' AND expires_at <= ? AND remaining_credits > 0",
+        (user_id, now),
+    ).fetchone()
+    if not due or int(due["n"] or 0) == 0:
+        return 0
+
+    # (1) 사용자 행 잠금 선점 — no-op UPDATE (SQLite·PG 공통). 동시 차감·소멸 직렬화.
+    if not dry:
+        db.execute("UPDATE users SET monthly_proposal_quota = monthly_proposal_quota WHERE id=?",
+                   (user_id,))
+
+    # (2) 안전망 — 불변식 정렬 (정상 경로에서는 0)
+    _reconcile_passes(db, user_id, dry_run=dry)
+
+    # (3) 만료분 소멸
+    rows = db.execute(
+        "SELECT id, remaining_credits FROM payments WHERE user_id=? AND status='paid' "
+        " AND expired_at='' AND expires_at<>'' AND expires_at <= ? AND remaining_credits > 0 "
+        " ORDER BY expires_at ASC, paid_at ASC",
+        (user_id, now),
+    ).fetchall()
+    total = 0
+    for r in rows:
+        rem = int(r["remaining_credits"] or 0)
+        qrow = db.execute("SELECT monthly_proposal_quota AS q FROM users WHERE id=?",
+                          (user_id,)).fetchone()
+        q = int(qrow["q"] or 0) if qrow else 0
+        amt = max(0, min(rem, q))
+        if dry:
+            log.info("[pass-expiry][dry-run] user=%s pay=%s 소멸예정=%d (잔여=%d 잔액=%d)",
+                     user_id, r["id"], amt, rem, q)
+            total += amt
+            continue
+        cur = db.execute(
+            "UPDATE payments SET expired_at=?, expired_credits=?, remaining_credits=0 "
+            " WHERE id=? AND expired_at='' AND remaining_credits=?",
+            (now, amt, r["id"], rem),
+        )
+        if cur.rowcount != 1:
+            continue   # 다른 요청이 이미 처리 — 이중 소멸 차단
+        if amt > 0:
+            db.execute(
+                "UPDATE users SET monthly_proposal_quota = monthly_proposal_quota - ?, "
+                "  monthly_proposal_quota_bonus = MAX(0, monthly_proposal_quota_bonus - ?) "
+                " WHERE id=? AND monthly_proposal_quota >= ?",
+                (amt, amt, user_id, amt),
+            )
+        total += amt
+        log.info("[pass-expiry] user=%s pay=%s expired=%d at=%s", user_id, r["id"], amt, now)
+    return total
 
 
 # ---------------------------------------------------------------------------
@@ -869,6 +1083,13 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     # 기존 사용자 (출시 전이라 0건 예상) 는 DEFAULT '' 유지 — 빈 값은 유니크 검사 제외 (부분 인덱스).
     # 유니크 보장: 앱 레벨 SELECT (친화적 에러) + 부분 unique 인덱스 (race condition 안전망, _migrate_db 영역).
     ("users",         "nickname",               "TEXT DEFAULT ''"),
+    # ───────── Spec Monthly-Pass-Expiry (2026-09-15) — payments 한 줄 = 월 이용권 한 묶음 ─────────
+    # 기존 행(대기·실패·결제완료)은 기본값 → expires_at='' · remaining=0 이라 소멸 조건에 절대 안 걸림.
+    # (배포 시점 프로덕션 결제완료 0건 → 이관 로직 불필요)
+    ("payments",      "expires_at",             "TEXT DEFAULT ''"),     # 'YYYY-MM-DD 23:59:59' KST, ''=이용권 아님
+    ("payments",      "remaining_credits",      "INTEGER DEFAULT 0"),   # 이 이용권에서 아직 안 쓴 크레딧
+    ("payments",      "expired_at",             "TEXT DEFAULT ''"),     # 소멸 처리 시각 KST, ''=미소멸
+    ("payments",      "expired_credits",        "INTEGER DEFAULT 0"),   # 실제 소멸량 (감사용)
 ]
 
 
@@ -954,6 +1175,14 @@ def _migrate_db() -> dict:
             )
         except Exception as e:
             log.warning("idx_users_nickname_unique 생성 스킵: %s", e)
+        # Spec Monthly-Pass-Expiry — 이용권 만료·배분 조회용 (멱등 IF NOT EXISTS)
+        try:
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_payments_pass "
+                "ON payments(user_id, status, expired_at, expires_at)"
+            )
+        except Exception as e:
+            log.warning("idx_payments_pass 생성 스킵: %s", e)
     return {"added": added, "skipped": skipped, "failed": failed}
 
 
@@ -4211,6 +4440,8 @@ async def api_proposals_generate_multipass(
         # 기존 `prop_q <= 0` 은 "양수면 통과" 라 400 크레딧으로 50p(5000 필요) 생성되는 출혈 발생.
         # 변경: 필요 크레딧(= pages × CREDITS_PER_PAGE) 이상이어야 통과.
         # pages None (사용자 미선택) 시 보수 30p 로 계산 (OUTLINE 후 추가 검증은 별도 / 큰 구멍은 막힘).
+        # Spec Monthly-Pass-Expiry — 사전검증 전에 만료 이용권 소멸 (OFF 면 no-op).
+        _expire_passes(db, user["id"])
         quota_row = db.execute(
             "SELECT monthly_proposal_quota FROM users WHERE id=?", (user["id"],)
         ).fetchone()
@@ -5638,6 +5869,8 @@ def api_auth_me(user: dict = Depends(get_current_user)):
     """
     # 사용자 quota + bonus
     with get_db() as db:
+        # Spec Monthly-Pass-Expiry — 화면 잔액 전에 만료 이용권 소멸 (OFF·대상 없음 = 쓰기 0).
+        _expire_passes(db, user["id"])
         row = db.execute(
             "SELECT monthly_proposal_quota, monthly_conversation_quota, "
             "       monthly_proposal_quota_bonus, monthly_conversation_quota_bonus "
@@ -8767,6 +9000,15 @@ def api_admin_users_patch(
 
         params.append(user_id)
         db.execute(f"UPDATE users SET {', '.join(updates)} WHERE id=?", params)
+        # Spec Monthly-Pass-Expiry — 관리자 하향(직접 설정·음수 추가)은 차감과 같은 순서
+        #   (만료 빠른 이용권 → 무료분)로 그 자리에서 배분. 같은 트랜잭션. 상향은 무료분(영구).
+        #   ★ lazy 정렬로는 하향량을 알 수 없어 무료분부터 깎이게 되므로 여기서 처리한다.
+        if PASS_EXPIRY_ENABLED and prop_q_after < prop_q_before:
+            _admin_dec = prop_q_before - max(0, prop_q_after)
+            if _admin_dec > 0:
+                _taken = _allocate_pass_consumption(db, user_id, _admin_dec, _now_kst_str())
+                log.info("[pass-expiry] 관리자 하향 배분 user=%s dec=%d from_passes=%d",
+                         user_id, _admin_dec, _taken)
 
     # 감시 로그 — action 영역 분기 (우선순위: suspend > quota_add > quota_set > credits > 일반)
     action = "user_modify"
@@ -8898,12 +9140,25 @@ def api_admin_error_report_patch(
                 # Spec Payment-Quota-Wiring — 보상도 실제 소비 통화로.
                 # delta 는 음수 가능 (보상 하향 조정) → MAX(0,...) 하한 클램프.
                 # _adapt_sql 이 PG 에서 GREATEST 로 변환 — 검증됨.
+                # Spec Monthly-Pass-Expiry — 하향 조정은 차감과 같은 순서(만료 빠른 이용권 →
+                #   무료분)로 이용권에 배분. 클램프로 실제 줄어드는 양만 배분하려고 먼저 읽는다.
+                _comp_q_before = None
+                if PASS_EXPIRY_ENABLED and delta < 0:
+                    _r = db.execute("SELECT monthly_proposal_quota AS q FROM users WHERE id=?",
+                                    (before_dict["user_id"],)).fetchone()
+                    _comp_q_before = int(_r["q"] or 0) if _r else 0
                 db.execute(
                     "UPDATE users SET monthly_proposal_quota = MAX(0, monthly_proposal_quota + ?), "
                     "                 monthly_proposal_quota_bonus = MAX(0, monthly_proposal_quota_bonus + ?) "
                     "WHERE id=?",
                     (delta, delta, before_dict["user_id"]),
                 )
+                if _comp_q_before is not None:
+                    _r = db.execute("SELECT monthly_proposal_quota AS q FROM users WHERE id=?",
+                                    (before_dict["user_id"],)).fetchone()
+                    _comp_dec = _comp_q_before - (int(_r["q"] or 0) if _r else 0)
+                    if _comp_dec > 0:
+                        _allocate_pass_consumption(db, before_dict["user_id"], _comp_dec, _now_kst_str())
                 # ★ 키 이름 'user_credits_delta' 유지 — static/admin.js:674 가 참조.
                 #   (의미는 이제 quota delta. 키 개명은 프론트와 함께 별도 조각.)
                 changes["user_credits_delta"] = delta
@@ -9558,6 +9813,37 @@ def auto_reset_quota_job() -> None:
         log.exception("[scheduler] auto_reset_quota 실패 (다음 실행 시 재시도): %s", e)
 
 
+def expire_passes_daily_job() -> None:
+    """Spec Monthly-Pass-Expiry — 매일 00:05 KST 보조 소멸 (정확성은 lazy 가 담당).
+
+    만료 23:59:59 직후 전날 만료분을 정리 → 관리자 통계 합계가 부풀지 않게.
+    사용자마다 별도 트랜잭션 — 한 명 실패가 전체 롤백을 부르지 않는다.
+    놓쳐도(재배포) 두 번 돌아도(멱등) 안전. OFF 면 즉시 return.
+    """
+    if not PASS_EXPIRY_ENABLED:
+        return
+    now = _now_kst_str()
+    try:
+        with get_db() as db:
+            uids = [r["user_id"] for r in db.execute(
+                "SELECT DISTINCT user_id FROM payments WHERE status='paid' AND expired_at='' "
+                " AND expires_at<>'' AND expires_at <= ? AND remaining_credits > 0",
+                (now,),
+            ).fetchall()]
+    except Exception as e:
+        log.exception("[pass-expiry][job] 대상 조회 실패 (다음 실행·lazy 에서 재시도): %s", e)
+        return
+    total = 0
+    for uid in uids:
+        try:
+            with get_db() as db:
+                total += _expire_passes(db, uid, now)
+        except Exception as e:
+            log.error("[pass-expiry][job] user=%s 실패 (다음 lazy 호출에서 재시도): %s", uid, e)
+    log.info("[pass-expiry][job] users=%d expired_total=%d dry_run=%s",
+             len(uids), total, PASS_EXPIRY_DRY_RUN)
+
+
 def _init_quota_scheduler() -> None:
     """startup 단계에서 호출 — APScheduler BackgroundScheduler 초기화.
 
@@ -9592,6 +9878,17 @@ def _init_quota_scheduler() -> None:
             CronTrigger(hour=0, minute=30, timezone="Asia/Seoul"),
             id="permanent_delete_withdrawn_daily",
             name="Permanent delete withdrawn users (30+ days) at 00:30 KST",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600,
+        )
+        # Spec Monthly-Pass-Expiry — 이용권 만료 보조 소멸 (00:05 KST · 멱등 · OFF 면 no-op)
+        sched.add_job(
+            expire_passes_daily_job,
+            CronTrigger(hour=0, minute=5, timezone="Asia/Seoul"),
+            id="pass_expiry_daily",
+            name="Monthly pass expiry sweep at 00:05 KST",
             replace_existing=True,
             max_instances=1,
             coalesce=True,
@@ -9898,6 +10195,16 @@ def api_payment_confirm(
                 "WHERE id=?",
                 (grant_amount, grant_amount, row["user_id"]),
             )
+            # Spec Monthly-Pass-Expiry — 이용권 묶음 기록 (OFF 면 skip).
+            #   위 지급과 같은 트랜잭션. (g) 의 중복지급 방지 조건부 UPDATE 는 무접촉.
+            #   만료 = 확인 시점 KST 날짜 +1개월 해당일 23:59:59 (민법 초일 불산입).
+            #   paid_at(SQL) 과 자정을 걸치면 1초 차이로 하루 늦은 날짜 → 고객에게 유리한 방향.
+            if PASS_EXPIRY_ENABLED and grant_amount > 0:
+                db.execute(
+                    "UPDATE payments SET expires_at=?, remaining_credits=? "
+                    " WHERE order_id=? AND expires_at=''",
+                    (_pass_expires_at(_now_kst_str()), grant_amount, order_id),
+                )
             granted_now = grant_amount
             log.info("[payment] confirmed + granted · order=%s tier=%s amount=%d credits=+%d user=%s",
                      order_id, tier_key, server_amount, grant_amount, row["user_id"])

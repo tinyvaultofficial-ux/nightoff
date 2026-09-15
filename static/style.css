@@ -4014,15 +4014,6 @@ body, .msg-bubble, .card, .strengths-intro,
   font-size: 12.5px; font-weight: 500;
   color: var(--primary);
 }
-.gf-social { display: flex; gap: 10px; align-items: center; }
-.gf-social a {
-  display: grid; place-items: center;
-  width: 30px; height: 30px;
-  border-radius: 8px;
-  background: var(--bg-2);
-  color: var(--fg-2);
-}
-.gf-social a:hover { background: var(--primary-soft); color: var(--primary); }
 
 /* 랜딩 페이지·채팅에서는 자체 푸터/구조가 있어 전역 푸터 숨김 */
 #app-root.landing-active ~ #global-footer { display: none; }
@@ -5784,19 +5775,6 @@ input.locked-by-env::placeholder {
   font-weight: 600;
   color: var(--primary);
   letter-spacing: -0.01em;
-}
-.gf-social a {
-  background: rgba(124, 58, 237, 0.08);
-  color: var(--primary);
-  border-radius: 8px;
-  width: 30px; height: 30px;
-  display: grid; place-items: center;
-  transition: all .15s ease;
-}
-.gf-social a:hover {
-  background: var(--primary);
-  color: #fff;
-  transform: translateY(-2px);
 }
 
 /* 대시보드 자체 푸터 제거됨 — global-footer 로 일원화 */

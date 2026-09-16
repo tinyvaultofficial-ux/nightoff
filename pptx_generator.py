@@ -3087,18 +3087,22 @@ def _build_preset_timeline(slide_data):
 
 
 # ─── Spec D-Build-PresetAsymmetric — asymmetric (비대칭 2분할) 레이아웃 프리셋 ─
-# 좌측 흰 영역(약 65%) + 우측 검정 영역(약 35%) — 좌측은 큰 숫자/메인 헤드라인/포인트
+# 좌측 흰 영역(약 65%) + 우측 검정 영역(약 35%) — 좌측은 메인 헤드라인/포인트
 # 텍스트 위계, 우측 검정면은 흰 글씨 보조 항목 리스트(label/desc).
+# ★ Spec Asymmetric-No-Number — 좌측 큰 숫자(54pt) 제거.
+#   test98 p19 실측: number="04" 가 eyebrow "Ⅲ. 사업 수행 부문 · 4. 뷰티 케어존 VMD" 의
+#   절 번호와 중복 + 50장 중 number 를 가진 페이지가 그 1장뿐 → 이어지는 형제 페이지 없는
+#   고아 연번이 거버닝(28pt)의 1.93배로 페이지 최대 글자가 됨. 물리 넘침·겹침은 0 (시각·의미 문제).
+#   제거 방식 = if 블록 삭제 → number 없는 기존 페이지가 이미 쓰던 경로로 합류(좌표 로직 무수정).
+#   프롬프트 스키마에서도 함께 제거 (hero_detail 이 badge/number 를 스키마에서 뺀 선례와 동일).
 # 입력 스키마:
 #   slide_data["eyebrow"] = "좌상단 메타 라벨"      (선택)
-#   slide_data["number"]  = "큰 숫자/번호"          (선택, 예 "01")
 #   slide_data["head"]    = "큰 헤드라인"           (필수)
 #   slide_data["points"]  = ["좌측 본문 포인트", ...] (선택, 최대 3)
 #   slide_data["items"]   = [{"label","desc"}, ...]   (선택, 최대 4 — 우측 검정면)
 # 안전망: head 누락 → 빈 리스트 반환. 1단계는 코드만 등록 — viz_pattern 연결은 별도 spec.
 def _build_preset_asymmetric(slide_data):
     eyebrow = str(slide_data.get("eyebrow", "")).strip()
-    number  = str(slide_data.get("number", "")).strip()
     head    = str(slide_data.get("head", "")).strip()
     pts = [str(p).strip() for p in (slide_data.get("points") or []) if str(p).strip()][:3]
     items_raw = slide_data.get("items") or []
@@ -3122,10 +3126,9 @@ def _build_preset_asymmetric(slide_data):
         shapes.append({"type":"text","x":0.9,"y":0.5,"w":6.0,"h":0.4,"text":eyebrow,"size":11,"weight":400,"color":"#BBBBBB","align":"left","valign":"top"})
     lx = 0.9
     lw = divider_x - lx - 0.5
+    # ★ Asymmetric-No-Number — 여기 있던 54pt 큰 숫자(number) 도형 + y += 1.3 삭제.
+    #   slide_data 에 number 키가 남아 있어도 무시된다(과거 JSON 재렌더 안전).
     y = 1.6
-    if number:
-        shapes.append({"type":"text","x":lx,"y":y,"w":lw,"h":1.0,"text":number,"size":54,"weight":800,"color":"#1A1A1A","align":"left","valign":"top"})
-        y += 1.3
     shapes.append({"type":"text","x":lx,"y":y,"w":lw,"h":1.4,"text":head,"size":28,"weight":800,"color":"#1A1A1A","align":"left","valign":"top","role":"governing"})
     y += 1.5
     for p in pts:

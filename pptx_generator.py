@@ -2566,6 +2566,27 @@ def _build_preset_two_column(slide_data: dict) -> list:
     return shapes
 
 
+# ─── Spec NarrativeQuote-Overflow — quote 경로 전용 높이 계산 상수/헬퍼 ───
+# 이 값들은 narrative style='quote' 경로에서만 쓴다 (declaration/qa/emphasis/
+# contrast 는 각자 함수로 조기 분기 — 무영향).
+_NQ_LINE_H = 1.40   # 줄높이 배수. PDF 렌더 실측 1.368 (15pt → 0.285" 피치) 를 보수적으로 올림
+_NQ_INSET = 0.08    # 텍스트 박스 상하 내부 여백 합 (_add_text 의 margin_top/bottom 0.04 × 2)
+_NQ_GAP = 0.07      # flow 박스 간격. 기존 간격 0.62 - 기존 높이 0.55 = 0.07 (동일 재현용)
+
+
+def _narrative_quote_h(text: str, size: int, floor: float) -> float:
+    """텍스트가 실제로 차지하는 높이(인치) — 최소 floor 보장.
+
+    줄당 글자수는 박스 폭 9.29" 기준 (15pt → 44자 / 18pt → 36자).
+    ASCII 도 전각으로 세므로 폭을 과대추정 = 줄수를 넉넉히 = 안전측.
+    floor 는 기존 고정 높이(flow 0.55 / conclusion 0.6) — 짧은 텍스트에서
+    기존 좌표를 그대로 재현하기 위한 하한이다.
+    """
+    per_line = int((9.29 - 0.08) * 72 / size)
+    n_lines = max(1, (len(text) + per_line - 1) // per_line)
+    return max(floor, round(n_lines * size * _NQ_LINE_H / 72 + _NQ_INSET, 2))
+
+
 def _build_preset_narrative(slide_data: dict) -> list:
     """Spec D-Fix-Preset4 / D-Fix-NarrativeV3 — 내러티브 흐름형 레이아웃 프리셋.
 
@@ -2580,8 +2601,11 @@ def _build_preset_narrative(slide_data: dict) -> list:
     좌표 설계 v3 (Spec D-Fix-NarrativeV3 — 거버닝 없는 전제 + 수직 중앙정렬):
       · eyebrow (선택)  : x=0.9 y=0.5 w=9.89 h=0.4 / 11pt 400w #BBBBBB left top
       · 인용 (필수)    : x=1.2 y=2.0 w=9.29 h=1.8 / 40pt 700w 검정 center middle
-      · 흐름 (1~3개)  : x=1.2 w=9.29 h=0.55 / 15pt 400w #666 center / y=4.1 +0.62 간격
+      · 흐름 (1~3개)  : x=1.2 w=9.29 / 15pt 400w #666 center / y=4.1 부터 순차 누적
+                        h 는 글자수 기반 자동 (최소 0.55, 간격 0.07 — Spec
+                        NarrativeQuote-Overflow). 1줄이면 기존 h=0.55·간격 0.62 와 동일
       · 결론 (선택)   : 가는 구분선(rect h=0.02) + text 18pt 700w center middle
+                        (h 는 글자수 기반 자동, 최소 0.6)
 
     Spec D-Fix-Preset5 — style 분기:
       · "quote" (기본) → 본 로직 (D-Fix-NarrativeV3)
@@ -2602,13 +2626,31 @@ def _build_preset_narrative(slide_data: dict) -> list:
     # style == "quote" 또는 미지정 — Spec D-Fix-NarrativeV3:
     #   거버닝 없는 전제(컨셉 슬로건은 별도 hero 페이지가 담당) + 수직 중앙정렬.
     #   eyebrow 옵션 — 있으면 좌상단 회색 작은 메타, 없으면 생략.
+    #
+    # ★ Spec NarrativeQuote-Overflow — flow 물리 넘침 해소 (h 자동 + 절단).
+    #   test98 p32 실측: flow 131자가 h=0.55" 고정 박스를 0.27" 초과 →
+    #   간격 0.62"(여유 0.07") 를 넘어 인접 문단 0.21" 침범. 좌표 겹침 0쌍인데
+    #   시각 침범 — test97 slide 24 (vertical_stack_bands 신설 근거) 와 동일 유형.
+    #   ★ auto_size(TEXT_TO_SHAPE_FIT) 는 폰트 축소가 아님 — XML 상 <a:spAutoFit/>
+    #     = "도형을 텍스트에 맞춰 키움" 이고, python-pptx 는 높이를 재계산하지 않아
+    #     0.55" 그대로 저장된다. PDF 렌더 실측에서도 15.0pt 그대로 (축소 0건).
+    #   처방 = vertical_stack_bands 4중 방어 계승 (h 자동 + 좌표 순차 누적 + 필드
+    #     절단 + 개수 clamp). 단 배분은 균등분배(가용세로/n) 가 아니라 "텍스트 길이
+    #     기반" — quote flow 는 카드 rect 가 없는 순수 텍스트라, 균등분배 시 짧은
+    #     flow 도 아래로 내려앉아 기존 정상 페이지가 전부 움직인다.
+    #   ★ GAP 0.07 + floor 0.55 = 기존 간격 0.62 → flow 가 1줄(44자 이하) 이면
+    #     좌표·높이·yend 가 기존과 완전 동일 (기존 정상 페이지 무영향).
+    #   ★ 폰트 15pt 유지 — 인용 아래 여백이 1.3" 남아 높이로 흡수 가능.
     quote = str(slide_data.get("quote", "")).strip()
     eyebrow = str(slide_data.get("eyebrow", "")).strip()
     flow_raw = slide_data.get("flow") or []
     if not isinstance(flow_raw, list):
         flow_raw = []
-    flow = [str(f).strip() for f in flow_raw if str(f).strip()][:3]
-    conclusion = str(slide_data.get("conclusion", "")).strip()
+    # 절단 (2선 봉인) — 15pt·9.29" 는 1줄 44자 → 85자 = 2줄 확정.
+    #   프롬프트 지시 60~80자에는 안 걸리고, 지시 무시 시에만 발동.
+    #   절단 없으면 부스트 상한 150자×3 에서 결론이 슬라이드 밖 2.02" 이탈.
+    flow = [str(f).strip()[:85] for f in flow_raw if str(f).strip()][:3]
+    conclusion = str(slide_data.get("conclusion", "")).strip()[:90]
 
     if not quote:
         return []
@@ -2632,18 +2674,22 @@ def _build_preset_narrative(slide_data: dict) -> list:
         "align": "center", "valign": "middle",
         "role": "governing",
     })
-    # 흐름 설명 (선택 / 최대 3개) — 0.62 간격
+    # 흐름 설명 (선택 / 최대 3개) — h 자동 + 좌표 순차 누적 (간격 0.07)
     y = 4.1
-    for i, line in enumerate(flow):
+    for line in flow:
+        h = _narrative_quote_h(line, 15, 0.55)
         shapes.append({
             "type": "text",
-            "x": 1.2, "y": y + i * 0.62, "w": 9.29, "h": 0.55,
+            "x": 1.2, "y": y, "w": 9.29, "h": h,
             "text": line,
             "size": 15, "weight": 400, "color": "#666666",
             "align": "center", "valign": "middle",
         })
+        y += h + _NQ_GAP
     # 결론 (선택) — 가는 구분선 + 18pt 텍스트
-    yend = y + len(flow) * 0.62 + 0.25
+    #   y 는 마지막 flow 의 트레일링 간격까지 누적된 값 → 1줄일 때 기존
+    #   (4.1 + n*0.62 + 0.25) 와 동일.
+    yend = y + 0.25
     if conclusion:
         shapes.append({
             "type": "rect",
@@ -2652,7 +2698,7 @@ def _build_preset_narrative(slide_data: dict) -> list:
         })
         shapes.append({
             "type": "text",
-            "x": 1.2, "y": yend + 0.15, "w": 9.29, "h": 0.6,
+            "x": 1.2, "y": yend + 0.15, "w": 9.29, "h": _narrative_quote_h(conclusion, 18, 0.6),
             "text": conclusion,
             "size": 18, "weight": 700, "color": "#1A1A1A",
             "align": "center", "valign": "middle",

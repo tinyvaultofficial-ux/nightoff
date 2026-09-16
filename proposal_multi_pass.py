@@ -4260,7 +4260,6 @@ def _build_slide_user_prompt(
                 "★ slide JSON 출력에 반드시 다음 키 포함:\n"
                 '  · "preset": "asymmetric"  (필수)\n'
                 '  · "head": 메인 헤드라인  (필수)\n'
-                '  · "number": 번호/라벨  (선택, 예 "1")\n'
                 '  · "points": 왼쪽 핵심 포인트 1~3개  (선택)\n'
                 '  · "items": [{"label": 사례명, "desc": 한 줄 설명}, ...] 오른쪽 보조 2~4개  (선택)\n'
                 "  · (선택) \"eyebrow\" — 좌상단 메타 라벨\n"
@@ -4273,7 +4272,6 @@ def _build_slide_user_prompt(
                 "\n"
                 "★ 완성 예시 (이 구조 그대로 따라):\n"
                 '{"preset":"asymmetric",'
-                '"number":"1",'
                 '"head":"TED 톡처럼 가볍지만 깊이 있는 무대 경험",'
                 '"points":['
                 '"짧지만 강렬한 핵심 세션 구성",'

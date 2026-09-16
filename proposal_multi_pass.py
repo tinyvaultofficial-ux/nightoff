@@ -4104,9 +4104,25 @@ def _build_slide_user_prompt(
             _style_map = {"text_quote": "quote", "text_declaration": "declaration"}
             _style_v = _style_map[item.viz_pattern]
             _keys_hint = (
-                '"quote"(큰 인용, 필수) + "flow"(흐름 1~3개, 선택) + "conclusion"(결론, 선택)'
+                '"quote"(큰 인용, 필수) + "flow"(흐름 1~3개, 선택 — 각 60~80자 명사형)'
+                ' + "conclusion"(결론, 선택 — 90자 이내)'
                 if _style_v == "quote"
                 else '"declaration"(큰 선언, 필수) + "grounds"(근거 정확히 3개, 각 문자열은 "소제목(명사형 8~15자)\\n· 불릿1(한 구절 명사형)\\n· 불릿2\\n· 불릿3(최대 4개)" 형태. 만연체 한 문장 금지, 명사형 종결. 코드가 가로 3열 카드로 배치. Spec Declaration-3Col-Cards)'
+            )
+            # Spec NarrativeQuote-Overflow — quote 한정 함축 유도 + 부스트 예외.
+            #   test98 p32 실측: flow 131자 → 0.55" 박스를 0.27" 초과, 인접 문단 0.21" 침범.
+            #   코드(_build_preset_narrative)가 h 자동 + 85자 절단으로 봉인했고, 프롬프트는
+            #   애초에 그 범위로 쓰게 유도 (절단이 발동하지 않는 것이 정상).
+            #   ★ declaration 은 빈 문자열 — 3열 카드(2.76x2.45")라 147자도 수용, 무영향.
+            _quote_rule = (
+                "\n★★ 함축 유도 — 이 프리셋 quote 한정 (Spec NarrativeQuote-Overflow):\n"
+                "  · flow 각 항목 60~80자 명사형 — 서술형 종결 금지(명사구로 끝낼 것).\n"
+                "  · ★ Concreteness-Boost 지시(100~150자)는 이 프리셋 페이지에서는 완화:\n"
+                "     flow 를 100~150자로 늘리지 말 것. 상세 서술·근거는 conclusion 이 담당.\n"
+                "  · conclusion 90자 이내 (여기가 상세 자리).\n"
+                "  · 근거: test98 p32 실측 — flow 131자가 물리적으로 박스를 넘쳐 인접 문단 침범."
+                if _style_v == "quote"
+                else ""
             )
             parts.append(
                 f"[배정된 레이아웃 패턴] {item.viz_pattern} (텍스트 위계형 — 도식 없음)\n"
@@ -4123,6 +4139,7 @@ def _build_slide_user_prompt(
                 f"    A4 가로 11.69x8.27 좌표 안). preset이 정상 작동하면 백업 도형은 자연스럽게 아래에\n"
                 f"    배치되거나 무시될 수 있으나, preset 키 처리에 실패해도 페이지가 비지 않도록 반드시 채운다.\n"
                 f"  ★ preset 키 누락 시 페이지가 박스로 회귀(다양성 효과 0) — preset 키는 반드시 포함."
+                f"{_quote_rule}"
             )
         elif item.viz_pattern == "split":
             # Spec D-Build-PresetSplit — 색면 2분할(좌 검정/우 흰) + 좌우 대등한 두 전략 축.

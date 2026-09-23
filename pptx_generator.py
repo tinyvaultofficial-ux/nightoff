@@ -5620,6 +5620,154 @@ def _build_preset_cards_grid(slide_data: dict) -> list:
 #   · OUTLINE 카탈로그·SLIDE elif 안내에서 조건부 replace 로 제외됨
 #   · 결과: LLM 이 preset:"vertical_stack_bands" 를 절대 안 냄 → dispatch 미매치 →
 #     자율 shapes 폴백 (기존 100% 동일 동작)
+# ─── Spec Preset-ProgramOverview — 프로그램 상세(설명 + 운영개요표) 프리셋 ──────────
+# ② 실행 스펙 단계. 진단 근거: NightOff 본론은 "방법·절차"는 있으나 운영 파라미터가 없다
+#   (본론 페이지 중 일시 0% · 인원 8% · 소요 17%). 평가위원이 "실행 가능하다"고 판단하는
+#   근거가 바로 그 파라미터다.
+# 우수 제안서 실측 (운영개요표 32개 / 3개 파일 + 텍스트 항목:값 형식 포함):
+#   · 형태는 전부 2열 "항목 : 값" 세로형, 3~8행, 페이지 면적 0.02~0.18 (작은 부품)
+#   · 항목 빈도 — 명칭 13 · 내용 13 · 공간 13 · 인력 13 · 일정 13 · 제작물 11 · 물자 11 ·
+#     운영시간 6 · 시스템 5
+#   · 값 예: 인력 "경호 3명, 진행요원 6명, 자원봉사 3명" / 운영시간 "10:00 ~ 18:00" /
+#     물자 "3*3 MQ 텐트 2EA, 듀라테이블 6EA"
+#   · 본론 페이지 중 운영개요 보유율 — 파주페어 68% · 죽변 59% · 국제 55% · 삼척 50%
+#     vs NightOff test97/98 = 0%
+# ★ 우수작에서 이 표는 "프로그램 설명·사진과 같은 페이지의 부품"이다(파주페어 p24·40·42·45).
+#   그러나 NightOff 프로그램 페이지는 프리셋이 9종 + 자율로 흩어져 있어(flow_detail /
+#   hero_detail / quad_detail / asymmetric / split / hsplit_top / conclusion_cards /
+#   narrative / timeline) 부품으로 붙이려면 9종을 전부 재설계해야 한다 → 기존 프리셋
+#   무접촉 원칙 위반. 그래서 "프로그램 상세 페이지 자체"를 담당하는 독립 프리셋으로 만든다
+#   (페이지 추가가 아니라 대체 — 우수작도 프로그램 1개 = 1페이지).
+# ★ 좌측은 이미지 자리가 아니라 핵심 포인트 카드 — NightOff 는 이미지가 없어 빈 박스가 된다
+#   (진단 ③: 3D 자리표시자가 초안에서 정보 0 이라는 지적).
+# ★ _add_table 은 수정 없이 그대로 쓴다 (표 3종이 필요한 인자를 이미 다 갖춰놨다).
+_PO_MIN_ROWS, _PO_MAX_ROWS = 3, 8        # 운영개요 항목 수
+_PO_MIN_PTS, _PO_MAX_PTS = 0, 4          # 좌측 포인트 카드
+_PO_CUT = {"k": 10, "v": 60, "head": 22, "desc": 70, "lead": 60, "note": 70}
+_PO_X, _PO_W = 0.9, 9.89
+_PO_LEFT_W = 4.6                         # 좌측 포인트 영역
+_PO_RIGHT_X, _PO_RIGHT_W = 5.9, 4.89     # 우측 운영개요표
+_PO_TOP, _PO_BOTTOM = 2.5, 7.5
+_PO_SIZES = (11, 10, 9)
+_PO_KEY_W = 1.5                          # 항목명 열 폭
+
+
+def _build_preset_program_overview(slide_data: dict) -> list:
+    """Spec Preset-ProgramOverview — 프로그램 상세 + 운영개요표 프리셋.
+
+    slide_data 스키마:
+      "title"    : str (필수, 25~40자 명사형 — 프로그램명 포함 거버닝)
+      "eyebrow"  : str (선택)
+      "lead"     : str (선택, 한 줄 요약 60자)
+      "points"   : [{"head": 22자, "desc": 70자}, ...]  (선택, 0~4개 — 좌측 카드)
+      "overview" : [{"k": "운영 시간", "v": "10:00 ~ 18:00"}, ...]  ★ 3~8개 (우측 표)
+      "note"     : str (선택, 하단 한 줄)
+    반환 = shape dict 리스트. title 없음 / overview 3행 미만 → 빈 리스트 → 자율 폴백.
+    """
+    title = str(slide_data.get("title", "")).strip()[:40]
+    if not title:
+        return []
+    eyebrow = str(slide_data.get("eyebrow", "")).strip()[:50]
+    lead = str(slide_data.get("lead", "")).strip()[:_PO_CUT["lead"]]
+    note = str(slide_data.get("note", "")).strip()[:_PO_CUT["note"]]
+
+    ov_raw = slide_data.get("overview") or []
+    if not isinstance(ov_raw, list):
+        return []
+    overview = []
+    for it in ov_raw:
+        if not isinstance(it, dict):
+            continue
+        k = str(it.get("k", "")).strip()[:_PO_CUT["k"]]
+        v = str(it.get("v", "")).strip()[:_PO_CUT["v"]]
+        if k and v:
+            overview.append((k, v))
+    if len(overview) > _PO_MAX_ROWS:
+        overview = overview[:_PO_MAX_ROWS]
+    if len(overview) < _PO_MIN_ROWS:
+        return []
+
+    pts_raw = slide_data.get("points") or []
+    points = []
+    if isinstance(pts_raw, list):
+        for it in pts_raw:
+            if not isinstance(it, dict):
+                continue
+            head = str(it.get("head", "")).strip()[:_PO_CUT["head"]]
+            if not head:
+                continue
+            points.append((head, str(it.get("desc", "")).strip()[:_PO_CUT["desc"]]))
+    points = points[:_PO_MAX_PTS]
+
+    shapes: list = []
+    if eyebrow:
+        shapes.append({"type": "text", "x": _PO_X, "y": 0.5, "w": _PO_W, "h": 0.4,
+                       "text": eyebrow, "size": 11, "weight": 400, "color": "#BBBBBB",
+                       "align": "left", "valign": "top"})
+    shapes.append({"type": "text", "x": _PO_X, "y": 1.0, "w": _PO_W, "h": 0.85,
+                   "text": title, "size": 28, "weight": 800, "color": "#1A1A1A",
+                   "align": "left", "valign": "middle", "role": "governing"})
+    if lead:
+        shapes.append({"type": "text", "x": _PO_X, "y": 1.9, "w": _PO_W, "h": 0.35,
+                       "text": lead, "size": 13, "weight": 400, "color": "#666666",
+                       "align": "left", "valign": "middle"})
+
+    # ── 좌측 핵심 포인트 카드 (기존 프리셋과 같은 rect + text 패턴)
+    if points:
+        avail = _PO_BOTTOM - _PO_TOP
+        gap = 0.18
+        card_h = min(1.55, (avail - gap * (len(points) - 1)) / len(points))
+        cy = _PO_TOP
+        for head, desc in points:
+            shapes.append({"type": "rect", "x": _PO_X, "y": cy, "w": _PO_LEFT_W, "h": card_h,
+                           "fill": "#FFFFFF", "stroke": "#DDDDDD", "stroke_width": 1})
+            shapes.append({"type": "text", "x": _PO_X + 0.22, "y": cy + 0.14,
+                           "w": _PO_LEFT_W - 0.44, "h": 0.32,
+                           "text": head, "size": 14, "weight": 700, "color": "#1A1A1A",
+                           "align": "left", "valign": "top"})
+            if desc:
+                shapes.append({"type": "text", "x": _PO_X + 0.22, "y": cy + 0.50,
+                               "w": _PO_LEFT_W - 0.44, "h": card_h - 0.62,
+                               "text": desc, "size": 12, "weight": 400, "color": "#666666",
+                               "align": "left", "valign": "top"})
+            cy += card_h + gap
+
+    # ── 우측 운영개요표 (항목 : 값) — _add_table 무수정 재사용
+    widths = [_PO_KEY_W, round(_PO_RIGHT_W - _PO_KEY_W, 3)]
+    budget = _PO_BOTTOM - _PO_TOP
+
+    def heights_of(size):
+        hs = [round(max(0.30, _tt_need("운영 개요", widths[0], size)), 2)]
+        for k, v in overview:
+            hs.append(round(max(0.30, max(_tt_need(k, widths[0], size),
+                                          _tt_need(v, widths[1], size))), 2))
+        return hs, round(sum(hs), 2)
+
+    size = _PO_SIZES[0]
+    heights, total_h = heights_of(size)
+    for cand in _PO_SIZES:                      # 폰트 계단
+        size = cand
+        heights, total_h = heights_of(size)
+        if total_h <= budget:
+            break
+    while total_h > budget and len(overview) > _PO_MIN_ROWS:   # 최후 — 뒤 항목 제거
+        overview = overview[:-1]
+        heights, total_h = heights_of(size)
+
+    shapes.append({"type": "table", "x": _PO_RIGHT_X, "y": _PO_TOP, "w": _PO_RIGHT_W,
+                   "header": ["운영 개요", ""], "rows": [[k, v] for k, v in overview],
+                   "col_widths": widths, "aligns": ["left", "left"],
+                   "size": size, "row_heights": heights,
+                   "cell_fills": {(r, 0): "#F5F5F5" for r in range(1, len(overview) + 1)},
+                   "header_fill": "#1A1A1A", "header_color": "#FFFFFF",
+                   "body_fill": "#FFFFFF", "body_color": "#1A1A1A", "line": "#DDDDDD"})
+    if note:
+        shapes.append({"type": "text", "x": _PO_X, "y": 7.62, "w": _PO_W, "h": 0.35,
+                       "text": note, "size": 11, "weight": 400, "color": "#666666",
+                       "align": "left", "valign": "top"})
+    return shapes
+
+
 # ─── Spec Preset-StaffingTable — 인력배치표(구역 × 인력유형 매트릭스) 프리셋 ─────────
 # 우수 제안서 실측 (인력배치표 6/7 파일):
 #   · 매트릭스형 4/7 — 죽변 p54(9×8, 숫자 0.65) · 파주페어 p51(15×6, 0.73) ·
@@ -6647,6 +6795,18 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
             # 6개 고정. 미달 시 return [] → LLM 자율 shapes fallback.
             try:
                 preset_shapes = _build_preset_cards_grid(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "program_overview":
+            # Spec Preset-ProgramOverview — 프로그램 상세(좌 포인트 카드 + 우 운영개요표).
+            # 미달(title 없음 / overview 3행 미만) 시 자율 shapes fallback.
+            # ★ 플래그 게이트는 proposal_multi_pass.py 의 _VIZ_TO_PRESET 조건부 매핑에 존재.
+            try:
+                preset_shapes = _build_preset_program_overview(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

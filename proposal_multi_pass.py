@@ -150,6 +150,25 @@ _TIMETABLE_DOMAINS = _SCHEDULE_TABLE_DOMAINS
 _TIMETABLE_MAX_PER_DECK = 1
 
 
+# ─── Spec Preset-StaffingTable — 인력배치표 프리셋 on/off (플래그 게이트) ──────────
+# ③표 그릇 3번째. 우수 제안서 6/7 파일이 보유 — 매트릭스형(구역 × 인력유형 → 인원 수,
+#   맨 아래 합계행) 4/7 · 목록형 2/7. 이번 spec 은 매트릭스형만 (하나씩 검증).
+# ★ 식순표·타임테이블과 도메인 정책이 다르다 — 도메인 제한 없음(전 도메인 허용).
+#   식순·시간표는 "그 과업에 존재하지 않는 형식"이라 campaign 을 막았지만, 인력 투입은
+#   모든 과업에 있다(홍보마케팅도 PM·디자이너·콘텐츠 인력 투입표를 쓴다).
+# ★★ 위치 가드에 role="support" 를 반드시 포함해야 한다 —
+#   OUTLINE 프롬프트가 "예산·일정·리스크·조직(role=support)" 으로 규정하므로 인력 페이지는
+#   support 로 배정된다. 다른 15+ 프리셋처럼 role=body 만 허용하면 항상 강등돼
+#   플래그를 켜도 발동하지 않는다 (vertical_stack_bands 화이트리스트 누락과 같은 유형의 사고).
+STAFFING_TABLE_ENABLED = False
+
+# ★ 인력배치표 허용 위치 — body(본론 인력 계획) + support(운영관리 조직·인력).
+_STAFFING_TABLE_ROLES = {"body", "support"}
+
+# ★ 덱당 배정 cap — 우수작도 1~2장 (구역별 배치 + 업무 분장).
+_STAFFING_TABLE_MAX_PER_DECK = 2
+
+
 # ─── Spec GovEnding-Fix — 거버닝 서술형 종결 감지 정규식 (감지 로그용, 값 무변경) ────
 # 진단: D-Fix-GovEnding-1 규칙 (거버닝 명사형 종결) 위반 실빈도 파악용.
 # ★ 로그만 남기고 값은 절대 안 건드림 — 자동 교정 시 오탐 위험 큼 (한국어 동사→명사
@@ -1148,6 +1167,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
 {VERTICAL_STACK_CATALOG_PH}
 {SCHEDULE_TABLE_CATALOG_PH}
 {TIMETABLE_CATALOG_PH}
+{STAFFING_TABLE_CATALOG_PH}
   · numbered_columns — 상단 검정 헤더 + 초대형 배경 숫자 3~4열 + 하단 결론 2줄 (밴드 없음)
                        ★ 적합: role=body 페이지의 "N대 원칙/축/전략을 번호로 구조화해 병렬 제시" 페이지
                               (예: 3대 운영 원칙, 4대 접근 방향, N대 핵심 축, 우리 제안의 N대 특징)
@@ -1233,6 +1253,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
      대체 후보 있으면 hero_detail / quad_detail(이미지 자리 있는 다른 프리셋) 로 회전.
 {SCHEDULE_TABLE_RULE_PH}
 {TIMETABLE_RULE_PH}
+{STAFFING_TABLE_RULE_PH}
 
 [skeleton_id 배정 규칙 — Spec D-Build-SkeletonConnect / Spec D-Fix-SkeletonDiversity]
 운영이 사람이 양질 제안서에서 떠낸 검증된 골격 15종 HTML 을 R2 에서 동기화해뒀다.
@@ -3582,6 +3603,15 @@ async def generate_outline(
         "\n{TIMETABLE_RULE_PH}",
         "\n" + _TIMETABLE_RULE_STR if TIMETABLE_ENABLED else "",
     )
+    # Spec Preset-StaffingTable — 카탈로그 + 배정 규칙 ⑫ 조건부 replace.
+    outline_system_prompt = outline_system_prompt.replace(
+        "\n{STAFFING_TABLE_CATALOG_PH}",
+        "\n" + _STAFFING_TABLE_CATALOG_STR if STAFFING_TABLE_ENABLED else "",
+    )
+    outline_system_prompt = outline_system_prompt.replace(
+        "\n{STAFFING_TABLE_RULE_PH}",
+        "\n" + _STAFFING_TABLE_RULE_STR if STAFFING_TABLE_ENABLED else "",
+    )
     # max_tokens 64000 — Sonnet 4.5 native 한계까지 활용 → 100 슬라이드 영역까지 안전.
     # 사고 영역 history:
     #   49f3ccc: 50 슬라이드 = 16000 도달 → 32000 영역 ↑
@@ -3599,6 +3629,8 @@ async def generate_outline(
     items = []
     # ★ Spec Preset-Timetable — 덱당 배정 cap 카운터 (전체 프로그램 개요는 1장이면 충분).
     _tt_assigned = 0
+    # ★ Spec Preset-StaffingTable — 덱당 cap 카운터 (최대 2장).
+    _sf_assigned = 0
     for it in parsed["outline"]:
         if not isinstance(it, dict):
             continue
@@ -3640,6 +3672,9 @@ async def generate_outline(
         # ★ Spec Preset-Timetable — 플래그 조건부 등재 (식순표와 동일 패턴).
         if TIMETABLE_ENABLED:
             _VIZ_PATTERN_SAFE = _VIZ_PATTERN_SAFE | {"timetable"}
+        # ★ Spec Preset-StaffingTable — 플래그 조건부 등재.
+        if STAFFING_TABLE_ENABLED:
+            _VIZ_PATTERN_SAFE = _VIZ_PATTERN_SAFE | {"staffing_table"}
         viz_pattern_raw = str(it.get("viz_pattern", "")).strip().lower()
         viz_pattern = viz_pattern_raw if viz_pattern_raw in _VIZ_PATTERN_SAFE else ""
         # ★ Spec D-Fix-NarrativeGuard — text 위계는 hero/support/simple_box 페이지에 배정 X.
@@ -3912,6 +3947,24 @@ async def generate_outline(
                 viz_pattern = ""  # 부적합 도메인/위치/cap 초과 → 강등
             else:
                 _tt_assigned += 1
+        # ★★ Spec Preset-StaffingTable — 인력배치표 가드 (★도메인 제한 없음).
+        #   인력 투입은 모든 과업에 있으므로 식순표·타임테이블과 달리 도메인으로 막지 않는다
+        #   (홍보마케팅 제안서에도 투입 인력 표는 필요하고, 있는 편이 품질이 올라간다).
+        #   ★★ role 은 body 와 support 를 모두 허용해야 한다 — OUTLINE 이 조직·인력을
+        #   support 로 배정하므로, 다른 프리셋처럼 body 만 허용하면 항상 강등돼 발동 불가.
+        #   cap: 덱당 2장 (구역별 배치 + 업무 분장).
+        elif viz_pattern == "staffing_table":
+            _rl_sf = str(it.get("role", "")).strip().lower()
+            _st_sf = str(it.get("slide_type", "")).strip().lower()
+            if (_rl_sf not in _STAFFING_TABLE_ROLES or _st_sf == "hero"
+                    or _sf_assigned >= _STAFFING_TABLE_MAX_PER_DECK):
+                log.info(
+                    "Preset-StaffingTable 강등 p=%s role=%s st=%s 이미배정=%s",
+                    it.get("page"), _rl_sf, _st_sf, _sf_assigned,
+                )
+                viz_pattern = ""  # 부적합 위치/cap 초과 → 강등
+            else:
+                _sf_assigned += 1
         # Spec D-Fix-BodyRole-1 — role 화이트리스트 (body/support/"" 만 허용).
         # outline AI 가 임의 값을 박으면 ""로 강등 (식별 누락 → 무영향 fallback).
         _ROLE_SAFE = {"body", "support", ""}
@@ -4122,6 +4175,10 @@ if SCHEDULE_TABLE_ENABLED:
 if TIMETABLE_ENABLED:
     _VIZ_TO_PRESET["timetable"] = "timetable"
 
+# Spec Preset-StaffingTable — 플래그 조건부 매핑.
+if STAFFING_TABLE_ENABLED:
+    _VIZ_TO_PRESET["staffing_table"] = "staffing_table"
+
 
 # Spec Preset-ScheduleTable — OUTLINE_SYSTEM_PROMPT 조건부 카탈로그 + 배정 규칙 ⑩.
 # generate_outline 에서 플래그로 조건부 replace (False 시 빈 문자열 = 프롬프트 무변).
@@ -4136,6 +4193,25 @@ _SCHEDULE_TABLE_CATALOG_STR = (
     "                          campaign(공공캠페인·홍보마케팅)·tourism·rnd·welfare·education·other\n"
     "                          에는 절대 배정 X — 식순 자체가 없는 과업이다 (코드도 강등 처리).\n"
     "                          rows 4개 이상 + content 필수. 미충족 시 코드가 preset 무효 처리."
+)
+_STAFFING_TABLE_CATALOG_STR = (
+    "  · staffing_table   — 거버닝 + 구역 × 인력유형 인원 매트릭스 표 (합계행 자동)\n"
+    "                       ★ 적합: 인력 운영·조직 페이지 — 구역·파트별로 어떤 인력을 몇 명\n"
+    "                              배치하는지 수치로 보여주는 자리 (role=body / role=support 둘 다).\n"
+    "                              (우수 제안서 실측: 6/7 파일 보유, 인원 합계행 필수)\n"
+    "                       ⚠ 부적합: 인원 수가 없는 업무 분장 설명 / 조직도(계층 구조) /\n"
+    "                              진행 순서(그건 schedule_table) / slide_type=hero\n"
+    "                       ※ ★ 도메인 제한 없음 — 인력 투입은 모든 과업에 있다.\n"
+    "                          ★ 합계는 쓰지 말 것 — 코드가 열별 합·총합을 계산해 붙인다.\n"
+    "                          roles 2~6개 + rows 3개 이상. 미충족 시 코드가 preset 무효 처리.\n"
+    "                          한 제안서 최대 2장."
+)
+_STAFFING_TABLE_RULE_STR = (
+    "⑫ ★ staffing_table 배정 제한 (Spec Preset-StaffingTable):\n"
+    "   - 허용 페이지: 인력 배치·투입 인력 구성 페이지 (role=body 또는 role=support 모두 가능).\n"
+    "     구역·파트별 인원 수를 제시하는 자리에만 — 인원 수 없는 업무 분장 설명에는 배정 X.\n"
+    "   - 도메인 제한 없음 (인력 투입은 모든 과업에 존재).\n"
+    "   - ★ 한 제안서 최대 2장 (3장째부터 코드가 강등)."
 )
 _TIMETABLE_CATALOG_STR = (
     "  · timetable        — 거버닝 + 시간 × 일자/무대 매트릭스 표 (전체 프로그램 타임테이블)\n"
@@ -5447,6 +5523,53 @@ def _build_slide_user_prompt(
                 '"conclusion_lead":"핵심 원칙 — 일관성 × 병행 × 분리",'
                 '"shapes":[{"type":"text","x":0.5,"y":7.9,"w":10,"h":0.3,'
                 '"text":"3채널 통합 홍보","size":11,"weight":400,"color":"#666"}]}'
+            )
+        elif item.viz_pattern == "staffing_table":
+            # ★★ Spec Preset-StaffingTable — 구역 × 인력유형 인원 매트릭스.
+            #   ★ LLM 은 구역·인력유형·인원 수만 쓴다. 합계행·0 표기·열 폭·색은 코드가 만든다.
+            parts.append(
+                "[배정된 레이아웃 패턴] staffing_table (구역 × 인력유형 인원 매트릭스 + 합계행)\n"
+                "★ 용도: 인력 운영 계획 — 구역·파트별로 어떤 인력을 몇 명 배치하는지 수치로 제시.\n"
+                "★ 다른 패턴과 구분:\n"
+                "  · 인원 수 없는 업무 분장 설명 → numbered_columns / conclusion_cards\n"
+                "  · 진행 순서 → schedule_table / 전체 일정 → timetable\n"
+                "  · 계층 조직도 → 자율 shapes\n"
+                "\n"
+                "★★ 표 작성 원칙 — 이 프리셋 한정 (Spec Preset-StaffingTable):\n"
+                "  · roles(인력유형) 4~10자 명사형 — \"전문 인력\", \"경호 인력\", \"진행 요원\", \"의료\".\n"
+                "  · rows[].zone(구역·파트) 6~16자 명사형 — \"블루 스테이지\", \"종합안내소·포토존\".\n"
+                "  · counts 는 정수 인원 수만. 배치 안 하는 칸은 0 (코드가 \"－\" 로 표기).\n"
+                "  · ★ 합계는 쓰지 말 것 — 코드가 열별 합계와 총인원을 계산해 맨 아래 행으로 붙인다.\n"
+                "  · ★ Concreteness-Boost 지시(100~150자)는 표 셀에 적용하지 말 것.\n"
+                "  · ★ 팩트게이트 — 인원 수·구역 구성은 우리가 정하는 계획 구조 수치라 작성 OK.\n"
+                "     단 협력사·인력 실명, 특정 업체명은 지어내지 말 것.\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "staffing_table"  (필수, identity)\n'
+                '  · "title": 페이지 거버닝 (필수, 25~40자 명사형 — role="governing" 자동)\n'
+                '  · "eyebrow": 좌상단 breadcrumb (선택, 50자 이내)\n'
+                '  · "roles": ["전문 인력", "경호 인력", ...]  ★ 2~6개 (7개 이상이면 앞 6개만)\n'
+                '  · "rows": [{"zone": "구역·파트명", "counts": [2, 1, 4, 0]}, ...]  ★ 3~12개\n'
+                "             counts 는 roles 와 같은 순서·같은 개수로. 길이가 달라도 코드가 보정한다.\n"
+                '  · "note": 표 아래 한 줄 보충 (선택, 70자 이내 — 교육·근무 기간 등)\n'
+                "  → 합계행·0 표기·열 폭·헤더 색·테두리는 코드가 자동 배치.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" (rect / 표 절대 X) ★★\n"
+                "  ★ preset='staffing_table' 키 누락 시 자율 shapes 회귀(표 소실).\n"
+                "\n"
+                "★ 완성 예시 (구역별 인력 배치):\n"
+                '{"preset":"staffing_table",'
+                '"title":"구역별 인력 배치로 빈틈을 없애는 현장 운영 체계",'
+                '"eyebrow":"Ⅴ. 사업 관리 부문  ·  1. 인력 운영 계획",'
+                '"roles":["전문 인력","경호 인력","진행 요원","의료"],'
+                '"rows":['
+                '{"zone":"메인 스테이지","counts":[2,2,4,0]},'
+                '{"zone":"체험존","counts":[1,1,4,0]},'
+                '{"zone":"종합안내소·포토존","counts":[1,1,2,2]},'
+                '{"zone":"주차·교통","counts":[0,2,4,0]}'
+                '],'
+                '"note":"전원 사전 교육 이수 후 배치, 행사 1일 전 현장 리허설 포함",'
+                '"shapes":[{"type":"text","x":0.5,"y":7.9,"w":10,"h":0.3,'
+                '"text":"구역별 인력 배치","size":11,"weight":400,"color":"#666"}]}'
             )
         elif item.viz_pattern == "timetable":
             # ★★ Spec Preset-Timetable — 시간 × 일자/무대 매트릭스 + 셀 병합.

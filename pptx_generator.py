@@ -2121,7 +2121,7 @@ def _add_table(slide, x, y, w, *, header, rows, col_widths=None, aligns=None,
                size=11, row_h=0.30, row_heights=None,
                header_fill="#1A1A1A", header_color="#FFFFFF",
                body_fill="#FFFFFF", body_color="#1A1A1A", line="#DDDDDD",
-               merges=None, cell_fills=None,
+               merges=None, cell_fills=None, bold_rows=None,
                theme="light"):
     """네이티브 표 1개 — 흑백 강제 + 다크 매핑.
 
@@ -2135,6 +2135,11 @@ def _add_table(slide, x, y, w, *, header, rows, col_widths=None, aligns=None,
                  row 는 header 포함 인덱스(0=header). 병합 continuation 셀은 손대지 않는다.
     cell_fills = {(row, col): "#F5F5F5", ...}  특정 셀만 면 색 교체 (프로그램 셀 명도 구분).
                  ★ 흑백 6색 + DARK_MAP 매핑 있는 값만 쓸 것 (#F5F5F5 → 다크 #1F1F1F).
+
+    [Spec Preset-StaffingTable — 행 굵기 (add-only, 기본 None 이면 기존 경로 비트 동일)]
+    bold_rows  = [row, ...]  해당 행 글자를 굵게 (합계행 강조).
+                 ★ 합계행을 헤더처럼 검정 면으로 못 하는 이유 — 본문 글자색이 검정이라
+                   검정 면 위에서 안 보인다. #F5F5F5 면 + 굵게 조합으로 강조한다.
     """
     if not header or not rows:
         return None
@@ -2187,6 +2192,12 @@ def _add_table(slide, x, y, w, *, header, rows, col_widths=None, aligns=None,
             for cc in range(c0, c1 + 1):
                 if (rr, cc) != (r0, c0):
                     skip.add((rr, cc))
+    bold_set = set()
+    for br in (bold_rows or []):
+        try:
+            bold_set.add(int(br))
+        except Exception:
+            continue
     fills_map = {}
     for k, v in (cell_fills or {}).items():
         try:
@@ -2219,7 +2230,9 @@ def _add_table(slide, x, y, w, *, header, rows, col_widths=None, aligns=None,
                 cell.vertical_anchor = MSO_ANCHOR.MIDDLE
             except Exception:
                 pass
-            weight = 700 if is_head else 400
+            # Spec Preset-StaffingTable — bold_rows 에 든 행은 본문이어도 굵게 (합계행).
+            is_bold = is_head or (r in bold_set)
+            weight = 700 if is_bold else 400
             font_name = _resolve_font(None, weight) or DEFAULT_FONT_FAMILY
             for p in cell.text_frame.paragraphs:
                 try:
@@ -2231,7 +2244,7 @@ def _add_table(slide, x, y, w, *, header, rows, col_widths=None, aligns=None,
                         run.font.size = Pt(float(size))
                     except Exception:
                         run.font.size = Pt(11)
-                    run.font.bold = is_head
+                    run.font.bold = is_bold
                     run.font.name = font_name
                     try:
                         run.font.color.rgb = _hex_to_rgb(h_text if is_head else b_text)
@@ -2354,6 +2367,7 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A", the
                 line=str(shape_def.get("line", "#DDDDDD")),
                 merges=shape_def.get("merges"),
                 cell_fills=shape_def.get("cell_fills"),
+                bold_rows=shape_def.get("bold_rows"),
                 theme=theme,
             )
         if t in ("image", "image_placeholder"):
@@ -5606,6 +5620,145 @@ def _build_preset_cards_grid(slide_data: dict) -> list:
 #   · OUTLINE 카탈로그·SLIDE elif 안내에서 조건부 replace 로 제외됨
 #   · 결과: LLM 이 preset:"vertical_stack_bands" 를 절대 안 냄 → dispatch 미매치 →
 #     자율 shapes 폴백 (기존 100% 동일 동작)
+# ─── Spec Preset-StaffingTable — 인력배치표(구역 × 인력유형 매트릭스) 프리셋 ─────────
+# 우수 제안서 실측 (인력배치표 6/7 파일):
+#   · 매트릭스형 4/7 — 죽변 p54(9×8, 숫자 0.65) · 파주페어 p51(15×6, 0.73) ·
+#     발달장애 p59(4×4 ×5) · 국제스페셜 p50(15×4). 행=구역, 열=인력유형, 셀=인원 수.
+#   · 목록형 2/7 (KBSN p102 · 삼척 p52) — 이번 spec 은 매트릭스형만 (하나씩 검증).
+#   · ★ 합계는 전부 "맨 아래 행" (4건). 맨 오른쪽 열 합계는 0건.
+#     표기 "계 (TOTAL: 53명)" / "계 (TOTAL: 91명)" / "합계 … 52명" / "총인원".
+#   · 0 표기는 죽변 방식 "－"(전각 하이픈). 숫자는 전부 가운데 정렬.
+# ★ 합계는 코드가 계산한다 — LLM 은 구역·인력유형·인원만 쓴다 (식순표의 "컬럼은 코드가
+#   판단", 타임테이블의 "병합은 코드가 계산" 과 같은 원칙).
+# ★ 매트릭스에 병합은 쓰지 않는다 — 첫 열을 한 단으로 단순화(우수작의 2단 구역 열 생략).
+# ★ 넘침 방어는 타임테이블과 동일 골격 (열 clamp / 행 clamp / 셀 절단 / 폰트 계단 / 총높이).
+_SF_MIN_ROLES, _SF_MAX_ROLES = 2, 6
+_SF_MIN_ZONES, _SF_MAX_ZONES = 3, 12
+_SF_CUT = {"zone": 16, "role": 10, "note": 70}
+_SF_ZONE_W = 2.2                         # 구역 열 폭 — 우수작 실측 1.75~2.5"
+_SF_X, _SF_W = 0.9, 9.89
+_SF_TOP, _SF_BOTTOM = 2.8, 7.8           # 표 가용 세로 5.0"
+_SF_SIZES = (10, 9, 8)
+_SF_TOTAL_FILL = "#F5F5F5"               # 합계행 (DARK_MAP → 다크 #1F1F1F)
+_SF_ZERO = "－"                           # 0 표기 (죽변항 방식)
+
+
+def _sf_count(v):
+    """셀 인원 수 정규화 — 숫자만 인정, 음수·문자열·None 은 0."""
+    try:
+        n = int(float(str(v).strip()))
+    except Exception:
+        return 0
+    return max(0, min(n, 999))
+
+
+def _build_preset_staffing_table(slide_data: dict) -> list:
+    """Spec Preset-StaffingTable — 구역 × 인력유형 인원 매트릭스 프리셋.
+
+    slide_data 스키마:
+      "title" : str (필수, 25~40자 명사형 거버닝)
+      "eyebrow": str (선택)
+      "roles" : ["전문 인력", "경호 인력", ...]  ★ 2~6개 (초과 시 앞 6개)
+      "rows"  : [{"zone": "블루 스테이지", "counts": [2, 2, 2, 0]}, ...]  ★ 3~12개
+                counts 길이가 roles 와 다르면 0 으로 채우거나 잘라낸다.
+      "note"  : str (선택, 표 아래 한 줄)
+    ★ 합계행은 스키마에 없다 — 코드가 열별 합·총합을 계산해 "계 (TOTAL: N명)" 으로 붙인다.
+    반환 = shape dict 리스트. title 없음 / roles 2개 미만 / 유효 rows 3개 미만 → 빈 리스트.
+    """
+    title = str(slide_data.get("title", "")).strip()[:40]
+    if not title:
+        return []
+    eyebrow = str(slide_data.get("eyebrow", "")).strip()[:50]
+    note = str(slide_data.get("note", "")).strip()[:_SF_CUT["note"]]
+
+    roles_raw = slide_data.get("roles") or []
+    if not isinstance(roles_raw, list):
+        return []
+    roles = [str(r).strip()[:_SF_CUT["role"]] for r in roles_raw if str(r).strip()]
+    if len(roles) > _SF_MAX_ROLES:
+        log.info("Preset-StaffingTable 인력유형 %d → 앞 %d개", len(roles), _SF_MAX_ROLES)
+        roles = roles[:_SF_MAX_ROLES]
+    if len(roles) < _SF_MIN_ROLES:
+        return []
+    nrole = len(roles)
+
+    rows_raw = slide_data.get("rows") or []
+    if not isinstance(rows_raw, list):
+        return []
+    zones = []
+    for it in rows_raw:
+        if not isinstance(it, dict):
+            continue
+        zone = str(it.get("zone", "")).strip()[:_SF_CUT["zone"]]
+        if not zone:
+            continue
+        counts_raw = it.get("counts")
+        if not isinstance(counts_raw, list):
+            counts_raw = []
+        counts = [_sf_count(v) for v in counts_raw[:nrole]]
+        counts += [0] * (nrole - len(counts))        # 길이 불일치 → 0 채움
+        zones.append((zone, counts))
+    if len(zones) > _SF_MAX_ZONES:
+        zones = zones[:_SF_MAX_ZONES]
+    if len(zones) < _SF_MIN_ZONES:
+        return []
+
+    # ★ 합계 — 코드가 계산 (열별 합 + 총합)
+    col_sums = [sum(c[i] for _, c in zones) for i in range(nrole)]
+    grand = sum(col_sums)
+    total_label = f"계 (TOTAL: {grand}명)"
+
+    header = ["구분"] + roles
+    body = [[z] + [(str(n) if n > 0 else _SF_ZERO) for n in c] for z, c in zones]
+    body.append([total_label] + [(str(n) if n > 0 else _SF_ZERO) for n in col_sums])
+    total_row_idx = len(body)                        # header(0) 포함 인덱스
+    widths = [_SF_ZONE_W] + [round((_SF_W - _SF_ZONE_W) / nrole, 3)] * nrole
+    aligns = ["left"] + ["center"] * nrole
+    budget = _SF_BOTTOM - _SF_TOP
+
+    def heights_of(size):
+        hs = []
+        for row in [header] + body:
+            need = max(_tt_need(str(row[i]), widths[i], size) for i in range(len(header)))
+            hs.append(round(max(0.30, need), 2))
+        return hs, round(sum(hs), 2)
+
+    size = _SF_SIZES[0]
+    heights, total_h = heights_of(size)
+    for cand_size in _SF_SIZES:                      # 폰트 계단
+        size = cand_size
+        heights, total_h = heights_of(size)
+        if total_h <= budget:
+            break
+    while total_h > budget and len(body) > _SF_MIN_ZONES + 1:   # 최후 — 뒤 구역 제거
+        body.pop(-2)                                 # 합계행 바로 앞(마지막 구역)
+        total_row_idx = len(body)
+        heights, total_h = heights_of(size)
+
+    shapes: list = []
+    if eyebrow:
+        shapes.append({"type": "text", "x": _SF_X, "y": 0.5, "w": _SF_W, "h": 0.4,
+                       "text": eyebrow, "size": 11, "weight": 400, "color": "#BBBBBB",
+                       "align": "left", "valign": "top"})
+    shapes.append({"type": "text", "x": _SF_X, "y": 1.0, "w": _SF_W, "h": 0.9,
+                   "text": title, "size": 28, "weight": 800, "color": "#1A1A1A",
+                   "align": "left", "valign": "middle", "role": "governing"})
+    shapes.append({"type": "table", "x": _SF_X, "y": _SF_TOP, "w": _SF_W,
+                   "header": header, "rows": body,
+                   "col_widths": widths, "aligns": aligns,
+                   "size": size, "row_heights": heights,
+                   "cell_fills": {(total_row_idx, c): _SF_TOTAL_FILL for c in range(nrole + 1)},
+                   "bold_rows": [total_row_idx],
+                   "header_fill": "#1A1A1A", "header_color": "#FFFFFF",
+                   "body_fill": "#FFFFFF", "body_color": "#1A1A1A", "line": "#DDDDDD"})
+    if note:
+        shapes.append({"type": "text", "x": _SF_X, "y": min(_SF_TOP + total_h + 0.12, 7.75),
+                       "w": _SF_W, "h": 0.35,
+                       "text": note, "size": 11, "weight": 400, "color": "#666666",
+                       "align": "left", "valign": "top"})
+    return shapes
+
+
 # ─── Spec Preset-Timetable — 타임테이블(시간 × 일자/무대 매트릭스) 프리셋 ───────────
 # 우수 제안서 실측 (시간축 타임테이블 10개 / 5개 파일):
 #   · 데이터 열 3~13 (중앙 7) · 시간 슬롯 5~22 (중앙 15) · 간격 60분 5건 / 30분 4건
@@ -6494,6 +6647,18 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
             # 6개 고정. 미달 시 return [] → LLM 자율 shapes fallback.
             try:
                 preset_shapes = _build_preset_cards_grid(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "staffing_table":
+            # Spec Preset-StaffingTable — 구역 × 인력유형 인원 매트릭스 + 합계행(코드 계산).
+            # 미달(title 없음 / roles<2 / 유효 rows<3) 시 자율 shapes fallback.
+            # ★ 플래그 게이트는 proposal_multi_pass.py 의 _VIZ_TO_PRESET 조건부 매핑에 존재.
+            try:
+                preset_shapes = _build_preset_staffing_table(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

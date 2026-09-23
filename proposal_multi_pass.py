@@ -134,6 +134,22 @@ SCHEDULE_TABLE_ENABLED = False
 _SCHEDULE_TABLE_DOMAINS = {"festival", "forum", "sports", "exhibition", "display"}
 
 
+# ─── Spec Preset-Timetable — 타임테이블 프리셋 on/off (플래그 게이트) ─────────────
+# ③표 그릇 2번째. 우수 제안서 실측: 시간축 타임테이블이 5/7 파일·본론 전면(12개 중 8개가
+#   면적 40%+). 식순표가 "한 프로그램의 순서"라면 타임테이블은 "행사 전체의 하루/사흘"을
+#   한 장에 담는 개요 페이지 — 프로그램 챕터의 첫 장에 놓인다.
+# ★ 식순표와 같은 table 렌더 기반을 그대로 재사용하고, 셀 병합만 추가 (_add_table 확장).
+# ★ 플래그 False 시 3중 잠김 (식순표와 동일 구조):
+#   ① _VIZ_PATTERN_SAFE 미등재 ② _VIZ_TO_PRESET 미매핑 ③ 카탈로그·규칙 placeholder 빈 문자열
+TIMETABLE_ENABLED = False
+
+# ★ 타임테이블 허용 도메인 — 식순표와 동일한 행사 계열 (기존 상수 재사용, 무수정).
+_TIMETABLE_DOMAINS = _SCHEDULE_TABLE_DOMAINS
+
+# ★ 한 제안서 배정 cap — 전체 프로그램 개요는 한 장이면 충분 (우수작도 대부분 1~2장).
+_TIMETABLE_MAX_PER_DECK = 1
+
+
 # ─── Spec GovEnding-Fix — 거버닝 서술형 종결 감지 정규식 (감지 로그용, 값 무변경) ────
 # 진단: D-Fix-GovEnding-1 규칙 (거버닝 명사형 종결) 위반 실빈도 파악용.
 # ★ 로그만 남기고 값은 절대 안 건드림 — 자동 교정 시 오탐 위험 큼 (한국어 동사→명사
@@ -1131,6 +1147,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
                           items 정확히 3개 + conclusion 필수. 미충족 시 코드가 preset 무효 처리.
 {VERTICAL_STACK_CATALOG_PH}
 {SCHEDULE_TABLE_CATALOG_PH}
+{TIMETABLE_CATALOG_PH}
   · numbered_columns — 상단 검정 헤더 + 초대형 배경 숫자 3~4열 + 하단 결론 2줄 (밴드 없음)
                        ★ 적합: role=body 페이지의 "N대 원칙/축/전략을 번호로 구조화해 병렬 제시" 페이지
                               (예: 3대 운영 원칙, 4대 접근 방향, N대 핵심 축, 우리 제안의 N대 특징)
@@ -1215,6 +1232,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
    - "정말 강력한 비주얼이 있는 페이지"에만 배정 — 조감도·3D 렌더링·핵심 컨셉 이미지 등.
      대체 후보 있으면 hero_detail / quad_detail(이미지 자리 있는 다른 프리셋) 로 회전.
 {SCHEDULE_TABLE_RULE_PH}
+{TIMETABLE_RULE_PH}
 
 [skeleton_id 배정 규칙 — Spec D-Build-SkeletonConnect / Spec D-Fix-SkeletonDiversity]
 운영이 사람이 양질 제안서에서 떠낸 검증된 골격 15종 HTML 을 R2 에서 동기화해뒀다.
@@ -3555,6 +3573,15 @@ async def generate_outline(
         "\n{SCHEDULE_TABLE_RULE_PH}",
         "\n" + _SCHEDULE_TABLE_RULE_STR if SCHEDULE_TABLE_ENABLED else "",
     )
+    # Spec Preset-Timetable — 카탈로그 + 배정 규칙 ⑪ 조건부 replace (식순표와 동일 패턴).
+    outline_system_prompt = outline_system_prompt.replace(
+        "\n{TIMETABLE_CATALOG_PH}",
+        "\n" + _TIMETABLE_CATALOG_STR if TIMETABLE_ENABLED else "",
+    )
+    outline_system_prompt = outline_system_prompt.replace(
+        "\n{TIMETABLE_RULE_PH}",
+        "\n" + _TIMETABLE_RULE_STR if TIMETABLE_ENABLED else "",
+    )
     # max_tokens 64000 — Sonnet 4.5 native 한계까지 활용 → 100 슬라이드 영역까지 안전.
     # 사고 영역 history:
     #   49f3ccc: 50 슬라이드 = 16000 도달 → 32000 영역 ↑
@@ -3570,6 +3597,8 @@ async def generate_outline(
         raise RuntimeError(f"Outline 파싱 실패. raw 앞 200자: {raw[:200]}")
 
     items = []
+    # ★ Spec Preset-Timetable — 덱당 배정 cap 카운터 (전체 프로그램 개요는 1장이면 충분).
+    _tt_assigned = 0
     for it in parsed["outline"]:
         if not isinstance(it, dict):
             continue
@@ -3608,6 +3637,9 @@ async def generate_outline(
         #   여기서 ""로 강등 → SLIDE elif·dispatch 전부 미진입 = 기존 100% 동일.
         if SCHEDULE_TABLE_ENABLED:
             _VIZ_PATTERN_SAFE = _VIZ_PATTERN_SAFE | {"schedule_table"}
+        # ★ Spec Preset-Timetable — 플래그 조건부 등재 (식순표와 동일 패턴).
+        if TIMETABLE_ENABLED:
+            _VIZ_PATTERN_SAFE = _VIZ_PATTERN_SAFE | {"timetable"}
         viz_pattern_raw = str(it.get("viz_pattern", "")).strip().lower()
         viz_pattern = viz_pattern_raw if viz_pattern_raw in _VIZ_PATTERN_SAFE else ""
         # ★ Spec D-Fix-NarrativeGuard — text 위계는 hero/support/simple_box 페이지에 배정 X.
@@ -3862,6 +3894,24 @@ async def generate_outline(
                     it.get("page"), _dm_st, _rl_st, _st_st,
                 )
                 viz_pattern = ""  # 부적합 도메인/위치 → 강등 (LLM 오배정 차단)
+        # ★★ Spec Preset-Timetable — 타임테이블 가드 (식순표와 동일 강도 + 덱당 cap).
+        #   도메인 허용 5종은 식순표와 같은 집합(_TIMETABLE_DOMAINS 별칭) —
+        #   홍보마케팅(campaign)에는 시간표 자체가 없으므로 코드가 원천 차단한다.
+        #   cap: 전체 프로그램 개요는 한 장이면 충분 → 2장째부터 강등(프롬프트 규칙 + 코드 2중).
+        elif viz_pattern == "timetable":
+            _dm_tt = str(parsed.get("domain", "other")).strip().lower()
+            _rl_tt = str(it.get("role", "")).strip().lower()
+            _st_tt = str(it.get("slide_type", "")).strip().lower()
+            if (_dm_tt not in _TIMETABLE_DOMAINS
+                    or _rl_tt != "body" or _st_tt == "hero"
+                    or _tt_assigned >= _TIMETABLE_MAX_PER_DECK):
+                log.info(
+                    "Preset-Timetable 강등 p=%s domain=%s role=%s st=%s 이미배정=%s",
+                    it.get("page"), _dm_tt, _rl_tt, _st_tt, _tt_assigned,
+                )
+                viz_pattern = ""  # 부적합 도메인/위치/cap 초과 → 강등
+            else:
+                _tt_assigned += 1
         # Spec D-Fix-BodyRole-1 — role 화이트리스트 (body/support/"" 만 허용).
         # outline AI 가 임의 값을 박으면 ""로 강등 (식별 누락 → 무영향 fallback).
         _ROLE_SAFE = {"body", "support", ""}
@@ -4068,6 +4118,10 @@ if VERTICAL_STACK_ENABLED:
 if SCHEDULE_TABLE_ENABLED:
     _VIZ_TO_PRESET["schedule_table"] = "schedule_table"
 
+# Spec Preset-Timetable — 플래그 조건부 매핑 (식순표와 동일 패턴).
+if TIMETABLE_ENABLED:
+    _VIZ_TO_PRESET["timetable"] = "timetable"
+
 
 # Spec Preset-ScheduleTable — OUTLINE_SYSTEM_PROMPT 조건부 카탈로그 + 배정 규칙 ⑩.
 # generate_outline 에서 플래그로 조건부 replace (False 시 빈 문자열 = 프롬프트 무변).
@@ -4082,6 +4136,28 @@ _SCHEDULE_TABLE_CATALOG_STR = (
     "                          campaign(공공캠페인·홍보마케팅)·tourism·rnd·welfare·education·other\n"
     "                          에는 절대 배정 X — 식순 자체가 없는 과업이다 (코드도 강등 처리).\n"
     "                          rows 4개 이상 + content 필수. 미충족 시 코드가 preset 무효 처리."
+)
+_TIMETABLE_CATALOG_STR = (
+    "  · timetable        — 거버닝 + 시간 × 일자/무대 매트릭스 표 (전체 프로그램 타임테이블)\n"
+    "                       ★ 적합: role=body 페이지 중 \"행사 전체 일정을 한 장에 조망하는\" 개요 —\n"
+    "                              프로그램 챕터 첫 장의 전체 타임테이블, 일자별/무대별 운영 시간표.\n"
+    "                              (우수 제안서 실측: 5/7 파일 보유, 대부분 한 페이지를 꽉 채움)\n"
+    "                       ⚠ 부적합: 한 프로그램의 진행 순서(그건 schedule_table) /\n"
+    "                              월 단위 추진 일정(그건 process/timeline) / 순서 없는 나열 /\n"
+    "                              role=support / slide_type=hero\n"
+    "                       ※ ★ 허용 도메인 = festival / forum / sports / exhibition / display 만.\n"
+    "                          campaign(공공캠페인·홍보마케팅)·tourism·rnd·welfare·education·other\n"
+    "                          에는 절대 배정 X (코드도 강등 처리).\n"
+    "                          ★ 한 제안서 1장만 — 2장째는 코드가 강등한다.\n"
+    "                          columns 2~4개 + items 3개 이상. 미충족 시 코드가 preset 무효 처리."
+)
+_TIMETABLE_RULE_STR = (
+    "⑪ ★ timetable 배정 제한 (Spec Preset-Timetable):\n"
+    "   - 허용 도메인: festival / forum / sports / exhibition / display 만.\n"
+    "     ★ campaign(공공캠페인·홍보마케팅)·tourism·rnd·welfare·education·other 에는 절대 배정 X.\n"
+    "   - 허용 페이지: \"행사 전체 일정 조망\" 한 장만 (프로그램 챕터 개요).\n"
+    "     개별 프로그램의 진행 순서는 schedule_table, 월 단위 추진일정은 process/timeline.\n"
+    "   - ★ 한 제안서 최대 1장 (2장째부터 코드가 강등)."
 )
 _SCHEDULE_TABLE_RULE_STR = (
     "⑩ ★ schedule_table 배정 제한 (Spec Preset-ScheduleTable):\n"
@@ -5371,6 +5447,68 @@ def _build_slide_user_prompt(
                 '"conclusion_lead":"핵심 원칙 — 일관성 × 병행 × 분리",'
                 '"shapes":[{"type":"text","x":0.5,"y":7.9,"w":10,"h":0.3,'
                 '"text":"3채널 통합 홍보","size":11,"weight":400,"color":"#666"}]}'
+            )
+        elif item.viz_pattern == "timetable":
+            # ★★ Spec Preset-Timetable — 시간 × 일자/무대 매트릭스 + 셀 병합.
+            #   ★ LLM 은 "언제 · 어느 열 · 무엇" 만 쓴다. 슬롯 격자·행 병합·겹침 해소·
+            #     열 폭·색은 전부 코드(_build_preset_timetable)가 계산한다.
+            #   ★ 도메인 제한·덱당 1장 cap 은 OUTLINE 가드(코드)가 이미 처리 —
+            #     여기 도달했다는 건 허용 도메인·첫 장이라는 뜻.
+            parts.append(
+                "[배정된 레이아웃 패턴] timetable (시간 × 일자/무대 매트릭스 — 전체 타임테이블)\n"
+                "★ 용도: 행사 전체 일정을 한 장에 조망 — 프로그램 챕터 첫 장.\n"
+                "★ 다른 패턴과 구분:\n"
+                "  · 한 프로그램의 분 단위 진행 순서 → schedule_table\n"
+                "  · 월 단위 추진 일정 → process / timeline\n"
+                "  · 순서 없는 항목 나열 → numbered_columns / conclusion_cards\n"
+                "\n"
+                "★★ 표 셀 작성 원칙 — 이 프리셋 한정 (Spec Preset-Timetable):\n"
+                "  · items[].text = 프로그램명 **10~20자 명사형** (표 셀이므로 문장 금지).\n"
+                "    예: \"친환경 배 레이싱 대회\", \"수산물 즉석 경매\", \"지역 예술인 공연\".\n"
+                "  · columns = 열 제목 24자 이내 — \"[DAY 1] 11.07(금)\" 또는 \"메인 무대\" 형식.\n"
+                "  · start / end = \"10:00\" \"12:00\" 형식(24시간제). 두 시간에 걸치면 end 를 늘려 쓰면\n"
+                "    코드가 세로 병합으로 그린다 — 병합 인덱스를 직접 쓰지 말 것.\n"
+                "  · ★ Concreteness-Boost 지시(100~150자)는 표 셀에 적용하지 말 것. 셀은 요점만.\n"
+                "  · ★ 팩트게이트 — 시각·순서는 우리가 정하는 계획 구조 수치라 작성 OK.\n"
+                "     출연자·연사·업체 실명은 지어내지 말 것 (\"초청 공연(출연진 섭외 예정)\").\n"
+                "     RFP 에 행사 일자·시간이 명시돼 있으면 그 값을 쓸 것.\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "timetable"  (필수, identity)\n'
+                '  · "title": 페이지 거버닝 (필수, 25~40자 명사형 — role="governing" 자동)\n'
+                '  · "eyebrow": 좌상단 breadcrumb (선택, 50자 이내)\n'
+                '  · "columns": 열 제목 배열 ★ 2~4개 (일자별 또는 무대·존별. 5개 이상이면 앞 4개만)\n'
+                '  · "slot_minutes": 30 또는 60 (선택, 기본 60)\n'
+                '  · "items": [{"col": 1~4, "start": "10:00", "end": "12:00", "text": "프로그램명"}, ...]\n'
+                "             ★ 3개 이상. col 은 columns 의 몇 번째인지(1부터).\n"
+                "             같은 열에서 시간이 겹치면 앞 항목만 남고 뒤는 버려진다 — 겹치지 않게 쓸 것.\n"
+                '  · "footer": {"label": "체험 프로그램", "text": "상시 운영 프로그램 나열"}\n'
+                "             (선택 — 하단에 데이터 열 전체를 가로 병합한 상설 프로그램 행)\n"
+                "  → 슬롯 격자·행 병합·열 폭·헤더 색·테두리는 코드가 자동 배치.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" (rect / 표 절대 X) ★★\n"
+                "  ★ preset='timetable' 키 누락 시 자율 shapes 회귀(표 소실).\n"
+                "\n"
+                "★ 완성 예시 (3일 축제 전체 타임테이블):\n"
+                '{"preset":"timetable",'
+                '"title":"사흘의 흐름을 한눈에 담은 프로그램 타임테이블",'
+                '"eyebrow":"Ⅳ. 프로그램 계획  ·  1. 전체 프로그램 개요",'
+                '"columns":["[DAY 1] 11.07(금)","[DAY 2] 11.08(토)","[DAY 3] 11.09(일)"],'
+                '"slot_minutes":60,'
+                '"items":['
+                '{"col":2,"start":"10:00","end":"12:00","text":"친환경 배 레이싱 대회"},'
+                '{"col":3,"start":"10:00","end":"12:00","text":"읍면 대항전 ①"},'
+                '{"col":2,"start":"12:00","end":"13:00","text":"수산물 즉석 경매"},'
+                '{"col":3,"start":"12:00","end":"13:00","text":"수산물 즉석 경매"},'
+                '{"col":2,"start":"13:00","end":"14:00","text":"물회 나눔 퍼포먼스"},'
+                '{"col":3,"start":"13:00","end":"14:00","text":"참치 해체 쇼"},'
+                '{"col":3,"start":"14:00","end":"16:00","text":"읍면 대항전 ②"},'
+                '{"col":2,"start":"15:00","end":"17:00","text":"랜덤 플레이 댄스 경연"},'
+                '{"col":1,"start":"17:00","end":"19:00","text":"개막식 · 축하공연"},'
+                '{"col":2,"start":"17:00","end":"18:00","text":"지역 예술인 공연"}'
+                '],'
+                '"footer":{"label":"체험 프로그램","text":"맨손 활어잡기 · 복고 코스튬 · 어등 만들기 상시 운영"},'
+                '"shapes":[{"type":"text","x":0.5,"y":7.9,"w":10,"h":0.3,'
+                '"text":"전체 프로그램 타임테이블","size":11,"weight":400,"color":"#666"}]}'
             )
         elif item.viz_pattern == "schedule_table":
             # ★★ Spec Preset-ScheduleTable — 식순표(행사 진행 순서) + 네이티브 표.

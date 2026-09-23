@@ -2121,6 +2121,7 @@ def _add_table(slide, x, y, w, *, header, rows, col_widths=None, aligns=None,
                size=11, row_h=0.30, row_heights=None,
                header_fill="#1A1A1A", header_color="#FFFFFF",
                body_fill="#FFFFFF", body_color="#1A1A1A", line="#DDDDDD",
+               merges=None, cell_fills=None,
                theme="light"):
     """네이티브 표 1개 — 흑백 강제 + 다크 매핑.
 
@@ -2128,6 +2129,12 @@ def _add_table(slide, x, y, w, *, header, rows, col_widths=None, aligns=None,
     rows    = [["행사 안내", "17:00 ~ 17:30", ...], ...]
     col_widths / row_heights = 인치 리스트 (선택 — 없으면 균등 / row_h)
     ★ 행 높이는 "최소값"이다. 셀 텍스트가 길면 렌더 시 행이 자동으로 늘어난다.
+
+    [Spec Preset-Timetable — 셀 병합 지원 (add-only, 기본 None 이면 기존 경로 비트 동일)]
+    merges     = [(row, col, rowspan, colspan), ...]  ★ 스타일 적용 전에 먼저 merge.
+                 row 는 header 포함 인덱스(0=header). 병합 continuation 셀은 손대지 않는다.
+    cell_fills = {(row, col): "#F5F5F5", ...}  특정 셀만 면 색 교체 (프로그램 셀 명도 구분).
+                 ★ 흑백 6색 + DARK_MAP 매핑 있는 값만 쓸 것 (#F5F5F5 → 다크 #1F1F1F).
     """
     if not header or not rows:
         return None
@@ -2159,15 +2166,48 @@ def _add_table(slide, x, y, w, *, header, rows, col_widths=None, aligns=None,
     align_map = {"left": PP_ALIGN.LEFT, "center": PP_ALIGN.CENTER, "right": PP_ALIGN.RIGHT}
     col_aligns = list(aligns) if aligns and len(aligns) == ncol else ["left"] * ncol
 
+    # ★ Spec Preset-Timetable — 병합 먼저 (스타일·텍스트는 origin 셀에만 적용).
+    #   병합 후 continuation 셀은 hMerge/vMerge 가 되어 건드리면 안 되므로 skip 집합으로 제외.
+    skip = set()
+    for m in (merges or []):
+        try:
+            r0, c0, rs, cs = int(m[0]), int(m[1]), int(m[2]), int(m[3])
+        except Exception:
+            continue
+        if rs < 1 or cs < 1 or (rs == 1 and cs == 1):
+            continue
+        r1, c1 = min(r0 + rs - 1, nrow - 1), min(c0 + cs - 1, ncol - 1)
+        if r0 < 0 or c0 < 0 or r1 <= r0 and c1 <= c0:
+            continue
+        try:
+            tbl.cell(r0, c0).merge(tbl.cell(r1, c1))
+        except Exception:
+            continue
+        for rr in range(r0, r1 + 1):
+            for cc in range(c0, c1 + 1):
+                if (rr, cc) != (r0, c0):
+                    skip.add((rr, cc))
+    fills_map = {}
+    for k, v in (cell_fills or {}).items():
+        try:
+            fills_map[(int(k[0]), int(k[1]))] = str(v)
+        except Exception:
+            continue
+
     grid = [list(header)] + [list(r) for r in rows]
     for r, row_vals in enumerate(grid):
         is_head = (r == 0)
         for c in range(ncol):
+            if (r, c) in skip:      # 병합 continuation 셀 — 무접촉
+                continue
             cell = tbl.cell(r, c)
             cell.text = str(row_vals[c]) if c < len(row_vals) and row_vals[c] is not None else ""
             try:
+                _cf = fills_map.get((r, c))
                 cell.fill.solid()
-                cell.fill.fore_color.rgb = _hex_to_rgb(h_fill if is_head else b_fill)
+                cell.fill.fore_color.rgb = _hex_to_rgb(
+                    _map_color(_cf, "fill", theme) if _cf else (h_fill if is_head else b_fill)
+                )
             except Exception:
                 pass
             _table_cell_border(cell, ln_color)
@@ -2312,6 +2352,8 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A", the
                 body_fill=str(shape_def.get("body_fill", "#FFFFFF")),
                 body_color=str(shape_def.get("body_color", "#1A1A1A")),
                 line=str(shape_def.get("line", "#DDDDDD")),
+                merges=shape_def.get("merges"),
+                cell_fills=shape_def.get("cell_fills"),
                 theme=theme,
             )
         if t in ("image", "image_placeholder"):
@@ -5564,6 +5606,230 @@ def _build_preset_cards_grid(slide_data: dict) -> list:
 #   · OUTLINE 카탈로그·SLIDE elif 안내에서 조건부 replace 로 제외됨
 #   · 결과: LLM 이 preset:"vertical_stack_bands" 를 절대 안 냄 → dispatch 미매치 →
 #     자율 shapes 폴백 (기존 100% 동일 동작)
+# ─── Spec Preset-Timetable — 타임테이블(시간 × 일자/무대 매트릭스) 프리셋 ───────────
+# 우수 제안서 실측 (시간축 타임테이블 10개 / 5개 파일):
+#   · 데이터 열 3~13 (중앙 7) · 시간 슬롯 5~22 (중앙 15) · 간격 60분 5건 / 30분 4건
+#   · 세로 병합 rowSpan 2~14 (두세 시간대에 걸친 프로그램), 가로 병합 gridSpan 2~6
+#     (맨 아래 "체험 프로그램" 행이 데이터 열 전체를 덮는 패턴 — 죽변항 p30)
+#   · 프로그램 셀 글자수 평균 10.1 / 중앙 7 / p90 20 / 최대 62 (30자 초과 3%)
+#   · 우수작은 프로그램별 파스텔 컬러 — NightOff 는 흑백 6색 원칙이라 명도 1단계(#F5F5F5)로 대체
+# ★★ 병합은 코드가 계산한다 — LLM 은 시각(start/end)만 쓰고, 슬롯 격자·rowSpan·gridSpan·
+#   겹침 해소는 전부 여기서 만든다. 병합 인덱스를 LLM 에 맡기면 깨진 표로 바로 드러난다.
+# ★ 넘침 방어 (식순표 4단을 열 가변까지 확장):
+#   데이터 열 2~4 / 슬롯 4~14 / 셀 절단 / 폰트 10→9→8 /
+#   총높이 초과 시 ① 폰트↓ → ② 30분 슬롯을 60분으로 병합(정보 손실 0) →
+#   ③ 텍스트 28→16자 → ④ 마지막 슬롯 제거(최소 4, 최후 수단)
+_TT_MIN_COLS, _TT_MAX_COLS = 2, 4
+_TT_MIN_SLOTS, _TT_MAX_SLOTS = 4, 14
+_TT_CUT = {"text": 28, "column": 24, "label": 12, "footer": 60}
+_TT_TEXT_TIGHT = 16
+_TT_X, _TT_W = 0.9, 9.89
+_TT_TOP, _TT_BOTTOM = 2.6, 7.9          # 표 가용 세로 5.3"
+_TT_TIME_W = 1.6                        # 시간(구분) 열 폭 — 우수작 실측 1.53~1.67"
+_TT_SIZES = (10, 9, 8)
+_TT_CELL_FILL = "#F5F5F5"               # 프로그램 셀 (DARK_MAP → 다크 #1F1F1F)
+_TT_TIME_RE = re.compile(r"(\d{1,2})\s*:\s*(\d{2})")
+
+
+def _tt_minutes(text):
+    """'17:30' → 1050 (분). 파싱 실패 시 None."""
+    m = _TT_TIME_RE.search(str(text))
+    if not m:
+        return None
+    h, mi = int(m.group(1)), int(m.group(2))
+    if not (0 <= h <= 47 and 0 <= mi < 60):
+        return None
+    return h * 60 + mi
+
+
+def _tt_label(mins, slot):
+    """슬롯 시작 분 → '10:00 ~ 11:00' 라벨."""
+    def fmt(v):
+        return f"{(v // 60) % 48:02d}:{v % 60:02d}"
+    return f"{fmt(mins)} ~ {fmt(mins + slot)}"
+
+
+def _tt_need(text, w, size):
+    """셀 텍스트가 요구하는 높이(인치) — 병합 분배용 raw 값 (floor 미적용)."""
+    per_em = max(3.0, (float(w) - 0.14) * 72 / size)
+    lines = max(1, int(-(-_st_em_len(text) // per_em)))
+    return lines * size * 1.4 / 72 + 0.10
+
+
+def _build_preset_timetable(slide_data: dict) -> list:
+    """Spec Preset-Timetable — 시간 × 일자/무대 매트릭스 프리셋.
+
+    slide_data 스키마:
+      "title"        : str (필수, 25~40자 명사형 거버닝)
+      "eyebrow"      : str (선택)
+      "columns"      : ["[DAY 1] 11.07(금)", ...]   ★ 2~4개 (초과 시 앞 4개)
+      "slot_minutes" : 30 | 60 (선택, 기본 60)
+      "items"        : [{"col": 1, "start": "10:00", "end": "12:00", "text": "…"}, ...]
+                       ★ 유효 3개 이상. col 은 1-based 데이터 열 번호.
+      "footer"       : {"label": "체험 프로그램", "text": "상설 운영 …"}  (선택, 가로 전체 병합)
+    반환 = shape dict 리스트. title 없음 / columns 2개 미만 / 유효 items 3개 미만 → 빈 리스트
+      → LLM 자율 shapes fallback.
+    """
+    title = str(slide_data.get("title", "")).strip()[:40]
+    if not title:
+        return []
+    eyebrow = str(slide_data.get("eyebrow", "")).strip()[:50]
+
+    cols_raw = slide_data.get("columns") or []
+    if not isinstance(cols_raw, list):
+        return []
+    columns = [str(c).strip()[:_TT_CUT["column"]] for c in cols_raw if str(c).strip()]
+    if len(columns) > _TT_MAX_COLS:
+        log.info("Preset-Timetable 열 초과 %d → 앞 %d개", len(columns), _TT_MAX_COLS)
+        columns = columns[:_TT_MAX_COLS]
+    if len(columns) < _TT_MIN_COLS:
+        return []
+    ncols = len(columns)
+
+    items_raw = slide_data.get("items") or []
+    if not isinstance(items_raw, list):
+        return []
+    items = []
+    for it in items_raw:
+        if not isinstance(it, dict):
+            continue
+        text = str(it.get("text", "")).strip()[:_TT_CUT["text"]]
+        s = _tt_minutes(it.get("start"))
+        e = _tt_minutes(it.get("end"))
+        try:
+            col = int(it.get("col", 0))
+        except Exception:
+            continue
+        if not text or s is None or not (1 <= col <= ncols):
+            continue
+        items.append({"col": col - 1, "s": s, "e": e if (e and e > s) else None, "text": text})
+    if len(items) < 3:
+        return []
+
+    fo = slide_data.get("footer") or {}
+    footer = None
+    if isinstance(fo, dict):
+        f_label = str(fo.get("label", "")).strip()[:_TT_CUT["label"]]
+        f_text = str(fo.get("text", "")).strip()[:_TT_CUT["footer"]]
+        if f_label and f_text:
+            footer = (f_label, f_text)
+
+    slot_req = slide_data.get("slot_minutes")
+    slot0 = 30 if str(slot_req).strip() == "30" else 60
+    widths = [_TT_TIME_W] + [round((_TT_W - _TT_TIME_W) / ncols, 3)] * ncols
+    budget = _TT_BOTTOM - _TT_TOP
+
+    def layout(slot, size, tight, max_slots):
+        """슬롯 격자 + 배치 + 병합 + 높이 계산. (grid, merges, fills, heights, total, nslot)"""
+        starts = [(i["s"] // slot) * slot for i in items]
+        ends = [(-(-(i["e"] or (i["s"] + slot)) // slot)) * slot for i in items]
+        t0, t1 = min(starts), max(ends)
+        nslot = max(1, (t1 - t0) // slot)
+        nslot = min(nslot, max_slots)
+        rows = [[_tt_label(t0 + k * slot, slot)] + [""] * ncols for k in range(nslot)]
+        merges, fills, placed = [], {}, []
+        taken = {}      # (col) → set(row)
+        for it in sorted(items, key=lambda x: (x["s"], x["col"])):
+            r0 = (it["s"] - t0) // slot
+            if r0 < 0 or r0 >= nslot:
+                continue
+            span = max(1, (-(-((it["e"] or (it["s"] + slot)) - t0) // slot)) - r0)
+            span = min(span, nslot - r0)
+            used = taken.setdefault(it["col"], set())
+            if any(r in used for r in range(r0, r0 + span)):
+                log.info("Preset-Timetable 겹침 제외 col=%s start=%s text=%s",
+                         it["col"] + 1, it["s"], it["text"][:12])
+                continue
+            used.update(range(r0, r0 + span))
+            text = it["text"][:_TT_TEXT_TIGHT] if tight else it["text"]
+            rows[r0][it["col"] + 1] = text
+            placed.append((r0, it["col"] + 1, span, text))
+            fills[(1 + r0, it["col"] + 1)] = _TT_CELL_FILL
+            if span > 1:
+                merges.append((1 + r0, it["col"] + 1, span, 1))
+        if not placed:
+            return None
+        # 행 높이 — 병합 셀은 필요 높이를 span 으로 나눠 각 행에 분배
+        hs = [0.30] * nslot
+        for (r0, c, span, text) in placed:
+            per = _tt_need(text, widths[c], size) / span
+            for r in range(r0, r0 + span):
+                hs[r] = max(hs[r], per)
+        for r in range(nslot):
+            hs[r] = max(hs[r], _tt_need(rows[r][0], widths[0], size))
+        head_h = max(0.34, max(_tt_need(h, widths[i], size)
+                               for i, h in enumerate(["구분"] + columns)))
+        all_rows = list(rows)
+        foot_h = 0.0
+        if footer:
+            foot_h = max(0.34, _tt_need(footer[1], _TT_W - _TT_TIME_W, size))
+            all_rows.append([footer[0], footer[1]] + [""] * (ncols - 1))
+            merges.append((1 + nslot, 1, 1, ncols))
+            fills[(1 + nslot, 0)] = _TT_CELL_FILL
+        heights = [round(head_h, 2)] + [round(h, 2) for h in hs] + \
+                  ([round(foot_h, 2)] if footer else [])
+        return all_rows, merges, fills, heights, round(sum(heights), 2), nslot
+
+    def natural_slots(slot):
+        """clamp 전 자연 슬롯 수 — 30분→60분 전환 판단용."""
+        starts = [(i["s"] // slot) * slot for i in items]
+        ends = [(-(-(i["e"] or (i["s"] + slot)) // slot)) * slot for i in items]
+        return max(1, (max(ends) - min(starts)) // slot)
+
+    # ── 방어 단계 ①~④
+    built = None
+    slot, tight, max_slots = slot0, False, _TT_MAX_SLOTS
+    # ★ ② 를 ④ 보다 먼저 — 30분 슬롯이 상한을 넘으면 60분으로 합친다(정보 손실 0).
+    #   이 판단을 뒤로 미루면 slot clamp(④)가 먼저 걸려 뒤 시간대가 통째로 잘린다.
+    if slot == 30 and natural_slots(30) > _TT_MAX_SLOTS:
+        log.info("Preset-Timetable 슬롯 %d개(30분) → 60분 %d개로 병합",
+                 natural_slots(30), natural_slots(60))
+        slot = 60
+    for size in _TT_SIZES:                                   # ① 폰트 계단
+        built = layout(slot, size, tight, max_slots)
+        if built and built[4] <= budget:
+            break
+    if not built:
+        return []
+    size = _TT_SIZES[min(_TT_SIZES.index(size), len(_TT_SIZES) - 1)]
+    if built[4] > budget and slot == 30:                     # ② 30분 → 60분 병합
+        slot = 60
+        for size in _TT_SIZES:
+            cand = layout(slot, size, tight, max_slots)
+            if cand:
+                built = cand
+                if built[4] <= budget:
+                    break
+    if built[4] > budget:                                    # ③ 텍스트 절단 강화
+        tight = True
+        cand = layout(slot, size, tight, max_slots)
+        if cand:
+            built = cand
+    while built[4] > budget and built[5] > _TT_MIN_SLOTS:    # ④ 마지막 슬롯 제거
+        cand = layout(slot, size, tight, built[5] - 1)
+        if not cand:
+            break
+        built = cand
+    rows, merges, fills, heights, total_h, nslot = built
+
+    shapes: list = []
+    if eyebrow:
+        shapes.append({"type": "text", "x": _TT_X, "y": 0.5, "w": _TT_W, "h": 0.4,
+                       "text": eyebrow, "size": 11, "weight": 400, "color": "#BBBBBB",
+                       "align": "left", "valign": "top"})
+    shapes.append({"type": "text", "x": _TT_X, "y": 1.0, "w": _TT_W, "h": 0.9,
+                   "text": title, "size": 28, "weight": 800, "color": "#1A1A1A",
+                   "align": "left", "valign": "middle", "role": "governing"})
+    shapes.append({"type": "table", "x": _TT_X, "y": _TT_TOP, "w": _TT_W,
+                   "header": ["구분"] + columns, "rows": rows,
+                   "col_widths": widths, "aligns": ["center"] * (ncols + 1),
+                   "size": size, "row_heights": heights,
+                   "merges": merges, "cell_fills": fills,
+                   "header_fill": "#1A1A1A", "header_color": "#FFFFFF",
+                   "body_fill": "#FFFFFF", "body_color": "#1A1A1A", "line": "#DDDDDD"})
+    return shapes
+
+
 # ─── Spec Preset-ScheduleTable — 식순표(행사 진행 순서) 프리셋 ────────────────────
 # 우수 제안서 실측 (식순표 12개 / 5개 파일):
 #   · 핵심 컬럼 구분·시간·내용 = 100%, 소요 4/10 · 비고 6/10 (선택)
@@ -6228,6 +6494,19 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
             # 6개 고정. 미달 시 return [] → LLM 자율 shapes fallback.
             try:
                 preset_shapes = _build_preset_cards_grid(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "timetable":
+            # Spec Preset-Timetable — 시간 × 일자/무대 매트릭스 + 셀 병합.
+            # 슬롯 격자·rowSpan·gridSpan 은 코드가 계산 (LLM 은 시각만 제공).
+            # 미달(title 없음 / columns<2 / 유효 items<3) 시 자율 shapes fallback.
+            # ★ 플래그 게이트는 proposal_multi_pass.py 의 _VIZ_TO_PRESET 조건부 매핑에 존재.
+            try:
+                preset_shapes = _build_preset_timetable(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

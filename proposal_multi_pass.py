@@ -169,6 +169,28 @@ _STAFFING_TABLE_ROLES = {"body", "support"}
 _STAFFING_TABLE_MAX_PER_DECK = 2
 
 
+# ─── Spec Preset-ProgramOverview — 운영개요표 프리셋 on/off (플래그 게이트) ────────
+# ② 실행 스펙 단계 (③표 그릇 → ②스펙 → ①데이터).
+# 진단: NightOff 본론은 "방법·절차"는 있으나 운영 파라미터가 없다 — 본론 페이지 중
+#   일시 0% · 인원 8% · 소요 17%. 우수작은 본론의 50%+ 가 운영개요(표 또는 항목:값 텍스트)를
+#   갖는다 (파주페어 68% · 죽변 59% · 국제 55% · 삼척 50% vs NightOff 0%).
+# ★ 독립 프리셋으로 만든 이유 — 우수작에선 이 표가 프로그램 페이지의 "부품"이지만,
+#   NightOff 프로그램 페이지는 프리셋이 9종 + 자율로 흩어져 있어(flow_detail/hero_detail/
+#   quad_detail/asymmetric/split/hsplit_top/conclusion_cards/narrative/timeline) 부품으로
+#   붙이려면 9종을 전부 재설계해야 한다. 프로그램 상세 페이지 자체를 담당하는 프리셋으로
+#   만들어 페이지를 "대체"한다 (추가가 아니므로 페이지 증가 0).
+# ★ 도메인 제한 없음 — 운영 스펙은 모든 과업에 있다(홍보 SNS 이벤트 운영시간·경품·인력,
+#   교육 차수·정원·강사, 복지 서비스 시간·대상). 인력배치표와 같은 논리.
+PROGRAM_OVERVIEW_ENABLED = False
+
+# ★ 허용 위치 — 프로그램 상세(body) + 시설·차량 운영개요(support).
+_PROGRAM_OVERVIEW_ROLES = {"body", "support"}
+
+# ★ 덱당 cap — 우수작은 본론의 50%(파주페어 19장)지만 NightOff 본론이 15장이라
+#   6장(40%)을 상한으로 둔다. 더 늘리면 같은 레이아웃 반복으로 단조로워진다.
+_PROGRAM_OVERVIEW_MAX_PER_DECK = 6
+
+
 # ─── Spec GovEnding-Fix — 거버닝 서술형 종결 감지 정규식 (감지 로그용, 값 무변경) ────
 # 진단: D-Fix-GovEnding-1 규칙 (거버닝 명사형 종결) 위반 실빈도 파악용.
 # ★ 로그만 남기고 값은 절대 안 건드림 — 자동 교정 시 오탐 위험 큼 (한국어 동사→명사
@@ -1168,6 +1190,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
 {SCHEDULE_TABLE_CATALOG_PH}
 {TIMETABLE_CATALOG_PH}
 {STAFFING_TABLE_CATALOG_PH}
+{PROGRAM_OVERVIEW_CATALOG_PH}
   · numbered_columns — 상단 검정 헤더 + 초대형 배경 숫자 3~4열 + 하단 결론 2줄 (밴드 없음)
                        ★ 적합: role=body 페이지의 "N대 원칙/축/전략을 번호로 구조화해 병렬 제시" 페이지
                               (예: 3대 운영 원칙, 4대 접근 방향, N대 핵심 축, 우리 제안의 N대 특징)
@@ -1254,6 +1277,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
 {SCHEDULE_TABLE_RULE_PH}
 {TIMETABLE_RULE_PH}
 {STAFFING_TABLE_RULE_PH}
+{PROGRAM_OVERVIEW_RULE_PH}
 
 [skeleton_id 배정 규칙 — Spec D-Build-SkeletonConnect / Spec D-Fix-SkeletonDiversity]
 운영이 사람이 양질 제안서에서 떠낸 검증된 골격 15종 HTML 을 R2 에서 동기화해뒀다.
@@ -3612,6 +3636,15 @@ async def generate_outline(
         "\n{STAFFING_TABLE_RULE_PH}",
         "\n" + _STAFFING_TABLE_RULE_STR if STAFFING_TABLE_ENABLED else "",
     )
+    # Spec Preset-ProgramOverview — 카탈로그 + 배정 규칙 ⑬ 조건부 replace.
+    outline_system_prompt = outline_system_prompt.replace(
+        "\n{PROGRAM_OVERVIEW_CATALOG_PH}",
+        "\n" + _PROGRAM_OVERVIEW_CATALOG_STR if PROGRAM_OVERVIEW_ENABLED else "",
+    )
+    outline_system_prompt = outline_system_prompt.replace(
+        "\n{PROGRAM_OVERVIEW_RULE_PH}",
+        "\n" + _PROGRAM_OVERVIEW_RULE_STR if PROGRAM_OVERVIEW_ENABLED else "",
+    )
     # max_tokens 64000 — Sonnet 4.5 native 한계까지 활용 → 100 슬라이드 영역까지 안전.
     # 사고 영역 history:
     #   49f3ccc: 50 슬라이드 = 16000 도달 → 32000 영역 ↑
@@ -3631,6 +3664,8 @@ async def generate_outline(
     _tt_assigned = 0
     # ★ Spec Preset-StaffingTable — 덱당 cap 카운터 (최대 2장).
     _sf_assigned = 0
+    # ★ Spec Preset-ProgramOverview — 덱당 cap 카운터 (최대 6장).
+    _po_assigned = 0
     for it in parsed["outline"]:
         if not isinstance(it, dict):
             continue
@@ -3675,6 +3710,9 @@ async def generate_outline(
         # ★ Spec Preset-StaffingTable — 플래그 조건부 등재.
         if STAFFING_TABLE_ENABLED:
             _VIZ_PATTERN_SAFE = _VIZ_PATTERN_SAFE | {"staffing_table"}
+        # ★ Spec Preset-ProgramOverview — 플래그 조건부 등재.
+        if PROGRAM_OVERVIEW_ENABLED:
+            _VIZ_PATTERN_SAFE = _VIZ_PATTERN_SAFE | {"program_overview"}
         viz_pattern_raw = str(it.get("viz_pattern", "")).strip().lower()
         viz_pattern = viz_pattern_raw if viz_pattern_raw in _VIZ_PATTERN_SAFE else ""
         # ★ Spec D-Fix-NarrativeGuard — text 위계는 hero/support/simple_box 페이지에 배정 X.
@@ -3965,6 +4003,22 @@ async def generate_outline(
                 viz_pattern = ""  # 부적합 위치/cap 초과 → 강등
             else:
                 _sf_assigned += 1
+        # ★★ Spec Preset-ProgramOverview — 운영개요표 가드 (★도메인 제한 없음).
+        #   운영 스펙(운영 시간·인력 구성·물자·제작물)은 모든 과업에 존재하므로 인력배치표와
+        #   같은 논리로 도메인은 막지 않는다. role 은 body(프로그램 상세) + support
+        #   (시설·차량 운영개요) 둘 다 허용. cap 덱당 6장.
+        elif viz_pattern == "program_overview":
+            _rl_po = str(it.get("role", "")).strip().lower()
+            _st_po = str(it.get("slide_type", "")).strip().lower()
+            if (_rl_po not in _PROGRAM_OVERVIEW_ROLES or _st_po == "hero"
+                    or _po_assigned >= _PROGRAM_OVERVIEW_MAX_PER_DECK):
+                log.info(
+                    "Preset-ProgramOverview 강등 p=%s role=%s st=%s 이미배정=%s",
+                    it.get("page"), _rl_po, _st_po, _po_assigned,
+                )
+                viz_pattern = ""  # 부적합 위치/cap 초과 → 강등
+            else:
+                _po_assigned += 1
         # Spec D-Fix-BodyRole-1 — role 화이트리스트 (body/support/"" 만 허용).
         # outline AI 가 임의 값을 박으면 ""로 강등 (식별 누락 → 무영향 fallback).
         _ROLE_SAFE = {"body", "support", ""}
@@ -4179,6 +4233,10 @@ if TIMETABLE_ENABLED:
 if STAFFING_TABLE_ENABLED:
     _VIZ_TO_PRESET["staffing_table"] = "staffing_table"
 
+# Spec Preset-ProgramOverview — 플래그 조건부 매핑.
+if PROGRAM_OVERVIEW_ENABLED:
+    _VIZ_TO_PRESET["program_overview"] = "program_overview"
+
 
 # Spec Preset-ScheduleTable — OUTLINE_SYSTEM_PROMPT 조건부 카탈로그 + 배정 규칙 ⑩.
 # generate_outline 에서 플래그로 조건부 replace (False 시 빈 문자열 = 프롬프트 무변).
@@ -4193,6 +4251,26 @@ _SCHEDULE_TABLE_CATALOG_STR = (
     "                          campaign(공공캠페인·홍보마케팅)·tourism·rnd·welfare·education·other\n"
     "                          에는 절대 배정 X — 식순 자체가 없는 과업이다 (코드도 강등 처리).\n"
     "                          rows 4개 이상 + content 필수. 미충족 시 코드가 preset 무효 처리."
+)
+_PROGRAM_OVERVIEW_CATALOG_STR = (
+    "  · program_overview — 거버닝 + 좌 핵심 포인트 카드 + 우 운영개요표 (항목:값)\n"
+    "                       ★ 적합: 개별 프로그램·체험·서비스의 \"상세 운영\" 페이지 —\n"
+    "                              무엇을 어떻게 운영하는지 설명하면서 운영 시간·공간·물자·\n"
+    "                              인력 같은 실행 스펙을 표로 함께 제시하는 자리.\n"
+    "                              (우수 제안서 실측: 본론의 50%+ 가 이 형식을 가짐)\n"
+    "                       ⚠ 부적합: 운영 스펙이 없는 전략·홍보·개념 설명 페이지 /\n"
+    "                              진행 순서(그건 schedule_table) / 전체 일정(그건 timetable) /\n"
+    "                              인원 매트릭스(그건 staffing_table) / slide_type=hero\n"
+    "                       ※ ★ 도메인 제한 없음 — 운영 스펙은 모든 과업에 있다.\n"
+    "                          overview 3~8개 필수(운영 시간·공간·대상·정원·물자·제작물·인력 등).\n"
+    "                          한 제안서 최대 6장 — 프로그램마다 남발하지 말 것."
+)
+_PROGRAM_OVERVIEW_RULE_STR = (
+    "⑬ ★ program_overview 배정 제한 (Spec Preset-ProgramOverview):\n"
+    "   - 허용 페이지: 개별 프로그램·체험·서비스의 상세 운영 페이지 (role=body / support 모두).\n"
+    "     운영 시간·공간·물자·인력 같은 실행 스펙을 실제로 쓸 수 있는 페이지에만.\n"
+    "   - 도메인 제한 없음 (운영 스펙은 모든 과업에 존재).\n"
+    "   - ★ 한 제안서 최대 6장 (7장째부터 코드가 강등). 같은 레이아웃 반복은 단조로움."
 )
 _STAFFING_TABLE_CATALOG_STR = (
     "  · staffing_table   — 거버닝 + 구역 × 인력유형 인원 매트릭스 표 (합계행 자동)\n"
@@ -5523,6 +5601,72 @@ def _build_slide_user_prompt(
                 '"conclusion_lead":"핵심 원칙 — 일관성 × 병행 × 분리",'
                 '"shapes":[{"type":"text","x":0.5,"y":7.9,"w":10,"h":0.3,'
                 '"text":"3채널 통합 홍보","size":11,"weight":400,"color":"#666"}]}'
+            )
+        elif item.viz_pattern == "program_overview":
+            # ★★ Spec Preset-ProgramOverview — 프로그램 상세 + 운영개요표.
+            #   진단 근거: NightOff 본론은 방법·절차는 있으나 운영 파라미터가 없다
+            #   (일시 0% · 인원 8% · 소요 17%). 이 프리셋이 그 자리를 만든다.
+            #   ★ 팩트게이트가 가장 민감한 프리셋이라 3단 경계를 명시한다.
+            parts.append(
+                "[배정된 레이아웃 패턴] program_overview (좌 핵심 포인트 + 우 운영개요표)\n"
+                "★ 용도: 개별 프로그램·체험·서비스의 상세 운영 — 무엇을 어떻게 운영하는지\n"
+                "  설명하면서 운영 시간·공간·물자·인력 같은 실행 스펙을 표로 함께 제시.\n"
+                "★ 다른 패턴과 구분:\n"
+                "  · 분 단위 진행 순서 → schedule_table / 전체 일정 → timetable\n"
+                "  · 구역 × 인력 인원 매트릭스 → staffing_table\n"
+                "  · 운영 스펙이 없는 전략·개념 설명 → text_declaration / numbered_columns\n"
+                "\n"
+                "★★ 작성 원칙 — 이 프리셋 한정 (Spec Preset-ProgramOverview):\n"
+                "  · points[].head 10~22자 명사형 / desc 40~70자. 표 셀이 아니므로 서술 가능.\n"
+                "  · overview 는 \"항목 : 값\" 3~8개. 항목명 10자 이내, 값 60자 이내.\n"
+                "    권장 항목 — 운영 시간 · 공간 · 대상·정원 · 소요·회차 · 물자 · 제작물 · 인력.\n"
+                "  · ★ Concreteness-Boost 지시(100~150자)는 표 값에 적용하지 말 것 (60자 이내).\n"
+                "\n"
+                "★★ 팩트게이트 3단 — 이 프리셋에서 가장 중요 (실행 스펙은 환각 창구가 되기 쉽다):\n"
+                "  ① 허용 (우리가 정하는 계획 구조 수치 — 환각 아님):\n"
+                "     운영 시간 \"10:00 ~ 18:00\" · 인력 구성 \"전문인력 1명, 진행요원 1명, 자원봉사 2명\" ·\n"
+                "     물자 \"돗자리·빈백·테이블\" · 제작물 \"현수막, X-배너\" · 회차·소요.\n"
+                "  ② 조건부 (RFP 에 명시돼 있을 때만 그대로 사용):\n"
+                "     행사 일자 · 장소명 · 예산 · 대상 인원. RFP 에 없으면 쓰지 말 것.\n"
+                "  ③ 금지: 업체 실명(케이터링·음향·제작 업체) · 출연자·연사 실명 ·\n"
+                "     확정되지 않은 장소를 확정처럼 · RFP 없는 성과 예측 수치.\n"
+                "  ★★ 미확정은 지어내지 말고 그대로 표기 — 우수 제안서 선례:\n"
+                "     \"대한골프협회(협의 필요)\" · \"업체는 주최 측에서 섭외 예정\" ·\n"
+                "     \"장소 확정 시 기재\". 정직한 표기가 환각보다 신뢰를 준다.\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "program_overview"  (필수, identity)\n'
+                '  · "title": 프로그램명이 드러나는 거버닝 (필수, 25~40자 명사형)\n'
+                '  · "eyebrow": 좌상단 breadcrumb (선택, 50자 이내)\n'
+                '  · "lead": 한 줄 요약 (선택, 60자 이내)\n'
+                '  · "points": [{"head": 카드 제목, "desc": 설명}, ...]  (선택, 최대 4개 — 좌측)\n'
+                '  · "overview": [{"k": "운영 시간", "v": "10:00 ~ 18:00"}, ...]  ★ 3~8개 (우측 표)\n'
+                "             ★ 3개 미만이면 preset 무효 → 자율 shapes 회귀.\n"
+                '  · "note": 하단 한 줄 (선택, 70자 이내 — 우천 대체·유의사항 등)\n'
+                "  → 좌우 좌표·표 폭·헤더 색·테두리는 코드가 자동 배치.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" (rect / 표 절대 X) ★★\n"
+                "  ★ preset='program_overview' 키 누락 시 자율 shapes 회귀(실행 스펙 소실).\n"
+                "\n"
+                "★ 완성 예시 (체험 프로그램 상세):\n"
+                '{"preset":"program_overview",'
+                '"title":"걷고 찍고 완성하는 네 컷 스탬프 투어",'
+                '"eyebrow":"Ⅳ. 프로그램 계획  ·  4. 체험 프로그램",'
+                '"lead":"긴 행사장을 관람 동선으로 바꾸는 수집형 체험",'
+                '"points":['
+                '{"head":"4개 거점 수집 동선","desc":"안내부스마다 한 컷씩 찍어 네 컷을 완성하는 구조로 행사장 전 구역 방문을 유도"},'
+                '{"head":"완성 보상 설계","desc":"네 컷 완성 시 종합안내소에서 기념 굿즈 교환, 잔여 수량은 일자별로 분배 운영"},'
+                '{"head":"우천 대응","desc":"실내 부스 4곳으로 거점을 이전해 동일 방식으로 운영"}'
+                '],'
+                '"overview":['
+                '{"k":"운영 시간","v":"10:00 ~ 18:00 (행사 3일 상시)"},'
+                '{"k":"공간","v":"종합안내소·체험존·포토존·출구 안내부스 4개소"},'
+                '{"k":"대상·정원","v":"전 연령, 일 400명 선착순"},'
+                '{"k":"제작물","v":"스탬프 4종, 수집 대지, 안내 X-배너 4개"},'
+                '{"k":"인력","v":"각 구역 배치 진행요원이 겸임, 종합안내소 1명 전담"}'
+                '],'
+                '"note":"굿즈 업체는 계약 후 섭외 예정 — 수량·단가는 산출내역서 기준",'
+                '"shapes":[{"type":"text","x":0.5,"y":7.9,"w":10,"h":0.3,'
+                '"text":"스탬프 투어 운영","size":11,"weight":400,"color":"#666"}]}'
             )
         elif item.viz_pattern == "staffing_table":
             # ★★ Spec Preset-StaffingTable — 구역 × 인력유형 인원 매트릭스.

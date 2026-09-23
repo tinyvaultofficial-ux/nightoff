@@ -114,6 +114,26 @@ FRONT_NARRATIVE_ENABLED = True
 VERTICAL_STACK_ENABLED = True
 
 
+# ─── Spec Preset-ScheduleTable — 식순표 프리셋 on/off (플래그 게이트) ─────────────
+# 진단(우수 제안서 7종 vs NightOff 비교): 본론 밀도 부족의 근본 원인 = 표현 수단이
+#   텍스트 카드 하나뿐. 우수작은 네이티브 표 244개(식순표·타임테이블·인력배치표 등)로
+#   운영 스펙을 담는데 NightOff 는 표 0개 → 본론 일시 0% / 인원 8%.
+# 처방 1순위 = 식순표 (5/7 파일·본론 전용·컬럼이 가장 정형·타임테이블로 확장 가능).
+# ★ 플래그 False 시 3중으로 잠김:
+#   ① _VIZ_PATTERN_SAFE 미등재 → OUTLINE 배정이 ""로 강등
+#   ② _VIZ_TO_PRESET 미매핑 → SLIDE preset 힌트에 "schedule_table" 미노출
+#   ③ OUTLINE 카탈로그·배정규칙 placeholder 가 빈 문자열 → 프롬프트 1바이트도 안 변함
+#   → dispatch(add-only)는 존재하지만 LLM 이 키를 안 내므로 미진입 = 기존 100% 동일.
+# ★ 렌더 기반(table 도형 type)은 플래그와 무관하게 항상 존재 — 다음 표 프리셋
+#   (타임테이블·인력배치표·위기대응표)이 그대로 재사용.
+SCHEDULE_TABLE_ENABLED = False
+
+# ★ 식순표 허용 도메인 (Spec Preset-ScheduleTable — 홍보마케팅 차단의 핵심).
+#   우수 제안서 실측에서 식순표가 나온 과업 유형만. campaign(공공캠페인·홍보마케팅)·
+#   tourism·rnd·welfare·education·other 는 미포함 = 코드가 강등.
+_SCHEDULE_TABLE_DOMAINS = {"festival", "forum", "sports", "exhibition", "display"}
+
+
 # ─── Spec GovEnding-Fix — 거버닝 서술형 종결 감지 정규식 (감지 로그용, 값 무변경) ────
 # 진단: D-Fix-GovEnding-1 규칙 (거버닝 명사형 종결) 위반 실빈도 파악용.
 # ★ 로그만 남기고 값은 절대 안 건드림 — 자동 교정 시 오탐 위험 큼 (한국어 동사→명사
@@ -1110,6 +1130,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
                           cards3 는 등분 비교, triad 는 이미지 자리 + 비대칭. conclusion_cards 는 "3개 → 결론" 서사.
                           items 정확히 3개 + conclusion 필수. 미충족 시 코드가 preset 무효 처리.
 {VERTICAL_STACK_CATALOG_PH}
+{SCHEDULE_TABLE_CATALOG_PH}
   · numbered_columns — 상단 검정 헤더 + 초대형 배경 숫자 3~4열 + 하단 결론 2줄 (밴드 없음)
                        ★ 적합: role=body 페이지의 "N대 원칙/축/전략을 번호로 구조화해 병렬 제시" 페이지
                               (예: 3대 운영 원칙, 4대 접근 방향, N대 핵심 축, 우리 제안의 N대 특징)
@@ -1193,6 +1214,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
      한 덱에 3장 이상 박히면 배경 이미지 반복으로 제안서 전체가 산만해진다.
    - "정말 강력한 비주얼이 있는 페이지"에만 배정 — 조감도·3D 렌더링·핵심 컨셉 이미지 등.
      대체 후보 있으면 hero_detail / quad_detail(이미지 자리 있는 다른 프리셋) 로 회전.
+{SCHEDULE_TABLE_RULE_PH}
 
 [skeleton_id 배정 규칙 — Spec D-Build-SkeletonConnect / Spec D-Fix-SkeletonDiversity]
 운영이 사람이 양질 제안서에서 떠낸 검증된 골격 15종 HTML 을 R2 에서 동기화해뒀다.
@@ -3522,6 +3544,17 @@ async def generate_outline(
         "{VERTICAL_STACK_CATALOG_PH}",
         _VERTICAL_STACK_CATALOG_STR if VERTICAL_STACK_ENABLED else "",
     )
+    # Spec Preset-ScheduleTable — 카탈로그 + 배정 규칙 ⑩ 조건부 replace.
+    #   SCHEDULE_TABLE_ENABLED=False → 둘 다 빈 문자열 → OUTLINE 프롬프트 1바이트도 안 변함
+    #   (placeholder 줄 자체도 개행까지 함께 제거되도록 "\n{PH}" 패턴으로 치환).
+    outline_system_prompt = outline_system_prompt.replace(
+        "\n{SCHEDULE_TABLE_CATALOG_PH}",
+        "\n" + _SCHEDULE_TABLE_CATALOG_STR if SCHEDULE_TABLE_ENABLED else "",
+    )
+    outline_system_prompt = outline_system_prompt.replace(
+        "\n{SCHEDULE_TABLE_RULE_PH}",
+        "\n" + _SCHEDULE_TABLE_RULE_STR if SCHEDULE_TABLE_ENABLED else "",
+    )
     # max_tokens 64000 — Sonnet 4.5 native 한계까지 활용 → 100 슬라이드 영역까지 안전.
     # 사고 영역 history:
     #   49f3ccc: 50 슬라이드 = 16000 도달 → 32000 영역 ↑
@@ -3570,6 +3603,11 @@ async def generate_outline(
                              "conclusion_cards",
                              "numbered_columns", "hero_detail", "flow_detail",
                              "quad_detail", "fullbleed_overlay"}
+        # ★ Spec Preset-ScheduleTable — 플래그 조건부 등재 (add-only 격리).
+        #   SCHEDULE_TABLE_ENABLED=False → 화이트리스트 미등재 → OUTLINE 이 배정해도
+        #   여기서 ""로 강등 → SLIDE elif·dispatch 전부 미진입 = 기존 100% 동일.
+        if SCHEDULE_TABLE_ENABLED:
+            _VIZ_PATTERN_SAFE = _VIZ_PATTERN_SAFE | {"schedule_table"}
         viz_pattern_raw = str(it.get("viz_pattern", "")).strip().lower()
         viz_pattern = viz_pattern_raw if viz_pattern_raw in _VIZ_PATTERN_SAFE else ""
         # ★ Spec D-Fix-NarrativeGuard — text 위계는 hero/support/simple_box 페이지에 배정 X.
@@ -3804,6 +3842,26 @@ async def generate_outline(
                     it.get("page"), _rl_q, _st_q,
                 )
                 viz_pattern = ""  # 부적합 위치 → 강등 (LLM 오배정 차단)
+        # ★★ Spec Preset-ScheduleTable — 식순표 가드 (위치 + ★도메인).
+        #   식순표는 "시각별 순서가 실재하는" 행사 페이지 전용이다. 홍보마케팅 과업
+        #   (domain=campaign)에는 식순 자체가 없으므로 프롬프트 유도만으로는 부족 —
+        #   LLM 이 어겨도 작동하도록 코드가 도메인으로 원천 차단한다.
+        #   허용 5종 = festival / forum / sports / exhibition / display
+        #     (우수 제안서 7종 실측에서 식순표가 나온 과업 유형)
+        #   차단 = campaign(홍보마케팅)·tourism·rnd·welfare·education·other
+        #     (other = 도메인 미분류 기본값 → 보수적으로 차단. 검증 후 확장 여지)
+        #   위치 조건은 다른 15+ 프리셋 가드와 동일 (role=body / slide_type != hero).
+        elif viz_pattern == "schedule_table":
+            _dm_st = str(parsed.get("domain", "other")).strip().lower()
+            _rl_st = str(it.get("role", "")).strip().lower()
+            _st_st = str(it.get("slide_type", "")).strip().lower()
+            if (_dm_st not in _SCHEDULE_TABLE_DOMAINS
+                    or _rl_st != "body" or _st_st == "hero"):
+                log.info(
+                    "Preset-ScheduleTable 강등 p=%s domain=%s role=%s st=%s",
+                    it.get("page"), _dm_st, _rl_st, _st_st,
+                )
+                viz_pattern = ""  # 부적합 도메인/위치 → 강등 (LLM 오배정 차단)
         # Spec D-Fix-BodyRole-1 — role 화이트리스트 (body/support/"" 만 허용).
         # outline AI 가 임의 값을 박으면 ""로 강등 (식별 누락 → 무영향 fallback).
         _ROLE_SAFE = {"body", "support", ""}
@@ -4004,6 +4062,35 @@ _VIZ_TO_PRESET: dict = {
 # True 로 켜야만 매핑 활성 → LLM 이 preset 힌트 받고 배정 → 렌더 함수 발동.
 if VERTICAL_STACK_ENABLED:
     _VIZ_TO_PRESET["vertical_stack_bands"] = "vertical_stack_bands"
+
+# Spec Preset-ScheduleTable — 플래그 조건부 매핑 (vertical_stack_bands 와 동일 패턴).
+# False 시 매핑 미포함 → SLIDE 프롬프트 preset 힌트에 "schedule_table" 미노출.
+if SCHEDULE_TABLE_ENABLED:
+    _VIZ_TO_PRESET["schedule_table"] = "schedule_table"
+
+
+# Spec Preset-ScheduleTable — OUTLINE_SYSTEM_PROMPT 조건부 카탈로그 + 배정 규칙 ⑩.
+# generate_outline 에서 플래그로 조건부 replace (False 시 빈 문자열 = 프롬프트 무변).
+_SCHEDULE_TABLE_CATALOG_STR = (
+    "  · schedule_table   — 거버닝 + 운영개요 3줄 + 진행 순서 표 (구분/시간/[소요]/내용/[비고])\n"
+    "                       ★ 적합: role=body 페이지 중 \"시각별 순서가 실재하는\" 진행 계획 —\n"
+    "                              개막식·폐막식·기념식 식순, 공식행사 진행, 세션/프로그램 운영 순서,\n"
+    "                              경기 진행 순서. (우수 제안서 실측: 5/7 파일이 본론에 식순표 보유)\n"
+    "                       ⚠ 부적합: 순서가 없는 페이지(전략·홍보·조직·예산·안전 매뉴얼) /\n"
+    "                              월 단위 추진일정(그건 process/timeline) / role=support / slide_type=hero\n"
+    "                       ※ ★ 허용 도메인 = festival / forum / sports / exhibition / display 만.\n"
+    "                          campaign(공공캠페인·홍보마케팅)·tourism·rnd·welfare·education·other\n"
+    "                          에는 절대 배정 X — 식순 자체가 없는 과업이다 (코드도 강등 처리).\n"
+    "                          rows 4개 이상 + content 필수. 미충족 시 코드가 preset 무효 처리."
+)
+_SCHEDULE_TABLE_RULE_STR = (
+    "⑩ ★ schedule_table 배정 제한 (Spec Preset-ScheduleTable):\n"
+    "   - 허용 도메인: festival / forum / sports / exhibition / display 만.\n"
+    "     ★ campaign(공공캠페인·홍보마케팅)·tourism·rnd·welfare·education·other 에는 절대 배정 X.\n"
+    "   - 허용 페이지: \"시각별 순서가 실재하는\" 페이지만 (개막식·공식행사·세션 진행·경기 진행).\n"
+    "     순서가 없으면 배정 X — 전략·홍보·조직·예산·안전은 다른 패턴으로.\n"
+    "   - 한 제안서 최대 1~3장 (우수 제안서 실측: 본문의 2~8%). 식순이 여러 개여도 핵심만."
+)
 
 
 # Spec Vertical-Stack-Bands — OUTLINE_SYSTEM_PROMPT 조건부 카탈로그 sub-note.
@@ -5284,6 +5371,68 @@ def _build_slide_user_prompt(
                 '"conclusion_lead":"핵심 원칙 — 일관성 × 병행 × 분리",'
                 '"shapes":[{"type":"text","x":0.5,"y":7.9,"w":10,"h":0.3,'
                 '"text":"3채널 통합 홍보","size":11,"weight":400,"color":"#666"}]}'
+            )
+        elif item.viz_pattern == "schedule_table":
+            # ★★ Spec Preset-ScheduleTable — 식순표(행사 진행 순서) + 네이티브 표.
+            #   우수 제안서 실측(식순표 12개/5개 파일): 컬럼 구분·시간·내용 100%,
+            #   소요·비고 선택. 셀 글자수 p90 = 구분 9 / 시간 16 / 소요 3 / 내용 20 / 비고 15.
+            #   ★ 컬럼 세트·좌표·폭·색은 전부 코드가 정한다 — LLM 은 행 데이터만 채운다.
+            #   ★ 도메인 제한은 OUTLINE 가드(코드)가 이미 강등 처리 — 여기 도달했다는 건
+            #     허용 도메인(festival/forum/sports/exhibition/display)이라는 뜻.
+            parts.append(
+                "[배정된 레이아웃 패턴] schedule_table (거버닝 + 운영개요 3줄 + 진행 순서 표)\n"
+                "★ 용도: 시각별 순서가 실재하는 진행 계획 — 개막식·기념식 식순, 공식행사 진행,\n"
+                "  세션/프로그램 운영 순서, 경기 진행 순서.\n"
+                "★ 다른 패턴과 구분:\n"
+                "  · 월 단위 추진 일정 → process / timeline (식순표는 '시각' 단위)\n"
+                "  · 순서가 없는 항목 나열 → numbered_columns / conclusion_cards\n"
+                "  · 단계별 절차(시각 없음) → process\n"
+                "\n"
+                "★★ 표 셀 작성 원칙 — 이 프리셋 한정 (Spec Preset-ScheduleTable):\n"
+                "  · section(구분) 4~9자 명사형 — 예: \"식전 공연\", \"내빈 소개\", \"개막 세레머니\".\n"
+                "  · time(시간) \"17:31 ~ 17:46\" 형식 (24시간제). dur(소요) \"15'\" 형식.\n"
+                "  · content(내용) **10~20자 명사형** — 표 셀이므로 문장 금지. 예: \"청소년 밴드 공연\".\n"
+                "  · note(비고) 15자 이내 (출연·담당·장소 등). 없으면 빈 문자열.\n"
+                "  · ★ Concreteness-Boost 지시(100~150자)는 표 셀에 적용하지 말 것.\n"
+                "     상세 서술은 note 와 본문이 담당하고, 셀은 요점만.\n"
+                "  · ★ 팩트게이트 — 시각·소요·순서는 우리가 정하는 계획 구조 수치라 작성 OK.\n"
+                "     단 출연자·연사·업체 실명은 지어내지 말 것: \"축하공연(출연진 섭외 예정)\",\n"
+                "     \"기조연설(연사 확정 시 기재)\" 처럼 미정은 미정으로 표기.\n"
+                "     RFP 에 행사 일시가 명시돼 있으면 그 값을 쓸 것.\n"
+                "\n"
+                "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+                '  · "preset": "schedule_table"  (필수, identity)\n'
+                '  · "title": 페이지 거버닝 (필수, 25~40자 명사형 — role="governing" 자동)\n'
+                '  · "eyebrow": 좌상단 breadcrumb (선택, 50자 이내)\n'
+                '  · "overview": {"date": 운영일시, "place": 장소, "program": 주요 프로그램 흐름}\n'
+                "             (선택이지만 강력 권장 — 각 60자 이내. 표 위 3줄로 자동 배치)\n"
+                '  · "rows": [{"section","time","dur","content","note"}, ...]\n'
+                "             ★ 4~14개. 4개 미만이면 preset 무효 → 자율 shapes 회귀.\n"
+                "             dur 가 하나라도 있으면 코드가 소요 열을, note 가 있으면 비고 열을 자동 추가.\n"
+                '  · "note": 표 아래 한 줄 보충 (선택, 60자 이내)\n'
+                "  → 표 좌표·컬럼 폭·헤더 색(검정 바탕 흰 글자)·테두리는 코드가 자동 배치.\n"
+                "  ★★ 백업 shapes 는 \"순수 text 도형만\" 채운다 (rect / 표 절대 X) ★★\n"
+                "    표는 코드(_build_preset_schedule_table)가 네이티브 표로 그린다.\n"
+                "    백업 (text 만, 2~3개): 페이지 제목 + 진행 순서 요약.\n"
+                "  ★ preset='schedule_table' 키 누락 시 자율 shapes 회귀(표 소실).\n"
+                "\n"
+                "★ 완성 예시 (개막식 식순):\n"
+                '{"preset":"schedule_table",'
+                '"title":"축제의 문을 여는 개막식 운영 계획",'
+                '"eyebrow":"Ⅳ. 프로그램 계획  ·  2. 공식 프로그램",'
+                '"overview":{"date":"2026. 10. 02.(금) 17:30 ~ 19:00","place":"메인 무대",'
+                '"program":"식전공연 - 개회 - 축사 - 세레머니 - 축하공연"},'
+                '"rows":['
+                '{"section":"행사 안내","time":"17:00 ~ 17:30","dur":"30\'","content":"개막식 안내 및 장내 정리","note":"운영요원 6인"},'
+                '{"section":"식전 공연","time":"17:31 ~ 17:46","dur":"15\'","content":"지역 청소년 밴드 공연","note":"출연진 섭외 예정"},'
+                '{"section":"개회 고지","time":"17:46 ~ 17:50","dur":"04\'","content":"사회자 개회 선언","note":""},'
+                '{"section":"내빈 축사","time":"17:50 ~ 18:05","dur":"15\'","content":"주요 내빈 축사 3인","note":"의전 동선 별도"},'
+                '{"section":"개막 세레머니","time":"18:05 ~ 18:12","dur":"07\'","content":"점등 세레머니 연출","note":"무대 중앙"},'
+                '{"section":"축하 공연","time":"18:12 ~ 19:00","dur":"48\'","content":"초청 가수 축하 무대","note":"출연진 섭외 예정"}'
+                '],'
+                '"note":"우천 시 실내 전환 절차는 안전관리 계획 참조",'
+                '"shapes":[{"type":"text","x":0.5,"y":7.9,"w":10,"h":0.3,'
+                '"text":"개막식 운영 계획","size":11,"weight":400,"color":"#666"}]}'
             )
         else:
             parts.append(

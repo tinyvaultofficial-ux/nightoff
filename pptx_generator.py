@@ -2065,6 +2065,141 @@ def _add_star(slide, x, y, w, h, *, fill="#1A1A1A", stroke=None, stroke_width=No
     )
 
 
+# ─── Spec Preset-ScheduleTable — 네이티브 표 렌더 기반 (신규 도형 type) ──────────
+# 우수 제안서 7종 실측: 네이티브 표 244개 (식순표·타임테이블·인력배치표 등). 기존 27 프리셋은
+#   전부 도형 조합이고 add_table 호출이 0건이라, 표를 쓰려면 렌더 기반부터 신설해야 한다.
+# ★ 네이티브 표를 택한 이유 (도형 rect 격자 대비):
+#   · 긴 셀이 있으면 렌더 시 행이 자동으로 늘어나고 뒷행을 밀어낸다 = 표 안 겹침 원천 차단.
+#     (도형 격자는 auto_size(spAutoFit) 가 폰트를 안 줄이는 문제를 그대로 상속 — narrative
+#      quote 진단 ④ 와 동일 위험.)
+#   · PowerPoint 에서 표로 편집 가능 = "70% 초안, 디자이너 마무리" 컨셉 정합.
+#   · SLIDE_SYSTEM_PROMPT 의 "위험 4종(…다이어그램+표)" 금지 사유는 "rect grid 좌표 정밀도"
+#     (L2227 "겹침 사고 방지 / 추후 해금") 이므로 네이티브 표에는 해당 없음. 문구 무접촉.
+# ★ 남는 위험은 "표 전체의 슬라이드 하단 이탈" 하나 → 빌더가 4단 방어로 봉인
+#   (행 clamp / 셀 절단 / 폰트 계단 / 총높이 상한).
+_TABLE_NOSTYLE_GUID = "{2D5ABB26-0587-4C30-8999-92F81FD0307C}"   # "No Style, No Grid"
+_TABLE_DARK_LINE = "#3A3A3A"   # 다크 테이블 선 — DARK_MAP(#DDDDDD→#2A2A2A)은 표에서 너무 어두움
+
+
+def _table_clear_style(tbl) -> None:
+    """python-pptx 기본 표 스타일(파란 Medium Style 2) 제거 → 흑백 강제 전제.
+
+    tableStyleId 를 "No Style, No Grid" 로 교체하고 firstRow/bandRow 강조도 끈다.
+    (셀 fill·테두리는 아래 헬퍼가 명시 지정 — 명시값이 스타일보다 우선.)
+    """
+    tblPr = tbl._tbl.tblPr
+    for el in tblPr.findall(qn("a:tableStyleId")):
+        tblPr.remove(el)
+    el = tblPr.makeelement(qn("a:tableStyleId"), {})
+    el.text = _TABLE_NOSTYLE_GUID
+    tblPr.append(el)          # tableStyleId 는 tblPr 의 마지막 자식
+    for k in ("firstRow", "bandRow", "firstCol", "bandCol", "lastRow", "lastCol"):
+        tblPr.set(k, "0")
+
+
+def _table_cell_border(cell, color: str, width_pt: float = 0.75) -> None:
+    """셀 4변 테두리 — python-pptx 에 API 가 없어 a:lnL/R/T/B 를 직접 넣는다.
+
+    ★ CT_TableCellProperties 스키마 순서상 ln* 은 fill 보다 앞 → insert(0) 역순으로 넣어
+      최종 순서를 lnL, lnR, lnT, lnB 로 맞춘다 (PowerPoint 호환).
+    """
+    tcPr = cell._tc.get_or_add_tcPr()
+    for tag in ("a:lnL", "a:lnR", "a:lnT", "a:lnB"):
+        for el in tcPr.findall(qn(tag)):
+            tcPr.remove(el)
+    val = str(color).lstrip("#").upper() or "DDDDDD"
+    for tag in ("a:lnB", "a:lnT", "a:lnR", "a:lnL"):   # 역순 insert → L,R,T,B 순서
+        ln = tcPr.makeelement(qn(tag), {"w": str(int(width_pt * 12700)), "cap": "flat"})
+        fill = ln.makeelement(qn("a:solidFill"), {})
+        clr = fill.makeelement(qn("a:srgbClr"), {"val": val})
+        fill.append(clr)
+        ln.append(fill)
+        tcPr.insert(0, ln)
+
+
+def _add_table(slide, x, y, w, *, header, rows, col_widths=None, aligns=None,
+               size=11, row_h=0.30, row_heights=None,
+               header_fill="#1A1A1A", header_color="#FFFFFF",
+               body_fill="#FFFFFF", body_color="#1A1A1A", line="#DDDDDD",
+               theme="light"):
+    """네이티브 표 1개 — 흑백 강제 + 다크 매핑.
+
+    header  = ["구분", "시간", ...]      (1행, 필수)
+    rows    = [["행사 안내", "17:00 ~ 17:30", ...], ...]
+    col_widths / row_heights = 인치 리스트 (선택 — 없으면 균등 / row_h)
+    ★ 행 높이는 "최소값"이다. 셀 텍스트가 길면 렌더 시 행이 자동으로 늘어난다.
+    """
+    if not header or not rows:
+        return None
+    ncol = len(header)
+    nrow = len(rows) + 1
+    widths = list(col_widths) if col_widths else [w / ncol] * ncol
+    if len(widths) != ncol:
+        widths = [w / ncol] * ncol
+    total_h = (row_heights[0] if row_heights else row_h) * nrow
+
+    gf = slide.shapes.add_table(nrow, ncol, Inches(x), Inches(y), Inches(w), Inches(total_h))
+    tbl = gf.table
+    _table_clear_style(tbl)
+    for i, cw in enumerate(widths):
+        tbl.columns[i].width = Inches(float(cw))
+    for r in range(nrow):
+        rh = row_heights[r] if (row_heights and r < len(row_heights)) else row_h
+        tbl.rows[r].height = Inches(float(rh))
+
+    # 다크 매핑 — 셀 부위별 role 로 기존 DARK_MAP 통과 (신규 매핑 0건).
+    #   #1A1A1A fill→#FFFFFF / #FFFFFF text→#1A1A1A / #FFFFFF fill→#0A0A0A / #1A1A1A text→#FFFFFF.
+    #   선만 예외 — DARK_MAP(#DDDDDD stroke→#2A2A2A)은 표에서 거의 안 보여 표 렌더러 안에서만 보정.
+    h_fill = _map_color(header_fill, "fill", theme)
+    h_text = _map_color(header_color, "text", theme)
+    b_fill = _map_color(body_fill, "fill", theme)
+    b_text = _map_color(body_color, "text", theme)
+    ln_color = _TABLE_DARK_LINE if theme == "dark" else line
+
+    align_map = {"left": PP_ALIGN.LEFT, "center": PP_ALIGN.CENTER, "right": PP_ALIGN.RIGHT}
+    col_aligns = list(aligns) if aligns and len(aligns) == ncol else ["left"] * ncol
+
+    grid = [list(header)] + [list(r) for r in rows]
+    for r, row_vals in enumerate(grid):
+        is_head = (r == 0)
+        for c in range(ncol):
+            cell = tbl.cell(r, c)
+            cell.text = str(row_vals[c]) if c < len(row_vals) and row_vals[c] is not None else ""
+            try:
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = _hex_to_rgb(h_fill if is_head else b_fill)
+            except Exception:
+                pass
+            _table_cell_border(cell, ln_color)
+            cell.margin_left = Inches(0.07)
+            cell.margin_right = Inches(0.07)
+            cell.margin_top = Inches(0.03)
+            cell.margin_bottom = Inches(0.03)
+            try:
+                cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+            except Exception:
+                pass
+            weight = 700 if is_head else 400
+            font_name = _resolve_font(None, weight) or DEFAULT_FONT_FAMILY
+            for p in cell.text_frame.paragraphs:
+                try:
+                    p.alignment = align_map.get(str(col_aligns[c]).lower(), PP_ALIGN.LEFT)
+                except Exception:
+                    pass
+                for run in (p.runs or []):
+                    try:
+                        run.font.size = Pt(float(size))
+                    except Exception:
+                        run.font.size = Pt(11)
+                    run.font.bold = is_head
+                    run.font.name = font_name
+                    try:
+                        run.font.color.rgb = _hex_to_rgb(h_text if is_head else b_text)
+                    except Exception:
+                        pass
+    return gf
+
+
 def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A", theme="light"):
     """단일 도형 스펙(JSON) → 슬라이드에 그림.
 
@@ -2156,6 +2291,27 @@ def render_shape_to_slide(slide, shape_def, *, default_text_color="#1A1A1A", the
                 fill=str(shape_def.get("fill", "#000000")),
                 stroke=shape_def.get("stroke"),
                 stroke_width=shape_def.get("stroke_width"),
+                theme=theme,
+            )
+        # Spec Preset-ScheduleTable — 네이티브 표 (add-only 분기, 기존 도형 경로 무영향).
+        #   좌표·색·컬럼 폭은 전부 빌더가 계산해 넘긴다 (LLM 은 표 도형을 직접 출력하지 않음).
+        if t == "table":
+            return _add_table(
+                slide,
+                float(shape_def.get("x", 0.9)), float(shape_def.get("y", 3.0)),
+                float(shape_def.get("w", 9.89)),
+                header=shape_def.get("header") or [],
+                rows=shape_def.get("rows") or [],
+                col_widths=shape_def.get("col_widths"),
+                aligns=shape_def.get("aligns"),
+                size=float(shape_def.get("size", 11)),
+                row_h=float(shape_def.get("row_h", 0.30)),
+                row_heights=shape_def.get("row_heights"),
+                header_fill=str(shape_def.get("header_fill", "#1A1A1A")),
+                header_color=str(shape_def.get("header_color", "#FFFFFF")),
+                body_fill=str(shape_def.get("body_fill", "#FFFFFF")),
+                body_color=str(shape_def.get("body_color", "#1A1A1A")),
+                line=str(shape_def.get("line", "#DDDDDD")),
                 theme=theme,
             )
         if t in ("image", "image_placeholder"):
@@ -5408,6 +5564,160 @@ def _build_preset_cards_grid(slide_data: dict) -> list:
 #   · OUTLINE 카탈로그·SLIDE elif 안내에서 조건부 replace 로 제외됨
 #   · 결과: LLM 이 preset:"vertical_stack_bands" 를 절대 안 냄 → dispatch 미매치 →
 #     자율 shapes 폴백 (기존 100% 동일 동작)
+# ─── Spec Preset-ScheduleTable — 식순표(행사 진행 순서) 프리셋 ────────────────────
+# 우수 제안서 실측 (식순표 12개 / 5개 파일):
+#   · 핵심 컬럼 구분·시간·내용 = 100%, 소요 4/10 · 비고 6/10 (선택)
+#   · 행 5~17 (평균 9.8) · 셀 글자수 p90 = 구분 9 / 시간 16 / 소요 3 / 내용 20 / 비고 15
+#   · 페이지 구성(죽변항 p31): eyebrow + 거버닝 + 운영개요 3줄 + 표 (+ note)
+# ★ 컬럼 세트는 코드가 데이터로 판단 — dur 있으면 "소요", note 있으면 "비고".
+#   LLM 은 컬럼을 정하지 않는다 (좌표·폭·색도 전부 코드).
+# ★ 넘침 4단 방어 (네이티브 표는 행이 자동으로 늘어 표 안 겹침은 없고, 남는 위험은
+#   표 전체의 하단 이탈 하나):
+#   ① 행 clamp 4~14  ② 셀별 절단  ③ 폰트 계단 11→10→9pt  ④ 총높이 상한 4.8"
+#   (④ 초과 시 폰트 ↓ → 내용 40→28자 → 뒤 행부터 잘라냄 순서로 결정적 처리)
+_ST_MIN_ROWS, _ST_MAX_ROWS = 4, 14
+_ST_CUT = {"section": 12, "time": 13, "dur": 5, "content": 40, "note": 20}
+_ST_CONTENT_TIGHT = 28
+_ST_X, _ST_W = 0.9, 9.89
+_ST_TOP, _ST_BOTTOM = 3.0, 7.8          # 표 가용 세로 4.8"
+_ST_WIDTHS = {
+    ("구분", "시간", "소요", "내용", "비고"): [1.5, 1.6, 0.6, 4.3, 1.89],
+    ("구분", "시간", "내용", "비고"):         [1.6, 1.7, 4.7, 1.89],
+    ("구분", "시간", "소요", "내용"):         [1.7, 1.8, 0.7, 5.69],
+    ("구분", "시간", "내용"):                 [1.8, 1.9, 6.19],
+}
+_ST_ALIGNS = {"구분": "center", "시간": "center", "소요": "center", "내용": "left", "비고": "left"}
+
+
+def _st_em_len(text: str) -> float:
+    """글자 폭을 em 단위로 — 한글·한자 1.0 / ASCII·숫자·기호 0.5.
+
+    ★ narrative quote 는 한글 산문이라 ASCII 도 전각으로 세는 보수적 추정을 썼지만,
+      표의 시간 열("17:00 ~ 17:30")은 거의 전부 반각이라 전각으로 세면 2줄로 오판해
+      행 수가 불필요하게 깎인다 (우수 제안서 실측 폭 1.53~1.68" 에 한 줄로 들어감).
+    """
+    half = 0
+    for ch in str(text):
+        if ch.isascii():
+            half += 1
+    return (len(str(text)) - half) + half * 0.5
+
+
+def _st_row_height(cells, widths, size) -> float:
+    """행 최소 높이 — 줄이 가장 많은 셀 기준 (narrative quote 와 동일 계산식)."""
+    lines = 1
+    for text, w in zip(cells, widths):
+        per_em = max(3.0, (float(w) - 0.14) * 72 / size)
+        need = _st_em_len(text)
+        lines = max(lines, max(1, int(-(-need // per_em))))
+    return max(0.30, round(lines * size * 1.4 / 72 + 0.10, 2))
+
+
+def _build_preset_schedule_table(slide_data: dict) -> list:
+    """Spec Preset-ScheduleTable — 식순표 레이아웃 프리셋.
+
+    slide_data 스키마:
+      "title"    : str (필수, 25~40자 명사형 거버닝)
+      "eyebrow"  : str (선택, breadcrumb)
+      "overview" : {"date": …, "place": …, "program": …}  (선택, 각 60자 이내)
+      "rows"     : [{"section","time","dur","content","note"}, ...]  ★ 4~14개
+                   각 행은 content 와 (time 또는 section) 이 있어야 유효
+      "note"     : str (선택, 표 아래 한 줄)
+    반환 = shape dict 리스트. title 없음 / 유효 행 4개 미만 → 빈 리스트
+      → LLM 자율 shapes fallback (기존 프리셋 표준 패턴).
+    """
+    title = str(slide_data.get("title", "")).strip()[:40]
+    if not title:
+        return []
+    eyebrow = str(slide_data.get("eyebrow", "")).strip()[:50]
+    note = str(slide_data.get("note", "")).strip()[:60]
+
+    ov = slide_data.get("overview") or {}
+    if not isinstance(ov, dict):
+        ov = {}
+    ov_lines = []
+    for key, label in (("date", "운영일"), ("place", "장 소"), ("program", "주요 프로그램")):
+        v = str(ov.get(key, "")).strip()[:60]
+        if v:
+            ov_lines.append(f"｜{label} : {v}")
+
+    rows_raw = slide_data.get("rows") or []
+    if not isinstance(rows_raw, list):
+        return []
+    rows = []
+    for it in rows_raw:
+        if not isinstance(it, dict):
+            continue
+        rec = {k: str(it.get(k, "")).strip()[:lim] for k, lim in _ST_CUT.items()}
+        if not rec["content"] or not (rec["time"] or rec["section"]):
+            continue
+        rows.append(rec)
+    if len(rows) > _ST_MAX_ROWS:
+        rows = rows[:_ST_MAX_ROWS]
+    if len(rows) < _ST_MIN_ROWS:
+        return []           # 표로 만들 가치 없음 → 자율 shapes 폴백
+
+    has_dur = any(r["dur"] for r in rows)
+    has_note = any(r["note"] for r in rows)
+    header = ["구분", "시간"] + (["소요"] if has_dur else []) + ["내용"] + (["비고"] if has_note else [])
+    widths = _ST_WIDTHS[tuple(header)]
+    aligns = [_ST_ALIGNS[h] for h in header]
+    keys = (["section", "time"] + (["dur"] if has_dur else [])
+            + ["content"] + (["note"] if has_note else []))
+
+    def _grid(rs, tight=False):
+        out = []
+        for r in rs:
+            out.append([(r[k][:_ST_CONTENT_TIGHT] if (tight and k == "content") else r[k])
+                        for k in keys])
+        return out
+
+    def _heights(grid, size):
+        hs = [_st_row_height(header, widths, size)] + \
+             [_st_row_height(g, widths, size) for g in grid]
+        return hs, round(sum(hs), 2)
+
+    budget = _ST_BOTTOM - _ST_TOP
+    size = 11 if len(rows) <= 9 else (10 if len(rows) <= 12 else 9)
+    grid = _grid(rows)
+    heights, total_h = _heights(grid, size)
+    while total_h > budget and size > 9:          # ③ 폰트 계단
+        size -= 1
+        heights, total_h = _heights(grid, size)
+    if total_h > budget:                          # ② 내용 절단 강화
+        grid = _grid(rows, tight=True)
+        heights, total_h = _heights(grid, size)
+    while total_h > budget and len(grid) > _ST_MIN_ROWS:   # ④ 뒤 행부터 제거
+        grid = grid[:-1]
+        heights, total_h = _heights(grid, size)
+
+    shapes: list = []
+    if eyebrow:
+        shapes.append({"type": "text", "x": _ST_X, "y": 0.5, "w": _ST_W, "h": 0.4,
+                       "text": eyebrow, "size": 11, "weight": 400, "color": "#BBBBBB",
+                       "align": "left", "valign": "top"})
+    shapes.append({"type": "text", "x": _ST_X, "y": 1.0, "w": _ST_W, "h": 0.9,
+                   "text": title, "size": 28, "weight": 800, "color": "#1A1A1A",
+                   "align": "left", "valign": "middle", "role": "governing"})
+    oy = 2.0
+    for line_txt in ov_lines[:3]:
+        shapes.append({"type": "text", "x": _ST_X, "y": oy, "w": _ST_W, "h": 0.28,
+                       "text": line_txt, "size": 12, "weight": 400, "color": "#444444",
+                       "align": "left", "valign": "middle"})
+        oy += 0.30
+    shapes.append({"type": "table", "x": _ST_X, "y": _ST_TOP, "w": _ST_W,
+                   "header": header, "rows": grid, "col_widths": widths, "aligns": aligns,
+                   "size": size, "row_heights": heights,
+                   "header_fill": "#1A1A1A", "header_color": "#FFFFFF",
+                   "body_fill": "#FFFFFF", "body_color": "#1A1A1A", "line": "#DDDDDD"})
+    if note:
+        shapes.append({"type": "text", "x": _ST_X, "y": min(_ST_TOP + total_h + 0.12, 7.75),
+                       "w": _ST_W, "h": 0.35,
+                       "text": note, "size": 11, "weight": 400, "color": "#666666",
+                       "align": "left", "valign": "top"})
+    return shapes
+
+
 def _build_preset_vertical_stack_bands(slide_data: dict) -> list:
     """Spec Vertical-Stack-Bands — 세로 카드 스택 + 하단 결론밴드 프리셋.
 
@@ -5918,6 +6228,21 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
             # 6개 고정. 미달 시 return [] → LLM 자율 shapes fallback.
             try:
                 preset_shapes = _build_preset_cards_grid(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "schedule_table":
+            # Spec Preset-ScheduleTable — 식순표(행사 진행 순서) + 네이티브 표.
+            # 거버닝 + 운영개요 3줄 + 표(구분/시간/[소요]/내용/[비고]).
+            # 미달(title 없음 / 유효 행 4개 미만) 시 자율 shapes fallback.
+            # ★ 플래그 게이트는 proposal_multi_pass.py 의 _VIZ_TO_PRESET 조건부 매핑에
+            #   존재 — 플래그 False 시 LLM 이 preset:"schedule_table" 을 절대 안 내므로
+            #   이 elif 는 미진입. dispatch 는 add-only 로 항상 존재.
+            try:
+                preset_shapes = _build_preset_schedule_table(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

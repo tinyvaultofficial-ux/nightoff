@@ -126,7 +126,7 @@ VERTICAL_STACK_ENABLED = True
 #   → dispatch(add-only)는 존재하지만 LLM 이 키를 안 내므로 미진입 = 기존 100% 동일.
 # ★ 렌더 기반(table 도형 type)은 플래그와 무관하게 항상 존재 — 다음 표 프리셋
 #   (타임테이블·인력배치표·위기대응표)이 그대로 재사용.
-SCHEDULE_TABLE_ENABLED = False
+SCHEDULE_TABLE_ENABLED = True
 
 # ★ 식순표 허용 도메인 (Spec Preset-ScheduleTable — 홍보마케팅 차단의 핵심).
 #   우수 제안서 실측에서 식순표가 나온 과업 유형만. campaign(공공캠페인·홍보마케팅)·
@@ -141,7 +141,7 @@ _SCHEDULE_TABLE_DOMAINS = {"festival", "forum", "sports", "exhibition", "display
 # ★ 식순표와 같은 table 렌더 기반을 그대로 재사용하고, 셀 병합만 추가 (_add_table 확장).
 # ★ 플래그 False 시 3중 잠김 (식순표와 동일 구조):
 #   ① _VIZ_PATTERN_SAFE 미등재 ② _VIZ_TO_PRESET 미매핑 ③ 카탈로그·규칙 placeholder 빈 문자열
-TIMETABLE_ENABLED = False
+TIMETABLE_ENABLED = True
 
 # ★ 타임테이블 허용 도메인 — 식순표와 동일한 행사 계열 (기존 상수 재사용, 무수정).
 _TIMETABLE_DOMAINS = _SCHEDULE_TABLE_DOMAINS
@@ -160,7 +160,7 @@ _TIMETABLE_MAX_PER_DECK = 1
 #   OUTLINE 프롬프트가 "예산·일정·리스크·조직(role=support)" 으로 규정하므로 인력 페이지는
 #   support 로 배정된다. 다른 15+ 프리셋처럼 role=body 만 허용하면 항상 강등돼
 #   플래그를 켜도 발동하지 않는다 (vertical_stack_bands 화이트리스트 누락과 같은 유형의 사고).
-STAFFING_TABLE_ENABLED = False
+STAFFING_TABLE_ENABLED = True
 
 # ★ 인력배치표 허용 위치 — body(본론 인력 계획) + support(운영관리 조직·인력).
 _STAFFING_TABLE_ROLES = {"body", "support"}
@@ -181,7 +181,7 @@ _STAFFING_TABLE_MAX_PER_DECK = 2
 #   만들어 페이지를 "대체"한다 (추가가 아니므로 페이지 증가 0).
 # ★ 도메인 제한 없음 — 운영 스펙은 모든 과업에 있다(홍보 SNS 이벤트 운영시간·경품·인력,
 #   교육 차수·정원·강사, 복지 서비스 시간·대상). 인력배치표와 같은 논리.
-PROGRAM_OVERVIEW_ENABLED = False
+PROGRAM_OVERVIEW_ENABLED = True
 
 # ★ 허용 위치 — 프로그램 상세(body) + 시설·차량 운영개요(support).
 _PROGRAM_OVERVIEW_ROLES = {"body", "support"}

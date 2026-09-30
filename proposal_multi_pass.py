@@ -4593,6 +4593,63 @@ _DEAD_KEY_CONTRAST_FIXES = (
      "상세만 있는 페이지(그건 numbered_columns)"),
 )
 
+# ★ Spec Dead-Preset-Keys 3차 — SLIDE user prompt 안의 "다른 패턴과 구분" 문구 10곳.
+#   1·2차는 OUTLINE(배정 단계)만 정리했다. 여기는 SLIDE(생성 단계) 문구라 배정을
+#   만들지는 않지만, 없어진 키를 계속 안내하면 LLM 이 그 키를 다시 배운다.
+#   ★ 대체 키는 "그 문장이 말하는 조건"에 맞춰 고른다 — 기계적으로 cards3 →
+#     numbered_columns 로 밀면 두 곳에서 모순이 생긴다:
+#       · "결론 문장 없음 → numbered_columns" — numbered_columns 는 conclusion 필수다.
+#         (원문이 이미 틀린 안내였다. 결론 없는 등분 비교는 triad / cards_grid 다.)
+#       · "단순 3항목 등분 비교 → cards3 (결론 문장 없음)" — 같은 이유로 triad.
+#   ⚠ 1차와 달리 매치 실패 warning 을 두지 않는다 — SLIDE 프롬프트는 호출마다
+#     viz_pattern 분기 하나만 담기므로, 나머지 9쌍은 정상적으로 매치되지 않는다.
+#     (매 슬라이드 호출마다 9건씩 경고가 쏟아진다.) 드리프트 감지는 검증
+#     스크립트가 맡는다 — 10쌍 각각이 적어도 한 분기에서 매치되는지 확인한다.
+_DEAD_KEY_SLIDE_FIXES = (
+    # split — AS-IS/TO-BE 시간 대비의 대체는 2col (2col 용도 정의와 일치)
+    ("AS-IS/TO-BE 같은 시간 대비는 X (그건 before_after).",
+     "AS-IS/TO-BE 같은 시간 대비는 X (그건 2col)."),
+    ("단순 항목 나열도 X (그건 cards3/cards_grid).",
+     "단순 항목 나열도 X (그건 numbered_columns/cards_grid)."),
+    # triad — "등분 비교" 자리에 numbered_columns 를 넣되 성격을 바로잡는다
+    ("  · 단순 카드 나열 → cards3 (등분 비교)",
+     "  · 단순 카드 나열 → numbered_columns (항목 나열 + 결론)"),
+    # strategy_map — 목록에서 cards3 만 교체
+    ("  · 축만 있고 실행 단계 없음 → triad / conclusion_cards / cards3",
+     "  · 축만 있고 실행 단계 없음 → triad / conclusion_cards / numbered_columns"),
+    # conclusion_cards — "결론 문장 없음" 조건이므로 conclusion 필수인 키는 쓸 수 없다
+    ("  · 단순 3항목 등분 비교 → cards3 (결론 문장 없음)",
+     "  · 단순 3항목 등분 비교 → triad (결론 문장 없음)"),
+    # numbered_columns — 같은 이유 (결론 없는 나열은 triad / cards_grid)
+    ("  · 단순 카드 나열 → cards3 (numbered_columns 는 결론 문장이 있어야 함)",
+     "  · 단순 카드 나열 → triad / cards_grid (numbered_columns 는 결론 문장이 있어야 함)"),
+    # flow_detail / fullbleed_overlay / process — 목록에서 cards3 제거
+    ("  · 상세만 있음 → cards3 / numbered_columns / conclusion_cards",
+     "  · 상세만 있음 → numbered_columns / conclusion_cards"),
+    ("  · 정보를 조목조목 → cards3 / numbered_columns / flow_detail",
+     "  · 정보를 조목조목 → numbered_columns / flow_detail"),
+    ("  · 대등 3항목 병렬(순서 무관) → cards3 / numbered_columns / triad",
+     "  · 대등 3항목 병렬(순서 무관) → numbered_columns / triad"),
+    # vertical_stack_bands — ★ 원문이 모순이었다 (결론 없음인데 conclusion 필수 키 안내)
+    ("  · 결론 문장 없음 → numbered_columns / cards3",
+     "  · 결론 문장 없음 → triad / cards_grid"),
+)
+
+
+def _dead_key_apply_slide(p: str) -> str:
+    """Spec Dead-Preset-Keys 3차 — SLIDE user prompt 조립 결과에서 사문화 키 제거.
+
+    플래그 False 면 입력을 그대로 돌려주므로 종전과 바이트 단위로 동일하다.
+    ★ 정확 일치 문자열 쌍만 쓴다 — RAG·리서치·outline 요약 등 주입 블록이
+      우연히 바뀌는 일이 없도록.
+    """
+    if not DEAD_PRESET_KEYS_FIX_ENABLED:
+        return p
+    for _old, _new in _DEAD_KEY_SLIDE_FIXES:
+        if _old in p:
+            p = p.replace(_old, _new)
+    return p
+
 
 def _dead_key_apply_outline(p: str) -> str:
     """Spec Dead-Preset-Keys — OUTLINE_SYSTEM_PROMPT placeholder 7개 치환.
@@ -6301,7 +6358,10 @@ def _build_slide_user_prompt(
     if CONCRETENESS_BOOST_ENABLED:
         parts.append("")
         parts.append(_format_concreteness_boost_block())
-    return "\n".join(parts)
+    # ★ Spec Dead-Preset-Keys 3차 — 조립 결과에서 사문화 키 안내 문구 제거.
+    #   분기별 리터럴이 함수 안에 흩어져 있어 상수 placeholder 방식을 못 쓴다.
+    #   조립 후 정확 일치 치환이 가장 작고 안전하다 (플래그 False 면 무변경).
+    return _dead_key_apply_slide("\n".join(parts))
 
 
 # ─── Spec D-Fix-Path1Enrich — path1 결과의 텍스트 칸을 LLM이 cap 안에서 풍성화 ──

@@ -207,7 +207,7 @@ _PROGRAM_OVERVIEW_MAX_PER_DECK = 6
 #   ③ 그래도 LLM 이 내면 파싱 단계에서 재매핑 (안전망)
 # ★ HTML 트랙(SLIDE_SYSTEM_PROMPT_HTML)은 두 키를 정식 카탈로그 6종으로 정상 사용 중 →
 #   이 플래그와 무관하게 완전 무접촉. path1/core/adapter.py 골격 매핑도 무접촉.
-DEAD_PRESET_KEYS_FIX_ENABLED = False
+DEAD_PRESET_KEYS_FIX_ENABLED = True
 
 # 재매핑 표 — Spec Ghost-Preset-Resolve 가 프롬프트 sub-note 로만 유도했던 대체 관계를
 # 코드로 확정한다. 대체 대상의 자체 발동률(2026-08~09 실측):

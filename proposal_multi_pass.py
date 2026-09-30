@@ -191,6 +191,38 @@ _PROGRAM_OVERVIEW_ROLES = {"body", "support"}
 _PROGRAM_OVERVIEW_MAX_PER_DECK = 6
 
 
+# ─── Spec Dead-Preset-Keys — 사문화 키(cards3 / before_after) 정리 on/off ────
+# 진단(프로덕션 120덱 5,500p 실측): 두 키는 OUTLINE 화이트리스트에는 있으나
+#   shape 트랙 빌더·dispatch·SLIDE 전용 분기가 전부 없어 배정된 만큼 100% 버려진다.
+#   · 2026-07 이후 37덱: cards3 165 배정 → 1 발동(1%) · before_after 21 → 1(5%)
+#   · 2026-09: cards3 12 → 0 · before_after 2 → 0 (본문의 10%가 자율 shapes 로 낙하)
+#   · 두 키는 _build_slide_user_prompt 의 else 폴백으로 떨어지는 유일한 화이트리스트
+#     키다(나머지 26종 + text_* 2종은 전용 elif 보유). 그 else 는 preset 키를 요구하지
+#     않으므로 자율 shapes 가 구조적으로 확정된다.
+# False = 기존과 100% 동일 (프롬프트 바이트 · 화이트리스트 · 재매핑 전부 무변화).
+# True 시 3층 동시 작동:
+#   ① OUTLINE 프롬프트에서 두 키 제거 (예시 · 카탈로그 · 배정 규칙 ④⑤ · Front-Narrative)
+#      → LLM 이 애초에 고르지 않게 (주효과)
+#   ② 화이트리스트에서 제외
+#   ③ 그래도 LLM 이 내면 파싱 단계에서 재매핑 (안전망)
+# ★ HTML 트랙(SLIDE_SYSTEM_PROMPT_HTML)은 두 키를 정식 카탈로그 6종으로 정상 사용 중 →
+#   이 플래그와 무관하게 완전 무접촉. path1/core/adapter.py 골격 매핑도 무접촉.
+DEAD_PRESET_KEYS_FIX_ENABLED = False
+
+# 재매핑 표 — Spec Ghost-Preset-Resolve 가 프롬프트 sub-note 로만 유도했던 대체 관계를
+# 코드로 확정한다. 대체 대상의 자체 발동률(2026-08~09 실측):
+#   · numbered_columns 9/10 (90%) — 안정
+#   · 2col 7/14 (50%) — 회복 중 (7월 1% → 8월 45% → 9월 67%)
+# ★ cards3 → numbered_columns 는 numbered_columns 가드(role=body AND slide_type!=hero)를
+#   그대로 통과해야 살아난다. cards3 배정의 45%가 role=support 이므로 그 절반은 여전히
+#   ""로 강등된다 — 이번 조각은 그것을 개선 대상으로 삼지 않는다(support 프리셋 확대는
+#   별도 조각). before_after → 2col 은 2col 에 가드가 없어 강등 위험 0.
+_DEAD_KEY_REMAP = {
+    "cards3": "numbered_columns",
+    "before_after": "2col",
+}
+
+
 # ─── Spec GovEnding-Fix — 거버닝 서술형 종결 감지 정규식 (감지 로그용, 값 무변경) ────
 # 진단: D-Fix-GovEnding-1 규칙 (거버닝 명사형 종결) 위반 실빈도 파악용.
 # ★ 로그만 남기고 값은 절대 안 건드림 — 자동 교정 시 오탐 위험 큼 (한국어 동사→명사
@@ -1031,7 +1063,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
       "governing_sub": ["행사기간: 2026.10.17 ~ 18 (2일)", "참여 규모: 5만 명"],
       "key_msgs": ["RFP 에서 도출한 배경 1", "배경 2", "배경 3"],
       "viz_hint": "★ 제안서 초반 — 박스당 1~3줄 권장 (낮은 밀도). stat (KPI 3~4개) + comparison(AS-IS/TO-BE). 키워드 중심 첫 인상, 후반부 기대감 형성. 장황한 설명 X.",
-      "viz_pattern": "before_after",
+      "viz_pattern": "{DEAD_KEY_EX1_PH}",
       "role": "body",
       "skeleton_id": "G3"
     },
@@ -1043,7 +1075,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
       "governing_sub": [],
       "key_msgs": ["접근 방향 1 (추상)", "접근 방향 2 (추상)", "접근 방향 3 (추상)"],
       "viz_hint": "★ 제안서 초반 — 박스당 1~3줄 권장 (낮은 밀도). 추상 메시지 + 접근 방향 3~4개 박스 (정성). ⚠ 정량 수치·자사 실적·회사명 절대 금지 (마스터 원칙 영역 2). 메인 거버닝 = 단순 나열 X, 페이지의 주장/선언.",
-      "viz_pattern": "cards3",
+      "viz_pattern": "{DEAD_KEY_EX2_PH}",
       "role": "body",
       "skeleton_id": "G7"
     },
@@ -1079,19 +1111,9 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
                       (AS-IS/TO-BE, 문제/해결, 현재/개선, BEFORE/AFTER).
                       단순 3항목 나열은 timeline / numbered_columns 로. 대등 두 축 병렬은
                       hsplit_top / split 도 가능.
-  · cards3        — 3카드 등분 비교 (평행 분류·차별점)
-                    ※ ★ Spec Ghost-Preset-Resolve — shape 트랙: 대신 numbered_columns 우선
-                      (상단 검정 헤더 + 배경 숫자 + 하단 결론 밴드로 서사 완결). cards3 는
-                      shape 트랙 렌더 함수 부재 — 자율 shapes 로 폴백되므로 numbered_columns
-                      가 시각적으로 훨씬 정돈됨.
+{DEAD_KEY_CAT_CARDS3_PH}
   · process       — 가로 단계 흐름 (절차·추진 단계·일정 흐름)
-  · before_after  — Before/After 점층 카드 (도입 효과·개선 사례)
-                    ※ AS-IS(기존/현재) 칸은 [RFP 분석]/[과업 리서치] 에 근거 있을 때만 구체적으로.
-                      없으면 일반적 한계로만, 특정 사실 단정 X. (Spec C-Build-BeforeAfterCap)
-                    ※ ★ Spec Ghost-Preset-Resolve — shape 트랙: 대신 2col 우선
-                      (BEFORE/AFTER 를 left/right head 로, items 에 정량 효과).
-                      before_after 는 shape 트랙 렌더 함수 부재 — 자율 shapes 폴백보다
-                      2col 이 훨씬 정돈됨.
+{DEAD_KEY_CAT_BEFORE_AFTER_PH}
   · quant         — 정량 강조 (큰 숫자 + 라벨, KPI·예산·규모)
   · cards_grid    — 카드 그리드 2x3 (팀원·사례·zone 분리, 정확히 6개)
                     ※ ★ Spec Ghost-Preset-Resolve — 정확히 6개 항목일 때만 배정.
@@ -1253,12 +1275,12 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
 ① 본문 페이지 전체에 카탈로그의 여러 종이 골고루 분포하게. 특정 1~2종 편중 금지.
 ② 직전 본문 페이지와 같은 viz_pattern 을 연속 배정 X (반드시 다른 키).
 ③ 페이지 내용이 특정 패턴에 자연스러우면 그것을 우선 선택하되, 다양성을 우선 — 억지로 맞추지 말고 자연스러운 후보 2~3개 중 직전과 다른 것 선택.
-④ ★ 박스/카드 계열(cards3 / before_after / cards_grid) 합산 cap — 본문 페이지의 40% 이내
+④ ★ 박스/카드 계열({DEAD_KEY_RULE4_PH}) 합산 cap — 본문 페이지의 40% 이내
    (예: 본문 20장 → 합 8장 이하). 초과 시 다른 계열(2col / process / quant / text_quote / text_declaration / split / timeline / asymmetric / zigzag / hsplit / circles / hsplit_top / quad / hero_cards / triad / strategy_map)로 회전.
    박스 도배 = 단조로움(평가위원 "패턴 하나만 반복" 인식).
 ⑤ ★ AS-IS/TO-BE 비교 cap — 환각 주요 창구 제어 (Spec C-Build-BeforeAfterCap):
    - "기존 vs 제안" / "현재 vs 개선" / "AS-IS vs TO-BE" 구도의 비교 슬라이드
-     (viz_pattern: before_after, 또는 2col 을 AS-IS/TO-BE 용도로 쓰는 경우 포함)
+     ({DEAD_KEY_RULE5_PH})
      → 전체 outline 안 최대 1장. (불가피하게 강조 필요 시에도 2장 초과 금지.)
    - 이유: AS-IS(기존 현황) 칸은 출처 없으면 사실을 지어내는 환각 창구다.
      여러 장이면 근거 없는 현황 단정이 누적된다.
@@ -1393,7 +1415,7 @@ RFP 분석에 `quantitative_locks` 필드가 포함되어 들어온다 (예: eve
 
 - Ⅰ.1 사업 이해 / 추진 배경 / 사업 배경 페이지의 key_msgs 를 블록의 past_editions
   기반 문제제기 서사로 짜라.
-  · viz_pattern = "before_after" 로 배정 권장 (AS-IS=전년도 실적, TO-BE=이번 회차 개선).
+  · viz_pattern = "{DEAD_KEY_FN_PH}" 로 배정 권장 (AS-IS=전년도 실적, TO-BE=이번 회차 개선).
   · strategy_relevant = "align" 판정 (관통 대상 — 위 (b) 판정 규칙 참조).
 
 - ★★ 거버닝 길이 보호 (Spec Front-Narrative-Governing-Fix) — 서사 강화가 거버닝 폭발 유발 방지:
@@ -3419,10 +3441,15 @@ def _format_research_outline_block(research: dict) -> str:
         lines.append(f"리서치 요약: {summary}")
     if sources:
         lines.append(f"(출처: {' / '.join(sources[:5])})")
+    # ★ Spec Dead-Preset-Keys ⑦ — 권장 키를 플래그로 분기.
+    #   before_after 는 shape 트랙에서 100% 버려지므로, 이 지시를 그대로 두면
+    #   Front-Narrative 가 만든 '전년도 대비' 페이지가 매번 자율 shapes 로 떨어진다.
+    #   2col 이 AS-IS/TO-BE 전용 대체 프리셋이다(가드 없음).
+    _fn_key = _DEAD_KEY_FN_ON if DEAD_PRESET_KEYS_FIX_ENABLED else _DEAD_KEY_FN_OFF
     lines.append(
         "→ 위는 web_search 로 검증된 전년도/유사 사업 실적이다. "
         "Ⅰ.1 사업 이해/추진 배경 페이지의 key_msgs 를 이 근거 기반 문제제기 서사로 "
-        "짜라 (AS-IS=전년도 실적, TO-BE=이번 회차 개선 방향). viz_pattern=\"before_after\" 권장. "
+        f"짜라 (AS-IS=전년도 실적, TO-BE=이번 회차 개선 방향). viz_pattern=\"{_fn_key}\" 권장. "
         "★ 왜곡 금지: 평가 형용사(겨우/고작/저조한/미흡한), 근거 없는 인과(○○ 부족으로/○○ 때문에), "
         "감정 어휘(심각한/위기의/우려되는) 사용 금지. 담백한 대비 프레임만 허용. "
         "★ 이 블록에 없는 배경 사실을 상식/발상으로 지어내지 마라 — 팩트 게이트 정합."
@@ -3695,6 +3722,8 @@ async def generate_outline(
         "\n{PROGRAM_OVERVIEW_RULE_PH}",
         "\n" + _PROGRAM_OVERVIEW_RULE_STR if PROGRAM_OVERVIEW_ENABLED else "",
     )
+    # ★ Spec Dead-Preset-Keys — 사문화 키 placeholder 7개 치환 (플래그 False = 바이트 동일).
+    outline_system_prompt = _dead_key_apply_outline(outline_system_prompt)
     # max_tokens 64000 — Sonnet 4.5 native 한계까지 활용 → 100 슬라이드 영역까지 안전.
     # 사고 영역 history:
     #   49f3ccc: 50 슬라이드 = 16000 도달 → 32000 영역 ↑
@@ -3763,7 +3792,25 @@ async def generate_outline(
         # ★ Spec Preset-ProgramOverview — 플래그 조건부 등재.
         if PROGRAM_OVERVIEW_ENABLED:
             _VIZ_PATTERN_SAFE = _VIZ_PATTERN_SAFE | {"program_overview"}
+        # ★★ Spec Dead-Preset-Keys ① — 사문화 2종 화이트리스트 제외.
+        #   두 키는 shape 트랙 빌더·dispatch·SLIDE 전용 분기가 전부 없어 배정돼도 100%
+        #   자율 shapes 로 떨어진다(실측 1%·5%). 플래그 False 면 집합 무변화.
+        if DEAD_PRESET_KEYS_FIX_ENABLED:
+            _VIZ_PATTERN_SAFE = _VIZ_PATTERN_SAFE - set(_DEAD_KEY_REMAP)
         viz_pattern_raw = str(it.get("viz_pattern", "")).strip().lower()
+        # ★★ Spec Dead-Preset-Keys ③ — 재매핑(안전망).
+        #   ① 로 카탈로그·예시에서 뺐어도 LLM 이 과거 습관대로 낼 수 있다. 화이트리스트
+        #   판정 '이전에' 살려 두면 그 배정이 버려지지 않고 대체 프리셋으로 간다.
+        #   ★ 반드시 가드 체인(아래) 진입 전이어야 한다 — 가드·SLIDE 분기·_VIZ_TO_PRESET
+        #     이 모두 바뀐 키를 보게 해야 실제로 렌더된다.
+        #   ⚠ cards3 → numbered_columns 는 numbered_columns 가드(role=body AND
+        #     slide_type!=hero)를 통과해야 살아난다. role=support(실측 45%)·hero 는
+        #     그대로 ""로 강등된다 — 이번 조각의 개선 대상이 아니다(설계 확정 (2)).
+        if DEAD_PRESET_KEYS_FIX_ENABLED and viz_pattern_raw in _DEAD_KEY_REMAP:
+            _remapped = _DEAD_KEY_REMAP[viz_pattern_raw]
+            log.info("Dead-Preset-Keys 재매핑 p=%s %s → %s",
+                     it.get("page"), viz_pattern_raw, _remapped)
+            viz_pattern_raw = _remapped
         viz_pattern = viz_pattern_raw if viz_pattern_raw in _VIZ_PATTERN_SAFE else ""
         # ★ Spec D-Fix-NarrativeGuard — text 위계는 hero/support/simple_box 페이지에 배정 X.
         #   컨셉 슬로건(hero)·표지·divider·예산·일정·조직(support) 등에 text_* 박혀도 무력화.
@@ -4393,6 +4440,105 @@ _VERTICAL_STACK_CATALOG_STR = (
     "                          conclusion_cards 와의 구분: conclusion_cards 는 카드 가로 배치(횡),\n"
     "                          vertical_stack_bands 는 카드 세로 스택(종). 항목 방향으로 선택."
 )
+
+
+# ─── Spec Dead-Preset-Keys — OUTLINE 프롬프트 조건부 치환 원문 ──────────────────
+# DEAD_PRESET_KEYS_FIX_ENABLED=False 일 때 placeholder 자리에 되돌려 넣는 "현재 문구".
+# 기존 표 프리셋 placeholder 와 방향이 반대다 — 저쪽은 "빈 문자열 → 추가", 이쪽은
+# "현재 문구 → 제거". 기계는 같고 조건만 뒤집힌다 (플래그 False = 바이트 동일).
+_DEAD_KEY_CAT_CARDS3_STR = (
+    "  · cards3        — 3카드 등분 비교 (평행 분류·차별점)\n"
+    "                    ※ ★ Spec Ghost-Preset-Resolve — shape 트랙: 대신 numbered_columns 우선\n"
+    "                      (상단 검정 헤더 + 배경 숫자 + 하단 결론 밴드로 서사 완결). cards3 는\n"
+    "                      shape 트랙 렌더 함수 부재 — 자율 shapes 로 폴백되므로 numbered_columns\n"
+    "                      가 시각적으로 훨씬 정돈됨."
+)
+_DEAD_KEY_CAT_BEFORE_AFTER_STR = (
+    "  · before_after  — Before/After 점층 카드 (도입 효과·개선 사례)\n"
+    "                    ※ AS-IS(기존/현재) 칸은 [RFP 분석]/[과업 리서치] 에 근거 있을 때만 구체적으로.\n"
+    "                      없으면 일반적 한계로만, 특정 사실 단정 X. (Spec C-Build-BeforeAfterCap)\n"
+    "                    ※ ★ Spec Ghost-Preset-Resolve — shape 트랙: 대신 2col 우선\n"
+    "                      (BEFORE/AFTER 를 left/right head 로, items 에 정량 효과).\n"
+    "                      before_after 는 shape 트랙 렌더 함수 부재 — 자율 shapes 폴백보다\n"
+    "                      2col 이 훨씬 정돈됨."
+)
+# 배정 규칙 ④ 박스/카드 계열 목록 — 두 키 제거 후엔 cards_grid 만 남는다.
+_DEAD_KEY_RULE4_OFF = "cards3 / before_after / cards_grid"
+_DEAD_KEY_RULE4_ON = "cards_grid"
+# 배정 규칙 ⑤ AS-IS/TO-BE cap 대상 — before_after 제거 후엔 2col 용도만 남는다.
+_DEAD_KEY_RULE5_OFF = "viz_pattern: before_after, 또는 2col 을 AS-IS/TO-BE 용도로 쓰는 경우 포함"
+_DEAD_KEY_RULE5_ON = "viz_pattern: 2col 을 AS-IS/TO-BE 용도로 쓰는 경우"
+# OUTLINE 출력 예시 2곳.
+#   EX1 = slide_type=text_box · role=body (Ⅰ.1 추진 배경) → 2col 로 교체 (2col 은 가드 없음).
+#   EX2 = slide_type=hero · role=body (Ⅰ.3 특장점) → ★"" 로 교체.
+#     ⚠ 설계서엔 numbered_columns 로 적었으나, 기존 프리셋 가드 전수를 읽어 보니
+#       **모든 프리셋 가드가 slide_type=="hero" 를 ""로 강등**한다(hsplit_top·quad·
+#       hero_cards·triad·numbered_columns·conclusion_cards… 동일 조건). 즉 hero 예시에
+#       어떤 프리셋을 박아도 코드가 즉시 지운다 — 새 사문화 배정을 만들 뿐이다.
+#       "" 가 프롬프트와 코드가 일치하는 유일한 값이다.
+_DEAD_KEY_EX1_OFF, _DEAD_KEY_EX1_ON = "before_after", "2col"
+_DEAD_KEY_EX2_OFF, _DEAD_KEY_EX2_ON = "cards3", ""
+# Front-Narrative 권장 키 (AS-IS=전년도 실적 / TO-BE=이번 회차) → 2col 이 정확한 대체.
+_DEAD_KEY_FN_OFF, _DEAD_KEY_FN_ON = "before_after", "2col"
+
+# ★ 다른 카탈로그 항목의 "⚠ 부적합 / 구분" 대비 문구 8곳.
+#   카탈로그 항목만 지우고 이 문구를 남기면 LLM 이 "cards3 라는 키가 있구나" 를 다시
+#   배운다 — ①(배정 자체를 줄이는 주효과)이 그대로 샌다.
+#   ⚠ 일괄 치환(cards3→numbered_columns)은 두 곳에서 깨진다:
+#     · "(그건 cards3/numbered_columns)" → "numbered_columns/numbered_columns" 중복
+#     · "cards3 는 등분 비교" → numbered_columns 는 등분 비교가 아니라 '항목 나열 + 결론'
+#   그래서 문맥별 지정 치환으로 처리한다 (플래그 ON 일 때만).
+_DEAD_KEY_CONTRAST_FIXES = (
+    ("AS-IS/TO-BE 시간 대비 → before_after 우선",
+     "AS-IS/TO-BE 시간 대비 → 2col 우선"),
+    ("단순 항목 나열 → cards3·cards_grid",
+     "단순 항목 나열 → numbered_columns·cards_grid"),
+    ("단순 카드 나열 → cards3 / role=support",
+     "단순 카드 나열 → numbered_columns / role=support"),
+    ("카드면 cards3. 3개 고정.",
+     "카드면 numbered_columns. 3개 고정."),
+    ("전략/실행 한쪽만 → cards3/process/triad",
+     "전략/실행 한쪽만 → numbered_columns/process/triad"),
+    ("단순 3항목 나열(그건 cards3/triad)",
+     "단순 3항목 나열(그건 numbered_columns/triad)"),
+    ("cards3 는 등분 비교, triad 는 이미지 자리 + 비대칭.",
+     "numbered_columns 는 항목 나열 + 결론, triad 는 이미지 자리 + 비대칭."),
+    ("상세만 있는 페이지(그건 cards3/numbered_columns)",
+     "상세만 있는 페이지(그건 numbered_columns)"),
+)
+
+
+def _dead_key_apply_outline(p: str) -> str:
+    """Spec Dead-Preset-Keys — OUTLINE_SYSTEM_PROMPT placeholder 7개 치환.
+
+    플래그 False 면 원문을 그대로 되돌려 넣으므로 조립 결과가 종전과 바이트 단위로 동일하다.
+    ★ SLIDE_SYSTEM_PROMPT / SLIDE_SYSTEM_PROMPT_HTML 은 건드리지 않는다 — HTML 트랙은
+      cards3(B)·before_after(D) 를 정식 카탈로그 6종으로 정상 사용 중이다.
+    """
+    on = DEAD_PRESET_KEYS_FIX_ENABLED
+    # 카탈로그 2항목 — 줄 자체를 개행까지 함께 제거 (기존 표 프리셋과 동일 "\n{PH}" 패턴).
+    p = p.replace("\n{DEAD_KEY_CAT_CARDS3_PH}",
+                  "" if on else "\n" + _DEAD_KEY_CAT_CARDS3_STR)
+    p = p.replace("\n{DEAD_KEY_CAT_BEFORE_AFTER_PH}",
+                  "" if on else "\n" + _DEAD_KEY_CAT_BEFORE_AFTER_STR)
+    # 배정 규칙 ④·⑤ 문구 (줄 구조 유지, 괄호 안만 교체)
+    p = p.replace("{DEAD_KEY_RULE4_PH}",
+                  _DEAD_KEY_RULE4_ON if on else _DEAD_KEY_RULE4_OFF)
+    p = p.replace("{DEAD_KEY_RULE5_PH}",
+                  _DEAD_KEY_RULE5_ON if on else _DEAD_KEY_RULE5_OFF)
+    # 출력 예시 2곳 + Front-Narrative 권장 키
+    p = p.replace("{DEAD_KEY_EX1_PH}", _DEAD_KEY_EX1_ON if on else _DEAD_KEY_EX1_OFF)
+    p = p.replace("{DEAD_KEY_EX2_PH}", _DEAD_KEY_EX2_ON if on else _DEAD_KEY_EX2_OFF)
+    p = p.replace("{DEAD_KEY_FN_PH}", _DEAD_KEY_FN_ON if on else _DEAD_KEY_FN_OFF)
+    # 다른 카탈로그 항목의 대비 문구 — 플래그 ON 일 때만 (OFF 면 루프 자체를 건너뛴다).
+    if on:
+        for _old, _new in _DEAD_KEY_CONTRAST_FIXES:
+            if _old not in p:
+                # 원문이 바뀌면 조용히 새는 것을 막는다 — 로그로 드러낸다.
+                log.warning("Dead-Preset-Keys 대비문구 미발견 (원문 변경?): %.40s", _old)
+                continue
+            p = p.replace(_old, _new)
+    return p
 
 
 def _build_slide_user_prompt(
@@ -5890,9 +6036,17 @@ def _build_slide_user_prompt(
                 '"text":"개막식 운영 계획","size":11,"weight":400,"color":"#666"}]}'
             )
         else:
+            # ★ Spec Dead-Preset-Keys ⑧ — 이 else 는 cards3 / before_after 두 키만
+            #   도달하는 폴백이다(나머지 26종 + text_* 2종은 전용 elif 보유). 플래그 ON 이면
+            #   두 키가 ①화이트리스트 제외 + ③재매핑으로 사라져 이 분기는 도달 0이 된다.
+            #   그래도 안내 문구에 사문화 키를 남겨 두면 LLM 이 다시 배우므로 목록에서 뺀다.
+            _safe_list = ("2col / process / quant / cards_grid"
+                          if DEAD_PRESET_KEYS_FIX_ENABLED
+                          else "2col / cards3 / process / before_after / quant / cards_grid")
+            _safe_n = _safe_list.count("/") + 1          # ON 4종 · OFF 6종
             parts.append(
                 f"[배정된 레이아웃 패턴] {item.viz_pattern} — 본 페이지는 이 패턴으로 구성하라. "
-                "안전 6종(2col / cards3 / process / before_after / quant / cards_grid) 범위 안에서만, "
+                f"안전 {_safe_n}종({_safe_list}) 범위 안에서만, "
                 "위험 4종(벤다이어그램·2x2 매트릭스·수직 타임라인·다이어그램+표)으로 벗어나지 말 것. "
                 "겹침 좌표 주의."
             )

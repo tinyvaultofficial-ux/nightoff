@@ -3076,6 +3076,56 @@ def _sys_cached(text: str):
              "cache_control": {"type": "ephemeral"}}]
 
 
+# ─── Spec API-Credit-Guard — 재시도가 무의미한 치명 오류 분류 ────────────────
+# 배경(실측 test95): Anthropic 400 "Your credit balance is too low" 가 떴는데
+#   generate_one_slide 의 except 가 상태코드를 안 보고 4회 재시도를 돌렸다.
+#   36장 × 4회 = 144회 헛호출 · 장당 ~7초 지연 · 사용자는 영문 원문을 봤다.
+# 판정 기준 — anthropic SDK 를 import 하지 않는다 (이 모듈은 클라이언트를
+#   주입받는 구조이고, SDK 버전에 따라 예외 계층이 달라질 수 있다).
+#   status_code 속성 + 클래스명 + 메시지 키워드만 본다 (덕타이핑).
+_FATAL_API_KEYWORDS = (
+    "credit balance", "credit_balance", "billing",
+    "insufficient", "quota", "payment",
+)
+
+
+class ApiCreditExhausted(RuntimeError):
+    """잔액 부족·인증·권한 — 재시도·남은 페이지 생성이 모두 무의미한 오류.
+
+    main.py 생성 스트림이 이 예외만 따로 받아
+      · done 이벤트 미발생 → payload 미저장 → PPTX 미생성
+      · 기존 정산 finally 의 `final_payload is None` 분기 → 전액 환불
+      · 한국어 안내 문구 + 관리자 알림
+    을 수행한다. 정산 로직 자체는 한 줄도 바뀌지 않는다.
+    """
+
+    def __init__(self, stage: str, original: str):
+        self.stage = stage            # "SLIDE p12" / "프리플라이트" 등
+        self.original = original      # 원본 오류 앞 200자 (관리자 알림용)
+        super().__init__(f"{stage}: {original}")
+
+
+def _classify_api_error(e: BaseException) -> str:
+    """'fatal' | 'retry'.
+
+    fatal — 401·403(인증·권한), 400 + 잔액/결제 키워드.
+            재시도해도 결과가 같고, 남은 페이지도 전부 같은 오류를 맞는다.
+    retry — 429(rate limit) · 529(overloaded) · 5xx · timeout · connection ·
+            그 밖의 400(분량 초과 등). 기존 4회 재시도 동작을 그대로 유지한다.
+    """
+    name = type(e).__name__
+    code = getattr(e, "status_code", None)
+    msg = str(e).lower()
+    if name in ("AuthenticationError", "PermissionDeniedError") or code in (401, 403):
+        return "fatal"
+    if code == 400 and any(k in msg for k in _FATAL_API_KEYWORDS):
+        return "fatal"
+    # status_code 가 없는 래핑 예외 대비 — 400 문구가 메시지에 들어온 경우만.
+    if code is None and "error code: 400" in msg and any(k in msg for k in _FATAL_API_KEYWORDS):
+        return "fatal"
+    return "retry"
+
+
 def _call_anthropic_sync(client, system: "str | list", user: str,
                          max_tokens: int = 8000, model: str = "") -> str:
     """동기 Anthropic 호출 (asyncio.to_thread 로 감싸 사용).
@@ -6319,8 +6369,20 @@ async def generate_one_slide(
                 html=html_text,
                 meta=_meta,
             )
+        except ApiCreditExhausted:
+            # 다른 슬라이드가 먼저 치명 오류를 올린 경우 — 그대로 통과시킨다.
+            raise
         except Exception as e:
             last_err = str(e)[:200]
+            # ★ Spec API-Credit-Guard — 잔액 부족·인증·권한은 재시도 금지.
+            #   여기서 raise 하면 generate_slides_parallel 의 기존 finally
+            #   (stopped=True → 미시작 태스크 cancel) 가 남은 페이지를 즉시 끊는다.
+            if _classify_api_error(e) == "fatal":
+                log.error(
+                    "★API 치명오류 — 재시도 없이 생성 중단 p%d (attempt=%d): %s",
+                    item.page, attempt + 1, last_err[:160],
+                )
+                raise ApiCreditExhausted(f"SLIDE p{item.page}", last_err) from e
             if attempt < MAX_ATTEMPTS - 1:
                 backoff = (2 ** attempt) + random.uniform(0, 0.5)
                 log.warning(
@@ -6383,31 +6445,46 @@ async def generate_slides_parallel(
     #   다음 슬라이드가 새 API 호출을 띄우기 때문이다.
     #   → 고객 크레딧은 환불(_settle)로 이미 돌려주지만 API 토큰은 계속 나갔다.
     stopped = False
+    # ★ Spec API-Credit-Guard — 잔액 부족·인증 오류는 남은 페이지도 전부 같은
+    #   오류를 맞는다. 첫 치명 오류가 이 플래그를 세우면 대기 중이던 슬라이드가
+    #   세마포어를 얻어도 새 호출을 띄우지 않는다 (stopped 와 같은 창 방어).
+    #   ⚠ 이미 스레드에서 도는 것(최대 concurrency-1 개)은 못 막는다 —
+    #     asyncio.to_thread 는 취소되지 않는다. 다만 잔액 부족은 400 이 즉시
+    #     떨어지므로 추가 비용·지연이 사실상 없다.
+    fatal_stop = False
 
     async def _bound(item: OutlineItem) -> SlideResult:
+        nonlocal fatal_stop
         async with sem:
             # ★ 세마포어 획득 직후 확인 — task.cancel() 은 다음 이벤트 루프 반복에
             #   전달된다. 그 사이 완료 태스크가 세마포어를 풀면, 취소 신호를 아직
             #   못 받은 대기 태스크가 먼저 진입해 새 호출을 띄운다.
             #   실측: 플래그 없이 cancel 만 하면 20장 중 3장이 이 창으로 샜다
             #   (A 취소없음 20건 · B cancel만 9건 · C 플래그추가 6건).
-            if stopped:
+            if stopped or fatal_stop:
                 raise asyncio.CancelledError
             rag_block = ""
             try:
                 rag_block = rag_for_slide(item) or ""
             except Exception as e:
                 log.warning("slide RAG 블록 생성 실패 (p%d): %s", item.page, e)
-            return await generate_one_slide(
-                client, item, outline_summary, rag_block, canvas,
-                outline.total_slides, model,
-                domain=outline.domain,
-                quantitative_locks=outline.quantitative_locks,
-                output_mode=output_mode,
-                theme=theme,    # Spec D-Build-TextRunsInject 1-d-②
-                strategy=_strategy,   # Spec Strategy-Step3 (off 시 None/{} → 주입 skip)
-                research=_research,   # Spec Research-Inject (off 시 None/{} → 주입 skip)
-            )
+            try:
+                return await generate_one_slide(
+                    client, item, outline_summary, rag_block, canvas,
+                    outline.total_slides, model,
+                    domain=outline.domain,
+                    quantitative_locks=outline.quantitative_locks,
+                    output_mode=output_mode,
+                    theme=theme,    # Spec D-Build-TextRunsInject 1-d-②
+                    strategy=_strategy,   # Spec Strategy-Step3 (off 시 None/{} → 주입 skip)
+                    research=_research,   # Spec Research-Inject (off 시 None/{} → 주입 skip)
+                )
+            except ApiCreditExhausted:
+                # ★ Spec API-Credit-Guard — 먼저 플래그를 세우고 올린다.
+                #   as_completed 가 이 태스크를 (완료 순서상 첫 번째로) 내보내면
+                #   orchestrate → main.py 로 전파되고, 아래 finally 가 나머지를 끊는다.
+                fatal_stop = True
+                raise
 
     tasks = [asyncio.create_task(_bound(it)) for it in outline.outline]
     try:
@@ -6428,6 +6505,16 @@ async def generate_slides_parallel(
         if _n_cancel:
             log.info("slide 취소: 미시작·진행중 %d/%d 태스크 cancel (끊김 추정)",
                      _n_cancel, len(tasks))
+        # ★ Spec API-Credit-Guard — 이미 끝난 태스크의 예외를 회수한다.
+        #   치명 오류는 동시에 도는 여러 슬라이드가 함께 맞는다. as_completed 는
+        #   첫 하나만 내보내고 루프가 깨지므로, 남은 예외를 아무도 안 꺼내면
+        #   GC 시점에 asyncio 가 "Task exception was never retrieved" 를 찍는다.
+        #   (종전엔 generate_one_slide 가 예외를 올리지 않아 발생하지 않던 경고다)
+        for t in tasks:
+            if t.done() and not t.cancelled():
+                _e_left = t.exception()
+                if _e_left is not None:
+                    log.debug("slide 태스크 예외 회수 (이미 처리됨): %s", _e_left)
 
 
 # ─── Spec D-Fix-EmptyPageSafeguard — 빈 페이지 판정 helper ──────────────────
@@ -6600,6 +6687,14 @@ async def orchestrate(
             except asyncio.TimeoutError:
                 yield {"type": "heartbeat", "phase": "outline"}
             except Exception as e:
+                # ★ Spec API-Credit-Guard — 잔액 부족·인증 오류는 여기서 가장
+                #   먼저 터진다 (OUTLINE 은 생성의 첫 대형 호출이다). 종전엔
+                #   영문 SDK 원문이 f-string 으로 사용자 화면에 그대로 갔다.
+                #   fatal 이면 예외로 올려 main.py 가 한국어 문구·관리자 알림·
+                #   전액 환불 경로로 처리하게 한다 (raise 도 finally 를 통과한다).
+                if _classify_api_error(e) == "fatal":
+                    log.error("★OUTLINE 치명오류 — 생성 중단: %s", str(e)[:160])
+                    raise ApiCreditExhausted("OUTLINE", str(e)[:200]) from e
                 yield {"type": "error", "error": f"outline 실패: {e}"}
                 return                       # ★ return 도 finally 를 통과한다
     finally:

@@ -1241,6 +1241,16 @@ RESEND_FROM_NAME = "NightOff"
 VERIFICATION_TOKEN_EXPIRES_HOURS = 24
 VERIFICATION_RESEND_COOLDOWN_SECONDS = 60
 
+# ─── Spec API-Credit-Guard — 운영자 알림 (Resend 재사용) ────────────────────
+# 사용자에게는 "일시적 문제" 로만 보이므로, 진짜 원인(Anthropic 잔액 소진 등)은
+# 운영자가 즉시 알아야 한다. 발송 실패는 절대 생성 흐름에 영향 주지 않는다.
+ADMIN_ALERT_EMAIL = os.environ.get("ADMIN_ALERT_EMAIL", "tinyvault.official@gmail.com").strip()
+# 쿨다운 — 36장이 동시에 실패해도 1통. kind 별로 독립.
+# ⚠ 프로세스 메모리 기반 — 워커가 여러 개면 워커 수만큼 올 수 있다.
+#   현재 단일 인스턴스 운영이라 이 방식으로 충분하고, DB 의존을 늘리지 않는다.
+ADMIN_ALERT_COOLDOWN_SEC = 1800
+_last_admin_alert: dict[str, float] = {}
+
 if RESEND_API_KEY and _resend is not None:
     _resend.api_key = RESEND_API_KEY
 elif not RESEND_API_KEY:
@@ -1309,6 +1319,96 @@ def send_verification_email(email: str, token: str, base_url: str = "https://nig
     except Exception as e:
         log.error("이메일 인증 발송 실패 (graceful fallback): %s · %s", email, e)
         return False
+
+
+def notify_admin(kind: str, subject: str, lines: list) -> bool:
+    """★ Spec API-Credit-Guard — 운영자 알림 (Resend 재사용, 실패 무영향).
+
+    kind  : 쿨다운 키 ("api_fatal" 등). 30분 내 같은 kind 는 1통만 나간다.
+    lines : 본문 줄 목록 (그대로 <br> 로 이어 붙인다).
+
+    Returns 발송했으면 True, 쿨다운·미설정·실패면 False.
+    ⚠ 호출자는 반환값을 무시해도 된다 — 어떤 경우에도 예외를 올리지 않는다.
+    """
+    try:
+        import time as _time
+        now = _time.time()
+        if now - _last_admin_alert.get(kind, 0.0) < ADMIN_ALERT_COOLDOWN_SEC:
+            log.info("관리자 알림 쿨다운 skip (kind=%s)", kind)
+            return False
+        # ★ 쿨다운은 발송 시도 전에 기록한다 — 발송이 느리거나 실패해도
+        #   36장이 동시에 몰려 36통이 나가는 일을 먼저 막아야 한다.
+        _last_admin_alert[kind] = now
+
+        body = "<br>".join(str(x) for x in lines)
+        if not ADMIN_ALERT_EMAIL or not RESEND_API_KEY or _resend is None:
+            # 발송 수단이 없어도 내용은 로그에 남긴다 (운영자가 로그로 확인 가능).
+            log.warning("관리자 알림 skip (Resend/수신자 미설정) %s | %s",
+                        subject, " | ".join(str(x) for x in lines))
+            return False
+        _resend.Emails.send({
+            "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
+            "to": ADMIN_ALERT_EMAIL,
+            "subject": subject,
+            "html": (
+                "<div style=\"font-family:-apple-system,'Segoe UI',sans-serif;"
+                "font-size:14px;line-height:1.7;color:#1F1147\">"
+                f"<h2 style=\"font-size:17px;margin:0 0 12px\">{subject}</h2>"
+                f"<div>{body}</div></div>"
+            ),
+        })
+        log.info("관리자 알림 발송: kind=%s %s", kind, subject)
+        return True
+    except Exception as e:
+        # 알림 실패가 생성/환불 흐름을 건드리면 안 된다 — 로그만.
+        log.error("관리자 알림 발송 실패 (무시): kind=%s err=%s", kind, e)
+        return False
+
+
+def _kst_now_str() -> str:
+    """관리자 알림용 KST 시각 문자열."""
+    from datetime import timedelta as _td, timezone as _tz
+    return datetime.now(_tz(_td(hours=9))).strftime("%Y-%m-%d %H:%M:%S KST")
+
+
+# ★ Spec API-Credit-Guard — 사용자 노출 문구 (내부 사정 비노출).
+#   Anthropic·잔액 같은 공급자 사정은 사용자 관심사가 아니고, 우리 서비스의
+#   일시 장애로 보이는 것이 정확하다. 실제 사유는 로그·관리자 알림에 남는다.
+MSG_GEN_ABORTED_REFUNDED = (
+    "생성 중 오류로 제안서를 완성하지 못했어요. "
+    "차감된 크레딧은 전액 돌려드렸어요. 잠시 후 다시 시도해 주세요."
+)
+MSG_GEN_BLOCKED_NO_CHARGE = (
+    "지금 제안서 생성을 시작할 수 없어요. "
+    "크레딧은 차감되지 않았어요. 잠시 후 다시 시도해 주세요."
+)
+
+
+async def _preflight_api(client, model: str) -> str:
+    """★ Spec API-Credit-Guard — 생성 시작 전 최소 호출 1회 (max_tokens=1).
+
+    Returns 치명 오류면 원본 오류 앞 200자, 통과면 "".
+    · 선차감(outline_done) 보다 먼저 호출된다 → 차단 시 charged=0, 환불 대상 없음.
+    · 429(rate limit) · 529(overloaded) · 5xx · timeout 은 통과시킨다 —
+      일시 혼잡으로 생성을 막으면 정상 사용자를 잃는다 (기존 재시도가 처리).
+    · 비용: 입력 ~1 토큰 + 출력 1 토큰. 생성 1건당 0.5~1초 지연.
+    """
+    import asyncio as _asyncio
+    import proposal_multi_pass as mp_pf
+    try:
+        await _asyncio.to_thread(
+            client.messages.create,
+            model=model,
+            max_tokens=1,
+            messages=[{"role": "user", "content": "."}],
+        )
+        return ""
+    except Exception as e:
+        if mp_pf._classify_api_error(e) == "fatal":
+            log.error("★프리플라이트 차단 — 생성 시작 안 함: %s", str(e)[:160])
+            return str(e)[:200]
+        log.warning("프리플라이트 통과 (일시 오류로 판정): %s", str(e)[:120])
+        return ""
 
 
 def _render_verify_success(jwt_token: str) -> str:
@@ -4595,6 +4695,25 @@ async def api_proposals_generate_multipass(
     async def stream():
         assistant_id = uuid.uuid4().hex[:12]
         yield f"data: {json.dumps({'type':'start','message_id':assistant_id})}\n\n"
+
+        # ★★ Spec API-Credit-Guard — 프리플라이트 (선차감 전).
+        #   API 키가 죽었거나 공급자 잔액이 0 이면 여기서 끝낸다. 차감 전이므로
+        #   환불 경로 자체가 없고, 사용자는 "차감되지 않았다" 를 확실히 안다.
+        _pf_err = await _preflight_api(client, model)
+        if _pf_err:
+            notify_admin(
+                "api_fatal",
+                "[NightOff] ★ API 치명 오류 — 제안서 생성 차단됨",
+                [f"발생 시각: {_kst_now_str()}",
+                 "단계: 프리플라이트 (생성 시작 전)",
+                 f"사용자: {user.get('email', '?')}",
+                 f"대화 ID: {conv_id}",
+                 "선차감: 0 크레딧 · 환불: 해당 없음",
+                 f"원본 오류: {_pf_err}"],
+            )
+            yield f"data: {json.dumps({'type':'error','code':'API_UNAVAILABLE','error':MSG_GEN_BLOCKED_NO_CHARGE}, ensure_ascii=False)}\n\n"
+            return
+
         final_payload = None
         # ★ Spec Atomic-Quota-Deduct — 선차감/정산 상태.
         #   charged   : 이번 요청이 실제로 차감한 액수 = 환불 상한이자 '진 빚'.
@@ -4658,7 +4777,47 @@ async def api_proposals_generate_multipass(
                     if isinstance(_os, int):
                         ok_slides = _os
                 yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+        except (mp.ApiCreditExhausted, anthropic.APIError) as e:
+            # ★ 치명 오류 판정 — SLIDE 단계는 mp 가 ApiCreditExhausted 로 올리고,
+            #   OUTLINE·STRATEGY 단계는 SDK 예외가 그대로 올라온다. 후자도 같은
+            #   중단 처리를 해야 사용자가 영문·내부 사정을 보지 않는다.
+            _fatal = isinstance(e, mp.ApiCreditExhausted) or \
+                mp._classify_api_error(e) == "fatal"
+            if not _fatal:
+                # 일시 오류(429·529·5xx·timeout 등) — 종전처럼 실패로 끝내되
+                #   메시지만 한국어로 변환한다 (종전엔 영문 원문이 나갔다).
+                log.exception("multi-pass API 오류 (일시)")
+                yield f"data: {json.dumps({'type':'error','error':translate_anthropic_error(e)}, ensure_ascii=False)}\n\n"
+                return
+            # ★★ 여기가 '도중 중단' 경로다.
+            #   done 이벤트가 오지 않았으므로 final_payload 는 None 이다 →
+            #     · 아래 finally 가 assistant 메시지를 저장하지 않는다
+            #       → api_proposals_pptx 가 읽을 payload 없음 → PPTX 미생성
+            #     · 정산의 `final_payload is None` 분기 → 전액 환불
+            #   ⚠ 정산 로직은 한 줄도 바뀌지 않았다 — 기존 '중단' 경로를 그대로 탄다.
+            _stage = getattr(e, "stage", "OUTLINE/STRATEGY")
+            _orig = getattr(e, "original", str(e)[:200])
+            # ★ 문구는 charged 로 고른다 — 선차감 전(OUTLINE 단계 실패,
+            #   OUTLINE_PRECHARGE_ENABLED=False)에는 환불할 것이 없으므로
+            #   "전액 돌려드렸어요" 가 거짓이 된다.
+            _user_msg = MSG_GEN_ABORTED_REFUNDED if charged > 0 else MSG_GEN_BLOCKED_NO_CHARGE
+            log.error("★생성 중단 (API 치명오류) user=%s conv=%s charged=%d stage=%s: %s",
+                      user["id"], conv_id, charged, _stage, _orig[:160])
+            notify_admin(
+                "api_fatal",
+                "[NightOff] ★ API 치명 오류 — 제안서 생성 중단됨",
+                [f"발생 시각: {_kst_now_str()}",
+                 f"단계: {_stage}",
+                 f"사용자: {user.get('email', '?')}",
+                 f"대화 ID: {conv_id}",
+                 (f"선차감: {charged:,} 크레딧 · 환불: 전액({charged:,}) 예정"
+                  if charged > 0 else "선차감: 0 크레딧 · 환불: 해당 없음"),
+                 f"원본 오류: {_orig}"],
+            )
+            yield f"data: {json.dumps({'type':'error','code':'API_UNAVAILABLE','error':_user_msg}, ensure_ascii=False)}\n\n"
+            return
         except Exception as e:
+            # API 외 예외(파싱·DB·코드 오류 등) — 종전 그대로.
             log.exception("multi-pass 예외")
             yield f"data: {json.dumps({'type':'error','error':str(e)[:200]})}\n\n"
             return

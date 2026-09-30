@@ -234,7 +234,7 @@ _DEAD_KEY_REMAP = {
 # 예상 효과(확정안 기준): 근거리 57→25건(-56%) · 인접 30→18건 · 자율 50.7% 불변.
 # False = 기존과 100% 동일 (회전 함수 미호출, 상태 변수 갱신도 안 함).
 # ★ 프롬프트는 한 글자도 바뀌지 않는다 (코드 호환표 방식 — OUTLINE LLM 무접촉).
-PRESET_ROTATION_ENABLED = False
+PRESET_ROTATION_ENABLED = True
 
 # 최근 창 = 직전 4개의 "배정된" viz_pattern.
 #   · 빈값(자율 shapes)은 창에 넣지 않는다 — 넣으면 자율이 50%인 현 상태에서

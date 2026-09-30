@@ -223,6 +223,66 @@ _DEAD_KEY_REMAP = {
 }
 
 
+# ─── Spec Preset-Rotation — 근거리 반복 금지 + 회전 on/off ────────────────────
+# 진단(프로덕션 37덱 1,910p 실측): 반복 체감의 정체는 인접(간격 1)이 아니라
+#   "간격 2~4 재등장" 이다. 그리고 인접 금지는 OUTLINE 프롬프트 규칙 ② 뿐이고
+#   코드 강제가 전혀 없다 — 실측 인접 반복 30건.
+# ★ 시뮬레이션이 확정한 두 가지:
+#   · cap 만 걸면 초과분이 ""로 강등돼 자율 shapes(품질 열위)가 늘어난다
+#     (강등 정책: 자율 50.7% → 52.7%). 그래서 "강등 대신 회전" 이다.
+#   · 후보가 없을 때 강등하지 않고 "반복 허용" 하면 자율 비율이 소수점까지 불변.
+# 예상 효과(확정안 기준): 근거리 57→25건(-56%) · 인접 30→18건 · 자율 50.7% 불변.
+# False = 기존과 100% 동일 (회전 함수 미호출, 상태 변수 갱신도 안 함).
+# ★ 프롬프트는 한 글자도 바뀌지 않는다 (코드 호환표 방식 — OUTLINE LLM 무접촉).
+PRESET_ROTATION_ENABLED = False
+
+# 최근 창 = 직전 4개의 "배정된" viz_pattern.
+#   · 빈값(자율 shapes)은 창에 넣지 않는다 — 넣으면 자율이 50%인 현 상태에서
+#     창이 빈값으로 채워져 회전이 거의 발동하지 않는다.
+#   · 표 4종은 창에 넣는다 — 사이에 끼면 시각적으로 다른 페이지가 맞다.
+_ROTATION_WINDOW = 4
+
+# 계열 = "같은 내용을 담을 수 있는" 묶음. 회전은 계열 안에서만 일어난다.
+# ★ 순서가 곧 동점 시 2차 정렬 기준이다 (결정성 보장 — 무작위 X).
+_ROTATION_FAMILIES: dict = {
+    "flow":     ["timeline", "flow_detail", "zigzag"],
+    "listed":   ["numbered_columns", "conclusion_cards", "cards_grid", "triad"],
+    "contrast": ["2col", "split", "hsplit", "hsplit_top", "asymmetric"],
+    "number":   ["quant", "circles", "quad"],
+    "text":     ["text_quote", "text_declaration"],
+    "hero":     ["hero_cards", "hero_detail", "quad_detail", "fullbleed_overlay",
+                 "strategy_map"],
+}
+_ROTATION_FAMILY_OF: dict = {
+    k: fam for fam, keys in _ROTATION_FAMILIES.items() for k in keys
+}
+
+# ★ 목적지에서 제외 (출발지로는 남는다 — 재등장하면 다른 키로 옮겨간다).
+#   · cards_grid — 빌더가 items 정확히 6개를 요구한다. OUTLINE 단계에서는 그 페이지의
+#     실제 항목 수를 알 수 없으므로(key_msgs 3~5개), 목적지로 쓰면 빌더가 [] 를 반환해
+#     자율 shapes 로 떨어질 위험이 있다. 회전이 자율을 늘리면 본말전도다.
+#   · triad  — 3개 고정. 같은 이유.
+#   · fullbleed_overlay — 배정 규칙 ⑨ "전체 1~2장" 권고. 회전으로 늘리면 안 된다.
+_ROTATION_NO_DEST = frozenset({"cards_grid", "triad", "fullbleed_overlay"})
+
+# ★ 회전 대상에서 완전 제외 (출발지·목적지 모두). 표 4종은 가드 체인 안에
+#   덱당 cap 카운터(_tt_assigned/_sf_assigned/_po_assigned)를 갖는다 — 회전이
+#   건드리면 카운터와 실제 배정이 어긋난다. 단 최근 창에는 포함한다.
+_ROTATION_SKIP = frozenset({"schedule_table", "timetable",
+                            "staffing_table", "program_overview"})
+
+# 목적지 가드 표 — 위 가드 체인의 복제본.
+#   ① 가드 없음 2종 (2col / cards_grid) — role · slide_type 무관.
+#   ② text_* 2종 — slide_type=="text_box" AND role=="body" (가장 엄격).
+#      ★ 이 조건은 elif 체인이 아니라 `if viz_pattern.startswith("text_")` 로 걸려 있어
+#        설계 단계의 자동 추출에서 누락됐었다. 드리프트 검사가 16건 불일치로 잡아냈다.
+#   ③ 나머지 — role=="body" AND slide_type!="hero".
+# ★ 드리프트 주의: 가드 체인을 고치면 이 표도 같이 고쳐야 한다.
+#   검증 스크립트가 22종 × role 3 × slide_type 3 전 조합을 실제 generate_outline 에
+#   태워 이 표와 대조한다 (verify_preset_rotation.py 항목 E).
+_ROTATION_GUARD_FREE = frozenset({"2col", "cards_grid"})
+
+
 # ─── Spec GovEnding-Fix — 거버닝 서술형 종결 감지 정규식 (감지 로그용, 값 무변경) ────
 # 진단: D-Fix-GovEnding-1 규칙 (거버닝 명사형 종결) 위반 실빈도 파악용.
 # ★ 로그만 남기고 값은 절대 안 건드림 — 자동 교정 시 오탐 위험 큼 (한국어 동사→명사
@@ -3745,6 +3805,12 @@ async def generate_outline(
     _sf_assigned = 0
     # ★ Spec Preset-ProgramOverview — 덱당 cap 카운터 (최대 6장).
     _po_assigned = 0
+    # ★ Spec Preset-Rotation — 근거리 반복 회전 상태 (덱 단위).
+    #   _rot_recent : 직전 _ROTATION_WINDOW 개의 "배정된" viz_pattern (빈값 제외, 표 포함)
+    #   _rot_used   : 이 덱에서 각 프리셋이 몇 번 확정됐나 (동점 시 적게 쓴 쪽 우선)
+    #   플래그 OFF 면 아래 루프에서 갱신조차 하지 않는다 → 실행 경로 종전과 동일.
+    _rot_recent: list = []
+    _rot_used: dict = {}
     for it in parsed["outline"]:
         if not isinstance(it, dict):
             continue
@@ -4121,6 +4187,26 @@ async def generate_outline(
         _ROLE_SAFE = {"body", "support", ""}
         role_raw = str(it.get("role", "")).strip().lower()
         role = role_raw if role_raw in _ROLE_SAFE else ""
+        # ★★ Spec Preset-Rotation — 가드 체인 종료 직후, OutlineItem 생성 전.
+        #   여기여야 하는 이유:
+        #     · 회전 목적지도 가드를 통과해야 하므로 원본이 가드를 통과한 뒤 판단한다.
+        #     · 표 4종 cap 카운터가 가드 체인 안에 있다 → 회전이 건드리면 어긋난다.
+        #       (_ROTATION_SKIP 으로 출발지·목적지 모두 제외하되 최근 창에는 넣는다)
+        #     · 정제된 role(_ROLE_SAFE 통과값)이 목적지 가드 판정에 필요하다.
+        if PRESET_ROTATION_ENABLED and viz_pattern:
+            _st_rot = str(it.get("slide_type", "")).strip().lower()
+            if viz_pattern in _ROTATION_SKIP:
+                pass                       # 표 4종 — 회전 X, 창에만 넣는다
+            elif _st_rot == "hero" or role not in ("body", "support"):
+                pass                       # 모든 프리셋 가드가 hero 를 차단 → 회전 무의미
+            else:
+                viz_pattern = _rotate_viz_pattern(
+                    viz_pattern, role=role, slide_type=_st_rot,
+                    recent=_rot_recent, used=_rot_used, page=it.get("page"),
+                )
+            _rot_recent.append(viz_pattern)
+            del _rot_recent[:-_ROTATION_WINDOW]
+            _rot_used[viz_pattern] = _rot_used.get(viz_pattern, 0) + 1
         # Spec D-Build-SkeletonConnect — skeleton_id 화이트리스트 (KPI / G1~G12 / "" 만 허용).
         # outline AI 가 인덱스 밖 값 박으면 ""로 강등 (배정 무효 → 카탈로그 fallback).
         # 대소문자 보존 (KPI 가 'KPI', G 시리즈가 'G1' 형식이라 lower X — 그대로 비교).
@@ -4539,6 +4625,65 @@ def _dead_key_apply_outline(p: str) -> str:
                 continue
             p = p.replace(_old, _new)
     return p
+
+
+# ─── Spec Preset-Rotation — 근거리 반복 회전 ─────────────────────────────────
+def _rotation_allowed(key: str, role: str, slide_type: str) -> bool:
+    """회전 목적지로 써도 가드에 강등되지 않는가.
+
+    ★ 위 가드 체인의 복제본이다 (가드가 if/elif 인라인이라 재사용이 불가).
+      가드 체인을 고치면 이 함수와 _ROTATION_GUARD_FREE 도 같이 고쳐야 한다.
+      검증이 28종 × role 3 × slide_type 3 전 조합을 실제 경로와 대조한다.
+    """
+    if key in _ROTATION_GUARD_FREE:
+        return True                       # 2col / cards_grid — 가드 없음
+    if key.startswith("text_"):
+        # D-Fix-NarrativeGuard — text 위계는 본문 전략 선언 자리에만.
+        return role == "body" and slide_type == "text_box"
+    return role == "body" and slide_type != "hero"
+
+
+def _rotate_viz_pattern(viz_pattern: str, *, role: str, slide_type: str,
+                        recent: list, used: dict, page) -> str:
+    """근거리 재등장이면 같은 계열의 다른 프리셋으로 교체한다 (결정적).
+
+    반환 = 최종 viz_pattern. 호출자가 recent / used 갱신을 담당한다.
+
+    규칙:
+      · 발동 조건 — viz_pattern 이 최근 창(직전 4개 배정분)에 이미 있음.
+      · 후보 = 같은 계열 ∩ 목적지 허용(_ROTATION_NO_DEST 제외) ∩ 최근 창에 없음
+               ∩ 목적지 가드 통과.
+      · 정렬 = (이 덱에서 쓰인 횟수 ASC, 계열 리스트 인덱스 ASC) — 무작위 없음.
+      · 후보 없음 → 원본 유지(반복 허용). ★ 강등하지 않는다 — 강등은 자율 shapes 를
+        늘려 회전의 목적을 거스른다(시뮬 실측 50.7% → 52.7%).
+
+    ★ 인접 반복 보장의 정확한 범위 — "회전이 인접을 만들지는 않는다" 까지다.
+      목적지는 최근 창에 없는 키이고 직전 키는 항상 창 안에 있으므로, 회전으로
+      선택된 값이 직전과 같아지는 일은 없다. 다만 후보가 하나도 없어 원본을
+      유지한 경우(반복 허용)에는 인접이 그대로 남는다 — 같은 계열이 창을 모두
+      채운 상황이며, 강등하지 않기로 한 정책의 대가다.
+      실측(37덱): 인접 3건 → 1건.
+    """
+    fam = _ROTATION_FAMILY_OF.get(viz_pattern)
+    if not fam:
+        return viz_pattern                # 계열 미분류 → 손대지 않음 (방어)
+    if viz_pattern not in recent:
+        return viz_pattern                # 근거리 재등장 아님
+    pool = _ROTATION_FAMILIES[fam]
+    cands = [k for k in pool
+             if k != viz_pattern
+             and k not in _ROTATION_NO_DEST
+             and k not in recent
+             and _rotation_allowed(k, role, slide_type)]
+    if not cands:
+        log.info("Preset-Rotation 후보없음 p=%s %s 유지 (계열=%s role=%s 최근%d=%s)",
+                 page, viz_pattern, fam, role, _ROTATION_WINDOW, recent)
+        return viz_pattern
+    cands.sort(key=lambda k: (used.get(k, 0), pool.index(k)))
+    chosen = cands[0]
+    log.info("Preset-Rotation 회전 p=%s %s → %s (최근%d=%s 덱내사용=%d)",
+             page, viz_pattern, chosen, _ROTATION_WINDOW, recent, used.get(chosen, 0))
+    return chosen
 
 
 def _build_slide_user_prompt(

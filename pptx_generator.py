@@ -6454,7 +6454,7 @@ def _build_preset_vertical_stack_bands(slide_data: dict) -> list:
 # 방식: running-header 와 같은 자리(dispatch 층, 프리셋 빌더 무접촉)에서 shape_def 의
 #   weight 만 바꾼다. 신규 프리셋에도 자동 적용된다.
 # False = 기존과 100% 동일 (판정·복사·치환 전부 미실행).
-TIDY_BOLD_ENABLED = False
+TIDY_BOLD_ENABLED = True
 
 # 적용 범위 — "all": 프리셋 + 자율 shapes / "preset_only": 프리셋 산출만.
 #   프리셋 판정 = dispatch 결과 shapes 가 slide_data["shapes"] 와 같은 객체가 아니면

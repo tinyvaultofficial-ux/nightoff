@@ -6444,6 +6444,128 @@ def _build_preset_vertical_stack_bands(slide_data: dict) -> list:
     return shapes
 
 
+# ─── Spec Tidy-Bold — 굵게 규칙 (dispatch 층 공통) ────────────────────────────
+# 진단(실제 payload 8덱 450p): 텍스트 도형의 45% 가 굵게(weight≥600). 우수작 2.6%.
+#   원인 = 카드 head · 번호 라벨 · 12pt 이하 라벨까지 weight 700/800 을 기본값으로 박음.
+#   ★ 굵게의 다수는 프리셋이 아니라 자율 shapes(LLM 생성)에서 나온다 — 빌더만 고치면
+#     45%→32% 에서 멈추고, 렌더 단계 공통 규칙이어야 45%→약 16% 까지 내려간다.
+#   ★ 목표는 비율(3%)이 아니라 역할이다. 우수작도 굵게의 54% 가 짧은 라벨·카드 제목이다.
+#     NightOff 는 페이지당 텍스트가 적어(분모가 작아) 같은 역할만 굵게 해도 비율이 높다.
+# 방식: running-header 와 같은 자리(dispatch 층, 프리셋 빌더 무접촉)에서 shape_def 의
+#   weight 만 바꾼다. 신규 프리셋에도 자동 적용된다.
+# False = 기존과 100% 동일 (판정·복사·치환 전부 미실행).
+TIDY_BOLD_ENABLED = False
+
+# 적용 범위 — "all": 프리셋 + 자율 shapes / "preset_only": 프리셋 산출만.
+#   프리셋 판정 = dispatch 결과 shapes 가 slide_data["shapes"] 와 같은 객체가 아니면
+#   빌더가 새로 만든 리스트(프리셋 성공 · 챕터 간지 포함). 같은 객체면 자율(또는
+#   프리셋 실패 후 백업 폴백).
+TIDY_BOLD_SCOPE = "all"
+
+# 역할 규칙 (R1 + 문맥 가드)
+#   유지: role=governing · 18pt 이상(대형 숫자·인용·소제목) · 표(type!="text" 라 미진입) ·
+#         running_header · 어두운 면 위 텍스트(결론 밴드·검정 패널)
+#   500 Medium : 13~17pt 카드 head · 4자 이하 번호/스텝 라벨
+#                단, 같은 슬라이드 본문(weight<500 텍스트) 최대 크기보다 2pt 이상 크지
+#                않으면 600 SemiBold — 크기 차가 없는 프리셋(numbered_columns 등)에서
+#                head 와 본문이 섞이지 않게.
+#   500 Medium : 12pt 이하 · 5자 이상 라벨 (Regular 로 내리면 소제목이 본문과 같아짐)
+#   → 결과 weight 는 500 · 600 두 가지뿐. Regular(400)로 내리는 경우는 없다.
+# ★ 굵기를 낮추는 방향만 있다 — Bold 보다 Medium·SemiBold 가 글자 폭이 좁아 기존 높이
+#   계산이 더 보수적이 된다(넘침 위험 증가 없음). 500 은 이미 17곳에서 쓰는 서체라
+#   폰트 의존이 늘지 않는다. 색 매핑(DARK_MAP · 팔레트 센티넬)과는 무관하다.
+_TIDY_KEEP_SIZE = 18
+_TIDY_HEAD_MIN = 13
+_TIDY_LABEL_MAX_LEN = 4
+_TIDY_GAP_PT = 2
+_TIDY_DARK_LUM = 0.06          # 이 이하 휘도의 rect fill = 어두운 면 (#444 근처까지)
+
+
+def _tidy_luminance(hex_str) -> float:
+    """상대 휘도 0~1. 해석 불가하면 1.0(밝음)으로 — 어두운 면으로 오판하지 않게."""
+    try:
+        h = str(hex_str).strip().lstrip("#")
+        if len(h) == 3:
+            h = "".join(c * 2 for c in h)
+        r, g, b = (int(h[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
+    except Exception:
+        return 1.0
+
+    def _lin(c):
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+    return 0.2126 * _lin(r) + 0.7152 * _lin(g) + 0.0722 * _lin(b)
+
+
+def _tidy_weight(shape_def, body_max, on_dark):
+    """규칙에 따른 새 weight. None = 변경 없음."""
+    if not isinstance(shape_def, dict) or shape_def.get("type") != "text":
+        return None
+    text = str(shape_def.get("text", "") or "").strip()
+    if not text:
+        return None
+    w = _normalize_weight(shape_def.get("weight", 400))
+    if w < 600:
+        return None
+    if shape_def.get("role") in ("governing", "running_header"):
+        return None
+    try:
+        size = float(shape_def.get("size", 14) or 14)
+    except (TypeError, ValueError):
+        return None
+    if size >= _TIDY_KEEP_SIZE or on_dark:
+        return None
+    if len(text) <= _TIDY_LABEL_MAX_LEN or size >= _TIDY_HEAD_MIN:
+        return 500 if size - body_max >= _TIDY_GAP_PT else 600
+    # 12pt 이하 · 5자 이상 — 400 이 아니라 500.
+    #   400 으로 내리면 자율 페이지의 12pt 섹션 라벨("주요 리스크 식별과 대응
+    #   시나리오")이나 flow_detail 소단위 제목이 바로 아래 본문과 굵기·크기가 같아져
+    #   위계가 사라진다(PNG 확대 실측). 500 도 bold 표시가 붙지 않으므로 굵게 비율은
+    #   400 일 때와 같다 — 비율은 그대로, 소제목만 본문보다 한 단계 진하게 남는다.
+    return 500
+
+
+def _tidy_bold_slide(shapes):
+    """슬라이드 단위 적용. 입력 dict 는 건드리지 않고 바뀐 것만 복사본으로 교체."""
+    texts = [s for s in shapes if isinstance(s, dict) and s.get("type") == "text"
+             and str(s.get("text", "") or "").strip()]
+    body = []
+    for s in texts:
+        if _normalize_weight(s.get("weight", 400)) < 500:
+            try:
+                body.append(float(s.get("size", 14) or 14))
+            except (TypeError, ValueError):
+                pass
+    body_max = max(body) if body else 0.0
+    darks = []
+    for s in shapes:
+        if isinstance(s, dict) and s.get("type") in ("rect", "roundrect") \
+                and s.get("fill") and _tidy_luminance(s.get("fill")) <= _TIDY_DARK_LUM:
+            try:
+                darks.append((float(s.get("x", 0)), float(s.get("y", 0)),
+                              float(s.get("w", 0)), float(s.get("h", 0))))
+            except (TypeError, ValueError):
+                pass
+    out = []
+    for s in shapes:
+        on_dark = False
+        if darks and isinstance(s, dict) and s.get("type") == "text":
+            try:
+                cx = float(s.get("x", 0)) + float(s.get("w", 0)) / 2
+                cy = float(s.get("y", 0)) + float(s.get("h", 0)) / 2
+                on_dark = any(x <= cx <= x + w and y <= cy <= y + h
+                              for x, y, w, h in darks)
+            except (TypeError, ValueError):
+                on_dark = False
+        nw = _tidy_weight(s, body_max, on_dark)
+        if nw is None:
+            out.append(s)
+        else:
+            c = dict(s)
+            c["weight"] = nw
+            out.append(c)
+    return out
+
+
 def generate_from_shape_json(json_data, output_path, *, theme="light"):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -6873,6 +6995,11 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
         if not isinstance(shapes, list):
             errors_total.append("slide" + str(slide_idx) + ": shapes not list")
             continue
+        # ★ Spec Tidy-Bold — 프리셋 판정은 반드시 여기(running-header 앞)에서 한다.
+        #   running-header 가 shapes 를 새 리스트로 재할당하므로, 그 뒤에 판정하면
+        #   eyebrow 가 있는 자율 페이지가 '프리셋' 으로 잘못 분류된다.
+        _tidy_from_preset = ((shapes is not slide_data.get("shapes"))
+                             if TIDY_BOLD_ENABLED else False)
 
         # ─── Spec Running-Header-Fixed-Position (add-only) — 목차 좌상단 고정 ───
         # 25개 프리셋이 eyebrow(러닝헤더)를 각자 하드코딩 → 정렬 5개 center 위배 +
@@ -6909,6 +7036,18 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
                 "align": "left", "valign": "top",
                 "role": "running_header",
             })
+
+        # ─── Spec Tidy-Bold (add-only) — 굵게 규칙 ───
+        #   running-header 다음 · 렌더 직전. 플래그 False 면 함수 호출 자체가 없다.
+        if TIDY_BOLD_ENABLED and (TIDY_BOLD_SCOPE == "all" or _tidy_from_preset):
+            try:
+                shapes = _tidy_bold_slide(shapes)
+            except Exception as _tidy_err:
+                # 규칙 실패가 렌더를 막으면 안 된다 — 원본 shapes 그대로 진행.
+                errors_total.append(
+                    "slide" + str(slide_idx) + ":tidy_bold: " +
+                    type(_tidy_err).__name__ + ": " + str(_tidy_err)
+                )
 
         for shape_idx, shape_def in enumerate(shapes):
             try:

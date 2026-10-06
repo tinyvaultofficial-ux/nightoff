@@ -6566,6 +6566,175 @@ def _tidy_bold_slide(shapes):
     return out
 
 
+# ─── Spec Tidy-Governing — 거버닝 블록 위치 통일 (dispatch 층, 묶음별 확장) ───
+# 진단: 상단형 거버닝이 x 4종 · y 8종 · 크기 26/28/30pt 로 갈려 페이지를 넘길 때 제목이
+#   움찔거린다. 2col · cards_grid 는 거버닝 y 0.65 가 좌상단 목차(running-header, 글자
+#   하단 약 0.73") 와 겹친다 — eyebrow 있는 실제 페이지 17/17.
+# 방식: running-header · 굵게 규칙과 같은 자리(dispatch 층). 빌더 29종 소스 무접촉.
+#   빌더는 거버닝·본체를 모두 절대 좌표로 둔다 → 본체는 움직이지 않고 '제목 블록'
+#   (거버닝 + 아래 subtitle)만 옮긴다. 옮긴 뒤 본체와의 여유가 최소 여유 아래로
+#   줄어드는 페이지는 건너뛴다(_TIDY_GOV_MIN_MARGIN 참조).
+# False = 기존과 100% 동일 (판정·복사·치환 전부 미실행).
+TIDY_GOVERNING_ENABLED = False
+
+# 허용 목록 — 묶음별로 넓힌다. 묶음 1 = 아래 subtitle 형 · subtitle 없음 형 3종.
+#   리드형(subtitle 이 거버닝 위) · 3층 머리 · 밴드형 · 칼럼형은 각 묶음에서 따로 다룬다.
+_TIDY_GOV_PRESETS = frozenset({"2col", "cards_grid", "strategy_map"})
+
+# 기준값 (진단 안4 — 실제 payload 시뮬레이션으로 본체 겹침 0 · 목차 침범 0 확인)
+#   x 0.9  : running-header 와 같은 좌측선
+#   y 0.95 : 박스 위치. valign 을 top 으로 맞춰 '보이는 첫 줄' 이 1.00" 로 고정된다
+#            (running-header 글자 하단 약 0.73" + 간격)
+#   w 9.89 : running-header 와 같은 폭
+#   26pt   : 28pt 로 맞추면 폭 9.89 에서 2줄 제목이 늘어 본체 겹침이 생긴다(실측 9건)
+_TIDY_GOV_X = 0.9
+_TIDY_GOV_Y = 0.95
+_TIDY_GOV_W = 9.89
+_TIDY_GOV_SIZE = 26
+_TIDY_GOV_SUB_MIN_GAP = 0.08      # 거버닝 글자 하단 ↔ subtitle 글자 상단 최소 간격
+_TIDY_GOV_INSET = 0.05            # 텍스트 박스 상하 안쪽 여백 근사
+# 제목 블록 ↔ 본체 최소 여유. 이동으로 여유가 '줄면서' 이 값 아래로 떨어질 때만 건너뛴다.
+#   ★ "줄면 무조건 건너뜀" 으로 하면 안 된다 — 2col · cards_grid 는 목차를 피하려고
+#     블록이 0.30" 내려가야 하고 본체는 고정이라 여유가 반드시 준다(0.63" → 0.43").
+#     그 가드로는 실제 28장 중 26장이 막혀 보정이 사실상 꺼졌다(실측).
+#   원래 빠듯했던 페이지(< 0.10")는 '나빠지지만 않으면' 적용된다.
+_TIDY_GOV_MIN_MARGIN = 0.10
+
+# 거버닝 정렬을 왼쪽으로 바꾸는 프리셋 — running-header(왼쪽)와 한 페이지 안에서 어긋남 해소
+_TIDY_GOV_ALIGN_LEFT = frozenset({"strategy_map"})
+
+# ★ 빌더 좌표 ≠ 렌더 좌표 — 플래그 ON 이면 빌더 소스의 값은 아래처럼 바뀌어 렌더된다.
+#   (빌더 소스에는 주석을 달지 않았다 — 빌더 29종 무접촉 원칙)
+#   프리셋        거버닝 (빌더 → 렌더)                                subtitle (빌더 → 렌더)
+#   2col          x0.5 y0.65 w10.69 28pt middle → x0.9 y0.95 w9.89 26pt top   x0.5 y1.40 → x0.9 · 거버닝 하단+원래 간격
+#   cards_grid    (2col 과 동일)                                       (2col 과 동일)
+#   strategy_map  x0.9 y0.90 w9.89 28pt top center → y0.95 26pt left   (없음)
+
+
+def _tidy_gov_em(text):
+    """한글 1em · 공백/영숫자 0.5em 근사 글자 폭."""
+    return sum(0.5 if ord(c) < 128 else 1.0 for c in text)
+
+
+def _tidy_gov_glyph(sd):
+    """텍스트 도형의 '보이는 글자' 위·아래 y 근사 (valign 반영, 줄간격 1.2)."""
+    text = str(sd.get("text", "") or "")
+    size = float(sd.get("size", 14) or 14)
+    w = float(sd.get("w", 1) or 1)
+    y = float(sd.get("y", 0) or 0)
+    h = float(sd.get("h", 0) or 0)
+    per = max(1.0, ((w - 0.1) * 72.0) / size)
+    lines = 0
+    for seg in text.split("\n"):
+        lines += max(1, int(-(-_tidy_gov_em(seg) // per)))      # 올림 나눗셈
+    gh = lines * size * 1.2 / 72.0
+    va = str(sd.get("valign", "top") or "top")
+    if va == "middle":
+        top = y + (h - gh) / 2
+    elif va == "bottom":
+        top = y + h - _TIDY_GOV_INSET - gh
+    else:
+        top = y + _TIDY_GOV_INSET
+    return top, top + gh
+
+
+def _tidy_gov_y_for_top(sd, target_top):
+    """보이는 글자 상단을 target_top 에 두려면 도형 y 를 얼마로 해야 하나 (valign 반영)."""
+    t0, b0 = _tidy_gov_glyph(sd)
+    return float(sd.get("y", 0) or 0) + (target_top - t0)
+
+
+def _tidy_governing_slide(shapes, slide_data, preset_key):
+    """제목 블록(거버닝 + 아래 subtitle) 을 기준 위치로 옮긴다.
+
+    입력 dict 는 건드리지 않고 바뀐 것만 복사본으로 교체한다. 다음이면 원본 그대로 반환:
+      · 거버닝 없음
+      · subtitle 이 거버닝 위(리드형) — 묶음 1 대상 구조가 아님
+      · 제목 블록 높이대에 모르는 텍스트가 있음 — 같이 옮기지 않으면 어긋남
+      · 옮긴 뒤 본체와의 여유가 줄면서 최소 여유(_TIDY_GOV_MIN_MARGIN) 아래로 떨어짐
+    """
+    gi = next((i for i, s in enumerate(shapes)
+               if isinstance(s, dict) and s.get("type") == "text"
+               and s.get("role") == "governing"), None)
+    if gi is None:
+        log.info("Tidy-Governing 건너뜀 (%s): 거버닝 없음", preset_key)
+        return shapes
+    g = shapes[gi]
+    g_top0, g_bot0 = _tidy_gov_glyph(g)
+
+    # subtitle — 완전 일치, 또는 빌더가 잘라 넣은 접두어 일치 (2col·cards_grid 는 [:60])
+    subt = str(slide_data.get("subtitle", "") or "").strip()
+    si = None
+    if subt:
+        for i, s in enumerate(shapes):
+            if i == gi or not isinstance(s, dict) or s.get("type") != "text" \
+                    or s.get("role") == "running_header":
+                continue
+            t = str(s.get("text", "") or "").strip()
+            if t and (t == subt or (len(t) >= 8 and subt.startswith(t))):
+                si = i
+                break
+    s_bot0 = None
+    if si is not None:
+        s_top0, s_bot0 = _tidy_gov_glyph(shapes[si])
+        if s_top0 < g_top0:
+            log.info("Tidy-Governing 건너뜀 (%s): subtitle 이 거버닝 위(리드형)", preset_key)
+            return shapes
+
+    # 본체 시작 = 거버닝 아래쪽에 있는 나머지 도형 중 가장 위
+    body_top = None
+    head_bottom0 = max(g_bot0, s_bot0 if s_bot0 is not None else g_bot0)
+    for i, s in enumerate(shapes):
+        if i in (gi, si) or not isinstance(s, dict) or s.get("role") == "running_header":
+            continue
+        try:
+            sy = float(s.get("y"))
+        except (TypeError, ValueError):
+            continue
+        if sy <= g_top0:
+            continue
+        # 제목 블록 높이대에 다른 텍스트가 있으면 같이 옮겨야 하는 구조 → 건너뜀
+        if s.get("type") == "text" and sy < head_bottom0 - 0.02:
+            log.info("Tidy-Governing 건너뜀 (%s): 제목 블록 안 미확인 텍스트 '%.12s'",
+                     preset_key, str(s.get("text", "")))
+            return shapes
+        body_top = sy if body_top is None else min(body_top, sy)
+
+    # 새 거버닝
+    ng = dict(g)
+    ng.update({"x": _TIDY_GOV_X, "w": _TIDY_GOV_W, "size": _TIDY_GOV_SIZE,
+               "y": _TIDY_GOV_Y, "valign": "top"})
+    if preset_key in _TIDY_GOV_ALIGN_LEFT:
+        ng["align"] = "left"
+    ng_top, ng_bot = _tidy_gov_glyph(ng)
+    head_bottom1 = ng_bot
+
+    # 새 subtitle — 거버닝 새 글자 하단 + 원래 시각 간격(최소 0.08")
+    ns = None
+    if si is not None:
+        s = shapes[si]
+        gap0 = max(_TIDY_GOV_SUB_MIN_GAP, _tidy_gov_glyph(s)[0] - g_bot0)
+        ns = dict(s)
+        ns.update({"x": _TIDY_GOV_X, "w": _TIDY_GOV_W})
+        ns["y"] = _tidy_gov_y_for_top(ns, ng_bot + gap0)
+        head_bottom1 = max(head_bottom1, _tidy_gov_glyph(ns)[1])
+
+    # 가드 — 여유가 줄면서 최소 여유 아래로 떨어지면 건너뜀
+    if body_top is not None:
+        m0 = body_top - head_bottom0
+        m1 = body_top - head_bottom1
+        if m1 < m0 - 1e-6 and m1 < _TIDY_GOV_MIN_MARGIN:
+            log.info("Tidy-Governing 건너뜀 (%s): 본체 여유 %.2f\" → %.2f\" (최소 %.2f\" 미만)",
+                     preset_key, m0, m1, _TIDY_GOV_MIN_MARGIN)
+            return shapes
+
+    out = list(shapes)
+    out[gi] = ng
+    if ns is not None:
+        out[si] = ns
+    return out
+
+
 def generate_from_shape_json(json_data, output_path, *, theme="light"):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -7000,6 +7169,16 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
         #   eyebrow 가 있는 자율 페이지가 '프리셋' 으로 잘못 분류된다.
         _tidy_from_preset = ((shapes is not slide_data.get("shapes"))
                              if TIDY_BOLD_ENABLED else False)
+        # ★ Spec Tidy-Governing — 같은 이유로 여기서 판정. 굵게 규칙 판정과는 독립
+        #   (굵게 규칙을 꺼도 이 보정은 따로 작동해야 한다).
+        #   빌더 성공(폴백 아님) · 챕터 간지 분기 제외 · 허용 목록 프리셋만.
+        _tidy_gov_key = (preset_name
+                         if (TIDY_GOVERNING_ENABLED
+                             and isinstance(preset_name, str)
+                             and preset_name in _TIDY_GOV_PRESETS
+                             and shapes is not slide_data.get("shapes")
+                             and not _is_chapter_divider(slide_data))
+                         else None)
 
         # ─── Spec Running-Header-Fixed-Position (add-only) — 목차 좌상단 고정 ───
         # 25개 프리셋이 eyebrow(러닝헤더)를 각자 하드코딩 → 정렬 5개 center 위배 +
@@ -7036,6 +7215,19 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
                 "align": "left", "valign": "top",
                 "role": "running_header",
             })
+
+        # ─── Spec Tidy-Governing (add-only) — 거버닝 블록 위치 통일 ───
+        #   running-header 다음(빌더 eyebrow 가 표준 위치로 재삽입된 뒤) · 굵게 규칙 앞
+        #   (위치 먼저, 굵기 나중). 플래그 False 면 _tidy_gov_key 가 None 이라 미진입.
+        if _tidy_gov_key:
+            try:
+                shapes = _tidy_governing_slide(shapes, slide_data, _tidy_gov_key)
+            except Exception as _gov_err:
+                # 보정 실패가 렌더를 막으면 안 된다 — 원본 shapes 그대로 진행.
+                errors_total.append(
+                    "slide" + str(slide_idx) + ":tidy_governing: " +
+                    type(_gov_err).__name__ + ": " + str(_gov_err)
+                )
 
         # ─── Spec Tidy-Bold (add-only) — 굵게 규칙 ───
         #   running-header 다음 · 렌더 직전. 플래그 False 면 함수 호출 자체가 없다.

@@ -214,8 +214,29 @@ _IMAGE_BRIEF_MAX_PER_DECK = 6
 _IMAGE_BRIEF_ANCHOR_MAX = 2
 _IMAGE_BRIEF_CONCEPT_RE = re.compile(r"컨셉|콘셉트|슬로건")
 
-# 섹션 접미어가 여러 컷을 뜻하면 panels(격자) 권장 힌트 — 결정은 LLM.
-_IMAGE_BRIEF_MULTI_RE = re.compile(r"확장|응용|적용|존별|구역별|권역|Zone|ZONE|클로즈업|①|②|③")
+# 섹션 접미어가 여러 컷을 뜻하면 격자(G) — v2: 형은 코드가 결정 (빌더도 같은 정규식).
+#   159장 실측: 2D 확장·응용·적용 8 · 3D 존별·구역별·Zone 클로즈업 7 = G 15.
+#   ①② · (1)(2) 순번과 "A·B" 접미어(포토존·이벤트 등)는 한 장면 → W.
+_IMAGE_BRIEF_MULTI_RE = re.compile(r"존별|구역별|권역|Zone|ZONE|클로즈업|확장|응용|적용")
+
+# ─── v2 근거 페이지 선택 (결정적) ───
+#   2D: 앞쪽 컨셉·콘셉트·슬로건 페이지 가까운 순 2장 (부족하면 기존 방식으로 채움).
+#   3D: 앞쪽 같은 장(Ⅰ~Ⅹ) 안 최대 10장(장 번호 없는 덱 6장)에서 라벨 페이지와
+#       공통 토큰 2개 이상인 페이지 상위 2장 (동점 → 가까운 쪽). 없으면 기존 방식.
+#   토큰: 한글·영숫자 덩어리 → 조사 제거 → 2자 이상 → 상투어 불용어 · 덱 공통어(25%+) 제외.
+#   실측: d34 p23 Zone 클로즈업 → p18 AI 진단존 · p19 케어존 (v1 은 팝업·DIY 를 잡아 혼입).
+_IB_CHAPTER_RE = re.compile(r"^\s*([ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ])")
+_IB_LOOKBACK, _IB_LOOKBACK_NOCHAP = 10, 6
+_IB_MIN_OVERLAP = 2
+_IB_COMMON_DF = 0.25
+_IB_JOSA = ("으로", "에서", "까지", "부터", "과", "와", "을", "를", "이", "가", "은", "는", "의", "에", "로", "도")
+_IB_STOP = frozenset({
+    "자리", "시안", "연출", "연출컷", "공간조성", "키비주얼", "렌더", "렌더링", "시각화", "조감", "조감도",
+    "전경", "방향", "디자이너", "placeholder", "이미지", "컷", "3D", "2D", "메인",
+    "계획", "운영", "구성", "설계", "배치", "방안", "전략", "체계", "관리", "공간", "전체", "통합", "하나",
+    "위한", "통한", "있는", "하는", "되는", "중심", "기반", "제안", "사업", "행사", "프로그램", "세부",
+    "상세", "기본",
+})
 
 # 근거 없는 수치 감지 (로그만, 값 무변경) — 수치 + 단위.
 _IMAGE_BRIEF_NUM_RE = re.compile(r"(\d[\d,\.]*)\s*(명|석|m|㎡|평|인치|inch|개|대|kW|톤|미터|cm|mm|x\d)")
@@ -3849,6 +3870,7 @@ async def generate_outline(
     _rot_used: dict = {}
     # ★ Spec Preset-ImageBrief — 덱당 라우팅 카운터.
     _ib_assigned = 0
+    _ib_common = None     # v2 — 덱 공통어 (첫 라벨 페이지에서 한 번만 계산)
     for it in parsed["outline"]:
         if not isinstance(it, dict):
             continue
@@ -4283,15 +4305,9 @@ async def generate_outline(
                 log.info("Image-Brief 상한 초과 p=%s — 자율 경로 유지", it.get("page"))
             else:
                 _ib_assigned += 1
-                _anchors = []
-                for _prev in reversed(items):
-                    if len(_anchors) >= _IMAGE_BRIEF_ANCHOR_MAX:
-                        break
-                    if _IMAGE_BRIEF_LABEL_RE.search(_prev.section):
-                        continue
-                    if (_prev.role in ("body", "support")
-                            or _IMAGE_BRIEF_CONCEPT_RE.search(_prev.section)):
-                        _anchors.append(_prev)
+                if _ib_common is None:
+                    _ib_common = _ib_deck_common(parsed["outline"])
+                _anchors = _ib_pick_anchors(items, it, _ib_m.group(1), _ib_common)
                 _anchor_lines = []
                 for _a in _anchors:
                     _anchor_lines.append(f"p{_a.page} {_a.section} — {_a.governing_main}")
@@ -4820,60 +4836,142 @@ def _rotate_viz_pattern(viz_pattern: str, *, role: str, slide_type: str,
     return chosen
 
 
+def _ib_tokens(text) -> set:
+    """v2 근거 선택용 결정적 토큰화 — 조사 제거 · 2자 이상 · 상투어 제외."""
+    out = set()
+    for w in re.findall(r"[가-힣A-Za-z0-9]+", str(text or "")):
+        for j in _IB_JOSA:
+            if w.endswith(j) and len(w) - len(j) >= 2:
+                w = w[: -len(j)]
+                break
+        if len(w) >= 2 and w not in _IB_STOP and not w.isdigit():
+            out.add(w)
+    return out
+
+
+def _ib_deck_common(outline_raw) -> set:
+    """덱 페이지의 25% 초과에 나오는 토큰 — 테마어가 엉뚱한 페이지를 끌어오지 않게 제외."""
+    df: dict = {}
+    pages = [p for p in (outline_raw or []) if isinstance(p, dict)]
+    for p in pages:
+        for t in _ib_tokens(" ".join([str(p.get("section", "")), str(p.get("governing_main", "")),
+                                      " ".join(str(k) for k in (p.get("key_msgs") or []))])):
+            df[t] = df.get(t, 0) + 1
+    n = max(1, len(pages))
+    return {t for t, c in df.items() if c / n > _IB_COMMON_DF}
+
+
+def _ib_pick_anchors(items, label_it: dict, kind: str, common: set) -> list:
+    """v2 — 근거 페이지 최대 2장 (앞쪽 OutlineItem 중). 결정적."""
+    def eligible(x):
+        return (not _IMAGE_BRIEF_LABEL_RE.search(x.section)
+                and (x.role in ("body", "support") or _IMAGE_BRIEF_CONCEPT_RE.search(x.section)))
+
+    def chapter(idx):
+        for k in range(idx, -1, -1):
+            m = _IB_CHAPTER_RE.search(items[k].section)
+            if m and not _IMAGE_BRIEF_LABEL_RE.search(items[k].section):
+                return m.group(1)
+        return ""
+
+    nearest = [k for k in range(len(items) - 1, -1, -1) if eligible(items[k])][:_IMAGE_BRIEF_ANCHOR_MAX]
+    if kind == "2D":
+        picked = [k for k in range(len(items) - 1, -1, -1)
+                  if eligible(items[k]) and _IMAGE_BRIEF_CONCEPT_RE.search(items[k].section)
+                  ][:_IMAGE_BRIEF_ANCHOR_MAX]
+    else:
+        me = _ib_tokens(" ".join([
+            str(label_it.get("governing_main", "")),
+            " ".join(str(k) for k in (label_it.get("key_msgs") or [])),
+            re.sub(r"\[[^\]]*\]", "", str(label_it.get("section", ""))),
+        ])) - common
+        ch = chapter(len(items) - 1) if items else ""
+        lookback = _IB_LOOKBACK if ch else _IB_LOOKBACK_NOCHAP
+        scored = []
+        for k in range(len(items) - 1, max(-1, len(items) - 1 - lookback), -1):
+            x = items[k]
+            if not eligible(x) or (ch and chapter(k) != ch):
+                continue
+            s = len(me & _ib_tokens(" ".join([x.section, x.governing_main, " ".join(x.key_msgs)])))
+            if s >= _IB_MIN_OVERLAP:
+                scored.append((s, k))
+        scored.sort(key=lambda t: (-t[0], -t[1]))          # 점수 높은 순 → 동점이면 가까운 쪽
+        picked = [k for _, k in scored[:_IMAGE_BRIEF_ANCHOR_MAX]]
+    for k in nearest:                                        # 부족분은 기존 방식(가까운 순)으로 채움
+        if len(picked) >= _IMAGE_BRIEF_ANCHOR_MAX:
+            break
+        if k not in picked:
+            picked.append(k)
+    return [items[k] for k in picked]
+
+
 def _image_brief_slide_block(item: "OutlineItem") -> str:
     """Spec Preset-ImageBrief — SLIDE user 프롬프트 블록 (시스템 프롬프트 무수정 → 캐시 유지).
 
-    kind(2D/3D)·근거 페이지·panels 권장 여부는 코드가 정해 넣는다.
+    kind(2D/3D)·근거 페이지·형(격자 여부)은 코드가 정해 넣는다.
     ref·kind 는 파싱 뒤 코드가 덮어쓰므로 LLM 에게 요구하지 않는다.
+    v2 (실측 5장 반영):
+      · 형은 섹션 접미어로 코드가 결정 — 접미어 없으면 panels 키 자체를 요구하지 않는다
+        (v1 은 5장 전부 panels 를 넣어 지시 3항목이 화면에서 사라졌다).
+      · 예시는 형식 자리 표시 — v1 의 구체 문구가 3D 2덱에 그대로 복제됐다.
+      · 지역·장소 고유 소재 반영 + 근거 없는 구체 시설물 창작 금지.
     """
     kind = item.brief_kind or "3D"
-    if kind == "2D":
-        frame_desc = "왼쪽 세로 포스터 프레임 + 오른쪽 지시서 (콘셉트 · 모티프 · 컬러·톤)"
-        keys = ('  · "concept": 콘셉트 — 이 시안이 전달할 핵심 인상 (50자 이내)\n'
-                '  · "motif": 비주얼 모티프 — 화면에 놓일 상징·형태·그래픽 요소 (50자 이내)\n'
-                '  · "tone": 컬러·톤 — 색 조합·타이포 분위기 (50자 이내)\n')
-        kw_desc = "콘셉트·모티프 키워드 (디자이너가 레퍼런스를 찾을 검색어)"
-        panel_desc = "매체별 적용 컷 (포스터·현수막·리플렛·SNS 등)"
-    else:
-        frame_desc = "와이드 조감 프레임 + 하단 지시서 3단 (장면 · 시점 · 연출)"
-        keys = ('  · "scene": 장면 — 프레임에 무엇이 보이는가 (공간·구역·요소 배치, 50자 이내)\n'
-                '  · "view": 시점 — 구도·높이·시간대 (부감/정면/아이레벨, 주간/야간 등, 50자 이내)\n'
-                '  · "staging": 연출 — 이 컷에서 강조할 연출 포인트 (50자 이내)\n')
-        kw_desc = "연출 요소·시점 키워드 (디자이너가 레퍼런스를 찾을 검색어)"
-        panel_desc = "존·권역별 클로즈업 컷"
-    anchor = item.brief_anchor or "(근거 페이지 없음 — 이 페이지의 핵심 메시지만 근거로 쓸 것)"
     multi = _IMAGE_BRIEF_MULTI_RE.search(item.section)
-    panel_hint = (f"  ★ 섹션명에 \"{multi.group(0)}\" — 여러 컷을 담는 페이지로 보인다. "
-                  "panels 2~4개 사용을 권장.\n" if multi else
-                  "  · 한 장면이면 panels 를 쓰지 말 것 (큰 프레임 1개가 기본).\n")
     if kind == "2D":
-        example = (
-            '{"preset":"image_brief",'
-            '"title":"축제의 첫인상을 하나로 묶는 메인 키비주얼",'
-            '"eyebrow":"Ⅰ. 제안 개요  ·  2D 키비주얼",'
-            '"frame_label":"메인 키비주얼 (세로 포스터)",'
-            '"concept":"지역의 계절감과 참여의 설렘이 함께 읽히는 첫 장면",'
-            '"motif":"지역 상징 모티프를 단순화한 패턴과 여정 동선 라인",'
-            '"tone":"콘셉트 대표색 1개 + 중립 배경, 굵은 산세리프 타이포",'
-            '"keywords":["계절감","상징 패턴","여정 라인"],'
-            '"shapes":[{"type":"image","x":0.9,"y":1.95,"w":3.95,"h":5.6,"hint":"메인 키비주얼"},'
-            '{"type":"text","x":5.25,"y":2.0,"w":5.5,"h":0.4,"text":"디자이너 작업 영역",'
-            '"size":12,"weight":400,"color":"#999999"}]}'
+        frame_desc = ("매체별 적용 격자 (2~4칸) + 아래 모티프·컬러·톤" if multi else
+                      "왼쪽 세로 포스터 프레임 + 오른쪽 지시서 (콘셉트 · 모티프 · 컬러·톤)")
+        keys = ('  · "concept": 콘셉트 — 이 시안이 전달할 핵심 인상 (20~50자)\n'
+                '  · "motif": 비주얼 모티프 — 화면에 놓일 상징·형태·그래픽 요소 (20~50자)\n'
+                '  · "tone": 컬러·톤 — 색 조합·타이포 분위기 (20~50자)\n')
+        kw_desc = "〈장소·지명 또는 고유 소재〉 · 〈모티프〉 · 〈톤〉 (디자이너가 레퍼런스를 찾을 검색어)"
+        panel_desc = "매체별 적용 컷 (근거에 나온 매체만 — 포스터·현수막·리플렛·SNS 등)"
+        ex_fields = (
+            '"concept":"〈콘셉트 페이지의 핵심 문장·슬로건〉이 한눈에 읽히는 〈첫 장면〉",'
+            '"motif":"〈장소·특산물·고유 소재〉를 단순화한 〈형태·패턴〉",'
+            '"tone":"〈콘셉트에서 나온 대표색〉 + 〈보조색·배경〉, 〈타이포 분위기〉",'
+            '"keywords":["〈장소·지명〉","〈모티프〉","〈톤〉"],'
         )
+        bad_good = ('  · 나쁜 예: "지역의 계절감이 읽히는 첫 장면" (어느 덱에나 붙는 문장)\n'
+                    '  · 좋은 예: 근거의 슬로건·장소명·특산물이 들어간 문장\n')
     else:
-        example = (
-            '{"preset":"image_brief",'
-            '"title":"무대와 객석이 한눈에 보이는 행사장 조감 연출컷",'
-            '"eyebrow":"Ⅲ. 공간 조성  ·  3D 공간조성",'
-            '"frame_label":"메인 무대·객석 부감 조감",'
-            '"scene":"메인 무대·객석·체험부스가 한 공간에 놓인 전경",'
-            '"view":"무대 정면 축의 높은 부감, 주간·야간 동일 시점 2컷",'
-            '"staging":"관람 동선과 VIP 동선의 분리 지점, 피날레 조명 순간",'
-            '"keywords":["부감 조감","주간·야간 2컷","동선 분리"],'
-            '"shapes":[{"type":"image","x":0.9,"y":1.95,"w":9.89,"h":3.95,"hint":"3D 연출컷"},'
-            '{"type":"text","x":0.9,"y":6.1,"w":9.89,"h":0.4,"text":"디자이너 작업 영역",'
-            '"size":12,"weight":400,"color":"#999999"}]}'
+        frame_desc = ("존·권역별 격자 (2~4칸) + 아래 시점·연출" if multi else
+                      "와이드 조감 프레임 + 하단 지시서 3단 (장면 · 시점 · 연출)")
+        keys = ('  · "scene": 장면 — 프레임에 무엇이 보이는가 (공간·구역·요소 배치, 20~50자)\n'
+                '  · "view": 시점 — 구도·높이·시간대 (부감/정면/아이레벨, 주간/야간 등, 20~50자)\n'
+                '  · "staging": 연출 — 이 컷에서 강조할 연출 포인트 (20~50자)\n')
+        kw_desc = "〈장소·지명〉 · 〈시점〉 · 〈연출 요소〉 (디자이너가 레퍼런스를 찾을 검색어)"
+        panel_desc = "존·권역별 근접 컷 (근거 페이지에 나온 존·권역만)"
+        ex_fields = (
+            '"scene":"〈근거 페이지의 핵심 공간·요소 2~3개〉가 한 화면에 놓인 〈전경/근접〉",'
+            '"view":"〈부감/정면/아이레벨〉, 〈주간/야간〉 〈컷 수〉",'
+            '"staging":"〈근거 페이지 고유 요소〉의 〈강조할 순간·지점〉",'
+            '"keywords":["〈장소·지명〉","〈시점〉","〈연출 요소〉"],'
         )
+        bad_good = ('  · 나쁜 예: "무대 정면 축의 높은 부감, 주간·야간 동일 시점 2컷" (어느 덱에나 붙는 문장)\n'
+                    '  · 좋은 예: 근거의 장소명·존 이름·고유 요소가 들어간 문장\n')
+    anchor = item.brief_anchor or "(근거 페이지 없음 — 이 페이지의 핵심 메시지만 근거로 쓸 것)"
+    if multi:
+        panel_rule = (f"  · ★ 섹션명에 \"{multi.group(0)}\" — 격자형 페이지다. panels 2~4개 필수\n"
+                      f"    ({panel_desc}). [{{\"label\": 12자 이내, \"text\": 20~40자}}].\n"
+                      "    지시 3항목도 함께 쓸 것 (격자 아래 한 줄로 표시된다).\n")
+        panel_key = '  · "panels": [{"label":"...","text":"..."}]  (필수, 2~4개)\n'
+        ex_panels = '"panels":[{"label":"〈존·매체 이름〉","text":"〈그 칸에 보일 장면〉"},{"label":"〈…〉","text":"〈…〉"}],'
+    else:
+        panel_rule = "  · 이 페이지는 한 장면 프레임이다 — panels 는 쓰지 말 것 (써도 코드가 무시한다).\n"
+        panel_key = ""
+        ex_panels = ""
+    example = (
+        '{"preset":"image_brief",'
+        '"title":"〈[메인 거버닝] 그대로〉",'
+        '"eyebrow":"〈Ⅰ. 장 이름  ·  절 이름〉",'
+        '"frame_label":"〈프레임 안 컷 이름〉",'
+        f"{ex_fields}"
+        f"{ex_panels}"
+        '"shapes":[{"type":"image","x":0.9,"y":1.95,"w":9.89,"h":3.95,"hint":"〈컷 이름〉"},'
+        '{"type":"text","x":0.9,"y":6.1,"w":9.89,"h":0.4,"text":"디자이너 작업 영역",'
+        '"size":12,"weight":400,"color":"#999999"}]}'
+    )
     return (
         f"[배정된 레이아웃 패턴] image_brief ({kind} 디자이너 지시서 — {frame_desc})\n"
         "★ 용도: NightOff 는 이미지를 만들지 않는다. 이 페이지는 디자이너가 바로 작업할 수 있게\n"
@@ -4883,36 +4981,44 @@ def _image_brief_slide_block(item: "OutlineItem") -> str:
         f"{anchor}\n"
         "\n"
         "★★ 작성 원칙 — 이 프리셋 한정 (Spec Preset-ImageBrief):\n"
-        "  · 지시 문장은 개조식 명사형 종결 (\"~전경\", \"~2컷\", \"~순간 강조\"). 각 50자 이내.\n"
+        "  · 지시 문장은 개조식 명사형 종결 (\"~전경\", \"~2컷\", \"~순간 강조\"). 각 20~50자.\n"
+        "  · lead 도 명사형 종결 (\"~조감 시안\", \"~방향\") — \"~담는다\" 같은 서술형 금지.\n"
         "  · frame_label 은 프레임 안에 들어갈 컷 이름 (24자 이내).\n"
         f"  · keywords 3개 (각 10자 이내) — {kw_desc}.\n"
-        f"  · panels = {panel_desc}. [{{\"label\": 12자 이내, \"text\": 40자 이내}}] 2~4개.\n"
-        f"{panel_hint}"
+        f"{panel_rule}"
         "  · ★ Concreteness-Boost 지시(100~150자)는 이 페이지에 적용하지 말 것 (지시서는 짧게).\n"
+        "  · ★ 지역·장소 고유 소재 — [근거 페이지] · [핵심 메시지] · [전체 outline 요약] · [정량 lock] 의\n"
+        "    장소에 나온 지명·장소명·특산물·랜드마크·행사 고유 소재를 장면(또는 모티프)이나\n"
+        "    키워드에 1개 이상 반영할 것. 근거에 없으면 일반 표현으로 둔다.\n"
+        "  · ★ 아래 예시의 〈 〉 안은 형식 설명이다 — 그대로 쓰지 말고 근거 페이지의 말로 채울 것\n"
+        "    (〈 〉 가 남은 항목은 코드가 지운다).\n"
+        f"{bad_good}"
         "\n"
         "★★ 팩트게이트 3단 — 이 프리셋에서 가장 중요:\n"
         "  ① 허용 (연출 지시 — 환각 아님): 시점·구도(부감/정면/아이레벨) · 시간대(주간/야간) ·\n"
-        "     분위기·색감 방향 · 일반 연출 요소(조명·LED·사인물·조형물·포토존).\n"
+        "     분위기·색감 방향 · 근거에 나온 연출 요소(조명·LED·사인물·포토존)를 일반 명사로.\n"
         "  ② 조건부 (그대로 옮길 때만): 장소명 · 인원 · 면적 · 치수 · 수량 —\n"
-        "     [정량 lock] · 이 페이지 핵심 메시지 · [근거 페이지] 에 있는 값만.\n"
-        "  ③ 금지: 업체·작가·출연자 실명 · 로고·CI 형태 단정 · 근거 없는 객석 수·LED 크기·㎡.\n"
+        "     [정량 lock] · 이 페이지 핵심 메시지 · [근거 페이지] · [전체 outline 요약] 에 있는 값만.\n"
+        "  ③ 금지: 업체·작가·출연자 실명 · 로고·CI 형태 단정 · 근거 없는 객석 수·LED 크기·㎡ ·\n"
+        "     ★ 근거에 없는 구체 시설물·조형물·설치물을 새로 만드는 것 (아치·게이트·타워 등 형태 지정).\n"
+        "     근거에 \"포토존·조형물\"만 있으면 \"포토존 조형물\"까지만 쓴다.\n"
         "  ★ 없는 값은 지어내지 말고 \"규모 확정 시 반영\" · \"현장 실측 후 확정\" 으로 표기.\n"
         "\n"
         "★ slide JSON 출력에 반드시 다음 키 포함:\n"
         '  · "preset": "image_brief"  (필수, identity)\n'
         '  · "title": 페이지 거버닝 (필수, 25~40자 명사형 — [메인 거버닝] 그대로 권장)\n'
         '  · "eyebrow": 좌상단 breadcrumb (선택, 50자 이내)\n'
-        '  · "lead": 한 줄 요약 (선택, 60자 이내 — 제목이 한 줄일 때만 표시)\n'
+        '  · "lead": 한 줄 요약 (선택, 60자 이내 · 명사형 — 제목이 한 줄일 때만 표시)\n'
         '  · "frame_label": 프레임 안 컷 이름 (24자 이내)\n'
         f"{keys}"
         '  · "keywords": ["...","...","..."]  (3개)\n'
-        '  · "panels": [{"label":"...","text":"..."}]  (선택, 2~4개 — 있으면 격자형)\n'
-        "             ★ 지시 3항목 중 2개 미만이고 panels 도 2개 미만이면 preset 무효 → 자율 shapes 회귀.\n"
+        f"{panel_key}"
+        "             ★ 지시 3항목 중 2개 미만이면 preset 무효 → 자율 shapes 회귀.\n"
         "  · ref · kind 는 코드가 채운다 — 쓰지 말 것.\n"
         "  ★★ 백업 shapes = 지금의 자리 표시 패턴 (image 1개 + 짧은 text 1~2개) ★★\n"
         "    preset 이 성립하면 코드가 프레임·지시서를 그리고 백업은 쓰이지 않는다.\n"
         "\n"
-        "★ 완성 예시 (형식만 참고 — 내용은 반드시 위 근거 페이지에서):\n"
+        "★ 완성 형식 (〈 〉 를 근거 페이지 말로 채울 것):\n"
         f"{example}"
     )
 
@@ -6928,10 +7034,15 @@ async def generate_one_slide(
                 _ib_evidence = " ".join([
                     json.dumps(quantitative_locks or {}, ensure_ascii=False),
                     item.governing_main, " ".join(item.key_msgs), item.viz_hint, item.brief_anchor,
+                    outline_summary,          # v2 — 다른 페이지 거버닝도 덱 내용 (오탐 "5개 Zone" 해소)
                 ])
                 _ib_unbacked = _image_brief_unbacked_numbers(_ib_texts, _ib_evidence)
                 if _ib_unbacked:
                     log.warning("Image-Brief 수치 근거 미확인 p%d: %s", item.page, " | ".join(_ib_unbacked))
+                # v2 — 예시의 형식 자리 표시(〈 〉)가 남은 항목 (빌더가 그 항목을 지운다)
+                _ib_ph = [str(t)[:30] for t in _ib_texts if t and "〈" in str(t)]
+                if _ib_ph:
+                    log.warning("Image-Brief 자리 표시 잔존 p%d: %s", item.page, " | ".join(_ib_ph))
             _meta = {k: v for k, v in parsed.items() if k not in ("shapes", "section")}
             return SlideResult(
                 page=item.page,

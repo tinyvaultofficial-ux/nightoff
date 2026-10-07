@@ -191,6 +191,36 @@ _PROGRAM_OVERVIEW_ROLES = {"body", "support"}
 _PROGRAM_OVERVIEW_MAX_PER_DECK = 6
 
 
+# ─── Spec Preset-ImageBrief — 이미지 자리 디자이너 지시서 프리셋 on/off ────────────
+# 진단(2026-07 이후 37덱): OUTLINE 이 필수로 넣는 [2D 키비주얼 시안 자리]·
+#   [3D 공간조성 연출컷 자리] 159장(덱당 4.3)이 전부 자율 shapes — 틀이 제각각이고
+#   (둥근 알약형 프레임 · 2×4 격자 · 큰 박스 1개), 포스터·조감도 비율 구분이 없으며,
+#   근거 없는 수치(객석 수·LED 크기 등)가 섞인다.
+# ★ 배정은 OUTLINE 이 아니라 코드가 섹션 라벨로 확정한다 — 159/159 가 아래 정규식
+#   하나로 잡히고(접미어만 다름), 본문 페이지 오판 0. OUTLINE 프롬프트·카탈로그 무수정.
+# ★ 위치 = generate_outline 회전 블록 뒤 · OutlineItem 생성 직전. 회전·표 cap 카운터는
+#   원래 viz 로 이미 돌았으므로 라벨 외 페이지 배정은 OFF 와 완전히 같다.
+# False = 기존과 100% 동일 (라우팅 · 매핑 · SLIDE 블록 · 파싱 후 처리 전부 미진입).
+IMAGE_BRIEF_ENABLED = False
+
+# 섹션 라벨 — "[2D 키비주얼 시안 자리]" / "[3D 공간조성 연출컷 자리] (존별)" 등.
+_IMAGE_BRIEF_LABEL_RE = re.compile(r"^\s*\[\s*(2D|3D)\s*(키비주얼|공간조성)")
+
+# 덱당 상한 — 실측 최대 5장. 넘는 라벨 페이지는 원래 경로(자율)로 두고 로그.
+_IMAGE_BRIEF_MAX_PER_DECK = 6
+
+# 근거 페이지 — 바로 앞 본문 페이지 최대 2장 (라벨 · 표지/목차/간지 제외).
+#   role 이 body/support 이거나 컨셉·슬로건 페이지(2D 키비주얼의 근거)면 인정.
+_IMAGE_BRIEF_ANCHOR_MAX = 2
+_IMAGE_BRIEF_CONCEPT_RE = re.compile(r"컨셉|콘셉트|슬로건")
+
+# 섹션 접미어가 여러 컷을 뜻하면 panels(격자) 권장 힌트 — 결정은 LLM.
+_IMAGE_BRIEF_MULTI_RE = re.compile(r"확장|응용|적용|존별|구역별|권역|Zone|ZONE|클로즈업|①|②|③")
+
+# 근거 없는 수치 감지 (로그만, 값 무변경) — 수치 + 단위.
+_IMAGE_BRIEF_NUM_RE = re.compile(r"(\d[\d,\.]*)\s*(명|석|m|㎡|평|인치|inch|개|대|kW|톤|미터|cm|mm|x\d)")
+
+
 # ─── Spec Dead-Preset-Keys — 사문화 키(cards3 / before_after) 정리 on/off ────
 # 진단(프로덕션 120덱 5,500p 실측): 두 키는 OUTLINE 화이트리스트에는 있으나
 #   shape 트랙 빌더·dispatch·SLIDE 전용 분기가 전부 없어 배정된 만큼 100% 버려진다.
@@ -3032,6 +3062,12 @@ class OutlineItem:
     # 단계2 는 저장까지. 단계3 에서 SLIDE 가 "align" 페이지에만 전략 블록 주입.
     # γ(OUTLINE LLM 판정) 메인 + α(_strategy_relevant_fallback 키워드) 폴백.
     strategy_relevant: str = ""
+    # ★ Spec Preset-ImageBrief — 라벨 라우팅 시에만 채워짐 (그 외 전부 "").
+    #   payload 의 outline 은 필드를 골라 직렬화하므로 이 필드들은 저장되지 않는다.
+    brief_anchor: str = ""     # 근거 페이지 거버닝·key_msgs (SLIDE user 프롬프트 주입용)
+    brief_ref: str = ""        # 참조 줄 — "Ⅳ.12 행사장 동선 및 객석 배치 (p30)"
+    brief_kind: str = ""       # "2D" | "3D"
+    brief_orig_viz: str = ""   # 라우팅 전 viz — HTML 트랙은 이 값으로 되돌려 무접촉 유지
 
 
 @dataclass
@@ -3811,6 +3847,8 @@ async def generate_outline(
     #   플래그 OFF 면 아래 루프에서 갱신조차 하지 않는다 → 실행 경로 종전과 동일.
     _rot_recent: list = []
     _rot_used: dict = {}
+    # ★ Spec Preset-ImageBrief — 덱당 라우팅 카운터.
+    _ib_assigned = 0
     for it in parsed["outline"]:
         if not isinstance(it, dict):
             continue
@@ -4235,6 +4273,40 @@ async def generate_outline(
                     "GovEnding-Violation-Length p=%s len=%d text=%s",
                     it.get("page"), len(_gm), _gm[:80],
                 )
+        # ★★ Spec Preset-ImageBrief — 섹션 라벨로 확정 배정 (회전 뒤 · 생성 직전).
+        #   회전·표 cap 카운터·GovEnding 로그는 원래 viz 로 이미 끝났다 → 라벨 외 페이지 무영향.
+        _ib = {}
+        _section_s = str(it.get("section", "")).strip()
+        _ib_m = _IMAGE_BRIEF_LABEL_RE.search(_section_s) if IMAGE_BRIEF_ENABLED else None
+        if _ib_m:
+            if _ib_assigned >= _IMAGE_BRIEF_MAX_PER_DECK:
+                log.info("Image-Brief 상한 초과 p=%s — 자율 경로 유지", it.get("page"))
+            else:
+                _ib_assigned += 1
+                _anchors = []
+                for _prev in reversed(items):
+                    if len(_anchors) >= _IMAGE_BRIEF_ANCHOR_MAX:
+                        break
+                    if _IMAGE_BRIEF_LABEL_RE.search(_prev.section):
+                        continue
+                    if (_prev.role in ("body", "support")
+                            or _IMAGE_BRIEF_CONCEPT_RE.search(_prev.section)):
+                        _anchors.append(_prev)
+                _anchor_lines = []
+                for _a in _anchors:
+                    _anchor_lines.append(f"p{_a.page} {_a.section} — {_a.governing_main}")
+                    _anchor_lines.extend(f"   · {str(_k)[:80]}" for _k in _a.key_msgs[:4])
+                _ib = {
+                    "brief_anchor": "\n".join(_anchor_lines),
+                    "brief_ref": (f"{_anchors[0].section} (p{_anchors[0].page})"
+                                  if _anchors else ""),
+                    "brief_kind": _ib_m.group(1),
+                    "brief_orig_viz": viz_pattern,
+                }
+                log.info("Image-Brief 배정 p=%s kind=%s 원래viz=%s 근거=%s",
+                         it.get("page"), _ib_m.group(1), viz_pattern or "-",
+                         ",".join(f"p{_a.page}" for _a in _anchors) or "-")
+                viz_pattern = "image_brief"
         items.append(OutlineItem(
             page=int(it.get("page", len(items) + 1)),
             section=str(it.get("section", "")).strip(),
@@ -4246,6 +4318,7 @@ async def generate_outline(
             role=role,
             skeleton_id=skeleton_id,
             strategy_relevant=strategy_relevant,
+            **_ib,
         ))
 
     # 정량 lock 영역 — RFP 분석 결과에 quantitative_locks 가 있으면 outline 결과에 보존.
@@ -4419,6 +4492,10 @@ if STAFFING_TABLE_ENABLED:
 # Spec Preset-ProgramOverview — 플래그 조건부 매핑.
 if PROGRAM_OVERVIEW_ENABLED:
     _VIZ_TO_PRESET["program_overview"] = "program_overview"
+
+# Spec Preset-ImageBrief — 플래그 조건부 매핑 (배정은 OUTLINE 이 아니라 섹션 라벨 라우팅).
+if IMAGE_BRIEF_ENABLED:
+    _VIZ_TO_PRESET["image_brief"] = "image_brief"
 
 
 # Spec Preset-ScheduleTable — OUTLINE_SYSTEM_PROMPT 조건부 카탈로그 + 배정 규칙 ⑩.
@@ -4741,6 +4818,113 @@ def _rotate_viz_pattern(viz_pattern: str, *, role: str, slide_type: str,
     log.info("Preset-Rotation 회전 p=%s %s → %s (최근%d=%s 덱내사용=%d)",
              page, viz_pattern, chosen, _ROTATION_WINDOW, recent, used.get(chosen, 0))
     return chosen
+
+
+def _image_brief_slide_block(item: "OutlineItem") -> str:
+    """Spec Preset-ImageBrief — SLIDE user 프롬프트 블록 (시스템 프롬프트 무수정 → 캐시 유지).
+
+    kind(2D/3D)·근거 페이지·panels 권장 여부는 코드가 정해 넣는다.
+    ref·kind 는 파싱 뒤 코드가 덮어쓰므로 LLM 에게 요구하지 않는다.
+    """
+    kind = item.brief_kind or "3D"
+    if kind == "2D":
+        frame_desc = "왼쪽 세로 포스터 프레임 + 오른쪽 지시서 (콘셉트 · 모티프 · 컬러·톤)"
+        keys = ('  · "concept": 콘셉트 — 이 시안이 전달할 핵심 인상 (50자 이내)\n'
+                '  · "motif": 비주얼 모티프 — 화면에 놓일 상징·형태·그래픽 요소 (50자 이내)\n'
+                '  · "tone": 컬러·톤 — 색 조합·타이포 분위기 (50자 이내)\n')
+        kw_desc = "콘셉트·모티프 키워드 (디자이너가 레퍼런스를 찾을 검색어)"
+        panel_desc = "매체별 적용 컷 (포스터·현수막·리플렛·SNS 등)"
+    else:
+        frame_desc = "와이드 조감 프레임 + 하단 지시서 3단 (장면 · 시점 · 연출)"
+        keys = ('  · "scene": 장면 — 프레임에 무엇이 보이는가 (공간·구역·요소 배치, 50자 이내)\n'
+                '  · "view": 시점 — 구도·높이·시간대 (부감/정면/아이레벨, 주간/야간 등, 50자 이내)\n'
+                '  · "staging": 연출 — 이 컷에서 강조할 연출 포인트 (50자 이내)\n')
+        kw_desc = "연출 요소·시점 키워드 (디자이너가 레퍼런스를 찾을 검색어)"
+        panel_desc = "존·권역별 클로즈업 컷"
+    anchor = item.brief_anchor or "(근거 페이지 없음 — 이 페이지의 핵심 메시지만 근거로 쓸 것)"
+    multi = _IMAGE_BRIEF_MULTI_RE.search(item.section)
+    panel_hint = (f"  ★ 섹션명에 \"{multi.group(0)}\" — 여러 컷을 담는 페이지로 보인다. "
+                  "panels 2~4개 사용을 권장.\n" if multi else
+                  "  · 한 장면이면 panels 를 쓰지 말 것 (큰 프레임 1개가 기본).\n")
+    if kind == "2D":
+        example = (
+            '{"preset":"image_brief",'
+            '"title":"축제의 첫인상을 하나로 묶는 메인 키비주얼",'
+            '"eyebrow":"Ⅰ. 제안 개요  ·  2D 키비주얼",'
+            '"frame_label":"메인 키비주얼 (세로 포스터)",'
+            '"concept":"지역의 계절감과 참여의 설렘이 함께 읽히는 첫 장면",'
+            '"motif":"지역 상징 모티프를 단순화한 패턴과 여정 동선 라인",'
+            '"tone":"콘셉트 대표색 1개 + 중립 배경, 굵은 산세리프 타이포",'
+            '"keywords":["계절감","상징 패턴","여정 라인"],'
+            '"shapes":[{"type":"image","x":0.9,"y":1.95,"w":3.95,"h":5.6,"hint":"메인 키비주얼"},'
+            '{"type":"text","x":5.25,"y":2.0,"w":5.5,"h":0.4,"text":"디자이너 작업 영역",'
+            '"size":12,"weight":400,"color":"#999999"}]}'
+        )
+    else:
+        example = (
+            '{"preset":"image_brief",'
+            '"title":"무대와 객석이 한눈에 보이는 행사장 조감 연출컷",'
+            '"eyebrow":"Ⅲ. 공간 조성  ·  3D 공간조성",'
+            '"frame_label":"메인 무대·객석 부감 조감",'
+            '"scene":"메인 무대·객석·체험부스가 한 공간에 놓인 전경",'
+            '"view":"무대 정면 축의 높은 부감, 주간·야간 동일 시점 2컷",'
+            '"staging":"관람 동선과 VIP 동선의 분리 지점, 피날레 조명 순간",'
+            '"keywords":["부감 조감","주간·야간 2컷","동선 분리"],'
+            '"shapes":[{"type":"image","x":0.9,"y":1.95,"w":9.89,"h":3.95,"hint":"3D 연출컷"},'
+            '{"type":"text","x":0.9,"y":6.1,"w":9.89,"h":0.4,"text":"디자이너 작업 영역",'
+            '"size":12,"weight":400,"color":"#999999"}]}'
+        )
+    return (
+        f"[배정된 레이아웃 패턴] image_brief ({kind} 디자이너 지시서 — {frame_desc})\n"
+        "★ 용도: NightOff 는 이미지를 만들지 않는다. 이 페이지는 디자이너가 바로 작업할 수 있게\n"
+        "  \"이 자리에 어떤 이미지가 들어가야 하는지\"를 적는 지시서다. 프레임·좌표는 코드가 그린다.\n"
+        "\n"
+        "[근거 페이지 — 장면 설명은 반드시 여기와 이 페이지 핵심 메시지에서 나와야 한다]\n"
+        f"{anchor}\n"
+        "\n"
+        "★★ 작성 원칙 — 이 프리셋 한정 (Spec Preset-ImageBrief):\n"
+        "  · 지시 문장은 개조식 명사형 종결 (\"~전경\", \"~2컷\", \"~순간 강조\"). 각 50자 이내.\n"
+        "  · frame_label 은 프레임 안에 들어갈 컷 이름 (24자 이내).\n"
+        f"  · keywords 3개 (각 10자 이내) — {kw_desc}.\n"
+        f"  · panels = {panel_desc}. [{{\"label\": 12자 이내, \"text\": 40자 이내}}] 2~4개.\n"
+        f"{panel_hint}"
+        "  · ★ Concreteness-Boost 지시(100~150자)는 이 페이지에 적용하지 말 것 (지시서는 짧게).\n"
+        "\n"
+        "★★ 팩트게이트 3단 — 이 프리셋에서 가장 중요:\n"
+        "  ① 허용 (연출 지시 — 환각 아님): 시점·구도(부감/정면/아이레벨) · 시간대(주간/야간) ·\n"
+        "     분위기·색감 방향 · 일반 연출 요소(조명·LED·사인물·조형물·포토존).\n"
+        "  ② 조건부 (그대로 옮길 때만): 장소명 · 인원 · 면적 · 치수 · 수량 —\n"
+        "     [정량 lock] · 이 페이지 핵심 메시지 · [근거 페이지] 에 있는 값만.\n"
+        "  ③ 금지: 업체·작가·출연자 실명 · 로고·CI 형태 단정 · 근거 없는 객석 수·LED 크기·㎡.\n"
+        "  ★ 없는 값은 지어내지 말고 \"규모 확정 시 반영\" · \"현장 실측 후 확정\" 으로 표기.\n"
+        "\n"
+        "★ slide JSON 출력에 반드시 다음 키 포함:\n"
+        '  · "preset": "image_brief"  (필수, identity)\n'
+        '  · "title": 페이지 거버닝 (필수, 25~40자 명사형 — [메인 거버닝] 그대로 권장)\n'
+        '  · "eyebrow": 좌상단 breadcrumb (선택, 50자 이내)\n'
+        '  · "lead": 한 줄 요약 (선택, 60자 이내 — 제목이 한 줄일 때만 표시)\n'
+        '  · "frame_label": 프레임 안 컷 이름 (24자 이내)\n'
+        f"{keys}"
+        '  · "keywords": ["...","...","..."]  (3개)\n'
+        '  · "panels": [{"label":"...","text":"..."}]  (선택, 2~4개 — 있으면 격자형)\n'
+        "             ★ 지시 3항목 중 2개 미만이고 panels 도 2개 미만이면 preset 무효 → 자율 shapes 회귀.\n"
+        "  · ref · kind 는 코드가 채운다 — 쓰지 말 것.\n"
+        "  ★★ 백업 shapes = 지금의 자리 표시 패턴 (image 1개 + 짧은 text 1~2개) ★★\n"
+        "    preset 이 성립하면 코드가 프레임·지시서를 그리고 백업은 쓰이지 않는다.\n"
+        "\n"
+        "★ 완성 예시 (형식만 참고 — 내용은 반드시 위 근거 페이지에서):\n"
+        f"{example}"
+    )
+
+
+def _image_brief_unbacked_numbers(texts, evidence: str) -> list:
+    """Spec Preset-ImageBrief — 근거(evidence)에 없는 수치+단위 표현 목록 (로그 전용)."""
+    out = []
+    for t in texts:
+        for m in _IMAGE_BRIEF_NUM_RE.finditer(str(t or "")):
+            if m.group(1) not in evidence:
+                out.append(m.group(0))
+    return out
 
 
 def _build_slide_user_prompt(
@@ -6237,6 +6421,10 @@ def _build_slide_user_prompt(
                 '"shapes":[{"type":"text","x":0.5,"y":7.9,"w":10,"h":0.3,'
                 '"text":"개막식 운영 계획","size":11,"weight":400,"color":"#666"}]}'
             )
+        elif item.viz_pattern == "image_brief":
+            # ★★ Spec Preset-ImageBrief — 이미지 자리 디자이너 지시서.
+            #   HTML 트랙은 generate_one_slide 입구에서 원래 viz 로 되돌리므로 여기 오지 않는다.
+            parts.append(_image_brief_slide_block(item))
         else:
             # ★ Spec Dead-Preset-Keys ⑧ — 이 else 는 cards3 / before_after 두 키만
             #   도달하는 폴백이다(나머지 26종 + text_* 2종은 전용 elif 보유). 플래그 ON 이면
@@ -6484,6 +6672,10 @@ async def generate_one_slide(
     strategy: dict | None = None,  # Spec Strategy-Step3 — 확정 대전략 (align 페이지 SLIDE 프롬프트에만 주입)
     research: dict | None = None,  # Spec Research-Inject — 확정 근거 자료 (align 페이지 SLIDE 프롬프트에만 주입)
 ) -> SlideResult:
+    # ★ Spec Preset-ImageBrief — HTML 트랙 무접촉: 라우팅 전 viz 로 되돌려 OFF 와 같은 입력.
+    if output_mode == "html" and item.viz_pattern == "image_brief":
+        import dataclasses as _dc
+        item = _dc.replace(item, viz_pattern=item.brief_orig_viz)
     # Spec D-Build-Path1Connect — HTML 모드는 LLM 호출 전 path1 조립 경로 우선 시도.
     # 성공 시: LLM 호출 0회 + 즉시 return (비용 절감 + 좌표 정밀, LLM 이 디자인 안 만짐)
     # 실패 시 (NONE / build 빈 결과 / 예외): output_mode='shapes' 강제 → 기존 도형 모드 경로 자동 진입
@@ -6720,6 +6912,26 @@ async def generate_one_slide(
             # declaration/grounds/quote/... 등)를 meta 에 통째 보존.
             # 통합 빌더·partial-regen 이 payload["slides"][i] 로 펼쳐 박아 preset 분기 정상 호출.
             # 6종 viz_pattern 페이지는 LLM 이 preset 키를 안 채우므로 meta 비어 영향 0.
+            # ★ Spec Preset-ImageBrief — ref·kind 는 코드가 덮어쓴다 (LLM 참조 표기 지어내기 차단)
+            #   + 근거 없는 수치는 로그만 (값 무변경 — 자동 삭제는 오탐 위험).
+            if (IMAGE_BRIEF_ENABLED and item.viz_pattern == "image_brief"
+                    and parsed.get("preset") == "image_brief"):
+                parsed["kind"] = item.brief_kind or "3D"
+                if item.brief_ref:
+                    parsed["ref"] = item.brief_ref
+                else:
+                    parsed.pop("ref", None)
+                _ib_texts = [parsed.get(k) for k in ("title", "lead", "frame_label", "scene", "view",
+                                                     "staging", "concept", "motif", "tone")]
+                _ib_texts += list(parsed.get("keywords") or [])
+                _ib_texts += [p.get("text") for p in (parsed.get("panels") or []) if isinstance(p, dict)]
+                _ib_evidence = " ".join([
+                    json.dumps(quantitative_locks or {}, ensure_ascii=False),
+                    item.governing_main, " ".join(item.key_msgs), item.viz_hint, item.brief_anchor,
+                ])
+                _ib_unbacked = _image_brief_unbacked_numbers(_ib_texts, _ib_evidence)
+                if _ib_unbacked:
+                    log.warning("Image-Brief 수치 근거 미확인 p%d: %s", item.page, " | ".join(_ib_unbacked))
             _meta = {k: v for k, v in parsed.items() if k not in ("shapes", "section")}
             return SlideResult(
                 page=item.page,

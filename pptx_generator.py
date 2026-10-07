@@ -6465,6 +6465,24 @@ _IB_TITLE_EM_PER_LINE = 27.1             # 26pt · w9.89 한 줄 용량 (한글 
 _IB_FIELDS = {"3D": (("scene", "장면"), ("view", "시점"), ("staging", "연출")),
               "2D": (("concept", "콘셉트"), ("motif", "모티프"), ("tone", "컬러·톤"))}
 _IB_LABEL_RE = re.compile(r"^\s*\[\s*(2D|3D)\s*(키비주얼|공간조성)")
+# v2 — 형 결정 (proposal_multi_pass._IMAGE_BRIEF_MULTI_RE 와 같은 정규식).
+#   접미어 있음 → G (panels 2개 이상일 때) / 없음 → kind 로 W·P, panels 무시.
+_IB_MULTI_RE = re.compile(r"존별|구역별|권역|Zone|ZONE|클로즈업|확장|응용|적용")
+# G 형 격자 아래 지시 줄 — 3D 시점·연출 / 2D 모티프·컬러·톤.
+_IB_G_LINE = {"3D": (("view", "시점"), ("staging", "연출")),
+              "2D": (("motif", "모티프"), ("tone", "컬러·톤"))}
+
+
+def _ib_clean(v):
+    """v2 — 예시의 형식 자리 표시(〈 〉)가 남은 값은 빈칸으로."""
+    s = str(v or "").strip()
+    return "" if "〈" in s or "〉" in s else s
+
+
+def _ib_cut(text, n):
+    """상한을 넘으면 말줄임표로 자른다 (v1 은 단어 중간에서 끊겼다)."""
+    text = str(text or "")
+    return text if len(text) <= n else text[: n - 1].rstrip() + "…"
 
 
 def _ib_em(text):
@@ -6514,36 +6532,41 @@ def _build_preset_image_brief(slide_data: dict) -> list:
       "ref"         : str (코드가 채움 — 근거 페이지 참조 줄)
     반환 = shape dict 리스트. title 없음 / (지시 2개 미만 AND panels 2개 미만) → [] → 자율 폴백.
     """
-    title = str(slide_data.get("title", "") or "").strip()[:_IB_CUT["title"]]
+    title = _ib_clean(slide_data.get("title"))[:_IB_CUT["title"]]
     if not title:
         return []
+    section = str(slide_data.get("section", "") or "")
     kind = str(slide_data.get("kind", "") or "").strip().upper()
     if kind not in ("2D", "3D"):
-        m = _IB_LABEL_RE.search(str(slide_data.get("section", "") or ""))
+        m = _IB_LABEL_RE.search(section)
         kind = m.group(1) if m else "3D"
-    lead = str(slide_data.get("lead", "") or "").strip()[:_IB_CUT["lead"]]
-    frame = (str(slide_data.get("frame_label", "") or "").strip()[:_IB_CUT["frame"]]
+    # v2 — 형은 섹션 접미어로 코드가 결정. 접미어 없으면 panels 는 무시한다.
+    multi = bool(_IB_MULTI_RE.search(section))
+    lead = _ib_clean(slide_data.get("lead"))[:_IB_CUT["lead"]]
+    frame = (_ib_clean(slide_data.get("frame_label"))[:_IB_CUT["frame"]]
              or ("3D 연출컷 자리" if kind == "3D" else "키비주얼 시안 자리"))
     kw_raw = slide_data.get("keywords") or []
-    keywords = ([str(k).strip()[:_IB_CUT["kw"]] for k in kw_raw if str(k or "").strip()][:3]
+    keywords = ([_ib_clean(k)[:_IB_CUT["kw"]] for k in kw_raw if _ib_clean(k)][:3]
                 if isinstance(kw_raw, list) else [])
     ref = str(slide_data.get("ref", "") or "").strip()
     brief = []
     for key, label in _IB_FIELDS[kind]:
-        txt = str(slide_data.get(key, "") or "").strip()[:_IB_CUT["brief"]]
+        txt = _ib_cut(_ib_clean(slide_data.get(key)), _IB_CUT["brief"])
         if txt:
             brief.append((label, txt))
     panels = []
     p_raw = slide_data.get("panels") or []
-    if isinstance(p_raw, list):
+    if multi and isinstance(p_raw, list):
         for p in p_raw:
             if not isinstance(p, dict):
                 continue
-            lab = str(p.get("label", "") or "").strip()[:_IB_CUT["plabel"]]
+            lab = _ib_clean(p.get("label"))[:_IB_CUT["plabel"]]
             if lab:
-                panels.append((lab, str(p.get("text", "") or "").strip()[:_IB_CUT["ptext"]]))
+                panels.append((lab, _ib_cut(_ib_clean(p.get("text")), _IB_CUT["ptext"])))
     panels = panels[:4]
-    if len(panels) < 2 and len(brief) < 2:
+    if len(panels) < 2:
+        panels = []                    # 접미어 있는데 panels 2개 미만 → W/P 폴백
+    if not panels and len(brief) < 2:
         return []
 
     # 제목 상자 높이 — lead 를 쓰면 한 줄(0.5), 아니면 두 줄까지(0.95 → 하단 1.90 < 본문 1.95).
@@ -6589,6 +6612,22 @@ def _build_preset_image_brief(slide_data: dict) -> list:
                                "h": round(ch - 0.06, 3), "text": txt, "size": 11, "weight": 400,
                                "color": "#444444", "align": "left", "valign": "top"})
         cy = round(_IB_TOP + rows * (fh + ch + 0.1) + 0.05, 3)
+        # v2 — 격자 아래 지시 줄 2단 (v1 은 G 형에서 지시 항목이 화면에서 사라졌다).
+        line = [(lab, _ib_cut(_ib_clean(slide_data.get(key)), _IB_CUT["brief"]))
+                for key, lab in _IB_G_LINE[kind]]
+        line = [(lab, txt) for lab, txt in line if txt]
+        if line:
+            ly = round(cy - 0.02, 3)
+            colw = round((_IB_W - 0.15) / 2, 3)
+            for i, (lab, txt) in enumerate(line):
+                lx = round(_IB_X + i * (colw + 0.15), 3)
+                shapes.append({"type": "text", "x": lx, "y": ly, "w": 0.75, "h": 0.42,
+                               "text": lab, "size": 11, "weight": 600, "color": "#1A1A1A",
+                               "align": "left", "valign": "top"})
+                shapes.append({"type": "text", "x": round(lx + 0.75, 3), "y": ly,
+                               "w": round(colw - 0.75, 3), "h": 0.42, "text": txt, "size": 11,
+                               "weight": 400, "color": "#444444", "align": "left", "valign": "top"})
+            cy = round(ly + 0.49, 3)
         chips, x_end = _ib_chips(keywords, _IB_X, cy, _IB_RIGHT - 1.7)
         shapes += chips
         ref_right(x_end, cy)

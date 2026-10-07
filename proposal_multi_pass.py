@@ -201,7 +201,7 @@ _PROGRAM_OVERVIEW_MAX_PER_DECK = 6
 # ★ 위치 = generate_outline 회전 블록 뒤 · OutlineItem 생성 직전. 회전·표 cap 카운터는
 #   원래 viz 로 이미 돌았으므로 라벨 외 페이지 배정은 OFF 와 완전히 같다.
 # False = 기존과 100% 동일 (라우팅 · 매핑 · SLIDE 블록 · 파싱 후 처리 전부 미진입).
-IMAGE_BRIEF_ENABLED = False
+IMAGE_BRIEF_ENABLED = True
 
 # 섹션 라벨 — "[2D 키비주얼 시안 자리]" / "[3D 공간조성 연출컷 자리] (존별)" 등.
 _IMAGE_BRIEF_LABEL_RE = re.compile(r"^\s*\[\s*(2D|3D)\s*(키비주얼|공간조성)")

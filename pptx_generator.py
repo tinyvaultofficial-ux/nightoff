@@ -6444,6 +6444,200 @@ def _build_preset_vertical_stack_bands(slide_data: dict) -> list:
     return shapes
 
 
+# ─── Spec Preset-ImageBrief — 이미지 자리 디자이너 지시서 프리셋 ─────────────────
+# OUTLINE 필수 페이지 [2D 키비주얼 시안 자리] · [3D 공간조성 연출컷 자리] 전용.
+#   배정은 proposal_multi_pass 가 섹션 라벨로 확정하고, kind(2D/3D)·ref 도 코드가 채운다.
+# 형 3종 (설계 승인 좌표):
+#   W  3D 와이드 — 프레임 w9.89 × h3.95(조감 비율) + 아래 칩·참조 + 지시서 3단
+#   P  2D 세로 포스터 — 왼쪽 프레임 w3.95 × h5.6(1:1.42) + 오른쪽 칩·참조·지시서 3항목
+#   G  격자 — panels 2~4 (4=2×2 · 3=1×3 · 2=1×2), 프레임 좌상단 이름 태그 + 아래 설명
+# ★ 거버닝은 정돈 4단계 기준값(x0.9 · y0.95 · w9.89 · 26pt · top)으로 처음부터 그린다.
+# ★ running header 는 dispatch 가 eyebrow 로 자동 삽입 — 여기서 그리지 않는다.
+# ★ 굵게 규칙 무변화가 되도록 굵기를 고른다: 라벨은 코드 고정 4자 이하 600(본문과 크기 같음),
+#   칩 500, 태그는 검정 면 위 700(규칙이 건너뜀).
+# ★ 프레임은 기존 image 도형(_add_image_placeholder) 그대로 — 렌더 함수 무수정.
+_IB_X, _IB_W = 0.9, 9.89
+_IB_TOP = 1.95
+_IB_RIGHT = _IB_X + _IB_W
+_IB_CUT = {"title": 40, "lead": 60, "frame": 24, "brief": 50, "kw": 10,
+           "plabel": 12, "ptext": 40}
+_IB_TITLE_EM_PER_LINE = 27.1             # 26pt · w9.89 한 줄 용량 (한글 1 · ASCII 0.5)
+_IB_FIELDS = {"3D": (("scene", "장면"), ("view", "시점"), ("staging", "연출")),
+              "2D": (("concept", "콘셉트"), ("motif", "모티프"), ("tone", "컬러·톤"))}
+_IB_LABEL_RE = re.compile(r"^\s*\[\s*(2D|3D)\s*(키비주얼|공간조성)")
+
+
+def _ib_em(text):
+    return sum(0.5 if ord(c) < 128 else 1.0 for c in str(text))
+
+
+def _ib_fit(text, width, size):
+    """width(인치)·size(pt) 한 줄에 들어가게 자른다 (넘치면 말줄임)."""
+    cap = (width - 0.1) * 72.0 / size
+    text = str(text)
+    if _ib_em(text) <= cap:
+        return text
+    out = ""
+    for ch in text:
+        if _ib_em(out + ch) > cap - 1:
+            break
+        out += ch
+    return out.rstrip() + "…"
+
+
+def _ib_chips(words, x, y, max_right):
+    """키워드 칩 — 테두리 rounded rect + 10pt 500. max_right 를 넘는 칩은 뺀다."""
+    out = []
+    for w in words:
+        cw = round(0.36 + 0.15 * _ib_em(w), 2)
+        if x + cw > max_right:
+            break
+        out.append({"type": "rect", "x": x, "y": y, "w": cw, "h": 0.32, "fill": "#FFFFFF",
+                    "stroke": "#1A1A1A", "stroke_width": 0.75, "radius": 0.15})
+        out.append({"type": "text", "x": x, "y": y, "w": cw, "h": 0.32, "text": w, "size": 10,
+                    "weight": 500, "color": "#1A1A1A", "align": "center", "valign": "middle"})
+        x = round(x + cw + 0.12, 2)
+    return out, x
+
+
+def _build_preset_image_brief(slide_data: dict) -> list:
+    """Spec Preset-ImageBrief — 이미지 자리 디자이너 지시서 프리셋.
+
+    slide_data 스키마:
+      "title"       : str (필수, 25~40자 명사형 거버닝)
+      "lead"        : str (선택, 60자 — 제목이 한 줄일 때만 표시)
+      "frame_label" : str (선택, 24자 — 프레임 안 컷 이름)
+      "kind"        : "2D" | "3D" (코드가 채움 — 없으면 section 라벨로 판정, 기본 3D)
+      3D 지시: "scene" · "view" · "staging" / 2D 지시: "concept" · "motif" · "tone" (각 50자)
+      "keywords"    : [str] (최대 3개, 각 10자)
+      "panels"      : [{"label": 12자, "text": 40자}] (선택, 2~4개 → 격자형)
+      "ref"         : str (코드가 채움 — 근거 페이지 참조 줄)
+    반환 = shape dict 리스트. title 없음 / (지시 2개 미만 AND panels 2개 미만) → [] → 자율 폴백.
+    """
+    title = str(slide_data.get("title", "") or "").strip()[:_IB_CUT["title"]]
+    if not title:
+        return []
+    kind = str(slide_data.get("kind", "") or "").strip().upper()
+    if kind not in ("2D", "3D"):
+        m = _IB_LABEL_RE.search(str(slide_data.get("section", "") or ""))
+        kind = m.group(1) if m else "3D"
+    lead = str(slide_data.get("lead", "") or "").strip()[:_IB_CUT["lead"]]
+    frame = (str(slide_data.get("frame_label", "") or "").strip()[:_IB_CUT["frame"]]
+             or ("3D 연출컷 자리" if kind == "3D" else "키비주얼 시안 자리"))
+    kw_raw = slide_data.get("keywords") or []
+    keywords = ([str(k).strip()[:_IB_CUT["kw"]] for k in kw_raw if str(k or "").strip()][:3]
+                if isinstance(kw_raw, list) else [])
+    ref = str(slide_data.get("ref", "") or "").strip()
+    brief = []
+    for key, label in _IB_FIELDS[kind]:
+        txt = str(slide_data.get(key, "") or "").strip()[:_IB_CUT["brief"]]
+        if txt:
+            brief.append((label, txt))
+    panels = []
+    p_raw = slide_data.get("panels") or []
+    if isinstance(p_raw, list):
+        for p in p_raw:
+            if not isinstance(p, dict):
+                continue
+            lab = str(p.get("label", "") or "").strip()[:_IB_CUT["plabel"]]
+            if lab:
+                panels.append((lab, str(p.get("text", "") or "").strip()[:_IB_CUT["ptext"]]))
+    panels = panels[:4]
+    if len(panels) < 2 and len(brief) < 2:
+        return []
+
+    # 제목 상자 높이 — lead 를 쓰면 한 줄(0.5), 아니면 두 줄까지(0.95 → 하단 1.90 < 본문 1.95).
+    show_lead = bool(lead) and _ib_em(title) <= _IB_TITLE_EM_PER_LINE
+    shapes = [{"type": "text", "x": _IB_X, "y": 0.95, "w": _IB_W, "h": 0.5 if show_lead else 0.95,
+               "text": title, "size": 26, "weight": 800, "color": "#1A1A1A",
+               "align": "left", "valign": "top", "role": "governing"}]
+    if show_lead:
+        shapes.append({"type": "text", "x": _IB_X, "y": 1.48, "w": _IB_W, "h": 0.32,
+                       "text": lead, "size": 13, "weight": 400, "color": "#666666",
+                       "align": "left", "valign": "top"})
+
+    def ref_right(x_from, y):
+        """칩 오른쪽 남는 폭에 오른쪽 정렬 참조 줄."""
+        if not ref:
+            return
+        w = round(_IB_RIGHT - x_from - 0.2, 2)
+        if w < 1.5:
+            return
+        shapes.append({"type": "text", "x": round(_IB_RIGHT - w, 2), "y": y, "w": w, "h": 0.32,
+                       "text": _ib_fit("참조 · " + ref, w, 10), "size": 10, "weight": 400,
+                       "color": "#999999", "align": "right", "valign": "middle"})
+
+    # ── G: 격자 (panels 2~4)
+    if len(panels) >= 2:
+        n = len(panels)
+        cols, rows = (2, 2) if n == 4 else (n, 1)
+        gap = 0.15
+        cw = round((_IB_W - gap * (cols - 1)) / cols, 3)
+        fh, ch = (1.75, 0.55) if rows == 2 else (3.6, 0.7)
+        for i, (lab, txt) in enumerate(panels):
+            cx = round(_IB_X + (i % cols) * (cw + gap), 3)
+            fy = round(_IB_TOP + (i // cols) * (fh + ch + 0.1), 3)
+            shapes.append({"type": "image", "x": cx, "y": fy, "w": cw, "h": fh, "hint": lab})
+            tw = round(min(cw - 0.24, 0.3 + 0.14 * _ib_em(lab)), 2)
+            shapes.append({"type": "rect", "x": cx + 0.12, "y": fy + 0.12, "w": tw, "h": 0.3,
+                           "fill": "#1A1A1A"})
+            shapes.append({"type": "text", "x": cx + 0.12, "y": fy + 0.12, "w": tw, "h": 0.3,
+                           "text": lab, "size": 10, "weight": 700, "color": "#FFFFFF",
+                           "align": "center", "valign": "middle"})
+            if txt:
+                shapes.append({"type": "text", "x": cx, "y": round(fy + fh + 0.06, 3), "w": cw,
+                               "h": round(ch - 0.06, 3), "text": txt, "size": 11, "weight": 400,
+                               "color": "#444444", "align": "left", "valign": "top"})
+        cy = round(_IB_TOP + rows * (fh + ch + 0.1) + 0.05, 3)
+        chips, x_end = _ib_chips(keywords, _IB_X, cy, _IB_RIGHT - 1.7)
+        shapes += chips
+        ref_right(x_end, cy)
+        return shapes
+
+    # ── W: 3D 와이드 프레임 + 하단 지시서 3단
+    if kind == "3D":
+        shapes.append({"type": "image", "x": _IB_X, "y": _IB_TOP, "w": _IB_W, "h": 3.95,
+                       "hint": frame})
+        chips, x_end = _ib_chips(keywords, _IB_X, 6.05, _IB_RIGHT - 1.7)
+        shapes += chips
+        ref_right(x_end, 6.05)
+        colw = round((_IB_W - 0.5) / 3, 3)
+        for i, (label, txt) in enumerate(brief):
+            cx = round(_IB_X + i * (colw + 0.25), 3)
+            shapes.append({"type": "line", "x1": cx, "y1": 6.52, "x2": round(cx + colw, 3),
+                           "y2": 6.52, "color": "#1A1A1A", "width": 1})
+            shapes.append({"type": "text", "x": cx, "y": 6.58, "w": colw, "h": 0.26,
+                           "text": label, "size": 11, "weight": 600, "color": "#1A1A1A",
+                           "align": "left", "valign": "top"})
+            shapes.append({"type": "text", "x": cx, "y": 6.88, "w": colw, "h": 0.74,
+                           "text": txt, "size": 11, "weight": 400, "color": "#444444",
+                           "align": "left", "valign": "top"})
+        return shapes
+
+    # ── P: 2D 세로 포스터 프레임 + 오른쪽 지시서
+    shapes.append({"type": "image", "x": _IB_X, "y": _IB_TOP, "w": 3.95, "h": 5.6,
+                   "hint": frame})
+    px, pw = 5.25, 5.54
+    chips, _x = _ib_chips(keywords, px, _IB_TOP, _IB_RIGHT)
+    shapes += chips
+    if ref:
+        shapes.append({"type": "text", "x": px, "y": 2.38, "w": pw, "h": 0.3,
+                       "text": _ib_fit("참조 · " + ref, pw, 10), "size": 10, "weight": 400,
+                       "color": "#999999", "align": "left", "valign": "middle"})
+    y = 2.95
+    for label, txt in brief:
+        shapes.append({"type": "line", "x1": px, "y1": y, "x2": round(px + pw, 3), "y2": y,
+                       "color": "#1A1A1A", "width": 1})
+        shapes.append({"type": "text", "x": px, "y": round(y + 0.08, 3), "w": pw, "h": 0.3,
+                       "text": label, "size": 12, "weight": 600, "color": "#1A1A1A",
+                       "align": "left", "valign": "top"})
+        shapes.append({"type": "text", "x": px, "y": round(y + 0.45, 3), "w": pw, "h": 0.9,
+                       "text": txt, "size": 12, "weight": 400, "color": "#444444",
+                       "align": "left", "valign": "top"})
+        y = round(y + 1.5, 3)
+    return shapes
+
+
 # ─── Spec Tidy-Bold — 굵게 규칙 (dispatch 층 공통) ────────────────────────────
 # 진단(실제 payload 8덱 450p): 텍스트 도형의 45% 가 굵게(weight≥600). 우수작 2.6%.
 #   원인 = 카드 head · 번호 라벨 · 12pt 이하 라벨까지 weight 700/800 을 기본값으로 박음.
@@ -7153,6 +7347,20 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
             #   내므로 이 elif 는 미진입. dispatch 는 add-only 로 항상 존재.
             try:
                 preset_shapes = _build_preset_vertical_stack_bands(slide_data)
+                if preset_shapes:
+                    shapes = preset_shapes
+                else:
+                    shapes = slide_data.get("shapes", [])
+            except Exception:
+                shapes = slide_data.get("shapes", [])
+        elif preset_name == "image_brief":
+            # Spec Preset-ImageBrief — 이미지 자리 디자이너 지시서 (W·P·G).
+            # 미달(title 없음 / 지시 2개 미만 AND panels 2개 미만) 시 자율 shapes fallback
+            # (백업 shapes = 기존 자리 표시 패턴 image 1 + 캡션).
+            # ★ 플래그 게이트는 proposal_multi_pass.py 의 섹션 라벨 라우팅에 존재 —
+            #   플래그 False 면 preset:"image_brief" 가 나오지 않아 이 elif 는 미진입.
+            try:
+                preset_shapes = _build_preset_image_brief(slide_data)
                 if preset_shapes:
                     shapes = preset_shapes
                 else:

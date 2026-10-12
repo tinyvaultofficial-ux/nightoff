@@ -6978,7 +6978,7 @@ def _tidy_governing_slide(shapes, slide_data, preset_key):
 #   캡션 자리 3곳이 모두 막히면 그 페이지는 원본 그대로 (색만 입힌 대체 없음).
 # ★ 표지(첫 장) · 챕터 간지 · 다크 테마는 진입하지 않는다.
 # False = 기존과 100% 동일 (판정 · 다운로드 · 변환 · 투명도 적용 전부 미실행).
-PHOTO_OVERLAY_RENDER_ENABLED = False
+PHOTO_OVERLAY_RENDER_ENABLED = True
 
 PHOTO_OVERLAY_ALPHA = 80              # 검정 불투명도 % (user 확정 — 실측 80/85 비교 후 80)
 _PO_FETCH_TIMEOUT = 5                 # 초

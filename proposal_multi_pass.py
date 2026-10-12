@@ -253,7 +253,7 @@ _IMAGE_BRIEF_NUM_RE = re.compile(r"(\d[\d,\.]*)\s*(명|석|m|㎡|평|인치|inch
 # ★ 검색어: 배경 = lock 장소(코드) / 슬로건 = SLIDE 의 photo_subject(근거에 있는 말만).
 # ★ 키: 환경변수 KTO_SERVICE_KEY 만. 없으면 판정·프롬프트·호출 전부 미진입.
 # False = 기존과 100% 동일 (판정 · user 프롬프트 · 검색 · 파싱 후 처리 전부 미실행).
-PHOTO_OVERLAY_ENABLED = False
+PHOTO_OVERLAY_ENABLED = True
 
 _PO_BG_RE = re.compile(r"(사업|과업|행사|발주처\s*방향성)\s*(에\s*대한\s*)?(의\s*)?이해"
                        r"|추진\s*배경|제안\s*배경|사업\s*배경|행사\s*분석")

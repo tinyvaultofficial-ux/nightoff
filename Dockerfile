@@ -76,8 +76,11 @@ COPY . /app
 #   이전 (shell 형식 CMD ...): Railway 가 ${PORT:-8000} 치환 안 함 →
 #     "Invalid value for '--port': '${PORT:-8000}' is not a valid integer" 에러.
 #   현재 (exec 형식 + sh -c): /bin/sh 가 명시적으로 shell 처리 → ${PORT} 치환 보장.
-# Railway 시작 명령 = 이 CMD (railway.toml 삭제 — Config as Code 2026-12-01 종료 대응).
-#   대시보드 Custom Start Command 는 비워 둘 것 — 채우면 이 CMD 보다 우선한다.
-# 헬스체크 경로 /healthz · 대기 300초 · 재시작 정책은 Railway 대시보드에서 관리.
+# Railway 실제 시작 명령 = 대시보드 Settings → Deploy → Custom Start Command
+#   /bin/sh -c '/opt/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}'
+#   이 값이 아래 CMD 보다 우선한다 (railway.toml 은 Config as Code 2026-12-01 종료로 삭제).
+# ⚠ 대시보드 시작 명령을 sh -c 없이 바꾸면 셸 없이(exec) 실행돼 ${PORT} 가 치환되지 않고
+#   "Invalid value for '--port'" 로 기동 실패 (2026-10-12 실측 — 4월에 저장된 옛 값이 원인).
+# 헬스체크 경로 /healthz · 대기 300초 · 재시작 On Failure 3회도 대시보드에서 관리.
 EXPOSE 8000
 CMD ["/bin/sh", "-c", "/opt/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]

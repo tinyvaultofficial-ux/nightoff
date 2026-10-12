@@ -242,6 +242,49 @@ _IB_STOP = frozenset({
 _IMAGE_BRIEF_NUM_RE = re.compile(r"(\d[\d,\.]*)\s*(명|석|m|㎡|평|인치|inch|개|대|kW|톤|미터|cm|mm|x\d)")
 
 
+# ─── Spec Photo-Overlay — 관광사진 API 로 사진 오버레이 페이지 (검색 단계 on/off) ────
+# 진단(우수작 7덱 550장): 42% 가 전면 사진 + 검정 반투명. NightOff 는 0.
+# 방식: 기존 페이지 위에 덧입힌다(렌더는 pptx_generator). 여기서는 대상 판정 ·
+#   검색어 · 사진 후보 선정까지만 하고 slide["photo"] 에 후보 최대 5장을 싣는다.
+# ★ 확신이 없으면 사진 없이 기존 페이지 그대로 — 색만 입힌 대체·추상 배경 없음.
+# ★ 대상: 컨셉 슬로건(덱당 1) + 과업 이해·배경(앞 15쪽 · role=body · 덱당 2 ·
+#   배경이 처음 나오는 장 안 = 보통 Ⅰ장). 표지(1쪽)·목차·간지는 판정 단계에서 제외.
+#   저장 25덱 실측 54장 → 렌더 가능 47장.
+# ★ 검색어: 배경 = lock 장소(코드) / 슬로건 = SLIDE 의 photo_subject(근거에 있는 말만).
+# ★ 키: 환경변수 KTO_SERVICE_KEY 만. 없으면 판정·프롬프트·호출 전부 미진입.
+# False = 기존과 100% 동일 (판정 · user 프롬프트 · 검색 · 파싱 후 처리 전부 미실행).
+PHOTO_OVERLAY_ENABLED = False
+
+_PO_BG_RE = re.compile(r"(사업|과업|행사|발주처\s*방향성)\s*(에\s*대한\s*)?(의\s*)?이해"
+                       r"|추진\s*배경|제안\s*배경|사업\s*배경|행사\s*분석")
+_PO_SL_RE = re.compile(r"(컨셉|콘셉트)\s*[\(\[]?\s*슬로건")
+_PO_SL_EXCL = re.compile(r"구체화|공표|퍼포먼스|연출|스토리라인|세부")
+_PO_SKIP_RE = re.compile(r"divider|간지|표지|목차", re.I)
+_PO_CHAPTER_RE = re.compile(r"^\s*\[?\s*([ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ])")
+_PO_CHAPTER_LATIN_RE = re.compile(r"^\s*\[?\s*(VIII|VII|III|II|IV|VI|IX|I|V|X)\s*[.\s]")
+_PO_FRONT_MAX = 15
+_PO_BG_MAX, _PO_SL_MAX = 2, 1
+
+_PO_URL = "https://apis.data.go.kr/B551011/PhotoGalleryService1/gallerySearchList1"
+_PO_ROWS = 100
+_PO_TIMEOUT = 5                  # 초 — 호출 1회
+_PO_CACHE_TTL = 24 * 3600        # 같은 검색어 결과 재사용
+_PO_CACHE_MAX = 256
+_PO_CAND_MAX = 5
+_PO_BG_KW_MAX = 2                # 배경 페이지 — 장소 키워드 최대 2개 시도
+
+# 선택 v3 관문 (전부 통과해야 후보)
+_PO_EVENT_PIC = re.compile(r"축제|행사|공연|퍼레이드|개막식|기념식|박람회|페스티벌")
+_PO_PEOPLE = re.compile(r"인물|사람들|관광객|어린이|가족|스님|모델|체험객|아이들")
+_PO_CONTEST = re.compile(r"공모전")
+_PO_WINTER = re.compile(r"눈|설경|겨울|크리스마스|트리|연말연시")
+_PO_VENUE_STOP = frozenset({"일원", "일대", "주차장", "앞", "내", "부근", "인근", "실내·외", "실내", "실외",
+                            "행사장", "특설무대"})
+_PO_VENUE_SUFFIX = re.compile(r"(일원|일대)$")
+_PO_ADMIN = re.compile(r"^[가-힣]+(특별시|광역시|특별자치시|특별자치도|도|시|군|구|읍|면|동|로|길)$")
+_PO_GENERIC = frozenset({"광장", "공원", "센터", "무대", "전시장", "그랜드볼룸", "컨벤션센터", "일원"})
+
+
 # ─── Spec Dead-Preset-Keys — 사문화 키(cards3 / before_after) 정리 on/off ────
 # 진단(프로덕션 120덱 5,500p 실측): 두 키는 OUTLINE 화이트리스트에는 있으나
 #   shape 트랙 빌더·dispatch·SLIDE 전용 분기가 전부 없어 배정된 만큼 100% 버려진다.
@@ -5037,6 +5080,226 @@ def _image_brief_unbacked_numbers(texts, evidence: str) -> list:
     return out
 
 
+# ─── Spec Photo-Overlay — 판정 · 검색 · 선택 헬퍼 ───
+_PO_CACHE: dict = {}
+_PO_LOCKS: dict = {}
+
+
+def _po_raw_key() -> str:
+    return (os.environ.get("KTO_SERVICE_KEY") or "").strip()
+
+
+def _po_key() -> str:
+    """공공데이터포털 키 — Decoding 키 기준. Encoding 키(% 포함)가 오면 한 번 풀어 쓴다."""
+    import urllib.parse as _up
+    k = _po_raw_key()
+    return _up.unquote(k) if "%" in k else k
+
+
+def _po_mask(s) -> str:
+    """로그·예외 문자열에서 키(원문 · Decoding · URL 인코딩 형태)를 지운다."""
+    import urllib.parse as _up
+    s = str(s)
+    for k in {_po_raw_key(), _po_key()}:
+        if k:
+            for form in (k, _up.quote(k, safe=""), _up.quote_plus(k)):
+                s = s.replace(form, "<KEY>")
+    return s
+
+
+def _po_chapter(section: str) -> str:
+    """섹션 앞 장 번호 (Ⅰ~Ⅹ · I~X). 없으면 ""."""
+    m = _PO_CHAPTER_RE.match(section or "") or _PO_CHAPTER_LATIN_RE.match(section or "")
+    return m.group(1) if m else ""
+
+
+def _photo_targets(items) -> dict:
+    """page → "sl"(컨셉 슬로건) | "bg"(과업 이해·배경). 표지(1쪽)는 절대 대상 아님.
+
+    배경은 '배경 섹션이 처음 나오는 장' 안에서만 — 보통 Ⅰ장. 업체 소개를 Ⅰ장에 둔 덱
+    (실측 25덱 중 1건: Ⅰ 업체 소개 → Ⅱ.1 사업 이해)은 그 장. 뒤쪽 장의
+    '사업에 대한 이해도'(Ⅲ.1 등)는 제외.
+    """
+    out, n_bg, n_sl, bg_ch = {}, 0, 0, None
+    for it in sorted(items, key=lambda x: x.page):
+        sec = str(it.section or "")
+        if it.page <= 1 or it.page > _PO_FRONT_MAX:
+            continue
+        if _PO_SKIP_RE.search(sec):
+            continue
+        if _PO_SL_RE.search(sec) and not _PO_SL_EXCL.search(sec):
+            if n_sl < _PO_SL_MAX:
+                out[it.page] = "sl"
+                n_sl += 1
+        elif _PO_BG_RE.search(sec) and it.role == "body":
+            ch = _po_chapter(sec)
+            if bg_ch is None:
+                bg_ch = ch
+            if ch == bg_ch and n_bg < _PO_BG_MAX:
+                out[it.page] = "bg"
+                n_bg += 1
+    return out
+
+
+def _photo_slide_block() -> str:
+    """슬로건 대상 페이지 user 프롬프트 블록 — 사진 소재 한 단어만 받는다."""
+    return (
+        "[사진 소재 — 선택]\n"
+        "이 컨셉 슬로건 페이지는 코드가 관광 사진을 배경으로 깔 수 있다.\n"
+        "슬로건과 직접 이어지는 장소·소재 한 단어를 출력 JSON 최상위 \"photo_subject\" 키로 함께 내라\n"
+        "  (예: { \"section\": ..., \"photo_subject\": \"...\", \"shapes\": [...] }).\n"
+        "  · 위 정량 lock · 거버닝 · 핵심 메시지 · outline 요약에 실제로 나온 말만 (지어내기 금지)\n"
+        "  · 사진으로 찍힐 수 있는 구체 명사 1개 (지명 · 명소 · 특산물 등), 수식어 없이\n"
+        "  · 슬로건이 추상적이거나 이어지는 소재가 없으면 \"\" (빈 값) — 사진 없이 그대로 간다\n"
+        "  · 도형(shapes)은 지금과 똑같이 만든다 — 사진 유무와 무관"
+    )
+
+
+def _po_venue_keywords(venue) -> list:
+    """lock 장소 → 고유명사 키워드 (괄호 · 행정구역 · 일반명사 제거, 순서 유지)."""
+    v = re.sub(r"\(.*?\)|（.*?）|\s—\s.*$", " ", str(venue or ""))
+    out = []
+    for part in re.split(r"[/,]", re.sub(r"[0-9]+", " ", v)):
+        for t in part.split():
+            t = _PO_VENUE_SUFFIX.sub("", t)
+            if (len(t) >= 3 and t not in _PO_VENUE_STOP and not _PO_ADMIN.match(t)
+                    and t not in _PO_GENERIC and t not in out):
+                out.append(t)
+    return out
+
+
+def _po_event_month(event_date) -> int:
+    m = re.search(r"\d{2,4}\s*\.\s*(\d{1,2})\s*\.\s*\d{1,2}|(\d{1,2})\s*월", str(event_date or ""))
+    if not m:
+        return 0
+    v = int(next(g for g in m.groups() if g))
+    return v if 1 <= v <= 12 else 0
+
+
+def _po_title_tokens(t) -> list:
+    return [x for x in re.split(r"[\s()（）\[\],·/]+", str(t or "")) if x]
+
+
+def _po_city(loc) -> str:
+    """'경상북도 영주시 부석면' → '영주' / '서울' → '서울'."""
+    toks = str(loc or "").split()
+    if not toks:
+        return ""
+    c = toks[1] if len(toks) >= 2 else toks[0]
+    return re.sub(r"(특별시|광역시|특별자치시|특별자치도|시|군|구)$", "", c)
+
+
+def _po_gate(items, kw, evidence, event_month, from_venue) -> list:
+    """선택 v3 — 6관문 전부 통과한 항목만, 최신 촬영 순."""
+    ok, seen = [], set()
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        cid = str(it.get("galContentId") or "")
+        url = str(it.get("galWebImageUrl") or "")
+        if not url.startswith("http") or cid in seen:
+            continue
+        seen.add(cid)
+        title = str(it.get("galTitle") or "")
+        sk = str(it.get("galSearchKeyword") or "")
+        # ① 제목에 검색어가 단어로 (부분 일치 차단: 사과→과학관 · 인삼→와인인삼트레인)
+        if kw not in _po_title_tokens(title):
+            continue
+        # ② 촬영지 시·군이 근거에 (장소 키워드 자체가 제목과 일치하면 통과)
+        city = _po_city(it.get("galPhotographyLocation"))
+        if not (city and city in evidence) and not (from_venue and len(kw) >= 3):
+            continue
+        # ③ 축제·행사 장면 ④ 인물 중심 ⑤ 공모전 출품작(이용 유형 미확인)
+        if _PO_EVENT_PIC.search(title + " " + sk) or _PO_PEOPLE.search(sk) or _PO_CONTEST.search(sk):
+            continue
+        # ⑥ 계절 — 겨울 사진인데 행사가 겨울이 아니면 제외
+        mon = str(it.get("galPhotographyMonth") or "")
+        pm = int(mon[4:6]) if len(mon) >= 6 and mon[4:6].isdigit() else 0
+        if event_month and event_month not in (12, 1, 2) and (pm in (12, 1, 2) or _PO_WINTER.search(sk)):
+            continue
+        ok.append(it)
+    ok.sort(key=lambda x: str(x.get("galPhotographyMonth") or ""), reverse=True)
+    return ok
+
+
+def _po_search_sync(kw: str):
+    """관광사진 검색 1회 (동기). 실패 = None. 예외·오류 메시지는 키를 지워서 로그."""
+    import ssl
+    import urllib.parse as _up
+    import urllib.request as _ur
+    q = {"serviceKey": _po_key(), "numOfRows": _PO_ROWS, "pageNo": 1, "MobileOS": "ETC",
+         "MobileApp": "NightOff", "_type": "json", "keyword": kw}
+    url = _PO_URL + "?" + _up.urlencode(q, quote_via=_up.quote)
+    try:
+        with _ur.urlopen(url, timeout=_PO_TIMEOUT, context=ssl.create_default_context()) as r:
+            body = r.read(2_000_000).decode("utf-8", errors="ignore")
+        d = json.loads(body)
+    except Exception as e:
+        log.warning("Photo-Overlay 검색 실패 '%s': %s", kw, _po_mask(f"{type(e).__name__}: {e}"))
+        return None
+    resp = d.get("response", {}) if isinstance(d, dict) else {}
+    hdr = resp.get("header", {}) or {}
+    if str(hdr.get("resultCode")) != "0000":
+        log.warning("Photo-Overlay 검색 오류 '%s': %s %s", kw,
+                    _po_mask(hdr.get("resultCode")), _po_mask(hdr.get("resultMsg")))
+        return None
+    items = (resp.get("body", {}) or {}).get("items") or {}
+    items = items.get("item", []) if isinstance(items, dict) else []
+    return [items] if isinstance(items, dict) else list(items)
+
+
+async def _po_search(kw: str):
+    """검색어 결과 — 24시간 캐시 + 같은 검색어 동시 호출 1회로 합침."""
+    hit = _PO_CACHE.get(kw)
+    if hit and time.time() - hit[0] < _PO_CACHE_TTL:
+        return hit[1]
+    lock = _PO_LOCKS.setdefault(kw, asyncio.Lock())
+    async with lock:
+        hit = _PO_CACHE.get(kw)
+        if hit and time.time() - hit[0] < _PO_CACHE_TTL:
+            return hit[1]
+        try:
+            items = await asyncio.wait_for(asyncio.to_thread(_po_search_sync, kw), timeout=_PO_TIMEOUT + 2)
+        except Exception as e:
+            log.warning("Photo-Overlay 검색 시간 초과 '%s': %s", kw, _po_mask(type(e).__name__))
+            return None
+        if items is not None:
+            if len(_PO_CACHE) >= _PO_CACHE_MAX:
+                _PO_CACHE.pop(next(iter(_PO_CACHE)))
+            _PO_CACHE[kw] = (time.time(), items)
+        return items
+
+
+async def _photo_resolve(kind, item, subject, outline_summary, locks) -> dict | None:
+    """대상 페이지의 사진 후보(최대 5장). 확신 없으면 None — 페이지는 그대로."""
+    locks = locks if isinstance(locks, dict) else {}
+    evidence = " ".join([json.dumps(locks, ensure_ascii=False), outline_summary or "",
+                         item.governing_main or "", " ".join(item.key_msgs or []), item.viz_hint or ""])
+    if kind == "sl":
+        subj = str(subject or "").strip().strip("\"'「」『』")
+        if not subj or len(subj) > 15 or " " in subj or subj not in evidence:
+            log.info("Photo-Overlay p%d 슬로건 소재 없음/근거 밖 → 사진 없음 (%s)", item.page, subj[:20])
+            return None
+        kws = [(subj, False)]
+    else:
+        kws = [(k, True) for k in _po_venue_keywords(locks.get("event_venue"))[:_PO_BG_KW_MAX]]
+    if not kws:
+        log.info("Photo-Overlay p%d 검색어 없음 → 사진 없음", item.page)
+        return None
+    month = _po_event_month(locks.get("event_date"))
+    for kw, from_venue in kws:
+        items = await _po_search(kw)
+        ok = _po_gate(items, kw, evidence, month, from_venue) if items else []
+        if ok:
+            return {"kind": kind, "kw": kw, "candidates": [{
+                "id": str(x.get("galContentId") or ""), "url": str(x.get("galWebImageUrl") or ""),
+                "title": str(x.get("galTitle") or ""), "loc": str(x.get("galPhotographyLocation") or ""),
+                "month": str(x.get("galPhotographyMonth") or ""), "by": str(x.get("galPhotographer") or ""),
+            } for x in ok[:_PO_CAND_MAX]]}
+    log.info("Photo-Overlay p%d 관문 통과 0 → 사진 없음 (%s)", item.page, ",".join(k for k, _ in kws))
+    return None
+
+
 def _build_slide_user_prompt(
     item: OutlineItem,
     outline_summary: str,
@@ -5049,6 +5312,7 @@ def _build_slide_user_prompt(
     theme: str = "light",         # Spec D-Build-TextRunsInject 1-d-② — "light"|"dark"
     strategy: dict | None = None,  # Spec Strategy-Step3 — 확정 대전략 (align 페이지에만 주입)
     research: dict | None = None,  # Spec Research-Inject — 확정 근거 자료 (align 페이지에만 주입)
+    photo_target: str = "",        # Spec Photo-Overlay — "sl" 이면 사진 소재 블록 (플래그 OFF 면 항상 "")
 ) -> str:
     # 본인 회사명 inject 제거 (한국 공공입찰 청렴제 — 회사명 본문 등장 비정상)
     parts = [
@@ -6550,6 +6814,11 @@ def _build_slide_user_prompt(
                 "위험 4종(벤다이어그램·2x2 매트릭스·수직 타임라인·다이어그램+표)으로 벗어나지 말 것. "
                 "겹침 좌표 주의."
             )
+    elif photo_target == "sl":
+        # ★ Spec Photo-Overlay — 컨셉 슬로건(viz "") 페이지에만 사진 소재 한 단어 요청.
+        #   photo_target 은 플래그 ON + 키 있음 + shapes 모드일 때만 채워진다 (OFF = 미진입).
+        parts.append("")
+        parts.append(_photo_slide_block())
     # Spec D-Build-SkeletonConnect — 골격 통째 inject (HTML 모드 + skeleton_id 배정 시만).
     # 2중 가드: output_mode == "html" AND item.skeleton_id 가 비어있지 않을 때만 진입.
     # 도형 모드 (shapes) 는 가드에 막혀 절대 미진입 → 도형 모드 user prompt 입력 변화 0.
@@ -6781,6 +7050,7 @@ async def generate_one_slide(
     theme: str = "light",         # Spec D-Build-TextRunsInject 1-d-② — "light"|"dark"
     strategy: dict | None = None,  # Spec Strategy-Step3 — 확정 대전략 (align 페이지 SLIDE 프롬프트에만 주입)
     research: dict | None = None,  # Spec Research-Inject — 확정 근거 자료 (align 페이지 SLIDE 프롬프트에만 주입)
+    photo_target: str = "",        # Spec Photo-Overlay — "sl"/"bg" (플래그 OFF·키 없음·HTML 이면 "")
 ) -> SlideResult:
     # ★ Spec Preset-ImageBrief — HTML 트랙 무접촉: 라우팅 전 viz 로 되돌려 OFF 와 같은 입력.
     if output_mode == "html" and item.viz_pattern == "image_brief":
@@ -6866,6 +7136,7 @@ async def generate_one_slide(
         theme=theme,              # Spec D-Build-TextRunsInject 1-d-② — 다크 형광 inject 분기
         strategy=strategy,        # Spec Strategy-Step3 — align 페이지에만 조건부 주입 (기본 None)
         research=research,        # Spec Research-Inject — align 페이지에만 조건부 주입 (기본 None)
+        photo_target=photo_target,  # Spec Photo-Overlay — "sl" 만 블록 추가 (OFF = "")
     )
     # Spec D-Build-HTMLOutput — output_mode 분기 (기본 'shapes' = 기존 동작 그대로).
     # 'html' 모드 = admin + 토글 'Y' 조건 충족 시에만 진입.
@@ -7047,6 +7318,19 @@ async def generate_one_slide(
                 _ib_ph = [str(t)[:30] for t in _ib_texts if t and "〈" in str(t)]
                 if _ib_ph:
                     log.warning("Image-Brief 자리 표시 잔존 p%d: %s", item.page, " | ".join(_ib_ph))
+            # ★ Spec Photo-Overlay — 대상 페이지만 사진 후보 해석. 실패·확신 없음 = 키 없음(페이지 그대로).
+            #   photo_target 은 OFF 면 "" → 미진입. 예외는 여기서 끝낸다(LLM 재시도로 번지지 않게).
+            if photo_target:
+                _po_subject = parsed.pop("photo_subject", None)
+                try:
+                    _po = await _photo_resolve(photo_target, item, _po_subject,
+                                               outline_summary, quantitative_locks)
+                except Exception as _po_err:
+                    log.warning("Photo-Overlay p%d 해석 실패: %s", item.page,
+                                _po_mask(f"{type(_po_err).__name__}: {_po_err}"))
+                    _po = None
+                if _po:
+                    parsed["photo"] = _po
             _meta = {k: v for k, v in parsed.items() if k not in ("shapes", "section")}
             return SlideResult(
                 page=item.page,
@@ -7124,6 +7408,13 @@ async def generate_slides_parallel(
     # 안 3중 게이트에서 skip → 프롬프트 변화 0.
     _research = getattr(outline, "research", None)
 
+    # ★ Spec Photo-Overlay — 덱 단위 대상 판정 (플래그 · shapes 모드 · 다크 아님 · 키 있음).
+    #   하나라도 아니면 빈 dict → 모든 페이지 photo_target="" (기존과 동일).
+    _photo_map = (_photo_targets(outline.outline)
+                  if (PHOTO_OVERLAY_ENABLED and output_mode == "shapes"
+                      and theme != "dark" and _po_key())
+                  else {})
+
     # ★ Spec Slide-Cancel-On-Disconnect (2026-09-07) — 끊김 시 남은 SLIDE 중단.
     #   실측: 클라이언트가 끊어도 8/8 장이 완주했고, 끊긴 지 6초 뒤 p6·p7·p8 이
     #   "새로" 시작했다. create_task 로 띄운 태스크는 이벤트 루프가 소유하므로
@@ -7164,6 +7455,7 @@ async def generate_slides_parallel(
                     theme=theme,    # Spec D-Build-TextRunsInject 1-d-②
                     strategy=_strategy,   # Spec Strategy-Step3 (off 시 None/{} → 주입 skip)
                     research=_research,   # Spec Research-Inject (off 시 None/{} → 주입 skip)
+                    photo_target=_photo_map.get(item.page, ""),   # Spec Photo-Overlay (OFF = "")
                 )
             except ApiCreditExhausted:
                 # ★ Spec API-Credit-Guard — 먼저 플래그를 세우고 올린다.

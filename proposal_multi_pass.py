@@ -5141,15 +5141,24 @@ def _photo_targets(items) -> dict:
     return out
 
 
-def _photo_slide_block() -> str:
-    """슬로건 대상 페이지 user 프롬프트 블록 — 사진 소재 한 단어만 받는다."""
+def _photo_slide_block(bg_places=None) -> str:
+    """슬로건 대상 페이지 user 프롬프트 블록 — 사진 소재(한두 단어)만 받는다.
+
+    v3.1 — 실측 3덱 중 2덱에서 슬로건이 배경 페이지와 같은 장소(부석사·서울식물원)를 골라
+    슬로건 내용과 덜 맞거나 후보가 바닥났다 → 슬로건 소재(특산물·테마 사물) 우선,
+    장소를 고를 땐 배경 페이지 장소(코드가 lock 장소로 고르는 곳)와 다른 곳.
+    """
+    places = [p for p in (bg_places or []) if p]
+    avoid = (f"  · 장소를 고를 때는 배경 페이지 사진 장소({' · '.join(places)})와 다른 곳\n" if places else "")
     return (
         "[사진 소재 — 선택]\n"
         "이 컨셉 슬로건 페이지는 코드가 관광 사진을 배경으로 깔 수 있다.\n"
-        "슬로건과 직접 이어지는 장소·소재 한 단어를 출력 JSON 최상위 \"photo_subject\" 키로 함께 내라\n"
+        "슬로건과 직접 이어지는 소재를 출력 JSON 최상위 \"photo_subject\" 키로 함께 내라\n"
         "  (예: { \"section\": ..., \"photo_subject\": \"...\", \"shapes\": [...] }).\n"
         "  · 위 정량 lock · 거버닝 · 핵심 메시지 · outline 요약에 실제로 나온 말만 (지어내기 금지)\n"
-        "  · 사진으로 찍힐 수 있는 구체 명사 1개 (지명 · 명소 · 특산물 등), 수식어 없이\n"
+        "  · 장소보다 슬로건이 말하는 소재(특산물 · 테마 사물)를 먼저 — 사진으로 찍힐 수 있는 구체 명사\n"
+        f"{avoid}"
+        "  · 한 단어(최대 두 단어, 예: 지역명+명소), 수식어 없이\n"
         "  · 슬로건이 추상적이거나 이어지는 소재가 없으면 \"\" (빈 값) — 사진 없이 그대로 간다\n"
         "  · 도형(shapes)은 지금과 똑같이 만든다 — 사진 유무와 무관"
     )
@@ -5180,6 +5189,20 @@ def _po_title_tokens(t) -> list:
     return [x for x in re.split(r"[\s()（）\[\],·/]+", str(t or "")) if x]
 
 
+def _po_word_match(kw, title, tags) -> bool:
+    """관문 ① (v3.1) — 제목에 검색어가 단어(연속 단어)로 있거나, 검색어 태그 하나와 정확히 같음.
+    부분 일치는 여전히 차단 ('사과'→홍성조류탐사과학관 · '인삼'→와인인삼트레인).
+    실측: 송도 센트럴파크 사진은 제목이 '송도국제도시'이고 장소명은 태그에만 있었다."""
+    kt = str(kw or "").split()
+    if not kt:
+        return False
+    tt = _po_title_tokens(title)
+    if any(tt[i:i + len(kt)] == kt for i in range(len(tt) - len(kt) + 1)):
+        return True
+    kw_n = " ".join(kt)
+    return any(" ".join(str(g).split()) == kw_n for g in str(tags or "").split(","))
+
+
 def _po_city(loc) -> str:
     """'경상북도 영주시 부석면' → '영주' / '서울' → '서울'."""
     toks = str(loc or "").split()
@@ -5202,8 +5225,8 @@ def _po_gate(items, kw, evidence, event_month, from_venue) -> list:
         seen.add(cid)
         title = str(it.get("galTitle") or "")
         sk = str(it.get("galSearchKeyword") or "")
-        # ① 제목에 검색어가 단어로 (부분 일치 차단: 사과→과학관 · 인삼→와인인삼트레인)
-        if kw not in _po_title_tokens(title):
+        # ① 제목에 검색어가 단어로 · 또는 태그와 정확히 일치 (부분 일치 차단: 사과→과학관 · 인삼→와인인삼트레인)
+        if not _po_word_match(kw, title, sk):
             continue
         # ② 촬영지 시·군이 근거에 (장소 키워드 자체가 제목과 일치하면 통과)
         city = _po_city(it.get("galPhotographyLocation"))
@@ -5276,19 +5299,26 @@ async def _photo_resolve(kind, item, subject, outline_summary, locks) -> dict | 
     evidence = " ".join([json.dumps(locks, ensure_ascii=False), outline_summary or "",
                          item.governing_main or "", " ".join(item.key_msgs or []), item.viz_hint or ""])
     if kind == "sl":
-        subj = str(subject or "").strip().strip("\"'「」『』")
-        if not subj or len(subj) > 15 or " " in subj or subj not in evidence:
+        # v3.1 — 두 단어까지 허용 ("송도 센트럴파크"). 근거 검증은 구 전체 그대로.
+        subj = " ".join(str(subject or "").strip().strip("\"'「」『』").split())
+        if not subj or len(subj) > 20 or len(subj.split()) > 2 or subj not in evidence:
             log.info("Photo-Overlay p%d 슬로건 소재 없음/근거 밖 → 사진 없음 (%s)", item.page, subj[:20])
             return None
         kws = [(subj, False)]
+        if " " in subj:
+            kws.append((subj.split()[-1], False))      # 전체 구 검색 결과가 0건일 때만
     else:
         kws = [(k, True) for k in _po_venue_keywords(locks.get("event_venue"))[:_PO_BG_KW_MAX]]
     if not kws:
         log.info("Photo-Overlay p%d 검색어 없음 → 사진 없음", item.page)
         return None
     month = _po_event_month(locks.get("event_date"))
-    for kw, from_venue in kws:
+    got = False
+    for n, (kw, from_venue) in enumerate(kws):
+        if kind == "sl" and n > 0 and got:
+            break                                        # 슬로건 두 단어: 구 검색이 결과를 냈으면 끝
         items = await _po_search(kw)
+        got = bool(items)
         ok = _po_gate(items, kw, evidence, month, from_venue) if items else []
         if ok:
             return {"kind": kind, "kw": kw, "candidates": [{
@@ -6818,7 +6848,9 @@ def _build_slide_user_prompt(
         # ★ Spec Photo-Overlay — 컨셉 슬로건(viz "") 페이지에만 사진 소재 한 단어 요청.
         #   photo_target 은 플래그 ON + 키 있음 + shapes 모드일 때만 채워진다 (OFF = 미진입).
         parts.append("")
-        parts.append(_photo_slide_block())
+        _po_locks = quantitative_locks if isinstance(quantitative_locks, dict) else {}
+        parts.append(_photo_slide_block(
+            _po_venue_keywords(_po_locks.get("event_venue"))[:_PO_BG_KW_MAX]))
     # Spec D-Build-SkeletonConnect — 골격 통째 inject (HTML 모드 + skeleton_id 배정 시만).
     # 2중 가드: output_mode == "html" AND item.skeleton_id 가 비어있지 않을 때만 진입.
     # 도형 모드 (shapes) 는 가드에 막혀 절대 미진입 → 도형 모드 user prompt 입력 변화 0.

@@ -6980,8 +6980,7 @@ def _tidy_governing_slide(shapes, slide_data, preset_key):
 # False = 기존과 100% 동일 (판정 · 다운로드 · 변환 · 투명도 적용 전부 미실행).
 PHOTO_OVERLAY_RENDER_ENABLED = False
 
-PHOTO_OVERLAY_ALPHA = 80              # 검정 불투명도 % (user 확정)
-_PHOTO_OVERLAY_ALPHA_CMP = 85         # 비교 시험용 — 운영 경로에서 쓰지 않음
+PHOTO_OVERLAY_ALPHA = 80              # 검정 불투명도 % (user 확정 — 실측 80/85 비교 후 80)
 _PO_FETCH_TIMEOUT = 5                 # 초
 _PO_FETCH_MAX_BYTES = 8_000_000
 _PO_HOST_SUFFIX = "visitkorea.or.kr"  # 관광사진 이미지 서버만 받는다
@@ -7155,6 +7154,10 @@ def _po_load_image(url: str):
         w, h = im.size
         if w < h * _PO_MIN_RATIO:
             log.info("Photo-Overlay 세로·정사각 사진 제외 (%dx%d)", w, h)
+            # v3.1 — 비율 미달도 캐시 (같은 덱·다음 렌더에서 같은 사진 반복 다운로드 방지)
+            if len(_PO_IMG_CACHE) >= _PO_IMG_CACHE_MAX:
+                _PO_IMG_CACHE.pop(next(iter(_PO_IMG_CACHE)))
+            _PO_IMG_CACHE[url] = None
             return None
         im = im.convert("RGB")
         if w > _PO_MAX_W:
@@ -7196,6 +7199,8 @@ def _photo_overlay_apply(slide, shapes, slide_data, sw, sh, used):
     photo = slide_data.get("photo")
     cands = photo.get("candidates") if isinstance(photo, dict) else None
     if not isinstance(cands, list) or not cands:
+        return None
+    if slide_data.get("preset") == "hsplit":     # v3.1 — 이미지 자리(회색 박스+글자)가 빈 액자로 남음
         return None
     ok, why = _po_eligible(shapes, sw, sh)
     if not ok:

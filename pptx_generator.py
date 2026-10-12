@@ -6968,6 +6968,301 @@ def _tidy_governing_slide(shapes, slide_data, preset_key):
     return out
 
 
+# ─── Spec Photo-Overlay — 사진 오버레이 렌더 (dispatch 층, 빌더 무접촉) ───
+# 진단: 우수작 550장 중 42% 가 전면 사진 + 검정 반투명. NightOff 는 0.
+# 방식: proposal_multi_pass 가 slide["photo"] 에 관광사진 후보(최대 5장)를 실어 오면
+#   여기서 ① 전면 사진(그림 도형 "사진(교체용)") ② 검정 80% 를 맨 아래에 깔고
+#   ③ 기존 도형 색만 바꾼다(글자 흰색 · 진한 막대 흰 실색 · 카드 반투명) ④ 출처 캡션.
+#   위치·크기·굵기는 그대로 — 굵게 규칙·거버닝 정돈 다음에 돈다.
+# ★ 사진을 못 받거나 · 세로 사진이거나 · 진한 면 30% 초과 · 표/이미지 자리 있음 ·
+#   캡션 자리 3곳이 모두 막히면 그 페이지는 원본 그대로 (색만 입힌 대체 없음).
+# ★ 표지(첫 장) · 챕터 간지 · 다크 테마는 진입하지 않는다.
+# False = 기존과 100% 동일 (판정 · 다운로드 · 변환 · 투명도 적용 전부 미실행).
+PHOTO_OVERLAY_RENDER_ENABLED = False
+
+PHOTO_OVERLAY_ALPHA = 80              # 검정 불투명도 % (user 확정)
+_PHOTO_OVERLAY_ALPHA_CMP = 85         # 비교 시험용 — 운영 경로에서 쓰지 않음
+_PO_FETCH_TIMEOUT = 5                 # 초
+_PO_FETCH_MAX_BYTES = 8_000_000
+_PO_HOST_SUFFIX = "visitkorea.or.kr"  # 관광사진 이미지 서버만 받는다
+_PO_MIN_RATIO = 1.3                   # 가로 ≥ 세로 × 1.3
+_PO_MAX_W = 1600
+_PO_JPEG_Q = 82
+_PO_DARK_AREA_MAX = 0.30              # 진한 면이 이보다 넓으면(split·asymmetric) 대상 아님
+_PO_DARK_LUM = 0.20                   # 이 이하 휘도 면 = 진한 요소 (#666 까지)
+_PO_BIG_AREA = 0.60                   # 페이지의 60% 넘는 밝은 사각형 = 바탕 → 투명
+_PO_ALPHA_ON_DARK_TEXT = 18           # 글자 얹힌 진한 면 → 흰 18%
+_PO_ALPHA_LIGHT = 10                  # 밝은 카드 → 흰 10%
+_PO_FG, _PO_FG_SUB = "#FFFFFF", "#D9D9D9"   # #DDDDDD 는 팔레트에서 MID 로 매핑되므로 피함
+_PO_FILL_DEFAULT = {
+    "rect": None, "rectangle": None,
+    "circle": "#000000", "ellipse": "#000000", "oval": "#000000",
+    "chevron": "#FFFFFF", "process_step": "#FFFFFF", "pentagon": "#FFFFFF", "step": "#FFFFFF",
+    "callout": "#FFFFFF", "rect_callout": "#FFFFFF",
+    "block_arrow": "#1A1A1A", "right_arrow": "#1A1A1A", "star": "#FFFFFF",
+}
+_PO_SKIP_TYPES = frozenset({"table", "image", "image_placeholder"})
+_PO_IMG_CACHE: dict = {}
+_PO_IMG_CACHE_MAX = 16
+
+
+def _po_is_off(v) -> bool:
+    return (not v) or str(v).strip().lower() in ("none", "transparent")
+
+
+def _po_is_gray(hex_str) -> bool:
+    h = str(hex_str or "").strip().lstrip("#")
+    if len(h) == 3:
+        h = "".join(c * 2 for c in h)
+    try:
+        r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    except Exception:
+        return True
+    return max(r, g, b) - min(r, g, b) <= 16
+
+
+def _po_fg(color) -> str:
+    """글자·선 색 — 진함 → 흰, 중간 회색 → 옅은 회색, 이미 밝은 색 → 그대로."""
+    lum = _tidy_luminance(color)
+    if lum >= 0.80:
+        return color
+    if lum <= 0.10:
+        return _PO_FG
+    return _PO_FG_SUB if _po_is_gray(color) else _PO_FG
+
+
+def _po_box(s):
+    try:
+        return float(s.get("x", 0)), float(s.get("y", 0)), float(s.get("w", 0)), float(s.get("h", 0))
+    except (TypeError, ValueError):
+        return 0.0, 0.0, 0.0, 0.0
+
+
+def _po_overlap(a, b) -> bool:
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+    return ax < bx + bw and bx < ax + aw and ay < by + bh and by < ay + ah
+
+
+def _po_texts(shapes):
+    """글자가 있는 도형 — text 도형 + 글자를 품은 도형(callout·block_arrow 등의 "text")."""
+    return [s for s in shapes if isinstance(s, dict) and str(s.get("text", "") or "").strip()]
+
+
+def _po_eligible(shapes, sw, sh):
+    """대상 가능 여부 — (True, "") 또는 (False, 사유)."""
+    dark_area = 0.0
+    for s in shapes:
+        if not isinstance(s, dict):
+            continue
+        t = str(s.get("type", "")).lower().strip()
+        if t in _PO_SKIP_TYPES:
+            return False, "표·이미지 자리"
+        if t in _PO_FILL_DEFAULT:
+            f = s.get("fill", _PO_FILL_DEFAULT[t])
+            if not _po_is_off(f) and _tidy_luminance(f) <= _TIDY_DARK_LUM:
+                _, _, w, h = _po_box(s)
+                dark_area += max(w, 0) * max(h, 0)
+    if dark_area / (sw * sh) > _PO_DARK_AREA_MAX:
+        return False, "진한 면 %.0f%%" % (dark_area / (sw * sh) * 100)
+    return True, ""
+
+
+def _po_caption_slot(shapes, sw, sh):
+    """출처 캡션 자리 — 우하(쪽번호 위) → 좌하(맨 아래) → 우상(맨 위). 모두 막히면 None."""
+    slots = ((sw - 5.2, sh - 0.66, 5.0, 0.26, "right"),
+             (0.2, sh - 0.36, 5.0, 0.26, "left"),
+             (sw - 5.2, 0.12, 5.0, 0.26, "right"))
+    boxes = [_po_box(t) for t in _po_texts(shapes)]
+    for x, y, w, h, align in slots:
+        if not any(_po_overlap((x, y, w, h), b) for b in boxes):
+            return x, y, w, h, align
+    return None
+
+
+def _po_transform(shapes, sw, sh):
+    """색만 바꾼 복사본 — 좌표·크기·굵기·글자 무변경. 투명도는 "_po_alpha" 표시(렌더 후 적용)."""
+    texts = _po_texts(shapes)
+    centers = []
+    for t in texts:
+        x, y, w, h = _po_box(t)
+        centers.append((x + w / 2, y + h / 2))
+    out = []
+    for s in shapes:
+        if not isinstance(s, dict):
+            out.append(s)
+            continue
+        t = str(s.get("type", "")).lower().strip()
+        c = dict(s)
+        if t == "text":
+            c["color"] = _po_fg(s.get("color", "#1A1A1A"))
+        elif t in ("line", "arrow"):
+            c["color"] = _po_fg(s.get("color", "#1A1A1A"))
+        elif t in _PO_FILL_DEFAULT:
+            f = s.get("fill", _PO_FILL_DEFAULT[t])
+            own_text = bool(str(s.get("text", "") or "").strip())
+            if own_text:                                   # 도형이 품은 글자 (결론 밴드·화살표 라벨)
+                c["text_color"] = _po_fg(s.get("text_color", "#1A1A1A"))
+            if not _po_is_off(f):
+                x, y, w, h = _po_box(s)
+                if _tidy_luminance(f) <= _PO_DARK_LUM:
+                    on_text = own_text or any(x <= cx <= x + w and y <= cy <= y + h for cx, cy in centers)
+                    c["fill"] = "#FFFFFF"
+                    if on_text:
+                        c["_po_alpha"] = _PO_ALPHA_ON_DARK_TEXT
+                elif t in ("rect", "rectangle") and w * h > sw * sh * _PO_BIG_AREA:
+                    c["fill"] = None
+                else:
+                    c["fill"] = "#FFFFFF"
+                    c["_po_alpha"] = _PO_ALPHA_LIGHT
+            stroke = s.get("stroke", "#1A1A1A" if t in ("callout", "rect_callout") else None)
+            if not _po_is_off(stroke):
+                c["stroke"] = "#FFFFFF"
+        out.append(c)
+    return out
+
+
+def _po_download(url: str):
+    """이미지 원본 바이트 (관광사진 서버만 · 5초 · 8MB 상한). 실패 = None."""
+    import ssl
+    import urllib.parse as _up
+    import urllib.request as _ur
+    try:
+        host = (_up.urlparse(url).hostname or "").lower()
+        if not host.endswith(_PO_HOST_SUFFIX):
+            return None
+        req = _ur.Request(url, headers={"User-Agent": "NightOff"})
+        with _ur.urlopen(req, timeout=_PO_FETCH_TIMEOUT, context=ssl.create_default_context()) as r:
+            raw = r.read(_PO_FETCH_MAX_BYTES + 1)
+        return raw if len(raw) <= _PO_FETCH_MAX_BYTES else None
+    except Exception as e:
+        log.warning("Photo-Overlay 이미지 다운로드 실패: %s", type(e).__name__)
+        return None
+
+
+def _po_load_image(url: str):
+    """(JPEG 바이트, (w, h)) — 가로 1.3배 이상만 · 1600px 이하로 줄이고 품질 82 재압축."""
+    if url in _PO_IMG_CACHE:
+        return _PO_IMG_CACHE[url]
+    raw = _po_download(url)
+    if not raw:
+        return None
+    try:
+        import io as _io
+        from PIL import Image as _Image
+        im = _Image.open(_io.BytesIO(raw))
+        im.load()
+        w, h = im.size
+        if w < h * _PO_MIN_RATIO:
+            log.info("Photo-Overlay 세로·정사각 사진 제외 (%dx%d)", w, h)
+            return None
+        im = im.convert("RGB")
+        if w > _PO_MAX_W:
+            im = im.resize((_PO_MAX_W, round(h * _PO_MAX_W / w)), _Image.LANCZOS)
+        buf = _io.BytesIO()
+        im.save(buf, "JPEG", quality=_PO_JPEG_Q, optimize=True)
+        res = (buf.getvalue(), im.size)
+    except Exception as e:
+        log.warning("Photo-Overlay 이미지 처리 실패: %s", type(e).__name__)
+        return None
+    if len(_PO_IMG_CACHE) >= _PO_IMG_CACHE_MAX:
+        _PO_IMG_CACHE.pop(next(iter(_PO_IMG_CACHE)))
+    _PO_IMG_CACHE[url] = res
+    return res
+
+
+def _po_apply_alpha(shape, pct) -> None:
+    """단색 채움에 불투명도(%) 지정. 단색이 아니면 그대로."""
+    try:
+        sf = shape.fill._xPr.find(qn("a:solidFill"))
+        if sf is None or len(sf) == 0:
+            return
+        clr = sf[0]
+        for a in clr.findall(qn("a:alpha")):
+            clr.remove(a)
+        clr.append(clr.makeelement(qn("a:alpha"), {"val": str(int(float(pct) * 1000))}))
+    except Exception:
+        pass
+
+
+def _po_caption_text(c) -> str:
+    by = str(c.get("by") or "").strip()
+    by = re.sub(r"^한국관광공사\s+", "", by)
+    return "ⓒ한국관광콘텐츠랩-" + by if by else "ⓒ한국관광콘텐츠랩"
+
+
+def _photo_overlay_apply(slide, shapes, slide_data, sw, sh, used):
+    """사진 오버레이 — 성공 시 색 바뀐 shapes(+캡션) 반환, 아니면 None(페이지 원본 그대로)."""
+    photo = slide_data.get("photo")
+    cands = photo.get("candidates") if isinstance(photo, dict) else None
+    if not isinstance(cands, list) or not cands:
+        return None
+    ok, why = _po_eligible(shapes, sw, sh)
+    if not ok:
+        log.info("Photo-Overlay 건너뜀 (%s): %s", slide_data.get("section", ""), why)
+        return None
+    slot = _po_caption_slot(shapes, sw, sh)
+    if slot is None:
+        log.info("Photo-Overlay 건너뜀 (%s): 캡션 자리 없음", slide_data.get("section", ""))
+        return None
+    chosen = None
+    for c in cands[:5]:
+        if not isinstance(c, dict) or str(c.get("id", "")) in used:
+            continue
+        img = _po_load_image(str(c.get("url") or ""))
+        if img:
+            chosen = (c, img)
+            break
+    if chosen is None:
+        log.info("Photo-Overlay 건너뜀 (%s): 쓸 수 있는 사진 없음", slide_data.get("section", ""))
+        return None
+    new_shapes = _po_transform(shapes, sw, sh)
+    c, (data, (iw, ih)) = chosen
+    caption = _po_caption_text(c)
+    import io as _io
+    added = []
+    try:
+        pic = slide.shapes.add_picture(_io.BytesIO(data), 0, 0, Inches(sw), Inches(sh))
+        added.append(pic)
+        target, ratio = sw / sh, iw / ih
+        if ratio > target:
+            cut = (1 - target / ratio) / 2
+            pic.crop_left = cut
+            pic.crop_right = cut
+        else:
+            cut = (1 - ratio / target) / 2
+            pic.crop_top = cut
+            pic.crop_bottom = cut
+        pic.name = "사진(교체용)"
+        pic._element.nvPicPr.cNvPr.set("descr", caption)
+        ov = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, Inches(sw), Inches(sh))
+        added.append(ov)
+        ov.fill.solid()
+        ov.fill.fore_color.rgb = RGBColor(0, 0, 0)       # 색 매핑 미경유 — 팔레트에서도 검정
+        _po_apply_alpha(ov, PHOTO_OVERLAY_ALPHA)
+        _set_no_line(ov)
+        ov.name = "사진 오버레이"
+        tree = slide.shapes._spTree
+        for el in (ov._element, pic._element):            # 맨 아래로 (사진 < 오버레이 < 기존 도형)
+            tree.remove(el)
+            tree.insert(2, el)
+    except Exception:
+        for a in added:
+            try:
+                a._element.getparent().remove(a._element)
+            except Exception:
+                pass
+        raise
+    used.add(str(c.get("id", "")))
+    x, y, w, h, align = slot
+    new_shapes.append({
+        "type": "text", "x": x, "y": y, "w": w, "h": h, "text": caption,
+        "size": 8, "weight": 400, "color": _PO_FG, "align": align, "valign": "middle",
+        "role": "photo_credit",
+    })
+    return new_shapes
+
+
 def generate_from_shape_json(json_data, output_path, *, theme="light"):
     """도형 JSON → PPTX (마스터 무관, AI 가 layout 자유 결정 모드).
 
@@ -7031,6 +7326,8 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
     # _is_chapter_divider 가 True 인 페이지를 만날 때마다 ++. _build_preset_divider 에
     # 1-based 순번 전달 → 코드가 로마숫자(Ⅰ~Ⅹ) 자동 매김. LLM 로마숫자 자유 매김(V 중복) 차단.
     _divider_counter = 0
+    # Spec Photo-Overlay — 덱 안 같은 사진 중복 금지 (플래그 OFF 면 쓰이지 않음).
+    _po_used: set = set()
     for slide_idx, slide_data in enumerate(slides_data):
         if not isinstance(slide_data, dict):
             errors_total.append("slide" + str(slide_idx) + ": not a dict")
@@ -7488,6 +7785,22 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
                     type(_tidy_err).__name__ + ": " + str(_tidy_err)
                 )
 
+        # ─── Spec Photo-Overlay (add-only) — 사진 오버레이 ───
+        #   굵게 규칙 다음(굵기는 사진 없는 페이지와 같게) · 렌더 직전. 표지(첫 장)·간지·다크 미진입.
+        #   실패·확신 없음 = None → shapes 그대로(페이지 원본). 플래그 False 면 미진입.
+        if (PHOTO_OVERLAY_RENDER_ENABLED and theme != "dark" and slide_idx != 0
+                and isinstance(slide_data.get("photo"), dict)
+                and not _is_chapter_divider(slide_data)):
+            try:
+                _po_shapes = _photo_overlay_apply(slide, shapes, slide_data, sw, sh, _po_used)
+                if _po_shapes is not None:
+                    shapes = _po_shapes
+            except Exception as _po_err:
+                errors_total.append(
+                    "slide" + str(slide_idx) + ":photo_overlay: " +
+                    type(_po_err).__name__ + ": " + str(_po_err)
+                )
+
         for shape_idx, shape_def in enumerate(shapes):
             try:
                 # Spec D-Build-ThemeConnect 1-b — default_text_color 주입.
@@ -7499,6 +7812,9 @@ def generate_from_shape_json(json_data, output_path, *, theme="light"):
                                                theme=theme)
                 if result is not None:
                     rendered_total += 1
+                    # Spec Photo-Overlay — 사진 페이지의 반투명 표시만 (OFF 면 키 자체가 없음).
+                    if isinstance(shape_def, dict) and "_po_alpha" in shape_def:
+                        _po_apply_alpha(result, shape_def["_po_alpha"])
             except Exception as e:
                 errors_total.append(
                     "slide" + str(slide_idx) + ":shape" + str(shape_idx) +

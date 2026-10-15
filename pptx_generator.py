@@ -7305,7 +7305,7 @@ def _photo_overlay_apply(slide, shapes, slide_data, sw, sh, used):
 #   _tf_build_* 가 [] 를 내는 경우(필수 키 미충족)는 기존 빌더도 [] 라 결과가 같다.
 #   _tf_build_* 에서 예외가 나면 기존 빌더로 그린다.
 # False = 기존과 100% 동일 (우회·측정 전부 미실행).
-TEXT_FIT_ENABLED = False
+TEXT_FIT_ENABLED = True
 
 _TF_FONT_FILES = {
     100: "Paperlogy-1Thin.ttf", 200: "Paperlogy-2ExtraLight.ttf", 300: "Paperlogy-3Light.ttf",

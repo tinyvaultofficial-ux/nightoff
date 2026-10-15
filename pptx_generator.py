@@ -5815,6 +5815,58 @@ _SF_SIZES = (10, 9, 8)
 _SF_TOTAL_FILL = "#F5F5F5"               # 합계행 (DARK_MAP → 다크 #1F1F1F)
 _SF_ZERO = "－"                           # 0 표기 (죽변항 방식)
 
+# ─── Spec Staff-Empty-Guard — 인원이 전부 0·빈 값·"-" 인 인력 표 방지 (기본 False = 무변화) ───
+# 2026-10-15 시험(Opus 5.5 effort low)에서 "근거 없는 숫자 금지" 지시를 곧이곧대로 따라
+# 인원을 전부 0 으로 둔 표가 "－ … 계 (TOTAL: 0명)" 으로 그려졌다 → 심사위원 눈에는 '0명 운영'.
+#   STAFF_EMPTY_MODE
+#     "roles"    (1안·기본) 인원 열을 빼고 '배치 구역 × 배치 인력 유형' 표 + note(인원 확정 안내)
+#     "fallback" (3안)      프리셋 포기 → LLM 백업 도형. 프리셋 쪽 백업은 제목·메모뿐이라 거의 빈 쪽.
+# ★ 인원이 하나라도 있으면(일부 0 은 정상 — 그 구역에 그 인력이 없다는 뜻) 기존 표 그대로.
+STAFF_EMPTY_GUARD = False
+STAFF_EMPTY_MODE = "roles"
+_SF_EMPTY_ZONE_W = 3.4                    # 1안 — 구역 열 폭 (인원 열이 빠져 넓힘)
+
+
+def _sf_empty_layout(title, eyebrow, note, roles, zones):
+    """Spec Staff-Empty-Guard — 인원 전부 0 인 인력 표 대신 쓸 도형. "fallback" 이면 빈 리스트."""
+    if STAFF_EMPTY_MODE == "fallback":
+        log.info("Staff-Empty-Guard 인원 전부 0 → 프리셋 포기(자율 fallback) · 구역 %d", len(zones))
+        return []
+    log.info("Staff-Empty-Guard 인원 전부 0 → 인원 열 없는 배치 표 · 구역 %d · 인력유형 %d",
+             len(zones), len(roles))
+    header = ["배치 구역", "배치 인력 유형"]
+    role_txt = " · ".join(roles)
+    body = [[z, role_txt if i == 0 else ""] for i, (z, _) in enumerate(zones)]
+    widths = [_SF_EMPTY_ZONE_W, round(_SF_W - _SF_EMPTY_ZONE_W, 3)]
+    budget = _SF_BOTTOM - _SF_TOP
+    size, heights = _SF_SIZES[0], []
+    for size in (11,) + _SF_SIZES:                   # 폰트 계단 — 표 가용 세로 안에 들게
+        heights = [round(max(0.40, _tt_need(str(r[0]), widths[0], size)), 2) for r in [header] + body]
+        if sum(heights) <= budget:
+            break
+    total_h = round(sum(heights), 2)
+    shapes: list = []
+    if eyebrow:
+        shapes.append({"type": "text", "x": _SF_X, "y": 0.5, "w": _SF_W, "h": 0.4,
+                       "text": eyebrow, "size": 11, "weight": 400, "color": "#BBBBBB",
+                       "align": "left", "valign": "top"})
+    shapes.append({"type": "text", "x": _SF_X, "y": 1.0, "w": _SF_W, "h": 0.9,
+                   "text": title, "size": 28, "weight": 800, "color": "#1A1A1A",
+                   "align": "left", "valign": "middle", "role": "governing"})
+    shapes.append({"type": "table", "x": _SF_X, "y": _SF_TOP, "w": _SF_W,
+                   "header": header, "rows": body,
+                   "col_widths": widths, "aligns": ["left", "center"],
+                   "size": size, "row_heights": heights,
+                   "merges": [(1, 1, len(body), 1)],     # 인력 유형 칸 — 모든 구역 공통 1칸
+                   "header_fill": "#1A1A1A", "header_color": "#FFFFFF",
+                   "body_fill": "#FFFFFF", "body_color": "#1A1A1A", "line": "#DDDDDD"})
+    if note:
+        shapes.append({"type": "text", "x": _SF_X, "y": min(_SF_TOP + total_h + 0.12, 7.75),
+                       "w": _SF_W, "h": 0.35,
+                       "text": note, "size": 11, "weight": 400, "color": "#666666",
+                       "align": "left", "valign": "top"})
+    return shapes
+
 
 def _sf_count(v):
     """셀 인원 수 정규화 — 숫자만 인정, 음수·문자열·None 은 0."""
@@ -5875,6 +5927,9 @@ def _build_preset_staffing_table(slide_data: dict) -> list:
         zones = zones[:_SF_MAX_ZONES]
     if len(zones) < _SF_MIN_ZONES:
         return []
+    # ★ Spec Staff-Empty-Guard — 인원이 전부 0 이면 숫자 없는 빈 표를 그리지 않는다 (OFF = 무변화)
+    if STAFF_EMPTY_GUARD and not any(n for _, c in zones for n in c):
+        return _sf_empty_layout(title, eyebrow, note, roles, zones)
 
     # ★ 합계 — 코드가 계산 (열별 합 + 총합)
     col_sums = [sum(c[i] for _, c in zones) for i in range(nrole)]

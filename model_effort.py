@@ -46,7 +46,15 @@ EFFORT_BY_SITE = {
 
 # ─── 5.5 + 플래그 ON 일 때만 쓰는 max_tokens (OFF 거나 다른 모델이면 호출부 기존 값) ───
 #   thinking 토큰이 max_tokens 안에 포함되므로, 실측에서 상한 대비 70% 를 넘은 곳만 올린다.
-MAX_TOKENS_55 = {}
+#   2026-10-15 실측 (5.5 · 위 effort · test88 입력) — 출력 토큰 / 기존 상한 (그중 thinking):
+MAX_TOKENS_55 = {
+    "budget": 20000,          # 8000 / 8000 잘림 (thinking 6,841) — JSON 미완성 → 실패
+    "audit": 12000,           # 4000 / 4000 잘림 (thinking 2,764) — 실패
+    "pt_script": 10000,       # 4000 / 4000 잘림 (thinking 0 — 본문만으로 초과) — 실패
+    "pt_qa": 10000,           # 4000 / 4000 잘림 (thinking 0) — 실패
+    "rfp_aggregate": 20000,   # 11,466 / 12000 = 96% (thinking 1,702)
+    "research": 10000,        # 4,441 / 6000 = 74% (thinking 1,677, 웹검색 5회)
+}
 
 
 def effort_on(model: str) -> bool:

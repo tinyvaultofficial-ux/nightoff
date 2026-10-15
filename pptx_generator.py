@@ -5825,10 +5825,14 @@ _SF_ZERO = "－"                           # 0 표기 (죽변항 방식)
 STAFF_EMPTY_GUARD = False
 STAFF_EMPTY_MODE = "roles"
 _SF_EMPTY_ZONE_W = 3.4                    # 1안 — 구역 열 폭 (인원 열이 빠져 넓힘)
+# 1안 표 아래 메모 — LLM note 대신 고정 문장. LLM note 는 "귀사 확정 후 입력, 합계는 자동 산출" 처럼
+#   NightOff 사용자에게 하는 말이 섞여 제출 문서에 찍힌다 (2026-10-15 검증 D).
+_SF_EMPTY_NOTE = "구역별 세부 인원은 착수 협의 시 확정합니다."
 
 
 def _sf_empty_layout(title, eyebrow, note, roles, zones):
     """Spec Staff-Empty-Guard — 인원 전부 0 인 인력 표 대신 쓸 도형. "fallback" 이면 빈 리스트."""
+    note = _SF_EMPTY_NOTE                            # 고정 제안서 문장 (LLM note 미사용)
     if STAFF_EMPTY_MODE == "fallback":
         log.info("Staff-Empty-Guard 인원 전부 0 → 프리셋 포기(자율 fallback) · 구역 %d", len(zones))
         return []

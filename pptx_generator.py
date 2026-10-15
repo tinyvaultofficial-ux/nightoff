@@ -5822,7 +5822,7 @@ _SF_ZERO = "－"                           # 0 표기 (죽변항 방식)
 #     "roles"    (1안·기본) 인원 열을 빼고 '배치 구역 × 배치 인력 유형' 표 + note(인원 확정 안내)
 #     "fallback" (3안)      프리셋 포기 → LLM 백업 도형. 프리셋 쪽 백업은 제목·메모뿐이라 거의 빈 쪽.
 # ★ 인원이 하나라도 있으면(일부 0 은 정상 — 그 구역에 그 인력이 없다는 뜻) 기존 표 그대로.
-STAFF_EMPTY_GUARD = False
+STAFF_EMPTY_GUARD = True
 STAFF_EMPTY_MODE = "roles"
 _SF_EMPTY_ZONE_W = 3.4                    # 1안 — 구역 열 폭 (인원 열이 빠져 넓힘)
 # 1안 표 아래 메모 — LLM note 대신 고정 문장. LLM note 는 "귀사 확정 후 입력, 합계는 자동 산출" 처럼

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 
-MODEL_EFFORT_ENABLED = False
+MODEL_EFFORT_ENABLED = True
 
 # 5.5 계열 모델 — opus / sonnet / haiku 5.5. (4.x · 5 · fable 등은 해당 없음)
 _EFFORT_MODEL_RE = re.compile(r"^claude-(?:opus|sonnet|haiku)-5-5(?:$|[-@])")

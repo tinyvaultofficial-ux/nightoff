@@ -35,6 +35,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import AsyncIterator, Optional
 
+import model_effort as _me   # Spec Opus55-Prep — 호출부별 effort·max_tokens·거절 판정 (플래그 OFF = 무변화)
+
 log = logging.getLogger("multi_pass")
 
 
@@ -3309,7 +3311,7 @@ def _classify_api_error(e: BaseException) -> str:
 
 
 def _call_anthropic_sync(client, system: "str | list", user: str,
-                         max_tokens: int = 8000, model: str = "") -> str:
+                         max_tokens: int = 8000, model: str = "", site: str = "") -> str:
     """동기 Anthropic 호출 (asyncio.to_thread 로 감싸 사용).
 
     system:
@@ -3321,11 +3323,14 @@ def _call_anthropic_sync(client, system: "str | list", user: str,
     """
     import os
     model = model or os.environ.get("MODEL", "") or "claude-opus-4-8"
+    # ★ Spec Opus55-Prep — site(호출부 이름)로 effort·max_tokens 를 표에서 찾는다.
+    #   플래그 OFF 거나 5.5 계열이 아니면 max_tokens 그대로 + 추가 인자 {} → 요청 무변화.
     resp = client.messages.create(
         model=model,
-        max_tokens=max_tokens,
+        max_tokens=_me.max_tokens(site, model, max_tokens),
         system=system,
         messages=[{"role": "user", "content": user}],
+        **_me.effort_kwargs(site, model),
     )
     # ★ Spec Prompt-Caching-Generation — 캐시가 실제로 걸렸는지 남긴다.
     #   이 로그가 없으면 "캐싱을 켰다" 와 "캐싱이 동작한다" 를 구분할 수 없다.
@@ -3338,6 +3343,12 @@ def _call_anthropic_sync(client, system: "str | list", user: str,
             log.info("prompt-cache: write=%d read=%d in=%d out=%d",
                      _cw, _cr,
                      getattr(_u, "input_tokens", 0), getattr(_u, "output_tokens", 0))
+    # ★ Spec Opus55-Prep — 안전 분류기 거절은 같은 요청을 다시 보내도 같은 결과다.
+    #   빈 글 → 파싱 실패 → 재시도 4회로 번지지 않게 전용 예외로 올린다 (플래그 ON + 5.5 만).
+    _refusal = _me.refusal_of(resp, model)
+    if _refusal:
+        log.warning("모델 거절(refusal) · 단계=%s · 분류=%s → 재시도 없이 실패 처리", site or "?", _refusal)
+        raise _me.ModelRefusal(site or "?", _refusal)
     parts = []
     for b in resp.content or []:
         btype = getattr(b, "type", None) if not isinstance(b, dict) else b.get("type")
@@ -3713,7 +3724,7 @@ async def generate_strategy(
     # max_tokens 16000 — 전략은 짧음 (JSON 4 필드). OUTLINE(64000) 보다 훨씬 작게.
     try:
         raw = await asyncio.to_thread(
-            _call_anthropic_sync, client, STRATEGY_SYSTEM_PROMPT, user, 16000, model,
+            _call_anthropic_sync, client, STRATEGY_SYSTEM_PROMPT, user, 16000, model, "strategy",
         )
     except Exception as e:
         log.warning("Strategy-Step1 generate_strategy API 실패: %s → 빈 dict fallback", e)
@@ -3892,7 +3903,7 @@ async def generate_outline(
     # ★ Spec Prompt-Caching-Generation — 제안서당 1회지만 재시도·연속 생성 시 이득.
     #   추가 비용 0 (write 1회는 read 로 즉시 상쇄되거나, 미사용 시 그냥 만료).
     raw = await asyncio.to_thread(
-        _call_anthropic_sync, client, _sys_cached(outline_system_prompt), user, 64000, model,
+        _call_anthropic_sync, client, _sys_cached(outline_system_prompt), user, 64000, model, "outline",
     )
     parsed = _parse_json_safely(raw)
     if not parsed or not isinstance(parsed.get("outline"), list):
@@ -7048,7 +7059,7 @@ async def _path1_enrich(
             f"[채울 JSON(이 구조 유지, 텍스트만 풍성화)]\n{adapted_json}"
         )
         raw = await asyncio.to_thread(
-            _call_anthropic_sync, client, system_prompt, user_prompt, 2000, model,
+            _call_anthropic_sync, client, system_prompt, user_prompt, 2000, model, "path1_enrich",
         )
         parsed = _parse_json_safely(raw)
         if not parsed:
@@ -7187,7 +7198,7 @@ async def generate_one_slide(
     for attempt in range(MAX_ATTEMPTS):
         try:
             raw = await asyncio.to_thread(
-                _call_anthropic_sync, client, system_param, user, 16000, model,
+                _call_anthropic_sync, client, system_param, user, 16000, model, "slide",
             )
             last_raw = raw
             if is_html_mode:
@@ -7374,6 +7385,9 @@ async def generate_one_slide(
         except ApiCreditExhausted:
             # 다른 슬라이드가 먼저 치명 오류를 올린 경우 — 그대로 통과시킨다.
             raise
+        except _me.ModelRefusal as e:
+            # ★ Spec Opus55-Prep — 거절은 재시도해도 같다 → 이 쪽만 바로 실패 (플래그 OFF 면 안 생김).
+            return SlideResult(page=item.page, section=item.section, error=str(e))
         except Exception as e:
             last_err = str(e)[:200]
             # ★ Spec API-Credit-Guard — 잔액 부족·인증·권한은 재시도 금지.

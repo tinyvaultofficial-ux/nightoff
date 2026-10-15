@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Generator, Optional
 
 import anthropic
+import model_effort as _me   # Spec Opus55-Prep — 호출부별 effort·max_tokens·거절 판정 (플래그 OFF = 무변화)
 from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -1401,6 +1402,7 @@ async def _preflight_api(client, model: str) -> str:
             model=model,
             max_tokens=1,
             messages=[{"role": "user", "content": "."}],
+            **_me.effort_kwargs("preflight", model),
         )
         return ""
     except Exception as e:
@@ -2012,6 +2014,11 @@ def _extract_text_from_resp(resp) -> str:
     web_search / tool_use / server_tool_use 블록이 섞여 있어도 안전하게 처리."""
     if resp is None:
         return ""
+    # ★ Spec Opus55-Prep — 안전 분류기 거절(refusal)은 원인을 로그로 남긴다 (플래그 ON + 5.5 만).
+    #   main.py 단건 호출은 원래 재시도가 없으므로 반환값은 지금과 같게 두고 기존 실패 경로를 탄다.
+    _refusal = _me.refusal_of(resp)
+    if _refusal:
+        log.warning("모델 거절(refusal) · 분류=%s — 빈 응답으로 처리", _refusal)
     parts: list[str] = []
     content = getattr(resp, "content", None) or []
     for b in content:
@@ -3046,6 +3053,7 @@ def api_settings_test(admin: dict = Depends(require_admin)):
             model=model,
             max_tokens=16,
             messages=[{"role": "user", "content": "ping"}],
+            **_me.effort_kwargs("settings_test", model),
         )
         usage = getattr(resp, "usage", None)
         return {
@@ -4453,15 +4461,25 @@ def api_chat(conv_id: str, body: ChatIn, user: dict = Depends(get_current_user))
             # [중요] 채팅 본문 생성에는 web_search 도구 미사용
             # — 사용자 의도: '발주처 들여다보기는 분리. 본문 생성에 영향 X'
             # — web_search 결과의 <cite index="..."> 태그가 JSON 본문에 박히는 것 방지
+            _chat_model = get_setting("model", MODEL_DEFAULT)
+            _refusal = None
             with client.messages.stream(
-                model=get_setting("model", MODEL_DEFAULT),
-                max_tokens=16000,
+                model=_chat_model,
+                max_tokens=_me.max_tokens("chat", _chat_model, 16000),
                 system=system_param,
                 messages=messages,
+                **_me.effort_kwargs("chat", _chat_model),
             ) as s:
                 for chunk in s.text_stream:
                     full_text += chunk
                     yield f"data: {json.dumps({'type':'delta','text':chunk})}\n\n"
+                # ★ Spec Opus55-Prep — 거절이면 빈 답을 '완료'로 보내지 않는다 (플래그 ON + 5.5 만).
+                if _me.effort_on(_chat_model):
+                    _refusal = _me.refusal_of(s.get_final_message(), _chat_model)
+            if _refusal:
+                log.warning("채팅 모델 거절(refusal) · 분류=%s → 차감 없이 안내", _refusal)
+                yield f"data: {json.dumps({'type':'error','error':'이 질문은 AI 안전 기준에 걸려 답하지 못했어요. 표현을 바꿔 다시 물어봐 주세요.'})}\n\n"
+                return
             yield f"data: {json.dumps({'type':'done'})}\n\n"
             # D-Fix-CreditExt: 채팅 응답 성공 후 차감 20 (실패·예외 경로에선 차감 X)
             # ★ Atomic-Quota-Deduct — 원자적이므로 경합 시 False 가 올 수 있다.
@@ -5155,10 +5173,12 @@ def _run_rfp_aggregate(cid: str) -> dict:
         #       비용 영향: output token 만 (input 무관). 분석 4 endpoint 모두 동일 영향.
         # 전형 출력 (이전 ~2,034자 ≈ 1.5K~3K 토큰) + 신 가이드 확장분 (~1K~2K 토큰 추정) →
         #       12000 안 안전 마진 충분 (★ 실측 권장).
+        _m = get_setting("model", MODEL_DEFAULT)
         resp = client.messages.create(
-            model=get_setting("model", MODEL_DEFAULT),
-            max_tokens=12000,
+            model=_m,
+            max_tokens=_me.max_tokens("rfp_aggregate", _m, 12000),
             messages=[{"role": "user", "content": prompt}],
+            **_me.effort_kwargs("rfp_aggregate", _m),
         )
         raw = _extract_text_from_resp(resp)
         if not raw:
@@ -5297,10 +5317,12 @@ def _rebuild_company_dna() -> dict:
         prompt = (COMPANY_DNA_PROMPT
                   .replace("{EXISTING}", json.dumps(existing, ensure_ascii=False) or "{}")
                   .replace("{SUMMARIES}", summaries_text))
+        _m = get_setting("model", MODEL_DEFAULT)
         resp = client.messages.create(
-            model=get_setting("model", MODEL_DEFAULT),
-            max_tokens=1500,
+            model=_m,
+            max_tokens=_me.max_tokens("company_dna", _m, 1500),
             messages=[{"role": "user", "content": prompt}],
+            **_me.effort_kwargs("company_dna", _m),
         )
         raw = _extract_text_from_resp(resp)
         raw = re.sub(r"^```(?:json)?\s*", "", raw)
@@ -5592,10 +5614,12 @@ async def api_refs_upload(cid: str, file: UploadFile = File(...), user: dict = D
         client = require_client()
         prompt = REFERENCE_SUMMARY_PROMPT.replace("{DOC_TEXT}", text or "(추출 실패)")
         # 스타일 신호가 많아 3~4KB 정도 필요 — max_tokens 넉넉히
+        _m = get_setting("model", MODEL_DEFAULT)
         resp = client.messages.create(
-            model=get_setting("model", MODEL_DEFAULT),
-            max_tokens=3500,
+            model=_m,
+            max_tokens=_me.max_tokens("refs_summary", _m, 3500),
             messages=[{"role": "user", "content": prompt}],
+            **_me.effort_kwargs("refs_summary", _m),
         )
         raw = _extract_text_from_resp(resp)
         raw = re.sub(r"^```(?:json)?\s*", "", raw)
@@ -6327,6 +6351,7 @@ def api_company_docs_extract(doc_id: str, user: dict = Depends(get_current_user)
                 "role": "user",
                 "content": [block, {"type": "text", "text": instruction}],
             }],
+            **_me.effort_kwargs("company_docs_extract", MODEL_FAST),
         )
         raw = _extract_text_from_resp(resp)
         if not raw:
@@ -7025,10 +7050,12 @@ def api_budget_generate(body: BudgetRequest, user: dict = Depends(get_current_us
     try:
         client = require_client()
         prompt = BUDGET_TABLE_PROMPT.replace("{CONTEXT}", ctx)
+        _m = get_setting("model", MODEL_DEFAULT)
         resp = client.messages.create(
-            model=get_setting("model", MODEL_DEFAULT),
-            max_tokens=8000,
+            model=_m,
+            max_tokens=_me.max_tokens("budget", _m, 8000),
             messages=[{"role": "user", "content": prompt}],
+            **_me.effort_kwargs("budget", _m),
         )
         raw = _extract_text_from_resp(resp)
         raw = re.sub(r"^```(?:json)?\s*", "", raw)
@@ -7573,11 +7600,13 @@ def _run_client_intel(cid: str) -> dict:
     try:
         api_client = require_client()
         # max_tokens 4000 — web_search 결과 + JSON 둘 다 충분히 담기게 (이전 2500 부족 가능)
+        _m = get_setting("model", MODEL_DEFAULT)
         resp = api_client.messages.create(
-            model=get_setting("model", MODEL_DEFAULT),
-            max_tokens=4000,
+            model=_m,
+            max_tokens=_me.max_tokens("client_intel", _m, 4000),
             messages=[{"role": "user", "content": prompt}],
             tools=[WEB_SEARCH_TOOL],
+            **_me.effort_kwargs("client_intel", _m),
         )
         stop_reason = getattr(resp, "stop_reason", None)
         raw_text = _extract_text_from_resp(resp)
@@ -7795,11 +7824,13 @@ def _run_proposal_research(cid: str) -> dict:
     try:
         api_client = require_client()
         # max_tokens 6000 — 리서치는 다축이라 intel(4000) 보다 여유. web_search 결과 + JSON.
+        _m = get_setting("model", MODEL_DEFAULT)
         resp = api_client.messages.create(
-            model=get_setting("model", MODEL_DEFAULT),
-            max_tokens=6000,
+            model=_m,
+            max_tokens=_me.max_tokens("research", _m, 6000),
             messages=[{"role": "user", "content": prompt}],
             tools=[WEB_SEARCH_TOOL],
+            **_me.effort_kwargs("research", _m),
         )
         stop_reason = getattr(resp, "stop_reason", None)
         raw_text = _extract_text_from_resp(resp)
@@ -7933,6 +7964,7 @@ def api_submission_docs_extract(cid: str, user: dict = Depends(get_current_user)
             model="claude-sonnet-4-6",          # ★ Sonnet 직접 — 누락 방지(get_setting 우회)
             max_tokens=8000,
             messages=[{"role": "user", "content": prompt}],
+            **_me.effort_kwargs("submission_docs", "claude-sonnet-4-6"),
         )
         raw = _extract_text_from_resp(resp)
         if not raw:
@@ -8706,10 +8738,12 @@ def api_proposals_audit(body: AuditIn, user: dict = Depends(get_current_user)):
 
         # 4. Claude 호출
         client = require_client()
+        _m = get_setting("model", MODEL_DEFAULT)
         resp = client.messages.create(
-            model=get_setting("model", MODEL_DEFAULT),
-            max_tokens=4000,
+            model=_m,
+            max_tokens=_me.max_tokens("audit", _m, 4000),
             messages=[{"role": "user", "content": prompt}],
+            **_me.effort_kwargs("audit", _m),
         )
         raw = _extract_text_from_resp(resp)
         if not raw.strip():
@@ -8778,10 +8812,12 @@ def api_pt_script(body: PtScriptIn, user: dict = Depends(get_current_user)):
               .replace("{PROPOSAL_TEXT}", proposal_text))
     try:
         client = require_client()
+        _m = get_setting("model", MODEL_DEFAULT)
         resp = client.messages.create(
-            model=get_setting("model", MODEL_DEFAULT),
-            max_tokens=4000,
+            model=_m,
+            max_tokens=_me.max_tokens("pt_script", _m, 4000),
             messages=[{"role": "user", "content": prompt}],
+            **_me.effort_kwargs("pt_script", _m),
         )
         raw = _extract_text_from_resp(resp)
         raw = re.sub(r"^```(?:json)?\s*", "", raw)
@@ -8822,10 +8858,12 @@ def api_pt_qa(body: PtQaIn, user: dict = Depends(get_current_user)):
               .replace("{PROPOSAL_TEXT}", proposal_text))
     try:
         client = require_client()
+        _m = get_setting("model", MODEL_DEFAULT)
         resp = client.messages.create(
-            model=get_setting("model", MODEL_DEFAULT),
-            max_tokens=4000,
+            model=_m,
+            max_tokens=_me.max_tokens("pt_qa", _m, 4000),
             messages=[{"role": "user", "content": prompt}],
+            **_me.effort_kwargs("pt_qa", _m),
         )
         raw = _extract_text_from_resp(resp)
         raw = re.sub(r"^```(?:json)?\s*", "", raw)

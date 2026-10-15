@@ -3124,6 +3124,11 @@ def _narrative_contrast(slide_data: dict) -> list:
 # 안전망: left/right 가 dict 아님 / head 누락 → 빈 리스트 반환 (호출부 try/except 와
 #         별개 안전 fallback). 1 단계는 코드만 등록 — viz_pattern 연결은 별도 spec.
 def _build_preset_split(slide_data):
+    # ★ Spec Text-Fit — 플래그 ON 이면 글 맞춤 배치로 (실패 시 아래 기존 빌더 그대로)
+    if TEXT_FIT_ENABLED:
+        _tf = _tf_route("split", slide_data)
+        if _tf is not None:
+            return _tf
     left  = slide_data.get("left")  or {}
     right = slide_data.get("right") or {}
     if not isinstance(left, dict) or not isinstance(right, dict):
@@ -4895,6 +4900,11 @@ def _build_preset_hero_detail(slide_data):
 # 안전망: title 없음 / steps 4~5 아님 / columns 3~4 아님 / 각 column items 3 아님 → 빈 list.
 # ★ 본 spec 단계: 코드 + dispatch 만 등록 — SLIDE 프롬프트·화이트리스트 미연결.
 def _build_preset_flow_detail(slide_data):
+    # ★ Spec Text-Fit — 플래그 ON 이면 글 맞춤 배치로 (실패 시 아래 기존 빌더 그대로)
+    if TEXT_FIT_ENABLED:
+        _tf = _tf_route("flow_detail", slide_data)
+        if _tf is not None:
+            return _tf
     title = str(slide_data.get("title", "")).strip()
     if not title:
         return []
@@ -5137,6 +5147,11 @@ def _build_preset_flow_detail(slide_data):
 # 안전망: title 없음 / items 정확 4 아님 / 각 head 누락 → 빈 list.
 # ★ 본 spec 단계: 코드 + dispatch 만 등록 — SLIDE 프롬프트·화이트리스트 미연결.
 def _build_preset_quad_detail(slide_data):
+    # ★ Spec Text-Fit — 플래그 ON 이면 글 맞춤 배치로 (실패 시 아래 기존 빌더 그대로)
+    if TEXT_FIT_ENABLED:
+        _tf = _tf_route("quad_detail", slide_data)
+        if _tf is not None:
+            return _tf
     title = str(slide_data.get("title", "")).strip()
     if not title:
         return []
@@ -5432,6 +5447,11 @@ def _build_preset_2col(slide_data: dict) -> list:
       · 중앙 화살표 자리 폭 1.0" — 카드 사이 gap
       · 카드 안 head (20pt weight 700) + items(· 불릿 세로 스택 y=card_top+0.9+i*0.65)
     """
+    # ★ Spec Text-Fit — 플래그 ON 이면 글 맞춤 배치로 (실패 시 아래 기존 빌더 그대로)
+    if TEXT_FIT_ENABLED:
+        _tf = _tf_route("2col", slide_data)
+        if _tf is not None:
+            return _tf
     # 1. 필드 파싱 + 절단 (서술문 유입 차단)
     title = str(slide_data.get("title", "")).strip()[:40]
     if not title:
@@ -5664,6 +5684,11 @@ def _build_preset_program_overview(slide_data: dict) -> list:
       "note"     : str (선택, 하단 한 줄)
     반환 = shape dict 리스트. title 없음 / overview 3행 미만 → 빈 리스트 → 자율 폴백.
     """
+    # ★ Spec Text-Fit — 플래그 ON 이면 글 맞춤 배치로 (실패 시 아래 기존 빌더 그대로)
+    if TEXT_FIT_ENABLED:
+        _tf = _tf_route("program_overview", slide_data)
+        if _tf is not None:
+            return _tf
     title = str(slide_data.get("title", "")).strip()[:40]
     if not title:
         return []
@@ -7266,6 +7291,728 @@ def _photo_overlay_apply(slide, shapes, slide_data, sw, sh, used):
         "role": "photo_credit",
     })
     return new_shapes
+
+
+# ─── Spec Text-Fit — 글 맞춤 공통 처리 (잘림·겹침 해결) ───────────────────────
+# 진단(test88 + 최근 39덱): 빌더 5종이 "글은 한 줄"이라 가정한다.
+#   · 글자 수 고정 자르기(말줄임표 없음) — 2col 45자 · program_overview 70자
+#   · 고정 줄 간격·슬롯 — quad_detail 0.28" · split 0.62" · flow_detail 항목 슬롯
+#   → 단어 중간 잘림 · 다음 줄과 겹침 · 카드 밖 넘침 (2col 9쪽 중 7쪽 · quad_detail 21쪽 중 8쪽).
+# 방식: 실제 폰트(Paperlogy ttf) 글자 폭으로 줄 수를 계산 → 높이·간격을 정하고 →
+#   영역을 넘치면 글자를 1pt씩 줄이고(하한까지) → 하한에서도 넘칠 때만 어절 경계 "…".
+#   굵기는 건드리지 않는다 (굵게 규칙은 dispatch 층에서 그대로 돈다).
+# ★ 기존 빌더 본문은 무수정 — 각 빌더 맨 앞에서 플래그 ON 일 때만 _tf_build_* 로 우회.
+#   _tf_build_* 가 [] 를 내는 경우(필수 키 미충족)는 기존 빌더도 [] 라 결과가 같다.
+#   _tf_build_* 에서 예외가 나면 기존 빌더로 그린다.
+# False = 기존과 100% 동일 (우회·측정 전부 미실행).
+TEXT_FIT_ENABLED = True
+
+_TF_FONT_FILES = {
+    100: "Paperlogy-1Thin.ttf", 200: "Paperlogy-2ExtraLight.ttf", 300: "Paperlogy-3Light.ttf",
+    400: "Paperlogy-4Regular.ttf", 500: "Paperlogy-5Medium.ttf", 600: "Paperlogy-6SemiBold.ttf",
+    700: "Paperlogy-7Bold.ttf", 800: "Paperlogy-8ExtraBold.ttf", 900: "Paperlogy-9Black.ttf",
+}
+# 대체 폰트 여유 — Paperlogy 가 없는 환경(LibreOffice 는 NanumGothic 로 대체)의 글자 폭이
+#   실측 평균 +8% · 최대 +10% (덱 문장 400개). 맑은 고딕(+16%)까지는 덮지 못한다.
+#   보정 실측(덱 문장 160개 × 9~14pt × 폭 4종, LibreOffice 렌더): 줄 수 예측 실제와 같음 151 ·
+#   더 많게(보수) 9 · 더 적게 0.
+_TF_WIDTH_SAFETY = 1.10
+# 한 줄 높이 — Paperlogy 1.178em 이지만 대체 폰트 렌더 실측 줄 간격이 2% 더 커서 1.20em 으로
+#   (10pt 실측 0.192" · 9pt 0.173" · 14pt 0.269"). × _add_text 줄 간격 1.15.
+_TF_LINE_EM = 1.20 * 1.15
+_TF_INSET = 0.04                 # _add_text 안쪽 여백 (상하좌우)
+_TF_ELLIPSIS = "…"
+_TF_FONT_CACHE: dict = {}
+_TF_STATS: dict = {}             # 검증용 계수 — 하한 도달·말줄임 건수 (렌더 결과와 무관)
+
+
+def _tf_stat(key, n=1):
+    _TF_STATS[key] = _TF_STATS.get(key, 0) + n
+
+
+def _tf_font(weight):
+    w = _normalize_weight(weight)
+    if w not in _TF_FONT_CACHE:
+        try:
+            from PIL import ImageFont as _IF
+            _TF_FONT_CACHE[w] = _IF.truetype(
+                str(Path(__file__).parent / "static" / "fonts" / _TF_FONT_FILES[w]), 100)
+        except Exception:
+            _TF_FONT_CACHE[w] = None      # 폰트 파일·Pillow 없음 → 글자 수 어림으로
+    return _TF_FONT_CACHE[w]
+
+
+def _tf_text_w(text, size, weight) -> float:
+    """글 폭(인치) — 실제 글리프 폭 × 대체 폰트 여유."""
+    f = _tf_font(weight)
+    em = (f.getlength(text) / 100.0) if f is not None else _st_em_len(text)
+    return em * float(size) / 72.0 * _TF_WIDTH_SAFETY
+
+
+def _tf_wrap(text, width, size, weight) -> list:
+    """폭 width(인치, 상자 폭) 안에서 어절 단위 줄바꿈 결과. 한 어절이 줄보다 길면 글자 단위."""
+    usable = max(0.2, float(width) - 2 * _TF_INSET)
+    lines = []
+    for para in str(text or "").split("\n"):
+        cur = ""
+        for word in para.split(" "):
+            cand = word if not cur else cur + " " + word
+            if _tf_text_w(cand, size, weight) <= usable:
+                cur = cand
+                continue
+            if cur:
+                lines.append(cur)
+                cur = ""
+            while len(word) > 1 and _tf_text_w(word, size, weight) > usable:
+                k = len(word) - 1
+                while k > 1 and _tf_text_w(word[:k], size, weight) > usable:
+                    k -= 1
+                lines.append(word[:k])
+                word = word[k:]
+            cur = word
+        lines.append(cur)
+    return lines
+
+
+def _tf_line_h(size) -> float:
+    return float(size) * _TF_LINE_EM / 72.0
+
+
+def _tf_height(text, width, size, weight) -> float:
+    """상자 높이(인치) — 줄 수 × 줄 높이 + 상하 여백."""
+    return len(_tf_wrap(text, width, size, weight)) * _tf_line_h(size) + 2 * _TF_INSET
+
+
+def _tf_clip(text, width, size, weight, max_lines) -> str:
+    """max_lines 줄 안에 들도록 뒤 어절부터 덜어내고 "…". 어절 중간은 자르지 않는다."""
+    if len(_tf_wrap(text, width, size, weight)) <= max_lines:
+        return text
+    words = str(text).split(" ")
+    while len(words) > 1:
+        words.pop()
+        cand = " ".join(words).rstrip(" ,·.;:/") + _TF_ELLIPSIS
+        if len(_tf_wrap(cand, width, size, weight)) <= max_lines:
+            return cand
+    # 어절 하나가 max_lines 보다 긴 극단 — 글자 단위로 줄임
+    word = words[0] if words else str(text)
+    while len(word) > 1 and len(_tf_wrap(word + _TF_ELLIPSIS, width, size, weight)) > max_lines:
+        word = word[:-1]
+    return word + _TF_ELLIPSIS
+
+
+def _tf_fit_groups(groups, width, avails, size0, min_size, weight, gap):
+    """글 묶음 여러 개(예: 2col 좌·우)를 같은 글자 크기로 맞춘다.
+
+    groups: [[text, ...], ...] / avails: 묶음별 가용 높이(인치, 숫자면 공통)
+    반환: (size, [[(text, height), ...], ...], hit_min, clipped_n)
+    """
+    if not isinstance(avails, (list, tuple)):
+        avails = [avails] * len(groups)
+
+    def total(hs):
+        return sum(hs) + gap * max(0, len(hs) - 1)
+
+    size = int(size0)
+    while True:
+        hs_all = [[_tf_height(t, width, size, weight) for t in g] for g in groups]
+        if all(total(hs) <= av + 1e-6 for hs, av in zip(hs_all, avails)) or size <= min_size:
+            break
+        size -= 1
+    hit_min = size <= min_size and not all(total(hs) <= av + 1e-6 for hs, av in zip(hs_all, avails))
+    out, clipped = [], 0
+    for g, hs, av in zip(groups, hs_all, avails):
+        g, hs = list(g), list(hs)
+        done = set()
+        while total(hs) > av + 1e-6:
+            lines = [len(_tf_wrap(t, width, size, weight)) for t in g]
+            i = max(range(len(g)), key=lambda k: lines[k])
+            if lines[i] <= 1:
+                break
+            g[i] = _tf_clip(g[i], width, size, weight, lines[i] - 1)
+            hs[i] = _tf_height(g[i], width, size, weight)
+            done.add(i)
+        clipped += len(done)
+        out.append(list(zip(g, hs)))
+    return size, out, hit_min, clipped
+
+
+def _tf_note(name, hit_min, clipped):
+    _tf_stat(name + ":pages")
+    if hit_min:
+        _tf_stat(name + ":min_size")
+    if clipped:
+        _tf_stat(name + ":ellipsis", clipped)
+
+
+# 글자 크기 하한 — 근거: 기존 빌더가 이미 쓰는 가장 작은 본문 크기.
+#   · 본문(카드 항목·좌우 대비 본문) 10pt — 기존 축소 계단(_PO_SIZES 11→9)·표(10→8)보다 보수적
+#   · 세부 설명(체크리스트·열 설명) 9pt — flow_detail 4열·5단계 설명이 이미 9pt
+#   · 이미 9pt 인 글은 8pt — 표 3종(_TT/_SF 계단)의 최저와 같음
+#   (program_overview 카드 설명은 세부 설명으로 보고 9pt — 같은 쪽 운영개요표 계단도 9pt)
+_TF_MIN_BODY, _TF_MIN_DETAIL, _TF_MIN_FLOOR = 10, 9, 8
+
+
+def _tf_build_2col(slide_data: dict) -> list:
+    """2col — 45자 자르기 폐지, 항목 높이를 줄 수로 계산, 카드는 내용에 맞춰 위 정렬."""
+    title = str(slide_data.get("title", "")).strip()[:40]
+    if not title:
+        return []
+    subtitle = str(slide_data.get("subtitle", "")).strip()[:60]
+    eyebrow = str(slide_data.get("eyebrow", "")).strip()[:50]
+    show_arrow = bool(slide_data.get("arrow", True))
+
+    def _parse_side(side_raw):
+        if not isinstance(side_raw, dict):
+            return None
+        head = str(side_raw.get("head", "")).strip()[:20]
+        items_raw = side_raw.get("items") or []
+        if not isinstance(items_raw, list):
+            return None
+        items = [str(x).strip()[:160] for x in items_raw if str(x).strip()][:5]
+        if not head or len(items) < 2:
+            return None
+        return {"head": head, "items": items}
+
+    left = _parse_side(slide_data.get("left"))
+    right = _parse_side(slide_data.get("right"))
+    if not left or not right:
+        return []
+
+    W, H = 11.69, 8.27
+    margin, gap_x = 0.5, 1.0
+    card_top = 2.3
+    card_h_max = H - card_top - 0.4             # 5.57 — 기존 카드 높이가 상한
+    card_w = (W - 2 * margin - gap_x) / 2
+    item_w = card_w - 0.5
+    head_zone, pad_b, item_gap = 0.9, 0.3, 0.2
+    size, fitted, hit_min, clipped = _tf_fit_groups(
+        [[f"· {t}" for t in left["items"]], [f"· {t}" for t in right["items"]]],
+        item_w, card_h_max - head_zone - pad_b, 14, _TF_MIN_BODY, 400, item_gap)
+    _tf_note("2col", hit_min, clipped)
+    body = max(sum(h for _, h in g) + item_gap * (len(g) - 1) for g in fitted)
+    # 카드 높이 = 내용 + 여백 (좌우 같게, 위 정렬). 너무 납작해지지 않게 하한 2.8".
+    card_h = min(card_h_max, max(2.8, head_zone + body + pad_b))
+
+    shapes: list = []
+    if eyebrow:
+        shapes.append({"type": "text", "x": 0.5, "y": 0.35, "w": 10.69, "h": 0.25,
+                       "text": eyebrow, "size": 11, "weight": 400, "color": "#999999",
+                       "align": "left", "valign": "middle"})
+    shapes.append({"type": "text", "x": 0.5, "y": 0.65, "w": 10.69, "h": 0.7,
+                   "text": title, "size": 28, "weight": 800, "color": "#1A1A1A",
+                   "align": "left", "valign": "middle", "role": "governing"})
+    if subtitle:
+        shapes.append({"type": "text", "x": 0.5, "y": 1.4, "w": 10.69, "h": 0.3,
+                       "text": subtitle, "size": 13, "weight": 500, "color": "#666666",
+                       "align": "left", "valign": "top"})
+    for side, base_x, items in ((left, margin, fitted[0]),
+                                (right, margin + card_w + gap_x, fitted[1])):
+        shapes.append({"type": "rect", "x": base_x, "y": card_top, "w": card_w, "h": card_h,
+                       "fill": "#FFFFFF", "stroke": "#DDDDDD", "stroke_width": 1})
+        shapes.append({"type": "text", "x": base_x + 0.2, "y": card_top + 0.2,
+                       "w": card_w - 0.4, "h": 0.5,
+                       "text": side["head"], "size": 20, "weight": 700, "color": "#1A1A1A",
+                       "align": "left", "valign": "top"})
+        iy = card_top + head_zone
+        for text, h in items:
+            shapes.append({"type": "text", "x": base_x + 0.25, "y": iy, "w": item_w, "h": h,
+                           "text": text, "size": size, "weight": 400, "color": "#444444",
+                           "align": "left", "valign": "top"})
+            iy += h + item_gap
+    if show_arrow:
+        shapes.append({"type": "text", "x": W / 2 - 0.2, "y": card_top + card_h / 2 - 0.25,
+                       "w": 0.4, "h": 0.5, "text": "→", "size": 22, "weight": 700,
+                       "color": "#1A1A1A", "align": "center", "valign": "middle"})
+    return shapes
+
+
+def _tf_build_quad_detail(slide_data) -> list:
+    """quad_detail — 체크 항목 높이를 줄 수로 계산, 길어지면 이미지 자리를 줄여 공간 확보."""
+    title = str(slide_data.get("title", "")).strip()
+    if not title:
+        return []
+    items_raw = slide_data.get("items") or []
+    if not isinstance(items_raw, list):
+        return []
+    items = []
+    for it in items_raw:
+        if not isinstance(it, dict):
+            continue
+        head = str(it.get("head", "")).strip()
+        if not head:
+            continue
+        pts_raw = it.get("points") or []
+        if not isinstance(pts_raw, list):
+            pts_raw = []
+        items.append({"head": head,
+                      "points": [str(p).strip() for p in pts_raw if str(p).strip()][:3]})
+    if len(items) > 4:
+        items = items[:4]
+    if len(items) < 2:
+        return []
+    badge = str(slide_data.get("badge", "")).strip()
+    subtitle = str(slide_data.get("subtitle", "")).strip()
+
+    W, H = 11.69, 8.27
+    margin = 0.9
+    shapes = []
+    top_y = 0.35
+    if badge:
+        shapes.append({"type": "rect", "x": margin, "y": top_y, "w": 1.6, "h": 0.35,
+                       "fill": "#1B1B1B", "radius": 0.05})
+        shapes.append({"type": "text", "x": margin, "y": top_y, "w": 1.6, "h": 0.35,
+                       "text": badge, "size": 11, "weight": 700, "color": "#FEFEFE",
+                       "align": "center", "valign": "middle"})
+    sub_y = top_y + (0.5 if badge else 0.05)
+    if subtitle:
+        shapes.append({"type": "text", "x": margin, "y": sub_y, "w": W - 2 * margin, "h": 0.3,
+                       "text": subtitle, "size": 12, "weight": 400, "color": "#666666",
+                       "align": "left", "valign": "middle"})
+        title_y = sub_y + 0.35
+    else:
+        title_y = sub_y
+    shapes.append({"type": "text", "x": margin, "y": title_y, "w": W - 2 * margin, "h": 0.75,
+                   "text": title, "size": 26, "weight": 800, "color": "#1A1A1A",
+                   "align": "left", "valign": "middle", "role": "governing"})
+    grid_top = max(2.1, title_y + 0.85 + 0.15)
+    grid_h = (H - 0.25) - grid_top
+    gap, inner_w, header_h = 0.3, W - 2 * margin, 0.5
+    n = len(items)
+    if n == 2:
+        block_w, block_h = (inner_w - gap) / 2, grid_h
+        positions = [(margin, grid_top), (margin + block_w + gap, grid_top)]
+    elif n == 3:
+        block_w, block_h = (inner_w - 2 * gap) / 3, grid_h
+        positions = [(margin + k * (block_w + gap), grid_top) for k in range(3)]
+    else:
+        block_w, block_h = (inner_w - gap) / 2, (grid_h - gap) / 2
+        positions = [(margin, grid_top), (margin + block_w + gap, grid_top),
+                     (margin, grid_top + block_h + gap),
+                     (margin + block_w + gap, grid_top + block_h + gap)]
+    content_h = block_h - header_h - 0.1 - 0.05
+    min_img = 0.6                                   # 이미지 자리 최소 높이
+    pt_w, pt_gap = block_w - 0.3, 0.04
+    groups = [["✓ " + p for p in it["points"]] for it in items]
+    size, fitted, hit_min, clipped = _tf_fit_groups(
+        groups, pt_w, content_h - min_img - 0.05, 11, _TF_MIN_DETAIL, 400, pt_gap)
+    _tf_note("quad_detail", hit_min, clipped)
+    for i, it in enumerate(items):
+        bx, by = positions[i]
+        shapes.append({"type": "rect", "x": bx, "y": by, "w": block_w, "h": header_h,
+                       "fill": "#1B1B1B"})
+        shapes.append({"type": "text", "x": bx, "y": by, "w": block_w, "h": header_h,
+                       "text": it["head"], "size": 13, "weight": 700, "color": "#FEFEFE",
+                       "align": "center", "valign": "middle"})
+        content_top = by + header_h + 0.1
+        content_bot = by + block_h - 0.05
+        if fitted[i]:
+            py = content_top
+            for text, h in fitted[i]:
+                shapes.append({"type": "text", "x": bx + 0.15, "y": py, "w": pt_w, "h": h,
+                               "text": text, "size": size, "weight": 400, "color": "#1A1A1A",
+                               "align": "left", "valign": "top"})
+                py += h + pt_gap
+            img_top = py + 0.05
+        else:
+            img_top = content_top
+        img_h = max(0.4, content_bot - img_top)
+        shapes.append({"type": "rect", "x": bx + 0.1, "y": img_top, "w": block_w - 0.2, "h": img_h,
+                       "fill": "#F5F5F5", "stroke": "#DDDDDD", "stroke_width": 1})
+        shapes.append({"type": "text", "x": bx + 0.1, "y": img_top + img_h / 2 - 0.2,
+                       "w": block_w - 0.2, "h": 0.4,
+                       "text": "이미지 영역", "size": 11, "weight": 400, "color": "#AAAAAA",
+                       "align": "center", "valign": "middle"})
+    return shapes
+
+
+def _tf_build_split(slide_data) -> list:
+    """split — 큰 제목·본문 높이를 줄 수로 계산해 세로로 쌓고, 블록 전체를 세로 가운데."""
+    left = slide_data.get("left") or {}
+    right = slide_data.get("right") or {}
+    if not isinstance(left, dict) or not isinstance(right, dict):
+        return []
+    sides = []
+    for s in (left, right):
+        sides.append({"label": str(s.get("label", "")).strip(),
+                      "head": str(s.get("head", "")).strip(),
+                      "pts": [str(p).strip() for p in (s.get("points") or []) if str(p).strip()][:4]})
+    if not sides[0]["head"] or not sides[1]["head"]:
+        return []
+    W, H = 11.69, 8.27
+    half = W / 2
+    shapes = [{"type": "rect", "x": 0, "y": 0, "w": half, "h": H, "fill": "#1A1A1A"},
+              {"type": "rect", "x": half, "y": 0, "w": half, "h": H, "fill": "#FFFFFF"}]
+    col_w = half - 1.2
+    avail_all = H - 1.2                                  # 위아래 0.6" 여백
+    # ① 큰 제목 — 3줄 넘으면 26 → 20pt 까지 (양쪽 같은 크기)
+    head_size = 26
+    while head_size > 20 and max(len(_tf_wrap(s["head"], col_w, head_size, 800)) for s in sides) > 3:
+        head_size -= 1
+    head_hs = [max(0.9, _tf_height(s["head"], col_w, head_size, 800)) for s in sides]
+    label_hs = [0.7 if s["label"] else 0.0 for s in sides]
+    head_gap, pt_gap = 0.3, 0.12
+    avails = [avail_all - lh - hh - head_gap for lh, hh in zip(label_hs, head_hs)]
+    size, fitted, hit_min, clipped = _tf_fit_groups(
+        [s["pts"] for s in sides], col_w, avails, 13, _TF_MIN_BODY, 400, pt_gap)
+    _tf_note("split", hit_min, clipped)
+    colors = (("#FFFFFF", "#FFFFFF", "#DDDDDD"), ("#1A1A1A", "#1A1A1A", "#444444"))
+    for k, (x, s) in enumerate(((0.6, sides[0]), (half + 0.6, sides[1]))):
+        label_c, head_c, pt_c = colors[k]
+        pts_h = sum(h for _, h in fitted[k]) + pt_gap * max(0, len(fitted[k]) - 1)
+        block = label_hs[k] + head_hs[k] + (head_gap + pts_h if fitted[k] else 0)
+        y = max(0.6, (H - block) / 2)
+        if s["label"]:
+            shapes.append({"type": "text", "x": x, "y": y, "w": col_w, "h": 0.5, "text": s["label"],
+                           "size": 13, "weight": 700, "color": label_c,
+                           "align": "center", "valign": "middle"})
+            y += 0.7
+        shapes.append({"type": "text", "x": x, "y": y, "w": col_w, "h": head_hs[k], "text": s["head"],
+                       "size": head_size, "weight": 800, "color": head_c,
+                       "align": "center", "valign": "middle", "role": "governing"})
+        y += head_hs[k] + head_gap
+        for text, h in fitted[k]:
+            shapes.append({"type": "text", "x": x, "y": y, "w": col_w, "h": h, "text": text,
+                           "size": size, "weight": 400, "color": pt_c,
+                           "align": "center", "valign": "top"})
+            y += h + pt_gap
+    return shapes
+
+
+def _tf_build_program_overview(slide_data: dict) -> list:
+    """program_overview — 좌측 카드 설명 70자 자르기 폐지, 카드 높이를 내용으로 계산.
+    제목·리드·우측 운영개요표·노트는 기존 빌더와 같은 계산(표는 이미 높이 맞춤이 있다)."""
+    title = str(slide_data.get("title", "")).strip()[:40]
+    if not title:
+        return []
+    eyebrow = str(slide_data.get("eyebrow", "")).strip()[:50]
+    lead = str(slide_data.get("lead", "")).strip()[:_PO_CUT["lead"]]
+    note = str(slide_data.get("note", "")).strip()[:_PO_CUT["note"]]
+    ov_raw = slide_data.get("overview") or []
+    if not isinstance(ov_raw, list):
+        return []
+    overview = []
+    for it in ov_raw:
+        if not isinstance(it, dict):
+            continue
+        k = str(it.get("k", "")).strip()[:_PO_CUT["k"]]
+        v = str(it.get("v", "")).strip()[:_PO_CUT["v"]]
+        if k and v:
+            overview.append((k, v))
+    if len(overview) > _PO_MAX_ROWS:
+        overview = overview[:_PO_MAX_ROWS]
+    if len(overview) < _PO_MIN_ROWS:
+        return []
+    pts_raw = slide_data.get("points") or []
+    points = []
+    if isinstance(pts_raw, list):
+        for it in pts_raw:
+            if not isinstance(it, dict):
+                continue
+            head = str(it.get("head", "")).strip()[:_PO_CUT["head"]]
+            if head:
+                points.append((head, str(it.get("desc", "")).strip()[:200]))
+    points = points[:_PO_MAX_PTS]
+
+    shapes: list = []
+    if eyebrow:
+        shapes.append({"type": "text", "x": _PO_X, "y": 0.5, "w": _PO_W, "h": 0.4,
+                       "text": eyebrow, "size": 11, "weight": 400, "color": "#BBBBBB",
+                       "align": "left", "valign": "top"})
+    shapes.append({"type": "text", "x": _PO_X, "y": 1.0, "w": _PO_W, "h": 0.85,
+                   "text": title, "size": 28, "weight": 800, "color": "#1A1A1A",
+                   "align": "left", "valign": "middle", "role": "governing"})
+    if lead:
+        shapes.append({"type": "text", "x": _PO_X, "y": 1.9, "w": _PO_W, "h": 0.35,
+                       "text": lead, "size": 13, "weight": 400, "color": "#666666",
+                       "align": "left", "valign": "middle"})
+
+    # ── 좌측 핵심 포인트 카드 — 높이를 내용으로 계산
+    if points:
+        text_w = _PO_LEFT_W - 0.44
+        avail = _PO_BOTTOM - _PO_TOP
+        gap, pad = 0.18, 0.14
+
+        def card_need(c):     # 제목 상자 아래 여백과 설명 상자 위 여백을 겹친다 (글자 사이 0.08")
+            return pad * 2 + c[2] + (c[3] - _TF_INSET if c[1] else 0)
+
+        def total(cs):
+            return sum(card_need(c) for c in cs) + gap * (len(cs) - 1)
+        chosen = None
+        # (제목, 설명) 계단 — 설명은 세부 설명이라 하한 9pt (같은 쪽 운영개요표도 9pt 까지 내려감)
+        for hs_, ds_ in ((14, 12), (13, 11), (12, 10), (12, _TF_MIN_DETAIL)):
+            cards = [[h, d, _tf_height(h, text_w, hs_, 700),
+                      _tf_height(d, text_w, ds_, 400) if d else 0.0] for h, d in points]
+            chosen = (hs_, ds_, cards)
+            if total(cards) <= avail + 1e-6:
+                break
+        hs_, ds_, cards = chosen
+        hit_min = total(cards) > avail + 1e-6
+        clipped = set()
+        while total(cards) > avail + 1e-6:
+            lines = [len(_tf_wrap(c[1], text_w, ds_, 400)) if c[1] else 0 for c in cards]
+            i = max(range(len(cards)), key=lambda q: lines[q])
+            if lines[i] <= 1:
+                break
+            cards[i][1] = _tf_clip(cards[i][1], text_w, ds_, 400, lines[i] - 1)
+            cards[i][3] = _tf_height(cards[i][1], text_w, ds_, 400)
+            clipped.add(i)
+        _tf_note("program_overview", hit_min, len(clipped))
+        uniform = max(card_need(c) for c in cards)      # 다 들어가면 같은 높이, 아니면 각자
+        heights = ([uniform] * len(cards)
+                   if uniform * len(cards) + gap * (len(cards) - 1) <= avail + 1e-6
+                   else [card_need(c) for c in cards])
+        cy = _PO_TOP
+        for (head, desc, hh, dh), ch in zip(cards, heights):
+            shapes.append({"type": "rect", "x": _PO_X, "y": cy, "w": _PO_LEFT_W, "h": ch,
+                           "fill": "#FFFFFF", "stroke": "#DDDDDD", "stroke_width": 1})
+            shapes.append({"type": "text", "x": _PO_X + 0.22, "y": cy + pad, "w": text_w, "h": hh,
+                           "text": head, "size": hs_, "weight": 700, "color": "#1A1A1A",
+                           "align": "left", "valign": "top"})
+            if desc:
+                shapes.append({"type": "text", "x": _PO_X + 0.22, "y": cy + pad + hh - _TF_INSET,
+                               "w": text_w, "h": dh, "text": desc, "size": ds_, "weight": 400,
+                               "color": "#666666", "align": "left", "valign": "top"})
+            cy += ch + gap
+
+    # ── 우측 운영개요표 — 기존 빌더와 같은 계산
+    widths = [_PO_KEY_W, round(_PO_RIGHT_W - _PO_KEY_W, 3)]
+    budget = _PO_BOTTOM - _PO_TOP
+
+    def heights_of(size):
+        hs = [round(max(0.30, _tt_need("운영 개요", widths[0], size)), 2)]
+        for k, v in overview:
+            hs.append(round(max(0.30, max(_tt_need(k, widths[0], size),
+                                          _tt_need(v, widths[1], size))), 2))
+        return hs, round(sum(hs), 2)
+    size = _PO_SIZES[0]
+    heights, total_h = heights_of(size)
+    for cand in _PO_SIZES:
+        size = cand
+        heights, total_h = heights_of(size)
+        if total_h <= budget:
+            break
+    while total_h > budget and len(overview) > _PO_MIN_ROWS:
+        overview = overview[:-1]
+        heights, total_h = heights_of(size)
+    shapes.append({"type": "table", "x": _PO_RIGHT_X, "y": _PO_TOP, "w": _PO_RIGHT_W,
+                   "header": ["운영 개요", ""], "rows": [[k, v] for k, v in overview],
+                   "col_widths": widths, "aligns": ["left", "left"],
+                   "size": size, "row_heights": heights,
+                   "cell_fills": {(r, 0): "#F5F5F5" for r in range(1, len(overview) + 1)},
+                   "header_fill": "#1A1A1A", "header_color": "#FFFFFF",
+                   "body_fill": "#FFFFFF", "body_color": "#1A1A1A", "line": "#DDDDDD"})
+    if note:
+        shapes.append({"type": "text", "x": _PO_X, "y": 7.62, "w": _PO_W, "h": 0.35,
+                       "text": note, "size": 11, "weight": 400, "color": "#666666",
+                       "align": "left", "valign": "top"})
+    return shapes
+
+
+def _tf_build_flow_detail(slide_data) -> list:
+    """flow_detail — 위 단계 상자 설명과 아래 열 항목(제목+설명)의 높이를 줄 수로 계산해 쌓는다.
+    나머지 배치(거버닝·단계 상자·화살표·열 key·구분선)는 기존 빌더와 같다."""
+    title = str(slide_data.get("title", "")).strip()
+    if not title:
+        return []
+    steps_raw = slide_data.get("steps") or []
+    if not isinstance(steps_raw, list):
+        return []
+    steps = []
+    for s in steps_raw:
+        if not isinstance(s, dict):
+            continue
+        kr = str(s.get("kr", "")).strip()
+        if kr:
+            steps.append({"en": str(s.get("en", "")).strip(), "kr": kr,
+                          "desc": str(s.get("desc", "")).strip()})
+    steps = steps[:5]
+    if len(steps) < 3:
+        return []
+    columns_raw = slide_data.get("columns") or []
+    if not isinstance(columns_raw, list):
+        return []
+    columns = []
+    for col in columns_raw:
+        if not isinstance(col, dict):
+            continue
+        key = str(col.get("key", "")).strip()
+        if not key:
+            continue
+        items_raw = col.get("items") or []
+        if not isinstance(items_raw, list):
+            items_raw = []
+        col_items = []
+        for it in items_raw:
+            if not isinstance(it, dict):
+                continue
+            head = str(it.get("head", "")).strip()
+            if head:
+                col_items.append({"head": head, "desc": str(it.get("desc", "")).strip()})
+        columns.append({"key": key, "key_sub": str(col.get("key_sub", "")).strip(),
+                        "lead": str(col.get("lead", "")).strip(), "items": col_items[:3]})
+    columns = columns[:4]
+    if len(columns) < 2:
+        return []
+    subtitle = str(slide_data.get("subtitle", "")).strip()
+    section_title_1 = str(slide_data.get("section_title_1", "")).strip()
+    section_title_2 = str(slide_data.get("section_title_2", "")).strip()
+    flow_lead = str(slide_data.get("flow_lead", "")).strip()
+
+    W, H = 11.69, 8.27
+    margin = 0.9
+    inner_w = W - 2 * margin
+    shapes = []
+    if subtitle:
+        shapes.append({"type": "text", "x": margin, "y": 0.35, "w": inner_w, "h": 0.25,
+                       "text": subtitle, "size": 11, "weight": 400, "color": "#666666",
+                       "align": "center", "valign": "middle"})
+    shapes.append({"type": "text", "x": margin, "y": 0.65, "w": inner_w, "h": 0.85,
+                   "text": title, "size": 26, "weight": 800, "color": "#1A1A1A",
+                   "align": "center", "valign": "middle", "role": "governing"})
+    if section_title_1:
+        shapes.append({"type": "text", "x": margin, "y": 1.7, "w": inner_w, "h": 0.3,
+                       "text": section_title_1, "size": 13, "weight": 700, "color": "#1A1A1A",
+                       "align": "left", "valign": "middle"})
+    if flow_lead:
+        shapes.append({"type": "text", "x": margin, "y": 2.0, "w": inner_w, "h": 0.25,
+                       "text": flow_lead, "size": 10, "weight": 400, "color": "#666666",
+                       "align": "left", "valign": "middle"})
+
+    # ── ② 위 단계 상자 (상자 크기 고정 — kr 줄 수만큼 설명을 내리고, 설명은 남은 칸에 맞춤)
+    n_steps = len(steps)
+    arrow_w = 0.4
+    box_w = (inner_w - (n_steps - 1) * arrow_w) / n_steps
+    box_top, box_h, pad = 2.35, 1.55, 0.12
+    kr_size, en_size, sdesc0 = {3: (18, 11, 11), 4: (16, 10, 10)}.get(n_steps, (14, 9, 9))
+    sdesc_floor = _TF_MIN_FLOOR if sdesc0 <= 9 else _TF_MIN_DETAIL
+    sd_min = sd_clip = 0
+    for i, st in enumerate(steps):
+        bx = margin + i * (box_w + arrow_w)
+        shapes.append({"type": "rect", "x": bx, "y": box_top, "w": box_w, "h": box_h,
+                       "fill": "#FFFFFF", "stroke": "#DDDDDD", "stroke_width": 1, "radius": 0.05})
+        iy = box_top + pad
+        if st["en"]:
+            shapes.append({"type": "text", "x": bx + pad, "y": iy, "w": box_w - 2 * pad, "h": 0.3,
+                           "text": st["en"], "size": en_size, "weight": 500, "color": "#666666",
+                           "align": "center", "valign": "top"})
+            iy += 0.32
+        kr_h = max(0.5, _tf_height(st["kr"], box_w - 2 * pad, kr_size, 800))
+        shapes.append({"type": "text", "x": bx + pad, "y": iy, "w": box_w - 2 * pad, "h": kr_h,
+                       "text": st["kr"], "size": kr_size, "weight": 800, "color": "#1A1A1A",
+                       "align": "center", "valign": "top"})
+        iy += kr_h + 0.05
+        if st["desc"]:
+            room = max(0.2, box_top + box_h - iy - pad)
+            size, desc = sdesc0, st["desc"]
+            while size > sdesc_floor and _tf_height(desc, box_w - 2 * pad, size, 400) > room:
+                size -= 1
+            if _tf_height(desc, box_w - 2 * pad, size, 400) > room:
+                sd_min += 1
+                max_lines = max(1, int((room - 2 * _TF_INSET) // _tf_line_h(size)))
+                desc = _tf_clip(desc, box_w - 2 * pad, size, 400, max_lines)
+                sd_clip += 1
+            shapes.append({"type": "text", "x": bx + pad, "y": iy, "w": box_w - 2 * pad, "h": room,
+                           "text": desc, "size": size, "weight": 400, "color": "#666666",
+                           "align": "center", "valign": "top"})
+        if i < n_steps - 1:
+            ay = box_top + box_h / 2
+            shapes.append({"type": "arrow", "x1": bx + box_w + 0.05, "y1": ay,
+                           "x2": bx + box_w + arrow_w - 0.05, "y2": ay, "color": "#1A1A1A", "width": 1.5})
+
+    # ── ③ 아래 열 — key·key_sub·lead 는 기존과 같고, 항목은 높이를 계산해 위에서부터 쌓는다
+    if section_title_2:
+        shapes.append({"type": "text", "x": margin, "y": 4.15, "w": inner_w, "h": 0.3,
+                       "text": section_title_2, "size": 13, "weight": 700, "color": "#1A1A1A",
+                       "align": "left", "valign": "middle"})
+    n_cols = len(columns)
+    col_area_top, col_area_bot = 4.55, H - 0.25
+    col_w = inner_w / n_cols
+    key_size, head0, desc0 = {2: (36, 14, 11), 3: (30, 12, 10)}.get(n_cols, (26, 11, 9))
+    for i in range(1, n_cols):
+        dx = margin + i * col_w
+        shapes.append({"type": "line", "x1": dx, "y1": col_area_top, "x2": dx, "y2": col_area_bot,
+                       "color": "#DDDDDD", "width": 1})
+    inner_pad, item_gap = 0.15, 0.06
+    cw = col_w - 2 * inner_pad
+    tops = []
+    for i, col in enumerate(columns):
+        cx = margin + i * col_w + inner_pad
+        cy = col_area_top
+        shapes.append({"type": "text", "x": cx, "y": cy, "w": cw, "h": 0.65, "text": col["key"],
+                       "size": key_size, "weight": 900, "color": "#1A1A1A",
+                       "align": "center", "valign": "top"})
+        cy += 0.7
+        if col["key_sub"]:
+            shapes.append({"type": "text", "x": cx, "y": cy, "w": cw, "h": 0.25, "text": col["key_sub"],
+                           "size": 11, "weight": 400, "color": "#666666",
+                           "align": "center", "valign": "top"})
+            cy += 0.3
+        if col["lead"]:
+            shapes.append({"type": "text", "x": cx, "y": cy, "w": cw, "h": 0.45, "text": col["lead"],
+                           "size": 11, "weight": 400, "color": "#666666",
+                           "align": "center", "valign": "top"})
+            cy += 0.5
+        tops.append((cx, cy + 0.1))
+    desc_floor = _TF_MIN_FLOOR if desc0 <= 9 else _TF_MIN_DETAIL
+
+    def plan(k):
+        hs_, ds_ = head0 - k, desc0 - k
+        out = []
+        for col in columns:
+            out.append([[it["head"], it["desc"], _tf_height("· " + it["head"], cw, hs_, 700),
+                         _tf_height(it["desc"], cw - 0.15, ds_, 400) if it["desc"] else 0.0]
+                        for it in col["items"]])
+        return hs_, ds_, out
+
+    def need_of(bs):      # 제목 상자 아래 여백과 설명 상자 위 여백을 겹친다
+        return sum(b[2] + (b[3] - _TF_INSET if b[1] else 0) for b in bs) + item_gap * max(0, len(bs) - 1)
+    k = 0
+    while True:
+        hs_, ds_, plans = plan(k)
+        ok = all(need_of(bs) <= col_area_bot - top + 1e-6 for bs, (_, top) in zip(plans, tops))
+        if ok or ds_ <= desc_floor:
+            break
+        k += 1
+    clipped = 0
+    for bs, (cx, top) in zip(plans, tops):
+        room = col_area_bot - top
+        done = set()
+        while need_of(bs) > room + 1e-6:
+            lines = [len(_tf_wrap(b[1], cw - 0.15, ds_, 400)) if b[1] else 0 for b in bs]
+            j = max(range(len(bs)), key=lambda q: lines[q])
+            if lines[j] <= 1:
+                break
+            bs[j][1] = _tf_clip(bs[j][1], cw - 0.15, ds_, 400, lines[j] - 1)
+            bs[j][3] = _tf_height(bs[j][1], cw - 0.15, ds_, 400)
+            done.add(j)
+        clipped += len(done)
+        iy = top
+        for head, desc, hh, dh in bs:
+            shapes.append({"type": "text", "x": cx, "y": iy, "w": cw, "h": hh, "text": "· " + head,
+                           "size": hs_, "weight": 700, "color": "#1A1A1A",
+                           "align": "left", "valign": "top"})
+            iy += hh
+            if desc:
+                iy -= _TF_INSET
+                shapes.append({"type": "text", "x": cx + 0.15, "y": iy, "w": cw - 0.15, "h": dh,
+                               "text": desc, "size": ds_, "weight": 400, "color": "#666666",
+                               "align": "left", "valign": "top"})
+                iy += dh
+            iy += item_gap
+    _tf_note("flow_detail", (not ok) or sd_min > 0, clipped + sd_clip)
+    return shapes
+
+
+def _tf_route(name, slide_data):
+    """빌더 맨 앞 우회 지점. None = 기존 빌더로 진행."""
+    fn = {"2col": _tf_build_2col, "quad_detail": _tf_build_quad_detail, "split": _tf_build_split,
+          "program_overview": _tf_build_program_overview, "flow_detail": _tf_build_flow_detail}[name]
+    try:
+        return fn(slide_data)
+    except Exception as e:
+        log.warning("Text-Fit %s 실패 — 기존 빌더로: %s: %s", name, type(e).__name__, e)
+        _tf_stat(name + ":error")
+        return None
 
 
 def generate_from_shape_json(json_data, output_path, *, theme="light"):
